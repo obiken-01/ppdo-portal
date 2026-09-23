@@ -890,7 +890,7 @@ public sealed class BudgetPlanningDashboardServiceTests
     {
         (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(1, "PPDO")], []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Equal(1, result.OfficeId);
         Assert.Equal(2027, result.FiscalYear);
@@ -910,7 +910,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], [], [], [Off(1, "PPDO")], [], allocationMock: allocation);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Null(result.Allocation.CeilingAmount);
         Assert.Null(result.Allocation.Remaining);
@@ -933,7 +933,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], [], [], [Off(1, "PPDO")], [], allocationMock: allocation);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Equal(100_000m, result.Allocation.CeilingAmount);
         Assert.Equal(60_000m, result.Allocation.Allocated);
@@ -959,7 +959,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], [], [], [Off(1, "PPDO")], [], allocationMock: allocation);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Equal(110_000m, result.Allocation.Allocated);
         Assert.Equal(-10_000m, result.Allocation.Remaining);
@@ -985,7 +985,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], [], [], [Off(1, "PPDO")], [], allocationMock: allocation);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Equal(2, result.Allocation.AssignedProgramCount);
         Assert.Equal(1, result.Allocation.UnassignedProgramCount);
@@ -1004,7 +1004,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         ];
         (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [Off(1, "PPDO")], []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.True(result.Ldip.ScopingSupported);
         Assert.Equal(2, result.Ldip.Total);
@@ -1022,7 +1022,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         ];
         (BudgetPlanningDashboardService sut, _) = Build(ldips, [], [], [Off(1, "PPDO")], []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.Equal(1, result.Ldip.Total);
     }
@@ -1035,7 +1035,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<Office> offices = [Off(1, "PPDO", refCode: null)];
         (BudgetPlanningDashboardService sut, _) = Build([], [Aip(10, 2027, "Final")], [], offices, []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.False(result.Aip.Exists);
         Assert.Null(result.Aip.Status);
@@ -1049,7 +1049,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipRecord> aips = [Aip(10, 2026, "Final")]; // different FY
         (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.False(result.Aip.Exists);
     }
@@ -1061,7 +1061,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipRecord> aips = [Aip(10, 2027, "Archived")];
         (BudgetPlanningDashboardService sut, _) = Build([], aips, [], offices, []);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.False(result.Aip.Exists);
     }
@@ -1080,7 +1080,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], aips, [], offices, [], aipRepoMock: aipRepo);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.False(result.Aip.Exists);
     }
@@ -1117,13 +1117,100 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, _) =
             Build([], aips, [], offices, [], aipRepoMock: aipRepo);
 
-        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027);
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
 
         Assert.True(result.Aip.Exists);
         Assert.Equal("Final", result.Aip.Status);
         Assert.Equal(1, result.Aip.ProgramCount);
         Assert.Equal(2, result.Aip.ProjectCount);
         Assert.Equal(3, result.Aip.ActivityCount);
+    }
+
+    // ── GetOfficeDashboardAsync — per-division breakdown (PPDO-126, PPDO-127) ────
+    //
+    // Both the values (seeAllDivisions/divisionId) and the interpretation are the caller's
+    // (Functions layer) responsibility — see ResolveOfficeDivisionScopeAsync's own tests for that
+    // half. These tests pin what the SERVICE does with them once resolved.
+
+    private const int GuestOfficeId = 5;
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_SeeAllDivisions_ReturnsEveryActiveDivisionOfTheOffice()
+    {
+        List<Office> offices = [Off(1, "PPDO"), Off(GuestOfficeId, "GSO", code: "GSO", isHostOffice: false)];
+        List<Division> divisions =
+        [
+            Div(10, GuestOfficeId, "Admin Division", "ADMIN"),
+            Div(11, GuestOfficeId, "Planning Division", "PLAN"),
+            Div(99, 1, "A PPDO division — must not leak in"), // different office
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(
+            GuestOfficeId, 2027, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(new[] { 10, 11 }, result.ByDivision.Select(d => d.DivisionId).OrderBy(x => x));
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DivisionScoped_ReturnsOnlyThatDivision()
+    {
+        List<Office> offices = [Off(GuestOfficeId, "GSO", code: "GSO", isHostOffice: false)];
+        List<Division> divisions =
+        [
+            Div(10, GuestOfficeId, "Admin Division", "ADMIN"),
+            Div(11, GuestOfficeId, "Planning Division", "PLAN"),
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(
+            GuestOfficeId, 2027, seeAllDivisions: false, divisionId: 11);
+
+        Assert.Equal(11, Assert.Single(result.ByDivision).DivisionId);
+    }
+
+    /// <summary>
+    /// ⚠️ The exact failure PPDO-126 fixed on the Allocation page, pinned here for the Dashboard's
+    /// own copy of the rule: a Staff caller with no division assigned must see NOTHING, never every
+    /// division. Passing divisionId straight through as "the LINQ filter" would silently resolve a
+    /// null id to "no filter — every division" instead (DECISION F).
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DivisionScopedWithNoDivisionAssigned_ReturnsEmpty()
+    {
+        List<Office> offices = [Off(GuestOfficeId, "GSO", code: "GSO", isHostOffice: false)];
+        List<Division> divisions = [Div(10, GuestOfficeId, "Admin Division", "ADMIN")];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(
+            GuestOfficeId, 2027, seeAllDivisions: false, divisionId: null);
+
+        Assert.Empty(result.ByDivision);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_OfficeWithNoDivisionsConfigured_ReturnsEmptyNotAnError()
+    {
+        List<Office> offices = [Off(GuestOfficeId, "GSO", code: "GSO", isHostOffice: false)];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions: []);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(
+            GuestOfficeId, 2027, seeAllDivisions: true, divisionId: null);
+
+        Assert.Empty(result.ByDivision);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_InactiveDivision_IsExcludedEvenWhenSeeingAll()
+    {
+        List<Office> offices = [Off(GuestOfficeId, "GSO", code: "GSO", isHostOffice: false)];
+        List<Division> divisions = [Div(10, GuestOfficeId, "Retired Division", active: false)];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], offices, [], divisions);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(
+            GuestOfficeId, 2027, seeAllDivisions: true, divisionId: null);
+
+        Assert.Empty(result.ByDivision);
     }
 
     // ── GetOfficesAsync — scope resolution (PPDO-20, ticket B) ────────────

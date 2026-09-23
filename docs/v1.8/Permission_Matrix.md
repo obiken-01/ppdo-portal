@@ -253,6 +253,42 @@ not GSO's rows plus everyone else's.
 > **409**. PPDO is never state-gated — it sets offices up across the whole cycle. The programme
 > write has no fiscal year at all (assignments are permanent across years), so no state can gate it.
 
+### `CanManageOfficeSetup`'s reads — whoever may WRITE an office's division split may READ it (PPDO-126, PPDO-127)
+
+Two read surfaces show an office's per-division breakdown, and both used to gate on
+`CanManagePpdoAllocation` — host-office-exclusive — rather than on who could actually see the
+office in question:
+
+| Surface | Endpoint |
+|---|---|
+| Allocation page's division-allocation panel | `GET .../allocation/divisions`, `.../allocation/divisions/all-funds` |
+| Dashboard's per-division band (`DivisionTable`) | `GET .../dashboard/office` |
+
+Both now resolve the same three-way rule:
+
+| Caller | Sees |
+|---|---|
+| Host-office (PPDO) caller | Every division, of any office |
+| Department head (`CanManageOfficeSetup`) — their OWN office | Every division of that office |
+| Anyone else (a division head) | Their own division's row only |
+| A division head with no division assigned | **Nothing** — never every row |
+
+⚠️ **The last row is the one this class of bug keeps producing.** Before PPDO-126, a department
+head fell into the "division head" branch (since `CanManagePpdoAllocation` is host-only) and was
+filtered to `DivisionId == caller.DivisionId`. Guest-office users had no division at all until
+PPDO-123, and the filter column is non-nullable, so **no row could ever match** — the office would
+save its allocations, get a truthful "Saved", reload, and find every field blank. The write had
+worked the whole time; the read was hiding it. The fix is the rule above, not a bigger clamp: a
+division-scoped caller with a *real* division is still narrowed to it, exactly as before.
+
+`AllocationFunctions.ResolveSetupScopeAsync`/`ClampAllocationsToScopeAsync` and
+`BudgetPlanningDashboardFunctions.ResolveOfficeDivisionScopeAsync` implement the same rule
+independently (one per endpoint family) rather than sharing a helper — the Allocation page's
+version also carries the D10 state gate for its WRITE half, which the read-only dashboard has no
+equivalent of, so a shared abstraction would need a flag distinguishing the two callers anyway.
+Pinned by `BudgetPlanningDashboardFunctionsTests` (dashboard) and `AllocationFunctionsTests`
+(allocation).
+
 ### `CanManagePpdoAllocation` is exclusive to host-office users
 
 Settled 2026-09-02, after a live account — `pto.user`, Provincial Treasurer's Office — was found
