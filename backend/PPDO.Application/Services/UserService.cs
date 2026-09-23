@@ -730,6 +730,78 @@ public sealed class UserService : IUserService
         return ServiceResult<bool>.Ok(true);
     }
 
+    // ── Office-scoped division assignment (PPDO-135) ─────────────────────────────
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<OfficeUserDto>> GetByOfficeIdAsync(
+        int officeId, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<User> users = await _users.GetByOfficeIdWithDivisionAsync(officeId, cancellationToken);
+        return users.Select(MapToOfficeUserDto).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<OfficeUserDto>> SetOfficeUserDivisionAsync(
+        User requester,
+        Guid targetId,
+        int? divisionId,
+        CancellationToken cancellationToken = default)
+    {
+        User? target = await _users.GetByIdWithDivisionAsync(targetId, cancellationToken);
+        if (target is null)
+            return ServiceResult<OfficeUserDto>.NotFound($"User {targetId} not found.");
+
+        // ⚠️ An OFFICE comparison, not CanRequesterManageTarget's ROLE comparison — that check
+        // would let a department head reach a Staff member in ANY office, which is exactly the
+        // grant PPDO-135's ticket refused to make (CanManageOfficeUsers-by-another-name). A
+        // requester with no office at all (DECISION F: unassigned sees nothing) can never pass.
+        if (requester.OfficeId is null || target.OfficeId != requester.OfficeId)
+        {
+            _logger.LogWarning(
+                "Permission denied — user {UserId} attempted to set the division of user {TargetUserId} "
+                + "outside their own office.",
+                requester.Id, target.Id);
+            return ServiceResult<OfficeUserDto>.Forbidden("You may only manage users in your own office.");
+        }
+
+        if (target.Role is UserRole.SuperAdmin or UserRole.Admin)
+            return ServiceResult<OfficeUserDto>.BadRequest($"{target.Role} users have no division.");
+
+        object oldSnapshot = new { target.DivisionId };
+
+        if (divisionId is int did)
+        {
+            // requireOfficeId pins the division to the SAME office being edited — an office-scoped
+            // caller cannot hand their people a division belonging to any other office, guest or host.
+            ServiceResult<OfficeUserDto>? divError =
+                await ValidateDivisionAsync<OfficeUserDto>(did, requester.OfficeId, cancellationToken);
+            if (divError is not null) return divError;
+            target.DivisionId = did;
+        }
+        else
+        {
+            target.DivisionId = null;
+        }
+
+        await _users.UpdateAsync(target, cancellationToken);
+        await _users.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "User division set. TargetUserId: {TargetUserId}, DivisionId: {DivisionId}, SetBy: {SetBy}",
+            target.Id, target.DivisionId, requester.Id);
+
+        User updated = (await _users.GetByIdWithDivisionAsync(target.Id, cancellationToken))!;
+        await _audit.LogAsync("users", updated.Id, AuditAction.Update,
+            oldValues: oldSnapshot,
+            newValues: new { updated.DivisionId },
+            cancellationToken);
+
+        return ServiceResult<OfficeUserDto>.Ok(MapToOfficeUserDto(updated));
+    }
+
+    private static OfficeUserDto MapToOfficeUserDto(User u) => new(
+        u.Id, u.FullName, u.Username, u.Position, u.IsActive, u.DivisionId, u.Division?.Name);
+
     // ── Landing page (RAL-262) ────────────────────────────────────────────────
 
     /// <summary>

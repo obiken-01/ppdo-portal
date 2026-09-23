@@ -86,4 +86,19 @@ export interface UpdateUserRequest extends CreateUserRequest {
   overrideCanManageOfficeSetup: boolean | null;
 }
 
+/**
+ * Slim user record for the office-scoped division-assignment screen (PPDO-135) —
+ * GET /api/office/users. Mirrors PPDO.Application/DTOs/Users/OfficeUserDto. Deliberately
+ * narrower than UserResponse: no email, no permission overrides, no audit timestamps.
+ */
+export interface OfficeUserResponse {
+  id: string;
+  fullName: string;
+  username: string;
+  position: string | null;
+  isActive: boolean;
+  divisionId: number | null;
+  division: string | null;
+}
+
 // OfficeResponse / DivisionResponse live in ./config.ts — re-exported via the @/types barrel.

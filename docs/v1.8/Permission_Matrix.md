@@ -115,7 +115,7 @@ for each pair that could plausibly be conflated:
 | `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
 | `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
 | `CanManageApiKeys` | Named person who issues/revokes partner API keys under Configuration → API Access | PPDO-15 |
-| `CanManageOfficeSetup` | A department head who sets up **their own office**: its division split, programme → division assignment, divisions and fund sources | PPDO-107 |
+| `CanManageOfficeSetup` | A department head who sets up **their own office**: its division split, programme → division assignment, divisions, fund sources, and (PPDO-135) which division each of their own Staff belongs to | PPDO-107, PPDO-135 |
 
 > ⚠️ `CanManageOfficeCeilingsAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
@@ -252,6 +252,38 @@ not GSO's rows plus everyone else's.
 > may write while their office holds at least one AIP group in an office-editable state, else
 > **409**. PPDO is never state-gated — it sets offices up across the whole cycle. The programme
 > write has no fiscal year at all (assignments are permanent across years), so no state can gate it.
+
+### `CanManageOfficeSetup`'s third door — assigning divisions to a Staff member (PPDO-135)
+
+`GET /api/office/users` and `PUT /api/office/users/{id}/division` are gated on
+`CanManageOfficeSetup` **alone**, never OR'd with `CanManageUsers`. That is a deliberate,
+narrower door than User Management's own — see the ticket's own warning:
+
+> Granting the existing flag would be a privilege escalation, not a shortcut. `GET /api/users`
+> has no office axis and the write guard (`CanRequesterManageTarget`) checks **role only**, so a
+> department head holding `CanManageUsers` could list and edit Staff in **every** office
+> province-wide, including PPDO's.
+
+So this is a separate, deliberately smaller pair of endpoints rather than a widened
+`CanManageUsers`:
+
+| What it can do | What it cannot do |
+|---|---|
+| List the Staff in the caller's OWN office (slim `OfficeUserDto` — no email, no override flags) | See or touch a user in any other office |
+| Set or clear one Staff member's division | Create a user, reset a password, change a role, or touch any permission override |
+
+Both rules live in `UserService.SetOfficeUserDivisionAsync`, not in the Function handler or the
+UI: the target's `OfficeId` must equal the requester's own (an OFFICE comparison — deliberately
+**not** `CanRequesterManageTarget`'s role-only check, which would let this leak exactly the way
+the ticket warned about), and a non-null division id must belong to that same office
+(`ValidateDivisionAsync`'s existing `requireOfficeId` guard, reused rather than re-derived). A
+target who is SuperAdmin/Admin is refused — those roles carry no division. Pinned by
+`UserServiceTests.SetOfficeUserDivisionAsync_TargetInAnotherOffice_ReturnsForbidden` and its
+siblings, red-tested against the office comparison specifically (this project has shipped three
+cross-office leaks already: RAL-229, PPDO-18, PPDO-30).
+
+Refuses rather than clamps, same reasoning as `AllocationFunctions`: silently reassigning a
+user's division to keep the request "working" is a worse failure than a 403.
 
 ### `CanManagePpdoAllocation` is exclusive to host-office users
 
