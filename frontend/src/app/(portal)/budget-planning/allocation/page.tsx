@@ -848,7 +848,18 @@ function AllocationPageInner() {
 
   async function handleSaveAllocations(fundId: number) {
     // PPDO-107 — either door: PPDO writing any office, or a department head writing their own.
-    if (!canEditSelectedOfficeSetup) return;
+    //
+    // ⚠️ Says so rather than returning in silence. This used to be a bare `return`: the click did
+    // nothing, showed nothing, and left the typed amounts sitting on screen looking unsaved-but-
+    // savable. A control that refuses must say it refused — that silence is the same defect class
+    // as the "Saved" that saved nothing (Demo 2.4).
+    if (!canEditSelectedOfficeSetup) {
+      toast.error(
+        "Not allowed",
+        "You do not have permission to change this office's division allocations.",
+      );
+      return;
+    }
     const inputs = allocationInputsByFund[fundId] ?? {};
     const total = divisions.reduce((sum, d) => sum + (inputs[d.id] ?? 0), 0);
     const ceilingAmount = ceilingInputs[fundId] ?? 0;
