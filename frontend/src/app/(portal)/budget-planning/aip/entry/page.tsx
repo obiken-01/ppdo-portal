@@ -39,6 +39,8 @@ import {
   aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
+import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
+import DivisionTable from "../../DivisionTable";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
@@ -61,6 +63,7 @@ import type {
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail,
   AipDeleteResult, AipCommentNodeType,
   AccountResponse, FundingSourceResponse, OfficeResponse, AipReadiness, PriceIndexPickerItem,
+  DivisionSummary,
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
@@ -146,6 +149,12 @@ export default function AipEntryPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const officeId = me?.officeId ?? null;
+
+  // PPDO-127 — the office's own per-division allocation breakdown, collapsed by default so it
+  // doesn't fight this page's own "one node at a time" decluttering (PPDO-89). Fetched
+  // independently of `record`/readiness: it comes from the Dashboard payload, not the AIP one.
+  const [divisionRows, setDivisionRows] = useState<DivisionSummary[]>([]);
+  const [divisionRowsLoading, setDivisionRowsLoading] = useState(true);
 
   // Only the caller's own office's groups.
   //
@@ -263,6 +272,20 @@ export default function AipEntryPage() {
       .catch(() => setPriceIndex([]))
       .finally(() => setPriceIndexLoading(false));
   }, [officeId]);
+
+  // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
+  // PPDO finance sees every division of this office, anyone else sees only their own division row.
+  useEffect(() => {
+    if (officeId == null) { setDivisionRowsLoading(false); return; }
+    setDivisionRowsLoading(true);
+    const load = me?.isHostOffice
+      ? getDashboard(fiscalYear).then((d) => d.byDivision)
+      : getOfficeDashboard(officeId, fiscalYear).then((d) => d.byDivision);
+    load
+      .then(setDivisionRows)
+      .catch(() => setDivisionRows([]))
+      .finally(() => setDivisionRowsLoading(false));
+  }, [officeId, fiscalYear, me?.isHostOffice]);
 
   async function refreshReadiness() {
     if (!record) return;
@@ -508,6 +531,32 @@ export default function AipEntryPage() {
           Your office&rsquo;s other programs are here but belong to other divisions — ask an
           administrator if one should be assigned to yours.
         </p>
+      )}
+
+      {/* PPDO-126, PPDO-127 — collapsed by default (PPDO-89's decluttering). A department head or
+          PPDO finance sees every division here; anyone else sees only their own row. */}
+      {!divisionRowsLoading && officeId != null && (
+        <details className="mb-4 border border-slate-200 bg-white">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-slate-800">
+            Division allocations — FY {fiscalYear}
+          </summary>
+          <div className="border-t border-slate-200">
+            {divisionRows.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-slate-600">
+                No divisions configured for this office yet.
+              </p>
+            ) : (
+              <DivisionTable
+                divisions={divisionRows}
+                canManageAllocation={
+                  me?.isHostOffice ? me?.canManagePpdoAllocation === true : me?.canManageOfficeSetup === true
+                }
+                officeId={officeId}
+                fiscalYear={fiscalYear}
+              />
+            )}
+          </div>
+        </details>
       )}
 
       {loading ? (

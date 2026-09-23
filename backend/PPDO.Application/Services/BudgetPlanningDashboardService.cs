@@ -113,7 +113,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);
 
         IReadOnlyList<DivisionSummaryDto> byDivision =
-            await BuildByDivisionAsync(host, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
+            await BuildByDivisionAsync(host.Id, host.OfficeRefCode, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
         IReadOnlyList<FundCeilingDto> ceilingByFund =
             await BuildCeilingByFundAsync(
                 host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
@@ -178,8 +178,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// common this needs a real answer — flagged as an open item on the PPDO-20 spec, not decided
     /// here by accident.
     /// </summary>
+    /// <summary>
+    /// Builds the per-division breakdown for ANY office (PPDO or a guest office alike — generalized
+    /// by PPDO-127, which is the second caller after PPDO's own <see cref="GetDashboardAsync"/>).
+    /// Nothing inside is actually host-specific; <paramref name="officeId"/>/<paramref
+    /// name="officeRefCode"/> used to be read off a PPDO-only <c>Office</c> parameter named "host"
+    /// only because there was exactly one call site.
+    /// </summary>
     private async Task<IReadOnlyList<DivisionSummaryDto>> BuildByDivisionAsync(
-        Office host, int fiscalYear, IReadOnlyList<Division> divisions,
+        int officeId, string? officeRefCode, int fiscalYear, IReadOnlyList<Division> divisions,
         IReadOnlyList<FundingSource> activeFunds,
         IReadOnlyDictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund,
         CancellationToken ct)
@@ -190,11 +197,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         Dictionary<int, (int Costed, int Total, decimal Amount)> aipByDivision = [];
 
-        if (primaryAip is not null && host.OfficeRefCode is not null)
+        if (primaryAip is not null && officeRefCode is not null)
         {
             IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
             List<int> hostAipOfficeIds = aipOffices
-                .Where(o => o.OfficeId == host.Id)
+                .Where(o => o.OfficeId == officeId)
                 .Select(o => o.Id)
                 .ToList();
 
@@ -202,7 +209,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 await _aipRepo.GetProgramRollupsAsync(hostAipOfficeIds, ct);
 
             IReadOnlyList<ProgramAssignmentDto> assignments =
-                await _allocationService.GetProgramAssignmentsAsync(host.Id, fiscalYear, ct);
+                await _allocationService.GetProgramAssignmentsAsync(officeId, fiscalYear, ct);
             Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = assignments
                 .GroupBy(a => a.ProgramRefCode, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
@@ -455,7 +462,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
     /// <inheritdoc />
     public async Task<OfficeDashboardDto> GetOfficeDashboardAsync(
-        int officeId, int fiscalYear, CancellationToken cancellationToken = default)
+        int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
+        CancellationToken cancellationToken = default)
     {
         AllocationSetupSummaryDto allocation =
             await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
@@ -463,8 +471,48 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await BuildOfficeLdipSummaryAsync(officeId, fiscalYear, cancellationToken);
         OfficeAipSummaryDto aip =
             await BuildOfficeAipSummaryAsync(officeId, fiscalYear, cancellationToken);
+        IReadOnlyList<DivisionSummaryDto> byDivision = await BuildOfficeDivisionsAsync(
+            officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
-        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip);
+        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision);
+    }
+
+    /// <summary>
+    /// The office's per-division breakdown, scoped by <paramref name="seeAllDivisions"/>/<paramref
+    /// name="divisionId"/> (PPDO-127). Reuses <see cref="BuildByDivisionAsync"/> — the same build
+    /// PPDO's own dashboard uses — rather than re-deriving a second version of it.
+    /// </summary>
+    private async Task<IReadOnlyList<DivisionSummaryDto>> BuildOfficeDivisionsAsync(
+        int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId, CancellationToken ct)
+    {
+        // seeAllDivisions=false and divisionId=null means a Staff caller with no division assigned
+        // — must resolve to NO rows, never every row. `d.Id == divisionId.Value` on a null id
+        // would throw, so the empty case is short-circuited explicitly rather than folded into
+        // the LINQ predicate below.
+        if (!seeAllDivisions && divisionId is null) return [];
+
+        List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
+            .Where(d => d.OfficeId == officeId && d.IsActive
+                     && (seeAllDivisions || d.Id == divisionId!.Value))
+            .OrderBy(d => d.Name)
+            .ToList();
+
+        // An office with none configured yet (still common among guest offices — PPDO-122) or a
+        // division-scoped caller whose one division didn't match: nothing further to query.
+        if (divisions.Count == 0) return [];
+
+        Office? office = await _officeRepo.GetByIdAsync(officeId, ct);
+
+        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11), same rule GetDashboardAsync
+        // applies for PPDO. An office's OWN funds have no ceiling to show a per-division share of.
+        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+            .Where(f => f.IsActive && f.OfficeId is null)
+            .ToList();
+        Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
+            await GetAllocationsByFundAsync(officeId, fiscalYear, activeFunds, ct);
+
+        return await BuildByDivisionAsync(
+            officeId, office?.OfficeRefCode, fiscalYear, divisions, activeFunds, allocationsByFund, ct);
     }
 
     private async Task<AllocationSetupSummaryDto> BuildAllocationSummaryAsync(

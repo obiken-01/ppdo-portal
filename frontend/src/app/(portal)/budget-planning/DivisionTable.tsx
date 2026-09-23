@@ -7,8 +7,9 @@ import { formatMoney } from "@/lib/money";
 import type { DivisionSummary } from "@/types";
 
 /**
- * DivisionTable — one row per PPDO division: allocation, AIP progress, and what is left
- * (PPDO-20, ticket F). Host office only; a guest office has no division split.
+ * DivisionTable — one row per division: allocation, AIP progress, and what is left
+ * (PPDO-20, ticket F). Shared by PPDO's own dashboard and a guest office's (PPDO-127) — both
+ * pass a server-scoped `divisions` list, already narrowed to what the caller may see.
  *
  * ⚠️ **The column is not additive down the page when a PPA is shared.** A program assigned to two
  * divisions counts in full against both, because the row answers "what is this division
