@@ -581,6 +581,16 @@ export interface OfficeDashboard {
   allocation: AllocationSetupSummary;
   ldip: OfficeLdipSummary;
   aip: OfficeAipSummary;
+  /**
+   * The office's own per-division breakdown (PPDO-126, PPDO-127) — empty for an office with no
+   * divisions configured yet (render an empty state, not a blank panel) or for a division-scoped
+   * caller narrowed to a division they no longer hold. Already scoped server-side: a department
+   * head sees every division of their own office, anyone else sees only their own division's row.
+   * Never re-filter this client-side. Reuses `DivisionSummary` — the same shape `PpdoDashboard`
+   * carries — so a guest office renders on the same `DivisionTable` component PPDO's dashboard
+   * uses.
+   */
+  byDivision: DivisionSummary[];
 }
 
 // ── WFP ──────────────────────────────────────────────────────────────────────
