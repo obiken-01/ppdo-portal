@@ -191,7 +191,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IPermissionService>? permissionsMock = null,
         List<AipOfficeRollupDto>? officeRollups = null,
         List<AipProgramRollupDto>? programRollups = null,
-        List<AipActivityProgramFundTotalsDto>? aipFundLines = null)
+        List<AipActivityProgramFundTotalsDto>? aipFundLines = null,
+        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -280,6 +281,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         aipExpRepo.Setup(r => r.SumMooeCoByConfigOfficeAsync(
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivityProgramFundTotalsDto>)(aipFundLines ?? []));
+        // FY2028+ readiness board: GF lines for every office in one query.
+        aipExpRepo.Setup(r => r.SumMooeCoByRecordAndFundAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipOfficeActivityFundTotalsDto>)(gfLinesByOffice ?? []));
 
         Mock<IAuditRepository> auditRepo = new();
         auditRepo
@@ -775,6 +780,47 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal(0m, gf.Amount);
         Assert.Equal(50_000m, gf.Used);
         Assert.Equal(-50_000m, ict.Remaining);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_OfficeTile_UsesTheCeilingRule_CountingASharedProgramOnce()
+    {
+        // ↩️ Found live 2026-09-24 on SPO: the tile read ₱830K (every fund, PS included) above
+        // division rows at ₱300K each, for the same two activities. The tile now uses the rows'
+        // rule — but counts each activity ONCE, so it stays the office's real figure while a
+        // program shared by several divisions still shows in full on each row.
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1, 2],
+        [
+            new("PROG-1", 80, GfFundId,  200_000m, 0m),
+            new("PROG-1", 81, GfFundId,  0m,       99_500m),   // rounds up to 100,000
+            new("PROG-1", 81, 99,        50_000m,  0m),        // an office's OWN fund — not counted
+        ]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        Assert.Equal(300_000m, result.Aip.CostedInAip);
+        Assert.All(result.ByDivision, row => Assert.Equal(300_000m, row.CostedInAip));
+        // Against the ceiling: GF only — here the same 300,000, since the office fund is excluded.
+        Assert.Equal(300_000m, result.Aip.CostedAgainstCeiling);
+        // The rows are not additive for a shared program; the tile is the real total.
+        Assert.Equal(600_000m, result.ByDivision.Sum(r => r.CostedInAip));
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_CostedAgainstCeiling_IsGeneralFundOnly()
+    {
+        // A guest office's tiles compare this with the GF ceiling. GAD money is a shared fund — it
+        // counts on the division rows and in CostedInAip — but must not shrink the GF remaining.
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
+        [
+            new("PROG-1", 80, GfFundId,  200_000m, 0m),
+            new("PROG-1", 80, GadFundId, 50_000m,  0m),
+        ]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        Assert.Equal(250_000m, result.Aip.CostedInAip);
+        Assert.Equal(200_000m, result.Aip.CostedAgainstCeiling);
     }
 
     [Fact]
@@ -1350,7 +1396,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipOfficeRollupDto>? officeRollups = null,
         Mock<IBudgetCeilingRepository>? ceilingRepoMock = null,
         Mock<IUserRepository>? userRepoMock = null,
-        Mock<IAipRepository>? aipRepoMock = null)
+        Mock<IAipRepository>? aipRepoMock = null,
+        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null)
     {
         // Deliberately a GUEST-office caller in every case: OfficeScope.Resolve would scope them
         // to their own office, so "every office came back" is real evidence the cross-office
@@ -1370,7 +1417,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             ceilingRepoMock: ceilingRepoMock,
             userRepoMock: userRepoMock,
             permissionsMock: permissions,
-            officeRollups: officeRollups);
+            officeRollups: officeRollups,
+            gfLinesByOffice: gfLinesByOffice);
 
         return (svc, caller);
     }
@@ -1452,10 +1500,11 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
-    public async Task GetOfficesAsync_CeilingsAcrossFunds_AreSummedPerOffice()
+    public async Task GetOfficesAsync_Fy2027_CeilingsAcrossFunds_AreSummedPerOffice()
     {
+        // ↩️ FY2027 only since 2026-09-24 — the rule this board had for every year before.
         Mock<IBudgetCeilingRepository> ceilingRepo = new();
-        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2028, It.IsAny<CancellationToken>()))
+        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<BudgetCeiling>)
             [
                 Ceiling(1, officeId: 2, fundingSourceId: 1, amount: 400_000m),
@@ -1465,12 +1514,32 @@ public sealed class BudgetPlanningDashboardServiceTests
         (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
             TwoOffices(), canManageOfficeCeilings: true, ceilingRepoMock: ceilingRepo);
 
-        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2027);
 
         OfficeSummaryDto gso = result.Value!.Single(r => r.OfficeCode == "GSO");
         Assert.Equal(500_000m, gso.CeilingAmount);
         OfficeSummaryDto ppdo = result.Value!.Single(r => r.OfficeCode == "PPDO");
         Assert.Null(ppdo.CeilingAmount);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Fy2028_CeilingIsTheGeneralFundOnes_LikeTheSubmitGate()
+    {
+        // The submit gate checks the GF ceiling only; the board now shows the same one.
+        Mock<IBudgetCeilingRepository> ceilingRepo = new();
+        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeiling>)
+            [
+                Ceiling(1, officeId: 2, fundingSourceId: GfFundId, amount: 400_000m),
+                Ceiling(2, officeId: 2, fundingSourceId: 2, amount: 100_000m),
+            ]);
+
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canManageOfficeCeilings: true, ceilingRepoMock: ceilingRepo);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        Assert.Equal(400_000m, result.Value!.Single(r => r.OfficeCode == "GSO").CeilingAmount);
     }
 
     [Fact]
@@ -1492,7 +1561,9 @@ public sealed class BudgetPlanningDashboardServiceTests
             aips: [Aip(10, 2028, "Draft")],
             aipRepoMock: AipMockWithOffices(10),
             ceilingRepoMock: ceilingRepo,
-            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", OfficeId: 2, 3, 3, 150_000m)]);
+            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", OfficeId: 2, 3, 3, 150_000m)],
+            // ↩️ FY2028 costed is GF MOOE + CO by the ceiling rule (2026-09-24), not the rollup.
+            gfLinesByOffice: [new AipOfficeActivityFundTotalsDto(2, 501, 149_500m, 0m)]);   // → 150,000
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
 
@@ -1504,6 +1575,37 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         // No ceiling published for PPDO — nothing to be over, whatever it has costed.
         Assert.False(result.Value!.Single(r => r.OfficeCode == "PPDO").IsOverCeiling);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Fy2028_PsHeavyOffice_IsNotOverCeiling_WhenTheGateSaysItIsFine()
+    {
+        // ↩️ The bug this reshaped (2026-09-24): the rollup total includes PS, which the ceiling
+        // exempts, so an office ₱150K "costed" against a ₱100K ceiling read OVER on the board while
+        // its own submit card — ₱60K of GF MOOE + CO — said it had room.
+        List<Office> offices =
+        [
+            Off(1, "PPDO", code: "PPDO", refCode: "1-01-010"),
+            Off(2, "GSO", code: "GSO", refCode: "1-02-020", isHostOffice: false),
+        ];
+        Mock<IBudgetCeilingRepository> ceilingRepo = new();
+        ceilingRepo.Setup(r => r.GetByFiscalYearAsync(2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeiling>)
+                [Ceiling(1, officeId: 2, fundingSourceId: GfFundId, amount: 100_000m)]);
+
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            offices, canReviewAllOffices: true,
+            aips: [Aip(10, 2028, "Draft")],
+            aipRepoMock: AipMockWithOffices(10),
+            ceilingRepoMock: ceilingRepo,
+            officeRollups: [new AipOfficeRollupDto(50, "1000-000-1-02-020", OfficeId: 2, 3, 3, 150_000m)],
+            gfLinesByOffice: [new AipOfficeActivityFundTotalsDto(2, 501, 60_000m, 0m)]);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
+
+        OfficeSummaryDto gso = result.Value!.Single(r => r.OfficeCode == "GSO");
+        Assert.Equal(60_000m, gso.CostedInAip);
+        Assert.False(gso.IsOverCeiling);
     }
 
     [Fact]

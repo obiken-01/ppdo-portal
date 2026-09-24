@@ -470,7 +470,9 @@ export default function BudgetPlanningPage() {
     // `costedInAip` on the office endpoint is what makes this possible — the cross-office endpoint
     // computes the same number for every office, but correctly 403s a plain office user.
     const guestCeiling = officeCeiling;
-    const guestCosted = officeDashboard?.aip.costedInAip ?? null;
+    // ⚠️ Against the CEILING, so the ceiling's figure — General Fund, the submit gate's rule. The
+    // all-shared-funds `costedInAip` would let GAD money shrink a GF remaining (2026-09-24).
+    const guestCosted = officeDashboard?.aip.costedAgainstCeiling ?? null;
     return [
       ceilingTile,
       { key: "costed", label: "Costed in AIP", value: guestCosted },

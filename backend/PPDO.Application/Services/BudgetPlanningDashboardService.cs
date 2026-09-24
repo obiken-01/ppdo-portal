@@ -418,7 +418,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // alternative — GetOfficeDashboardAsync in a loop — is four queries per office plus a
         // ceiling read, i.e. ~70 round trips for fourteen offices.
         IReadOnlyList<BudgetCeiling> ceilings = await _ceilingRepo.GetByFiscalYearAsync(fiscalYear, ct);
+
+        // ↩️ FY2028+ compares like the submit gate (2026-09-24): the GENERAL FUND ceiling against
+        // General Fund MOOE + CO, PS exempt, rounded up per activity. It compared the sum of every
+        // fund's ceiling with the all-funds, PS-included activity total before, so an office heavy
+        // in PS could read "over ceiling" here while its own submit card said it was fine — the
+        // office-ceilings page already worked around exactly this. FY2027 keeps both old figures.
+        bool entered = AipFiscalYears.IsEntered(fiscalYear);
+        int? gfId = entered ? await _allocationService.GetGeneralFundIdAsync(ct) : null;
         Dictionary<int, decimal> ceilingByOffice = ceilings
+            .Where(c => !entered || c.FundingSourceId == gfId)
             .GroupBy(c => c.OfficeId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
@@ -428,6 +437,18 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         AipRecord? aip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
         Dictionary<int, OfficeAipFigures> aipByOffice =
             await BuildAipRollupByOfficeAsync(aip, offices, ct);
+
+        // One grouped query for every office (not the per-office ceiling read in a loop).
+        Dictionary<int, decimal> gfCostedByOffice = [];
+        if (entered && aip is not null && gfId is int generalFundId)
+        {
+            gfCostedByOffice = (await _aipExpRepo.SumMooeCoByRecordAndFundAsync(aip.Id, generalFundId, ct))
+                .Where(l => l.ConfigOfficeId is not null)
+                .GroupBy(l => l.ConfigOfficeId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Sum(l => AipRounding.UpToThousand(l.Mooe) + AipRounding.UpToThousand(l.Co)));
+        }
 
         List<OfficeSummaryDto> rows = [];
         foreach (Office office in offices)
@@ -439,6 +460,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             // Null vs 0m matters: null is "PBO has not published a ceiling", 0m is a published
             // decision. The UI renders stage 1 differently for each, so do not coalesce.
             decimal? ceiling = ceilingByOffice.TryGetValue(office.Id, out decimal c) ? c : null;
+            decimal costed = entered ? gfCostedByOffice.GetValueOrDefault(office.Id) : figures.Costed;
 
             rows.Add(new OfficeSummaryDto(
                 office.Id,
@@ -446,12 +468,12 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 office.OfficeName,
                 office.IsHostOffice,
                 ceiling,
-                figures.Costed,
+                costed,
                 figures.ActivityCount,
                 PlanningStage.ForAip(aip?.Status, figures.ActivityCount),
                 // ↩️ Derived since PPDO-78 — the board beside this table reads the same state.
                 PlanningStage.ForSubmission(figures.WorkflowStatus),
-                ceiling is decimal limit && figures.Costed > limit,
+                ceiling is decimal limit && costed > limit,
                 reviewerByOffice.GetValueOrDefault(office.Id),
                 AipReadinessColumn.For(figures.WorkflowStatus, figures.ActivityCount),
                 figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
@@ -646,11 +668,42 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IReadOnlyList<AipActivity> activities =
             await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
 
+        // The office's OWN costed total — deliberately NOT the sum of the per-division rows, which
+        // counts a PPA shared by several divisions once per division. See the DTO's own remarks.
+        //
+        // ↩️ FY2028+ uses the CEILING rule, the same as the division rows beneath it and the submit
+        // card (2026-09-24): MOOE + CO over the shared funds, PS exempt, each activity's figure
+        // rounded up to the thousand (DECISION 9). It read the activities' all-funds, PS-included
+        // Total before, and once the rows moved to the ceiling rule (PPDO-138) the tile and the rows
+        // on one screen stopped agreeing (₱830K against ₱300K for the same SPO work).
+        //
+        // Each activity counts ONCE here however many divisions its program is shared with — that
+        // is what keeps this the real office figure. FY2027 keeps the activity Total it has always
+        // shown (uploaded, unrounded, no expenditure lines to sum).
+        decimal costed = activities.Sum(a => a.Total ?? 0m);
+        decimal costedAgainstCeiling = costed;
+        if (AipFiscalYears.IsEntered(fiscalYear))
+        {
+            // The same fund set the division rows count — shared (province-wide) and active.
+            HashSet<int> sharedFundIds = (await _fundingSourceRepo.GetAllAsync(cancellationToken))
+                .Where(f => f.IsActive && f.OfficeId is null)
+                .Select(f => f.Id)
+                .ToHashSet();
+            int? gfId = await _allocationService.GetGeneralFundIdAsync(cancellationToken);
+            IReadOnlyList<AipActivityProgramFundTotalsDto> lines =
+                await _aipExpRepo.SumMooeCoByConfigOfficeAsync(aipRecord.Id, office.Id, cancellationToken);
+
+            costed = lines
+                .Where(l => sharedFundIds.Contains(l.FundingSourceId))
+                .Sum(l => AipRounding.UpToThousand(l.Mooe) + AipRounding.UpToThousand(l.Co));
+            // General Fund only — the figure the GF ceiling and the submit gate compare.
+            costedAgainstCeiling = lines
+                .Where(l => l.FundingSourceId == gfId)
+                .Sum(l => AipRounding.UpToThousand(l.Mooe) + AipRounding.UpToThousand(l.Co));
+        }
+
         return new OfficeAipSummaryDto(
-            true, aipRecord.Status, programs.Count, projects.Count, activities.Count,
-            // The office's OWN costed total. Summed from the activities already loaded above —
-            // no extra query — and deliberately NOT the sum of the per-division rows, which
-            // double-counts a PPA shared by two divisions. See the DTO's own remarks.
-            activities.Sum(a => a.Total ?? 0m));
+            true, aipRecord.Status, programs.Count, projects.Count, activities.Count, costed,
+            costedAgainstCeiling);
     }
 }
