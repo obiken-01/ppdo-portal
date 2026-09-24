@@ -154,15 +154,22 @@ export default function AipSubmitChecklist({
   // expanded a collapsed comment, not to enforce that every remark was actioned. Do not turn this
   // into a disabled button.
   //
-  // ⚠️ Scoped to the **re-submit** hop only. The spec puts the warning there (decision 10), and at
-  // the first submit-to-PPDO the only possible unresolved comments are the department head's own —
-  // which they can resolve themselves, so warning them about their own notes helps nobody.
+  // ⚠️ **Which hops warn is a decision, not an accident of the condition** (PPDO-133):
+  //   • Encoder → department head: WARNS. ↩️ Added 2026-09-24. After a department head returns the
+  //     work (the return-to-encoder action) or PPDO sends it back, the encoders re-submit past
+  //     comments they cannot resolve themselves — exactly the accidental send this exists for. On a
+  //     first submit nothing has been commented yet, so the zero-count check keeps it silent.
+  //   • Department head → PPDO, first time: SILENT. The only possible unresolved comments are the
+  //     department head's own, which they can resolve themselves (spec decision 10).
+  //   • Department head → PPDO, re-submit: WARNS (PPDO-72 decision 10).
+  // The division → department head hop (PPDO-130) does not exist yet; decide it there.
   const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
   const [confirming, setConfirming] = useState(false);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
 
-  const needsUnresolvedWarning =
-    stage.kind === "toPpdo" && stage.resubmit && (unresolved?.total ?? 0) > 0;
+  const warnsOnThisHop =
+    stage.kind === "encoder" || (stage.kind === "toPpdo" && stage.resubmit);
+  const needsUnresolvedWarning = warnsOnThisHop && (unresolved?.total ?? 0) > 0;
 
   function onActionClick() {
     if (needsUnresolvedWarning) setConfirming(true);
@@ -322,8 +329,20 @@ export default function AipSubmitChecklist({
       {confirming && stage.kind === "toPpdo" && unresolved && (
         <ConfirmDialog
           title="Re-submit with unresolved comments?"
-          message={unresolvedWarning(unresolved)}
+          message={unresolvedWarning(unresolved, "PPDO")}
           confirmLabel="Re-submit anyway"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={stage.onSubmit}
+          onClose={() => setConfirming(false)}
+        />
+      )}
+
+      {confirming && stage.kind === "encoder" && unresolved && (
+        <ConfirmDialog
+          title="Submit with unresolved comments?"
+          message={unresolvedWarning(unresolved, "your department head")}
+          confirmLabel="Submit anyway"
           cancelLabel="Go back"
           variant="warning"
           onConfirm={stage.onSubmit}
@@ -359,7 +378,11 @@ export default function AipSubmitChecklist({
  * re-submit, and telling an office otherwise would push them into resolving comments they have no
  * right to resolve.
  */
-function unresolvedWarning({ fromPpdo, fromDepartmentHead }: AipUnresolvedCounts): string {
+function unresolvedWarning(
+  { fromPpdo, fromDepartmentHead }: AipUnresolvedCounts,
+  /** Who receives the work on this hop — named, because "it goes on anyway" means nothing alone. */
+  recipient: "PPDO" | "your department head",
+): string {
   // ⚠️ The word "unresolved" sits with the FIRST count, not at the end of the list. Appending it
   // ("2 from PPDO and 1 from your department head unresolved") strands the only word that says
   // what the numbers are, and the sentence has to be re-read to parse.
@@ -377,7 +400,7 @@ function unresolvedWarning({ fromPpdo, fromDepartmentHead }: AipUnresolvedCounts
 
   return (
     `This office still has ${parts.join(" and ")}. ` +
-    "They stay on the record, and PPDO will see them alongside the re-submitted work. " +
+    `They stay on the record, and ${recipient} will see them alongside the submitted work. ` +
     "You can send it on anyway."
   );
 }
