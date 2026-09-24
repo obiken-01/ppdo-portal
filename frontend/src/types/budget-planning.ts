@@ -573,6 +573,12 @@ export interface OfficeAipSummary {
    * keeps the office total agreeing with the office table's row for the same office.
    */
   costedInAip: number;
+  /**
+   * Costed AGAINST THE CEILING — General Fund, MOOE + CO, PS exempt, rounded up per activity: the
+   * submit gate's figure (2026-09-24). Compare THIS with the GF ceiling, never `costedInAip`, which
+   * covers every shared fund. FY2027: equal to `costedInAip`.
+   */
+  costedAgainstCeiling: number;
 }
 
 export interface OfficeDashboard {
