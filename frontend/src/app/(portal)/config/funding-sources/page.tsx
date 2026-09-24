@@ -41,6 +41,7 @@ import {
   createFundingSource,
   deactivateFundingSource,
   exportFundingSourcesCsv,
+  getFundingSourceOwnershipImpact,
   importFundingSourcesCsv,
   listFundingSources,
   listOffices,
@@ -294,6 +295,47 @@ export default function FundingSourceConfigPage() {
       ...(ownOfficeOnly ? {} : { officeId: form.officeId ? Number(form.officeId) : null }),
     };
 
+    // ── PPDO-128: warn, then allow ──
+    // Limiting a fund to one office takes it out of every other office's pickers. Ask the server who
+    // would lose it FIRST, and only save once PPDO has seen the per-year split and confirmed. The
+    // server refuses an unconfirmed change anyway, so this is the explanation, not the guard.
+    const targetOfficeId = body.officeId ?? null;
+    const narrowing = editTarget != null && !ownOfficeOnly
+      && targetOfficeId !== null && targetOfficeId !== editTarget.officeId;
+    if (narrowing) {
+      setSaving(true);
+      setFormError(null);
+      try {
+        const impact = await getFundingSourceOwnershipImpact(editTarget.id, targetOfficeId);
+        if (impact.otherOfficeLines > 0) {
+          const office = offices.find((o) => o.id === targetOfficeId);
+          const years = impact.byFiscalYear.map((y) => `FY${y.fiscalYear}: ${y.lines}`).join(", ");
+          setConfirm({
+            title: "Other offices use this fund",
+            message:
+              `${body.code} is used on ${impact.otherOfficeLines} AIP/WFP line` +
+              `${impact.otherOfficeLines === 1 ? "" : "s"} in other offices (${years}). ` +
+              `Limiting it to ${office?.officeCode ?? "one office"} removes it from their fund pickers. ` +
+              "Their saved lines keep showing it, but re-saving one of them will ask for another fund.",
+            confirmLabel: "Limit anyway",
+            variant: "danger",
+            onConfirm: () => { setConfirm(null); void saveFund({ ...body, confirmOwnershipChange: true }); },
+            onClose: () => setConfirm(null),
+          });
+          setSaving(false);
+          return;
+        }
+      } catch (err) {
+        setFormError(configErrorMessage(err, "Could not check who uses this fund. Please try again."));
+        setSaving(false);
+        return;
+      }
+    }
+
+    await saveFund(body);
+  }
+
+  async function saveFund(body: UpsertFundingSourceRequest) {
     setSaving(true);
     setFormError(null);
     try {
@@ -746,7 +788,7 @@ export default function FundingSourceConfigPage() {
                 {editTarget && form.officeId !== (editTarget.officeId != null ? String(editTarget.officeId) : "") && (
                   <p className="mt-1 text-[11px] text-amber-800">
                     {form.officeId
-                      ? "Every other office will stop seeing this fund. The save is refused if another office already uses it on an AIP or WFP line."
+                      ? "Every other office will stop seeing this fund. If another office already uses it, you will be asked to confirm."
                       : "Every office will be able to see and pick this fund."}
                   </p>
                 )}

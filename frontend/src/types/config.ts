@@ -151,6 +151,27 @@ export interface UpsertFundingSourceRequest {
    * owner on update; omitting it means null, i.e. "make this shared".
    */
   officeId?: number | null;
+  /**
+   * PPDO-128: "yes, limit it anyway" — other offices already use this fund and will lose it from
+   * their pickers. Without it such a change is refused with 409. Send it only after showing the
+   * breakdown from `getFundingSourceOwnershipImpact`.
+   */
+  confirmOwnershipChange?: boolean;
+}
+
+/** Other offices' lines naming a fund in one fiscal year (PPDO-128). */
+export interface FundUsageYear {
+  fiscalYear: number;
+  lines: number;
+}
+
+/**
+ * What limiting a fund to one office takes away from the others (PPDO-128), split by fiscal year —
+ * FY2027's uploaded AIP names a fund on nearly every office's activities, FY2028+ is live entry.
+ */
+export interface FundOwnershipImpact {
+  otherOfficeLines: number;
+  byFiscalYear: FundUsageYear[];
 }
 
 // ---------------------------------------------------------------------------

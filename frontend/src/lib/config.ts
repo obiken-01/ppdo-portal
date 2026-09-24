@@ -24,6 +24,7 @@ import type {
   DivisionResponse,
   ClimateChangeTypologyResponse,
   EsreCodeResponse,
+  FundOwnershipImpact,
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
@@ -420,6 +421,22 @@ export async function updateFundingSource(
   const { data } = await api.put<ApiResponse<FundingSourceResponse>>(
     `/config/funding-sources/${id}`,
     body,
+  );
+  return unwrap(data);
+}
+
+/**
+ * GET /api/config/funding-sources/{id}/ownership-impact?officeId= — other offices' usage that
+ * limiting the fund to `officeId` would cut off, per fiscal year (PPDO-128). Config managers only.
+ * `officeId` null means "make it shared", which always answers zero.
+ */
+export async function getFundingSourceOwnershipImpact(
+  id: number,
+  officeId: number | null,
+): Promise<FundOwnershipImpact> {
+  const { data } = await api.get<ApiResponse<FundOwnershipImpact>>(
+    `/config/funding-sources/${id}/ownership-impact`,
+    { params: officeId == null ? {} : { officeId } },
   );
   return unwrap(data);
 }
