@@ -11,8 +11,8 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **23 as of 2026-09-21, the full
-release**. The count has drifted twice now (13 → 15 → 23), so **recheck it rather than trusting any
+v1.8.0 carries migrations that production has never seen — **24 as of 2026-09-24** (PPDO-137 added
+one after the release was called complete). The count has drifted three times now (13 → 15 → 23 → 24), so **recheck it rather than trusting any
 number written here**:
 
 ```bash
@@ -28,6 +28,7 @@ All of them are additive (new tables, columns, permission flags) except one:
 | **13** | **`20260903004121_MigrateAipAmountsToPesos`** | ⚠️ **Rewrites existing values in place** |
 | 14 | `20260903023255_AddAipOfficeOwnershipFk` (V18-32 / PPDO-33) | Schema, additive — **plus a backfill** |
 | 15–23 | `20260907020223_AddAipDivisionAllocationLedger` … `20260920234022_AddFundingSourceOfficeId` | Schema, additive |
+| 24 | `20260924064806_WidenClimateChangeTypologyName` (PPDO-137) | Schema — widens `climate_change_typologies.name` 200 → 500. Up is lossless; **Down fails** once any name exceeds 200 |
 
 ↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
 reversed the office-owned record shape and **dropped** the migration rather than reversing it,
@@ -95,8 +96,9 @@ data rather than add to it.
       `SqlConnectionString` pointing at `ppdo-portal-db`. One command applies all 15, in timestamp
       order.
 
-      ⚠️ **The units migration is #13 of 23, not last** — an earlier draft of this checklist said
-      it ran last, and it does not. **Ten** schema migrations sort after it (the draft said two).
+      ⚠️ **The units migration is #13 of 24, not last** — an earlier draft of this checklist said
+      it ran last, and it does not. **Eleven** schema migrations sort after it (the draft said two;
+      #24, PPDO-137, re-checked 2026-09-24 — it alters only `climate_change_typologies`).
       That is **safe, and worth understanding rather than working around**: none of the ten touches
       `aip_activities` at all. Verified 2026-09-21 by grepping every one of them for
       `table: "aip_activities"` (zero hits) and for raw `Sql()` calls — there is exactly one, in #14,
