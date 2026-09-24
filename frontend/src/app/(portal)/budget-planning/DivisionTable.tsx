@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import StatusPill from "@/components/ui/StatusPill";
 import { formatMoney } from "@/lib/money";
+import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import type { DivisionSummary } from "@/types";
 
 /**
@@ -16,8 +17,11 @@ import type { DivisionSummary } from "@/types";
  * responsible for" — not "how does the office total split". Splitting it evenly would invent a
  * number nobody entered. Do not add a total row implying otherwise.
  *
- * Rows expand to the per-fund breakdown, which keeps the WFP ledger's Used/Remaining figures. That
- * is the Allocation page's own ledger view; the AIP-based Remaining is the one on the row itself.
+ * Rows expand to the per-fund breakdown. ↩️ **Where "used" comes from depends on the year**
+ * (2026-09-24): FY2027 and earlier read the WFP ledger, as the Allocation page does; FY2028+ has no
+ * WFP, so the server reads the AIP by the ceiling's rule (MOOE + CO, PS exempt, rounded up per
+ * activity) and the row becomes the sum of its fund rows. The label says which, because the two are
+ * different numbers and a "WFP used" label on AIP money would mislead.
  */
 
 function divisionLabel(division: DivisionSummary): string {
@@ -39,6 +43,7 @@ function DivisionRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isOver = division.remaining < 0;
+  const usedLabel = fiscalYear != null && fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? "AIP costed" : "WFP used";
 
   return (
     <>
@@ -112,7 +117,7 @@ function DivisionRow({
                   {division.allocationByFund.map((fund) => (
                     <tr key={fund.fundingSourceId} className="bg-slate-50 text-xs">
                       <td className="px-4 py-1.5 pl-10 text-slate-600">{fund.fundName}</td>
-                      <td className="px-4 py-1.5 text-slate-500">WFP used</td>
+                      <td className="px-4 py-1.5 text-slate-500">{usedLabel}</td>
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
                         ₱{formatMoney(fund.amount)}
