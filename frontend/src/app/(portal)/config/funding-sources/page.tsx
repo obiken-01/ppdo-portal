@@ -746,7 +746,7 @@ export default function FundingSourceConfigPage() {
                 {editTarget && form.officeId !== (editTarget.officeId != null ? String(editTarget.officeId) : "") && (
                   <p className="mt-1 text-[11px] text-amber-800">
                     {form.officeId
-                      ? "Every other office will stop seeing this fund. The save is refused if it is already used on any AIP or WFP line."
+                      ? "Every other office will stop seeing this fund. The save is refused if another office already uses it on an AIP or WFP line."
                       : "Every office will be able to see and pick this fund."}
                   </p>
                 )}
