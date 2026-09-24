@@ -264,8 +264,11 @@ export default function AipSubmitChecklist({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="text-sm font-medium text-slate-800 hover:underline"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 hover:underline"
           >
+            {/* An emoji, per DESIGN_SYSTEM.md §5 — not a lucide import, which would start a second
+                icon system. Amber with it, so the line reads as blocking at a glance. */}
+            <span aria-hidden>⚠️</span>
             {issues.length} item{issues.length === 1 ? "" : "s"} to fix before submitting
             {expanded ? " ▾" : " ▸"}
           </button>

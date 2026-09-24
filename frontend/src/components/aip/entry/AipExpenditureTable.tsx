@@ -15,6 +15,9 @@
  * ↩️ **Since PPDO-97 a new activity has no default at all** — it is asked, and + Add Account waits
  * for the answer. W8's point stands for what the answer usually *is*, not for making it silently.
  *
+ * ⚠️ **Multi-fund ENTRY is switched off since PPDO-129** (Demo 2.7: "1 fund source per activity").
+ * See `MULTI_FUND_ENTRY_ENABLED` — the multi-fund paths below are dormant, not dead.
+ *
  * ⚠️ **Amounts are typed in PESOS and shown in ₱000.** The inputs post exactly what was typed;
  * only the saved cells divide. Each input carries a live `= x ₱000` echo, because an input and
  * the cell it saves into legitimately show different numbers and nothing else on screen says so.
@@ -50,6 +53,24 @@ interface Draft {
 const EMPTY: Draft = {
   accountId: "", fundingSourceId: "", ps: null, mooe: null, co: null, procurementItems: [],
 };
+
+/**
+ * Whether an encoder may put an activity on several funds (PPDO-129).
+ *
+ * ⚠️ **`false` is a policy switch, not a removal — do NOT delete the multi-fund code it disables.**
+ * After Demo 2 (2026-09-22) PPDO asked for one fund per activity, but asked explicitly that the
+ * multi-fund handling be kept "in case they may want it back". Flipping this to `true` restores the
+ * PPDO-97 behaviour exactly: the "Does this activity draw on more than one fund?" question, the
+ * per-line Fund column and picker, and the gating of + Add Account on the answer.
+ *
+ * While it is `false`, the multi-fund rendering is still REACHED — by activities saved before the
+ * switch whose lines already span several funds. Those are shown exactly as stored and never
+ * rewritten by being opened; see `legacyMulti` below.
+ *
+ * The server never enforced either rule: it stores one fund per line and has always accepted lines
+ * on different funds, so this constant is the whole of the policy.
+ */
+const MULTI_FUND_ENTRY_ENABLED = false;
 
 // ── Picker accessors ────────────────────────────────────────────────────────
 //
@@ -258,8 +279,11 @@ export default function AipExpenditureTable({
   // lines the 2026-09-15 demo asked for the single/multi question to be *put* to the encoder, with
   // **+ Add Account withheld until it is answered** — a silent default is a decision the form made
   // and nobody read. An activity that already has lines is never asked: its lines are the answer.
+  //
+  // ↩️ With multi-fund entry off (PPDO-129) there is no question to put, so it is never `null`:
+  // single, unless the stored lines already say otherwise.
   const [multiFund, setMultiFund] = useState<boolean | null>(
-    () => (lines.length === 0 ? null : funds.length > 1),
+    () => (lines.length === 0 && MULTI_FUND_ENTRY_ENABLED ? null : funds.length > 1),
   );
   /** The answered-yes case, for everything that renders a per-line Fund column. */
   const multi = multiFund === true;
@@ -273,11 +297,24 @@ export default function AipExpenditureTable({
   // into one, which makes single-fund mode available again).
   useEffect(() => {
     if (funds.length > 1) setMultiFund(true);
+    // With entry off, multi is only ever the stored lines' doing — once consolidating or a delete
+    // brings them to one fund, the activity is an ordinary single-fund one again.
+    else if (!MULTI_FUND_ENTRY_ENABLED) setMultiFund(false);
     if (funds.length === 1) setActivityFund(String(funds[0]));
   }, [funds]);
 
   /** ⚠️ Switching back to single would have to rewrite every line's fund — so it is not offered. */
   const lockedToMulti = funds.length > 1;
+
+  /**
+   * An activity saved on several funds before PPDO-129 turned multi-fund entry off.
+   *
+   * ⚠️ **Shown as stored, never rewritten by being opened.** The lines keep their funds and can
+   * still be edited (the fund shows read-only), but no line is added until the encoder picks one
+   * fund for the whole activity — the single explicit act that moves every line onto it. Forcing
+   * that pick on open would rewrite historical records as a side effect of viewing them.
+   */
+  const legacyMulti = !MULTI_FUND_ENTRY_ENABLED && lockedToMulti;
 
   async function save(existingId: number | null) {
     setBusy(true);
@@ -419,7 +456,12 @@ export default function AipExpenditureTable({
         {/* ⚠️ Withheld until the fund question is answered (PPDO-97) — what the encoder answers
             decides whether the fund belongs to the activity or to each account line, so offering
             the link first invites a line that has to be revisited. */}
-        {canEdit && !editing && multiFund !== null && (
+        {/* ↩️ Also withheld on a legacy multi-fund activity (PPDO-129) until one fund is picked for
+            it — a new line has no fund it could honestly take while its siblings disagree. */}
+        {/* ↩️ And in single mode, until the activity's fund is picked — the link would only open a
+            row whose Save is blocked for a reason shown elsewhere. */}
+        {canEdit && !editing && multiFund !== null && !legacyMulti
+          && !(multiFund === false && !activityFund) && (
           <button type="button" onClick={() => { setAdding(true); setDraft(EMPTY); }}
             className="text-xs font-medium text-green-700 hover:underline">
             + Add Account
@@ -441,7 +483,10 @@ export default function AipExpenditureTable({
               `<legend>` out differently, so Chrome looked clean and only Edge showed it.
 
               The visible question labels the group through `aria-labelledby`, so screen readers get
-              the same grouping with nothing positioned. Do not reintroduce an `sr-only` legend. */}
+              the same grouping with nothing positioned. Do not reintroduce an `sr-only` legend.
+
+              ⚠️ Dormant while MULTI_FUND_ENTRY_ENABLED is false (PPDO-129) — kept, not deleted. */}
+          {MULTI_FUND_ENTRY_ENABLED && (
           <div role="radiogroup" aria-labelledby={`aip-fund-mode-label-${activityId}`}
             className="flex flex-wrap items-center gap-3">
             <span id={`aip-fund-mode-label-${activityId}`} className="text-xs text-slate-800">
@@ -458,8 +503,9 @@ export default function AipExpenditureTable({
               Yes — several funds
             </label>
           </div>
+          )}
 
-          {lockedToMulti && (
+          {MULTI_FUND_ENTRY_ENABLED && lockedToMulti && (
             // ⚠️ Explains rather than silently disabling. Switching back would have to rewrite
             // every line's fund, and the encoder cannot tell that from a greyed control.
             <span className="text-xs text-slate-600">
@@ -484,7 +530,39 @@ export default function AipExpenditureTable({
               />
             </label>
           )}
+
+          {legacyMulti && (
+            <div className="w-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p>
+                This activity was entered on {funds.length} funds, before activities were limited to
+                one. Its lines keep their funds as recorded. To add an account, first pick one fund
+                for the whole activity — every line below moves onto it.
+              </p>
+              <label className="mt-2 flex items-center gap-2 text-slate-600">
+                Use one fund for all lines
+                <Lookup
+                  items={fundingSources}
+                  value={null}
+                  onChange={(id) => { if (id != null) void changeActivityFund(String(id)); }}
+                  getId={(f) => f.id}
+                  getLabel={(f) => fundLabel(f, generalFundId)}
+                  getSearchText={fundSearch}
+                  allOptionLabel="— Fund —"
+                  placeholder="Search funds…"
+                  disabled={busy || editing}
+                  className="w-56"
+                />
+              </label>
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Read-only viewers of a legacy activity get the fact, without the call to act. */}
+      {!canEdit && legacyMulti && (
+        <p className="mt-2 text-xs text-slate-600">
+          Entered on {funds.length} funds, before activities were limited to one.
+        </p>
       )}
 
       {/* The reason the Add Account link is not there yet, said where the link would be. */}
@@ -495,9 +573,10 @@ export default function AipExpenditureTable({
         </p>
       )}
 
-      {/* Under the field it is about, not on the line the encoder is trying to save. */}
+      {/* Under the field it is about. ↩️ Now the reason the Add Account link is absent (PPDO-129)
+          rather than an error, so it reads as guidance, not in red. */}
       {canEdit && multiFund === false && !activityFund && (
-        <p className="mt-1 text-xs text-red-700">
+        <p className="mt-1 text-xs text-slate-600">
           Pick the activity&apos;s funding source before adding an account.
         </p>
       )}
@@ -561,6 +640,7 @@ export default function AipExpenditureTable({
                 <EditRow key={line.id} draft={draft} setDraft={setDraft} accounts={accounts}
                   fundingSources={fundingSources} generalFundId={generalFundId}
                   showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
+                  lockedFundCode={legacyMulti ? (line.fundingSourceCode ?? "—") : null}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={() => setEditingId(null)} />
@@ -628,7 +708,7 @@ export default function AipExpenditureTable({
 
 function EditRow({
   draft, setDraft, accounts, fundingSources, generalFundId, showFund, activityFundMissing, busy,
-  priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
+  lockedFundCode = null, priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
 }: {
   draft: Draft;
   setDraft: (d: Draft) => void;
@@ -639,6 +719,11 @@ function EditRow({
   showFund: boolean;
   /** Single-fund mode with no fund chosen yet: blocks Save, but reports itself above the table. */
   activityFundMissing: boolean;
+  /**
+   * Set on a legacy multi-fund activity (PPDO-129): the line keeps the fund it was saved with, shown
+   * as text. A picker here would let one edit add yet another fund to an activity now limited to one.
+   */
+  lockedFundCode?: string | null;
   busy: boolean;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
@@ -662,7 +747,9 @@ function EditRow({
    * having no cost is the real one.
    */
   const missingAccount = accountId === null ? "Pick an account." : null;
-  const missingFund = showFund && !draft.fundingSourceId ? "Pick a funding source." : null;
+  // A locked fund is kept as saved, even if that was none — the encoder has no picker to fix it with.
+  const missingFund = showFund && lockedFundCode === null && !draft.fundingSourceId
+    ? "Pick a funding source." : null;
   const missingAmount = itemised
     ? (itemsTotal(draft.procurementItems) <= 0 ? "Cost at least one item." : null)
     : ((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) <= 0 ? "Enter an amount." : null);
@@ -719,6 +806,9 @@ function EditRow({
         </td>
         {showFund && (
           <td className="py-1.5 pr-2 align-top">
+            {lockedFundCode !== null ? (
+              <span className="text-slate-600">{lockedFundCode}</span>
+            ) : (<>
             {/* ⚠️ One fund per line even here. A second fund is a second line. */}
             <Lookup
               items={fundingSources}
@@ -732,6 +822,7 @@ function EditRow({
               disabled={busy}
             />
             {missingFund && <p className="mt-1 text-[11px] text-red-700">{missingFund}</p>}
+            </>)}
           </td>
         )}
 
