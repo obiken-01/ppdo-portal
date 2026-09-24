@@ -143,14 +143,35 @@ export interface UpsertFundingSourceRequest {
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
   /**
-   * Owning office for a new fund, or null for province-wide (PPDO-109).
+   * Owning office, or null for province-wide (PPDO-109).
    *
-   * ⚠️ Honoured on CREATE only, and only for a config manager. A department head's value is
-   * overwritten server-side with their own office, and an UPDATE ignores the field entirely —
-   * ownership is set once, at creation. Omit it unless you are PPDO creating a fund on an office's
-   * behalf.
+   * ⚠️ Honoured only for a config manager — a department head's value is overwritten server-side
+   * with their own office. ↩️ Since PPDO-128 an UPDATE reads it too (a config manager can move a
+   * fund between shared and office-owned), so a config manager must ALWAYS send the fund's current
+   * owner on update; omitting it means null, i.e. "make this shared".
    */
   officeId?: number | null;
+  /**
+   * PPDO-128: "yes, limit it anyway" — other offices already use this fund and will lose it from
+   * their pickers. Without it such a change is refused with 409. Send it only after showing the
+   * breakdown from `getFundingSourceOwnershipImpact`.
+   */
+  confirmOwnershipChange?: boolean;
+}
+
+/** Other offices' lines naming a fund in one fiscal year (PPDO-128). */
+export interface FundUsageYear {
+  fiscalYear: number;
+  lines: number;
+}
+
+/**
+ * What limiting a fund to one office takes away from the others (PPDO-128), split by fiscal year —
+ * FY2027's uploaded AIP names a fund on nearly every office's activities, FY2028+ is live entry.
+ */
+export interface FundOwnershipImpact {
+  otherOfficeLines: number;
+  byFiscalYear: FundUsageYear[];
 }
 
 // ---------------------------------------------------------------------------

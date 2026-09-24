@@ -352,6 +352,45 @@ public sealed class ConfigFundingSourceFunctionsTests
     /// ⚠️ The core rule of PPDO-109: the province-wide list is PPDO's. A department head editing GF
     /// would change what every office sees.
     /// </summary>
+    /// <summary>
+    /// ⚠️ PPDO-128: the service now READS OfficeId on update, so the handler must pin a department
+    /// head's value — otherwise a null in the body would publish their private fund to every office.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(ForeignOffice)]
+    public async Task Update_AsDepartmentHead_PinsTheirOwnOffice_IgnoringTheBody(int? bodyOfficeId)
+    {
+        AuthenticateDepartmentHead();
+        UpsertFundingSourceDto? captured = null;
+        _funding.Setup(s => s.GetByIdAsync(9, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
+        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+            .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
+
+        await Sut.Update(
+            FunctionHttp.Put(Body(bodyOfficeId), path: "config/funding-sources/9"), 9, CancellationToken.None);
+
+        Assert.Equal(OwnOffice, captured!.OfficeId);
+    }
+
+    [Fact]
+    public async Task Update_AsConfigManager_KeepsTheOfficeIdTheySent()
+    {
+        // PPDO-128 — PPDO may move a fund between shared and office-owned, so its body passes through.
+        AuthenticateConfigManager();
+        UpsertFundingSourceDto? captured = null;
+        _funding.Setup(s => s.UpdateAsync(1, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+            .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(1, ForeignOffice, "GF")));
+
+        await Sut.Update(
+            FunctionHttp.Put(Body(ForeignOffice), path: "config/funding-sources/1"), 1, CancellationToken.None);
+
+        Assert.Equal(ForeignOffice, captured!.OfficeId);
+    }
+
     [Fact]
     public async Task Update_AsDepartmentHead_OnASharedFund_ReturnsForbidden()
     {
@@ -408,6 +447,42 @@ public sealed class ConfigFundingSourceFunctionsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         // No GetByIdAsync probe at all — a config manager never reaches the ownership check.
         _funding.Verify(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Ownership impact (PPDO-128) ───────────────────────────────────────────
+
+    [Fact]
+    public async Task OwnershipImpact_AsConfigManager_PassesTheTargetOffice()
+    {
+        AuthenticateConfigManager();
+        int? captured = -1;
+        _funding.Setup(s => s.GetOwnershipImpactAsync(1, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int? officeId, CancellationToken _) => captured = officeId)
+            .ReturnsAsync(ServiceResult<FundOwnershipImpactDto>.Ok(new FundOwnershipImpactDto(0, [])));
+
+        HttpResponseData response = await Sut.OwnershipImpact(
+            FunctionHttp.Get($"officeId={ForeignOffice}", path: "config/funding-sources/1/ownership-impact"),
+            1, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(ForeignOffice, captured);
+    }
+
+    /// <summary>
+    /// ⚠️ It reports on OTHER offices' data, and only a config manager can change ownership anyway.
+    /// </summary>
+    [Fact]
+    public async Task OwnershipImpact_AsDepartmentHead_ReturnsForbidden()
+    {
+        AuthenticateDepartmentHead();
+
+        HttpResponseData response = await Sut.OwnershipImpact(
+            FunctionHttp.Get($"officeId={OwnOffice}", path: "config/funding-sources/9/ownership-impact"),
+            9, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _funding.Verify(s => s.GetOwnershipImpactAsync(
+            It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────

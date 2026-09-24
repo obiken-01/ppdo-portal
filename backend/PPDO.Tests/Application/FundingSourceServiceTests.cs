@@ -35,7 +35,9 @@ public sealed class FundingSourceServiceTests
 
     private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(
         List<FundingSource> seed, IAuditService? audit = null,
-        int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null)
+        int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null,
+        int wfpOutside = 0, int aipOutside = 0, Action<int>? onOutsideOffice = null,
+        IReadOnlyDictionary<int, int>? wfpByYear = null, IReadOnlyDictionary<int, int>? aipByYear = null)
     {
         Mock<IRepository<FundingSource>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -52,14 +54,26 @@ public sealed class FundingSourceServiceTests
         Mock<IWfpExpenditureRepository> wfpExp = new();
         wfpExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(wfpUsage);
+        // PPDO-128 — usage by offices other than the one a fund is being limited to, per fiscal year.
+        // The plain counts land in FY2027, where nearly all real cross-office usage lives.
+        wfpExp.Setup(r => r.CountByFundingSourceOutsideOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int officeId, CancellationToken _) => onOutsideOffice?.Invoke(officeId))
+            .ReturnsAsync(wfpByYear ?? InFy2027(wfpOutside));
         Mock<IAipExpenditureRepository> aipExp = new();
         aipExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(aipUsage);
+        aipExp.Setup(r => r.CountByFundingSourceOutsideOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int officeId, CancellationToken _) => onOutsideOffice?.Invoke(officeId))
+            .ReturnsAsync(aipByYear ?? InFy2027(aipOutside));
 
         return (new FundingSourceService(
             repo.Object, officeRepo.Object, wfpExp.Object, aipExp.Object,
             NullLogger<FundingSourceService>.Instance, audit ?? Mock.Of<IAuditService>()), repo);
     }
+
+    /// <summary>A count as the repository returns it: absent when zero, never a 0 entry.</summary>
+    private static IReadOnlyDictionary<int, int> InFy2027(int count) =>
+        count == 0 ? new Dictionary<int, int>() : new Dictionary<int, int> { [2027] = count };
 
     private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo, Mock<IAuditService> audit)
         BuildWithAudit(List<FundingSource> seed)
@@ -487,33 +501,191 @@ public sealed class FundingSourceServiceTests
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
     }
 
+    // ── Ownership changes (PPDO-128) ──────────────────────────────────────────
+    // ↩️ These replace PPDO-109's "ownership is set once at creation" tests, which PPDO-128 reverses
+    // on purpose: a config manager may now flip a fund between shared and office-owned. The handler
+    // pins a department head's body to their own office, so these only ever see PPDO's choice.
+
     [Fact]
-    public async Task UpdateAsync_IgnoresAnOfficeIdInTheBody_OwnershipIsSetOnceAtCreation()
+    public async Task UpdateAsync_SharedToOffice_NotInUse_MovesOwnership()
     {
-        // ⚠️ Moving a fund between offices would change who can see every record already pointing at
-        // it. The service does not read OfficeId off an update body at all.
-        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
         (FundingSourceService sut, _) = Build(seed);
 
-        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
-            new UpsertFundingSourceDto("GSOX", "Renamed", null, OfficeId: PhoOfficeId));
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("LDRRMF", "Disaster Fund", null, OfficeId: GsoOfficeId));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
-        Assert.Equal("Renamed", seed.Single().Name);
+        Assert.False(result.Value!.IsShared);
     }
 
     [Fact]
-    public async Task UpdateAsync_CannotTurnAnOfficeFundIntoASharedOne()
+    public async Task UpdateAsync_SharedToOffice_InUse_ReturnsConflict_AndChangesNothing()
     {
-        // The same rule from the other direction: a null in the body is "not supplied", never
-        // "make this province-wide".
+        // ⚠️ The failure mode the guard exists for: other offices already have lines under a shared
+        // fund, and limiting it to GSO would take it out of their pickers.
+        List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
+        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, wfpOutside: 2, aipOutside: 1);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("LDRRMF", "Renamed", null, OfficeId: GsoOfficeId));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("3 AIP/WFP lines in other offices", result.Error);
+        Assert.Contains("confirm", result.Error);
+        Assert.Null(seed.Single().OfficeId);
+        // The refused request must not half-apply — the rename in the same body is not saved either.
+        Assert.Equal("Disaster Fund", seed.Single().Name);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_SharedToOffice_InUse_Confirmed_MovesOwnership()
+    {
+        // ↩️ Warn, then allow (Ralph, 2026-09-24): FY2027's uploaded AIP names LDRRMF on 145 other
+        // offices' activities. PPDO has seen that and confirmed — the change goes through.
+        List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
+        (FundingSourceService sut, _) = Build(seed, aipOutside: 145);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("LDRRMF", "Disaster Fund", null, OfficeId: GsoOfficeId,
+                ConfirmOwnershipChange: true));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_InUse_Unconfirmed_NamesTheUsageByFiscalYear()
+    {
+        // The split is the whole point of the warning: FY2027 is uploaded history, FY2028 is live.
+        List<FundingSource> seed = [Fs(1, "GAD", "GAD Fund")];
+        (FundingSourceService sut, _) = Build(seed,
+            wfpByYear: new Dictionary<int, int> { [2027] = 2 },
+            aipByYear: new Dictionary<int, int> { [2028] = 1, [2027] = 15 });
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("GAD", "GAD Fund", null, OfficeId: GsoOfficeId));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("18 AIP/WFP lines in other offices (FY2027: 17, FY2028: 1)", result.Error);
+    }
+
+    [Fact]
+    public async Task GetOwnershipImpactAsync_MergesAipAndWfpPerYear_OldestFirst()
+    {
+        (FundingSourceService sut, _) = Build([Fs(1, "GAD", "GAD Fund")],
+            wfpByYear: new Dictionary<int, int> { [2027] = 2 },
+            aipByYear: new Dictionary<int, int> { [2028] = 1, [2027] = 15 });
+
+        ServiceResult<FundOwnershipImpactDto> result = await sut.GetOwnershipImpactAsync(1, GsoOfficeId);
+
+        Assert.Equal(18, result.Value!.OtherOfficeLines);
+        Assert.Equal([new FundUsageYearDto(2027, 17), new FundUsageYearDto(2028, 1)], result.Value.ByFiscalYear);
+    }
+
+    [Theory]
+    [InlineData(null)]          // make it shared — hides it from nobody
+    [InlineData(GsoOfficeId)]   // already GSO's — nothing changes
+    public async Task GetOwnershipImpactAsync_WideningOrUnchanged_IsZero_WithoutCounting(int? target)
+    {
+        bool counted = false;
+        (FundingSourceService sut, _) = Build([Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)],
+            aipOutside: 50, onOutsideOffice: _ => counted = true);
+
+        ServiceResult<FundOwnershipImpactDto> result = await sut.GetOwnershipImpactAsync(3, target);
+
+        Assert.Equal(0, result.Value!.OtherOfficeLines);
+        Assert.Empty(result.Value.ByFiscalYear);
+        Assert.False(counted);
+    }
+
+    [Fact]
+    public async Task GetOwnershipImpactAsync_UnknownFund_ReturnsNotFound()
+    {
+        (FundingSourceService sut, _) = Build([]);
+
+        ServiceResult<FundOwnershipImpactDto> result = await sut.GetOwnershipImpactAsync(99, GsoOfficeId);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_SharedToOffice_UsedOnlyByThatOffice_MovesOwnership()
+    {
+        // ↩️ The case that reshaped the guard: PS is used, but only by PPDO's own lines, and PPDO
+        // wants it limited to PPDO. Nobody loses sight of it, so it must save — this is how "only
+        // General Fund stays shared" gets set up for funds already in use.
+        int? askedAbout = null;
+        List<FundingSource> seed = [Fs(17, "PS", "Personal Services")];
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 1, aipUsage: 4,
+            onOutsideOffice: office => askedAbout = office);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(17,
+            new UpsertFundingSourceDto("PS", "Personal Services", null, OfficeId: GsoOfficeId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+        // The guard asked about usage outside the TARGET office, not the old owner or none.
+        Assert.Equal(GsoOfficeId, askedAbout);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_OfficeToAnotherOffice_InUse_ReturnsConflict()
+    {
+        // GSO's own lines are "outside" PHO, so moving GSO's fund to PHO is refused.
         List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed, aipOutside: 1);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
+            new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: PhoOfficeId));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("1 AIP/WFP line in other offices", result.Error);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_OfficeToShared_InUse_Succeeds()
+    {
+        // Widening hides the fund from nobody, so usage never blocks it.
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90, wfpOutside: 40, aipOutside: 90);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
+            new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: null));
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnchangedOwner_InUse_Succeeds()
+    {
+        // The common case — an ordinary rename of a fund in heavy use — must never meet the guard.
+        List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90, wfpOutside: 40, aipOutside: 90);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
+            new UpsertFundingSourceDto("GSOX", "Renamed", null, OfficeId: GsoOfficeId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Renamed", seed.Single().Name);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ToAnUnknownOffice_ReturnsBadRequest()
+    {
+        List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
         (FundingSourceService sut, _) = Build(seed);
 
-        await sut.UpdateAsync(3, new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: null));
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
+            new UpsertFundingSourceDto("LDRRMF", "Disaster Fund", null, OfficeId: 4242));
 
-        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Null(seed.Single().OfficeId);
     }
 
     [Fact]

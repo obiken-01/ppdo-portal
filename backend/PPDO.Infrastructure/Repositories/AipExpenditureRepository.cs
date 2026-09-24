@@ -196,4 +196,31 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
             .CountAsync(a => a.FundingSourceId == fundingSourceId, ct);
         return lines + activities;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, int>> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default)
+    {
+        // ⚠️ `!= officeId` on a nullable column: EF's C# null semantics make NULL != 7 TRUE, which
+        // is what counts an unattributed row as outside. Do not "simplify" this to a SQL-side
+        // comparison that would drop NULLs.
+        //
+        // Two sequential grouped queries, not Task.WhenAll — one DbContext (CLAUDE.md).
+        var lines = await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.OfficeId != officeId)
+            .GroupBy(e => e.Activity.Project.Program.Office.AipRecord.FiscalYear)
+            .Select(g => new { FiscalYear = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var activities = await _context.Set<AipActivity>()
+            .Where(a => a.FundingSourceId == fundingSourceId
+                     && a.Project.Program.Office.OfficeId != officeId)
+            .GroupBy(a => a.Project.Program.Office.AipRecord.FiscalYear)
+            .Select(g => new { FiscalYear = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return lines.Concat(activities)
+            .GroupBy(x => x.FiscalYear)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Count));
+    }
 }

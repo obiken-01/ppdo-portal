@@ -38,6 +38,15 @@ public interface IFundingSourceService
     Task<ServiceResult<FundingSourceDto>> UpdateAsync(int id, UpsertFundingSourceDto dto, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// What limiting fund <paramref name="id"/> to office <paramref name="targetOfficeId"/> would
+    /// take away from every other office (PPDO-128) — the preview the config page shows before it
+    /// asks PPDO to confirm. A null target (make it shared) or the fund's current owner hides it
+    /// from nobody new, so both answer zero without counting.
+    /// </summary>
+    Task<ServiceResult<FundOwnershipImpactDto>> GetOwnershipImpactAsync(
+        int id, int? targetOfficeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Deactivates the fund (soft delete — history is never broken).
     ///
     /// <para><paramref name="blockWhenInUse"/> adds the PPDO-109 usage guard: the call is refused
