@@ -176,12 +176,55 @@ public sealed class FundingSourceService : IFundingSourceService
         if (all.Any(f => f.Id != id && f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
 
+        // ── Ownership (PPDO-128) ──────────────────────────────────────────────
+        // ↩️ OfficeId IS read from the body now. PPDO-109 fixed ownership at creation; Demo 2 asked
+        // for PPDO to be able to flip a fund between shared and office-owned. The body is trusted
+        // here because the handler has already pinned an office-scoped caller's value to their own
+        // office — only a config manager's choice reaches this line unaltered.
+        int? oldOfficeId = entity.OfficeId;
+        int? newOfficeId = dto.OfficeId;
+
+        if (newOfficeId != oldOfficeId)
+        {
+            // BadRequest, as in CreateAsync — the office is a bad value in the body, not the
+            // resource the request is addressed to.
+            if (newOfficeId is int targetOfficeId
+                && (await _officeRepo.GetAllAsync(cancellationToken)).All(o => o.Id != targetOfficeId))
+                return ServiceResult<FundingSourceDto>.BadRequest($"Office {targetOfficeId} not found.");
+
+            // ⚠️ Only NARROWING is guarded — shared → an office, or one office → another. That hides
+            // the fund from offices that may already have lines under it, orphaning their budget
+            // data from their own pickers. Widening (→ shared) hides nothing, so it is never refused.
+            //
+            // Deliberately coarse: ANY usage blocks a narrowing, even usage belonging to the target
+            // office itself. Attributing each line to an office means walking the AIP and WFP
+            // hierarchies; a false refusal costs PPDO one conversation, a false pass silently strips
+            // another office's budget lines.
+            //
+            // ⚠️ Counts the same rows as the delete guard. Ceilings and division allocations also
+            // name a fund and are NOT counted — a fund carrying only a ceiling can still be narrowed.
+            if (newOfficeId is not null)
+            {
+                // Sequential, not Task.WhenAll — one DbContext, which is not thread-safe (CLAUDE.md).
+                int wfpRows = await _wfpExpRepo.CountByFundingSourceAsync(id, cancellationToken);
+                int aipRows = await _aipExpRepo.CountByFundingSourceAsync(id, cancellationToken);
+                int inUse   = wfpRows + aipRows;
+
+                if (inUse > 0)
+                {
+                    _logger.LogWarning(
+                        "Funding source ownership change blocked — still in use. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
+                        entity.Code, oldOfficeId, newOfficeId, inUse);
+                    return ServiceResult<FundingSourceDto>.Conflict(
+                        $"{entity.Name} ({entity.Code}) is used by {inUse} AIP/WFP " +
+                        $"{(inUse == 1 ? "line" : "lines")}, so it cannot be limited to one office — " +
+                        "other offices would lose sight of it. It can still be made shared.");
+                }
+            }
+        }
+
         var oldSnapshot = new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive };
 
-        // ⚠️ OfficeId is NOT assigned from the body. Ownership is set once, at creation: moving a
-        // fund between offices would silently change who can see every record already pointing at
-        // it, and nothing in PPDO-109 asks for it. A config manager who needs a fund under a
-        // different office creates one there.
         entity.Code        = code;
         entity.Name        = dto.Name.Trim();
         entity.Description = Blank(dto.Description);
@@ -189,9 +232,16 @@ public sealed class FundingSourceService : IFundingSourceService
         entity.Aliases     = Blank(dto.Aliases);
         entity.IsActive    = dto.IsActive;
         entity.UpdatedAt   = DateTime.UtcNow;
+        entity.OfficeId    = newOfficeId;   // null = shared (PPDO-109, D5)
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+
+        if (newOfficeId != oldOfficeId)
+            _logger.LogInformation(
+                "Funding source ownership changed. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}",
+                entity.Code, oldOfficeId, newOfficeId);
+
         await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
             newValues: new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive },

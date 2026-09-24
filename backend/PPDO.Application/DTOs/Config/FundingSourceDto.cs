@@ -28,7 +28,8 @@ public sealed record FundingSourceDto(
 /// Create/update body for a funding source. Code is the unique key.
 ///
 /// ⚠️ <paramref name="OfficeId"/> is honoured only for a config manager, who may create a fund on
-/// an office's behalf. For a caller holding <c>CanManageOfficeSetup</c> alone the field is
+/// an office's behalf — and, since PPDO-128, move an existing one between shared (null) and
+/// office-owned on UPDATE, so an update body must always carry the owner it wants. For a caller holding <c>CanManageOfficeSetup</c> alone the field is
 /// OVERWRITTEN with their own office id in <c>ConfigFundingSourceFunctions</c> — a body that names
 /// someone else's office is ignored, not rejected (PPDO-109).
 /// </summary>
