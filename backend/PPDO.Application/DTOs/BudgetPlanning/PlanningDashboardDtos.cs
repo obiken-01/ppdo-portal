@@ -72,7 +72,13 @@ public record OfficeAipSummaryDto(
     int ProgramCount,
     int ProjectCount,
     int ActivityCount,
-    decimal CostedInAip
+    decimal CostedInAip,
+    // ↩️ 2026-09-24. What the office has costed AGAINST ITS CEILING — General Fund, MOOE + CO, PS
+    // exempt, rounded up per activity: the submit gate's own figure. A guest office's tiles compare
+    // this with the GF ceiling; comparing CostedInAip (every shared fund) there would let GAD or
+    // LDRRMF money eat a General Fund remaining the submit card never charges it to. FY2027: equals
+    // CostedInAip, as it always has.
+    decimal CostedAgainstCeiling = 0m
 );
 
 /// <param name="ByDivision">

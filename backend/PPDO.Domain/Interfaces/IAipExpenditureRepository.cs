@@ -92,6 +92,17 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
         int aipRecordId, int configOfficeId, CancellationToken ct = default);
 
     /// <summary>
+    /// Every office at once: one row per activity in AIP record <paramref name="aipRecordId"/> with
+    /// its config office and its MOOE and CO for <paramref name="fundingSourceId"/> — the readiness
+    /// board's "costed against the ceiling" for every office in one query, where
+    /// <see cref="SumMooeCoByConfigOfficeAndFundAsync"/> in a loop would be one query per office.
+    /// Per-activity and un-summed so the caller rounds before adding (DECISION 9); lines naming
+    /// another fund, and PS, are not returned.
+    /// </summary>
+    Task<IReadOnlyList<AipOfficeActivityFundTotalsDto>> SumMooeCoByRecordAndFundAsync(
+        int aipRecordId, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
     /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).
     ///
     /// ⚠️ Counts, not rows. The submit checklist asks only "does this activity have any lines?" for
@@ -241,6 +252,17 @@ public sealed record AipActivityFundTotalsDto(
 /// One activity's MOOE and CO for one fund, with the program it belongs to — see
 /// <see cref="IAipExpenditureRepository.SumMooeCoByConfigOfficeAsync"/>.
 /// </summary>
+/// <summary>
+/// One activity's MOOE and CO for one fund, with its config office — see
+/// <see cref="IAipExpenditureRepository.SumMooeCoByRecordAndFundAsync"/>. The office is null for an
+/// AIP group row the V18-32 backfill could not match to a config office.
+/// </summary>
+public sealed record AipOfficeActivityFundTotalsDto(
+    int?    ConfigOfficeId,
+    int     ActivityId,
+    decimal Mooe,
+    decimal Co);
+
 public sealed record AipActivityProgramFundTotalsDto(
     string  ProgramRefCode,
     int     ActivityId,

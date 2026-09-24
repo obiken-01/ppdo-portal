@@ -447,6 +447,35 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
             rows.OrderBy(r => r.ActivityId).ThenBy(r => r.FundingSourceId).ToArray());
     }
 
+    [Fact]
+    public async Task SumMooeCoByRecordAndFund_EveryOfficeInOneQuery_OneFundOnly()
+    {
+        // The readiness board's "costed against the ceiling" for every office at once (2026-09-24).
+        const int record = 44, gso = 1, pho = 9, gf = 1, gad = 2;
+        await SeedTreeAsync(
+            (560, record, gso, 9001),
+            (561, record, pho, 9004),
+            (564, 43,     gso, 9005));   // another record — excluded
+
+        await SeedAsync(
+            WithFund(Line(9001, ps: 900m, mooe: 100m, co: 20m), gf),
+            WithFund(Line(9001, mooe: 7m), gad),                  // other fund — excluded
+            WithFund(Line(9004, mooe: 50m), gf),
+            WithFund(Line(9005, mooe: 777m), gf));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipOfficeActivityFundTotalsDto> rows =
+            await NewRepo(ctx).SumMooeCoByRecordAndFundAsync(record, gf);
+
+        Assert.Equal(
+            new[]
+            {
+                new AipOfficeActivityFundTotalsDto(gso, 9001, 100m, 20m),   // PS never returned
+                new AipOfficeActivityFundTotalsDto(pho, 9004, 50m,  0m),
+            },
+            rows.OrderBy(r => r.ActivityId).ToArray());
+    }
+
     // ── The form's Funding Source column (PPDO-80) ────────────────────────────
 
     [Fact]

@@ -186,6 +186,20 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOfficeActivityFundTotalsDto>> SumMooeCoByRecordAndFundAsync(
+        int aipRecordId, int fundingSourceId, CancellationToken ct = default)
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId)
+            .GroupBy(e => new { e.ActivityId, ConfigOfficeId = e.Activity.Project.Program.Office.OfficeId })
+            .Select(g => new AipOfficeActivityFundTotalsDto(
+                g.Key.ConfigOfficeId,
+                g.Key.ActivityId,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipActivityProgramFundTotalsDto>> SumMooeCoByConfigOfficeAsync(
         int aipRecordId, int configOfficeId, CancellationToken ct = default)
         // The all-funds sibling of SumMooeCoByConfigOfficeAndFundAsync: same office-wide scope (every
