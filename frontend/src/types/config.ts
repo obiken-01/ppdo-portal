@@ -143,12 +143,12 @@ export interface UpsertFundingSourceRequest {
   /** Pipe-delimited alternate names, matched against AIP fund-source labels. Null = none. */
   aliases: string | null;
   /**
-   * Owning office for a new fund, or null for province-wide (PPDO-109).
+   * Owning office, or null for province-wide (PPDO-109).
    *
-   * ⚠️ Honoured on CREATE only, and only for a config manager. A department head's value is
-   * overwritten server-side with their own office, and an UPDATE ignores the field entirely —
-   * ownership is set once, at creation. Omit it unless you are PPDO creating a fund on an office's
-   * behalf.
+   * ⚠️ Honoured only for a config manager — a department head's value is overwritten server-side
+   * with their own office. ↩️ Since PPDO-128 an UPDATE reads it too (a config manager can move a
+   * fund between shared and office-owned), so a config manager must ALWAYS send the fund's current
+   * owner on update; omitting it means null, i.e. "make this shared".
    */
   officeId?: number | null;
 }
