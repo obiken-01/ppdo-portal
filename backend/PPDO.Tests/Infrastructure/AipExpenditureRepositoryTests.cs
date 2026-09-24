@@ -412,6 +412,41 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
         Assert.Equal(new Dictionary<int, int> { [2027] = 2 }, outside);
     }
 
+    [Fact]
+    public async Task SumMooeCoByConfigOffice_GroupsPerActivityAndFund_ForThatOfficeAndRecordOnly()
+    {
+        // The FY2028 division table's source (2026-09-24): every fund at once, per activity, with
+        // the program ref code that division assignments key on.
+        const int record = 44, ourOffice = 1, otherOffice = 9, gf = 1, gad = 2;
+        await SeedTreeAsync(
+            (560, record, ourOffice,   9001),
+            (561, record, ourOffice,   9002),   // a second group row of the same office
+            (563, record, otherOffice, 9004),   // another office — excluded
+            (564, 43,     ourOffice,   9005));  // our office, another record — excluded
+
+        await SeedAsync(
+            WithFund(Line(9001, ps: 500_000m, mooe: 100m, co: 0m), gf),
+            WithFund(Line(9001, mooe: 50m, co: 25m), gf),       // same activity + fund → summed
+            WithFund(Line(9001, mooe: 7m), gad),                 // same activity, other fund → own row
+            WithFund(Line(9002, co: 300m), gf),
+            Line(9002, mooe: 999m),                              // no fund → omitted
+            WithFund(Line(9004, mooe: 888m), gf),
+            WithFund(Line(9005, mooe: 777m), gf));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipActivityProgramFundTotalsDto> rows =
+            await NewRepo(ctx).SumMooeCoByConfigOfficeAsync(record, ourOffice);
+
+        Assert.Equal(
+            new[]
+            {
+                new AipActivityProgramFundTotalsDto("p", 9001, gf,  150m, 25m),   // PS never returned
+                new AipActivityProgramFundTotalsDto("p", 9001, gad, 7m,   0m),
+                new AipActivityProgramFundTotalsDto("p", 9002, gf,  0m,   300m),
+            },
+            rows.OrderBy(r => r.ActivityId).ThenBy(r => r.FundingSourceId).ToArray());
+    }
+
     // ── The form's Funding Source column (PPDO-80) ────────────────────────────
 
     [Fact]

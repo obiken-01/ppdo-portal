@@ -37,6 +37,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IWfpRepository                 _wfpRepo;
     private readonly IWfpExpenditureRepository      _wfpExpRepo;
     private readonly IWfpAllocationLedgerRepository _ledgerRepo;
+    private readonly IAipExpenditureRepository      _aipExpRepo;
     private readonly IOfficeRepository              _officeRepo;
     private readonly IRepository<Division>          _divisionRepo;
     private readonly IRepository<FundingSource>     _fundingSourceRepo;
@@ -52,6 +53,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IWfpRepository                 wfpRepo,
         IWfpExpenditureRepository      wfpExpRepo,
         IWfpAllocationLedgerRepository ledgerRepo,
+        IAipExpenditureRepository      aipExpRepo,
         IOfficeRepository              officeRepo,
         IRepository<Division>          divisionRepo,
         IRepository<FundingSource>     fundingSourceRepo,
@@ -66,6 +68,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _wfpRepo           = wfpRepo;
         _wfpExpRepo        = wfpExpRepo;
         _ledgerRepo        = ledgerRepo;
+        _aipExpRepo        = aipExpRepo;
         _officeRepo        = officeRepo;
         _divisionRepo      = divisionRepo;
         _fundingSourceRepo = fundingSourceRepo;
@@ -196,6 +199,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
 
         Dictionary<int, (int Costed, int Total, decimal Amount)> aipByDivision = [];
+        // Hoisted: the FY2028+ per-fund usage below attributes by the same assignments.
+        Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = new(StringComparer.OrdinalIgnoreCase);
 
         if (primaryAip is not null && officeRefCode is not null)
         {
@@ -210,7 +215,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
             IReadOnlyList<ProgramAssignmentDto> assignments =
                 await _allocationService.GetProgramAssignmentsAsync(officeId, fiscalYear, ct);
-            Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = assignments
+            divisionsByProgramRefCode = assignments
                 .GroupBy(a => a.ProgramRefCode, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     g => g.Key,
@@ -234,16 +239,52 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             }
         }
 
-        // The per-fund Used/Remaining breakdown stays the WFP ledger figure it has always been
-        // (RAL-176). Decisions 3 and 4 retire WFP from what the PAGE reports, not from this
-        // payload's fund rows — DivisionFundAmountDto is unchanged by the spec, and zeroing a
-        // field the Allocation page's ledger view depends on would be a silent data regression.
-        // One grouped query for every division across every fund; the naive alternative is a
-        // per-division-per-fund N+1 inside the loop below.
-        IReadOnlyList<DivisionFundUsedAmountDto> usedAmounts = await _ledgerRepo.SumUsedAmountsByDivisionsAsync(
-            divisions.Select(d => d.Id).ToList(), fiscalYear, ct);
-        Dictionary<(int DivisionId, int FundingSourceId), decimal> usedByDivisionFund =
-            usedAmounts.ToDictionary(u => (u.DivisionId, u.FundingSourceId), u => u.UsedAmount);
+        // ── What each division has used of each fund ──
+        //
+        // ↩️ **FY2028+ reads the AIP, not the WFP ledger** (Ralph, 2026-09-24). An entered year has
+        // no WFP in this portal (AipFiscalYears), so the ledger this used to read is always empty
+        // there: a guest office's General Fund row showed "used ₱0" beside ₱200K of encoded MOOE.
+        // Used now follows the CEILING's rule exactly — MOOE + CO, PS exempt, each activity's figure
+        // rounded UP to the thousand before adding (DECISION 9) — so the fund row can never disagree
+        // with the submit card's "Encoded" figure for the same money.
+        //
+        // ⚠️ A program shared by several divisions counts IN FULL against each, the same rule as the
+        // row's activity counts. How a shared program should split is PPDO-130's open question;
+        // this deliberately does not answer it.
+        //
+        // FY2027 and earlier keep the WFP ledger figure (RAL-176) — those years have a real WFP,
+        // and the Allocation page's ledger view reads the same field. One grouped query either way;
+        // the naive alternative is a per-division-per-fund N+1 inside the loop below.
+        bool entered = AipFiscalYears.IsEntered(fiscalYear);
+        Dictionary<(int DivisionId, int FundingSourceId), decimal> usedByDivisionFund = [];
+
+        if (entered)
+        {
+            if (primaryAip is not null && officeRefCode is not null)
+            {
+                IReadOnlyList<AipActivityProgramFundTotalsDto> lines =
+                    await _aipExpRepo.SumMooeCoByConfigOfficeAsync(primaryAip.Id, officeId, ct);
+                foreach (AipActivityProgramFundTotalsDto line in lines)
+                {
+                    if (!divisionsByProgramRefCode.TryGetValue(line.ProgramRefCode, out IReadOnlyList<int>? divisionIds))
+                        continue; // unassigned PPA — no division to charge, same as the row counts
+
+                    decimal amount = AipRounding.UpToThousand(line.Mooe) + AipRounding.UpToThousand(line.Co);
+                    foreach (int divisionId in divisionIds)
+                    {
+                        (int, int) key = (divisionId, line.FundingSourceId);
+                        usedByDivisionFund[key] = usedByDivisionFund.GetValueOrDefault(key) + amount;
+                    }
+                }
+            }
+        }
+        else
+        {
+            IReadOnlyList<DivisionFundUsedAmountDto> usedAmounts = await _ledgerRepo.SumUsedAmountsByDivisionsAsync(
+                divisions.Select(d => d.Id).ToList(), fiscalYear, ct);
+            usedByDivisionFund =
+                usedAmounts.ToDictionary(u => (u.DivisionId, u.FundingSourceId), u => u.UsedAmount);
+        }
 
         List<DivisionSummaryDto> result = [];
         foreach (Division division in divisions)
@@ -256,17 +297,24 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                     decimal used = usedByDivisionFund.GetValueOrDefault((division.Id, fund.Id));
                     return new DivisionFundAmountDto(fund.Id, fund.Code, fund.Name, amount, used, amount - used);
                 })
-                .Where(f => f.Amount > 0m)
+                // ↩️ FY2028+ also shows a fund the division has USED without an allocation in it —
+                // hiding it would hide exactly the overspend the row exists to show.
+                .Where(f => f.Amount > 0m || (entered && f.Used > 0m))
                 .ToList();
 
             (int Costed, int Total, decimal Amount) aip = aipByDivision.GetValueOrDefault(division.Id);
             decimal allocated = allocationByFund.Sum(f => f.Amount);
 
+            // ↩️ FY2028+: the row is the sum of its fund rows, so Remaining compares like for like —
+            // shared funds, ceiling rule — rather than an all-funds, PS-included total against a
+            // shared-fund allocation. FY2027 keeps the rollup figure it has always shown.
+            decimal costed = entered ? allocationByFund.Sum(f => f.Used) : aip.Amount;
+
             result.Add(new DivisionSummaryDto(
                 division.Id, division.Code, division.Name,
                 allocated,
-                aip.Amount,
-                allocated - aip.Amount,
+                costed,
+                allocated - costed,
                 aip.Costed,
                 aip.Total,
                 PlanningStage.ForAip(primaryAip?.Status, aip.Total),
