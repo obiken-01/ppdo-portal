@@ -32,6 +32,10 @@ public sealed record FundingSourceDto(
 /// office-owned on UPDATE, so an update body must always carry the owner it wants. For a caller holding <c>CanManageOfficeSetup</c> alone the field is
 /// OVERWRITTEN with their own office id in <c>ConfigFundingSourceFunctions</c> — a body that names
 /// someone else's office is ignored, not rejected (PPDO-109).
+///
+/// <paramref name="ConfirmOwnershipChange"/> (PPDO-128) acknowledges that other offices already use
+/// the fund and will lose sight of it. Without it such a change is refused with 409; the config page
+/// asks first via <c>GET …/ownership-impact</c> and only then sends it.
 /// </summary>
 public sealed record UpsertFundingSourceDto(
     string  Code,
@@ -40,4 +44,17 @@ public sealed record UpsertFundingSourceDto(
     string? Color    = null,
     bool    IsActive = true,
     string? Aliases  = null,
-    int?    OfficeId = null);
+    int?    OfficeId = null,
+    bool    ConfirmOwnershipChange = false);
+
+/// <summary>Other offices' lines naming a fund in one fiscal year (PPDO-128).</summary>
+public sealed record FundUsageYearDto(int FiscalYear, int Lines);
+
+/// <summary>
+/// What limiting a fund to one office would take away from the others (PPDO-128): AIP lines, AIP
+/// activity-level funds and WFP lines belonging to any OTHER office, split by the AIP record's
+/// fiscal year. Split because the years mean different things — FY2027's uploaded AIP names a fund
+/// on nearly every office's activities as history, while FY2028+ is live entry. Zero lines means the
+/// change hides the fund from nobody who uses it.
+/// </summary>
+public sealed record FundOwnershipImpactDto(int OtherOfficeLines, IReadOnlyList<FundUsageYearDto> ByFiscalYear);

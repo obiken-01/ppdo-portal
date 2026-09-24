@@ -177,12 +177,18 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     /// <summary>
     /// The same two-table count as <see cref="CountByFundingSourceAsync"/>, restricted to rows that
     /// belong to any office OTHER than <paramref name="officeId"/> (PPDO-128) — the rows that would
-    /// lose sight of the fund if it were limited to that office. Counted in SQL.
+    /// lose sight of the fund if it were limited to that office — keyed by the AIP record's fiscal
+    /// year. Grouped in SQL; a year with no rows is absent, never 0.
+    ///
+    /// Split by year because the answer differs by year: FY2027's uploaded AIP names a fund on
+    /// nearly every office's activities, which is history, while FY2028+ usage is live entry. The
+    /// caller shows the split and lets PPDO decide.
     ///
     /// ⚠️ A row under an AIP office with no config office id (a pre-V18-32 row the backfill did
     /// not match) counts as OUTSIDE. Its owner is unknown, so it cannot be shown to be safe.
     /// </summary>
-    Task<int> CountByFundingSourceOutsideOfficeAsync(int fundingSourceId, int officeId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<int, int>> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default);
 }
 
 /// <summary>

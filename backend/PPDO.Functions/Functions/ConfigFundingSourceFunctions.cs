@@ -166,6 +166,24 @@ public sealed class ConfigFundingSourceFunctions
         return await ConfigHttp.FromResultAsync(req, await _funding.GetByIdAsync(id, ct), ct);
     }
 
+    // ── GET /api/config/funding-sources/{id}/ownership-impact?officeId= ──
+    // Config managers only (PPDO-128): what limiting the fund to that office would take away from
+    // every other office, per fiscal year. Only a config manager can change ownership at all — a
+    // department head's is pinned on update — so nobody else has a use for the answer, and it
+    // reports on other offices' data.
+    [Function("FundingSourcesOwnershipImpact")]
+    public async Task<HttpResponseData> OwnershipImpact(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/funding-sources/{id:int}/ownership-impact")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
+        if (denied is not null) return denied;
+
+        // Absent or unparseable means "make it shared", which hides the fund from nobody.
+        int? target = int.TryParse(req.Query["officeId"], out int oid) ? oid : null;
+        return await ConfigHttp.FromResultAsync(req, await _funding.GetOwnershipImpactAsync(id, target, ct), ct);
+    }
+
     // ── POST /api/config/funding-sources ──
     [Function("FundingSourcesCreate")]
     public async Task<HttpResponseData> Create(

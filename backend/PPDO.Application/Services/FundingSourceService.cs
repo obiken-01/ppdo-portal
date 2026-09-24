@@ -196,30 +196,39 @@ public sealed class FundingSourceService : IFundingSourceService
             // the fund from offices that may already have lines under it, orphaning their budget
             // data from their own pickers. Widening (→ shared) hides nothing, so it is never refused.
             //
-            // ↩️ Only usage by OTHER offices blocks it. The target office's own lines keep seeing the
-            // fund, so they are no reason to refuse — and counting them made the expected setup
+            // ↩️ Only usage by OTHER offices counts. The target office's own lines keep seeing the
+            // fund, so they are no reason to stop — and counting them made the expected setup
             // (only General Fund shared, every other fund limited to the office that uses it)
-            // impossible for any fund already in use. The first cut of PPDO-128 counted everything.
+            // impossible for any fund already in use.
             //
-            // ⚠️ Ceilings and division allocations also name a fund and are NOT counted — a fund
-            // carrying only another office's ceiling can still be narrowed.
+            // ↩️ And it WARNS rather than refuses (Ralph, 2026-09-24). Nearly all such usage is the
+            // FY2027 uploaded AIP, which names a fund on every office's activities — history that
+            // prints from its stored code either way. So an unconfirmed change is refused with the
+            // per-year breakdown, and a confirmed one proceeds. What the other offices lose: the fund
+            // leaves their pickers, and re-saving one of their activities that names it is refused
+            // until another fund is picked.
+            //
+            // ⚠️ Ceilings and division allocations also name a fund and are NOT counted.
             if (newOfficeId is int target)
             {
-                // Sequential, not Task.WhenAll — one DbContext, which is not thread-safe (CLAUDE.md).
-                int wfpRows = await _wfpExpRepo.CountByFundingSourceOutsideOfficeAsync(id, target, cancellationToken);
-                int aipRows = await _aipExpRepo.CountByFundingSourceOutsideOfficeAsync(id, target, cancellationToken);
-                int inUse   = wfpRows + aipRows;
+                FundOwnershipImpactDto impact = await OtherOfficeUsageAsync(id, target, cancellationToken);
 
-                if (inUse > 0)
+                if (impact.OtherOfficeLines > 0 && !dto.ConfirmOwnershipChange)
                 {
                     _logger.LogWarning(
-                        "Funding source ownership change blocked — used by other offices. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
-                        entity.Code, oldOfficeId, newOfficeId, inUse);
+                        "Funding source ownership change needs confirmation — used by other offices. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
+                        entity.Code, oldOfficeId, newOfficeId, impact.OtherOfficeLines);
                     return ServiceResult<FundingSourceDto>.Conflict(
-                        $"{entity.Name} ({entity.Code}) is used by {inUse} AIP/WFP " +
-                        $"{(inUse == 1 ? "line" : "lines")} in other offices, so it cannot be limited " +
-                        "to this one — those offices would lose sight of it. It can still be made shared.");
+                        $"{entity.Name} ({entity.Code}) is used by {impact.OtherOfficeLines} AIP/WFP " +
+                        $"{(impact.OtherOfficeLines == 1 ? "line" : "lines")} in other offices " +
+                        $"({DescribeYears(impact)}). Limiting it to one office takes it out of theirs; " +
+                        "confirm the change to go ahead.");
                 }
+
+                if (impact.OtherOfficeLines > 0)
+                    _logger.LogWarning(
+                        "Funding source limited to one office despite other offices' usage (confirmed). Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
+                        entity.Code, oldOfficeId, newOfficeId, impact.OtherOfficeLines);
             }
         }
 
@@ -248,6 +257,44 @@ public sealed class FundingSourceService : IFundingSourceService
             cancellationToken);
         return ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(entity, cancellationToken));
     }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<FundOwnershipImpactDto>> GetOwnershipImpactAsync(
+        int id, int? targetOfficeId, CancellationToken cancellationToken = default)
+    {
+        FundingSource? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(f => f.Id == id);
+        if (entity is null)
+            return ServiceResult<FundOwnershipImpactDto>.NotFound($"Funding source {id} not found.");
+
+        // Widening, or no change: nobody new loses the fund, so there is nothing to count.
+        if (targetOfficeId is not int target || target == entity.OfficeId)
+            return ServiceResult<FundOwnershipImpactDto>.Ok(new FundOwnershipImpactDto(0, []));
+
+        return ServiceResult<FundOwnershipImpactDto>.Ok(await OtherOfficeUsageAsync(id, target, cancellationToken));
+    }
+
+    /// <summary>
+    /// AIP + WFP usage of the fund by every office except <paramref name="officeId"/>, merged per
+    /// fiscal year and ordered oldest first. Shared by the preview and the update guard so the two
+    /// can never disagree about a count.
+    /// </summary>
+    private async Task<FundOwnershipImpactDto> OtherOfficeUsageAsync(int id, int officeId, CancellationToken ct)
+    {
+        // Sequential, not Task.WhenAll — one DbContext, which is not thread-safe (CLAUDE.md).
+        IReadOnlyDictionary<int, int> wfp = await _wfpExpRepo.CountByFundingSourceOutsideOfficeAsync(id, officeId, ct);
+        IReadOnlyDictionary<int, int> aip = await _aipExpRepo.CountByFundingSourceOutsideOfficeAsync(id, officeId, ct);
+
+        List<FundUsageYearDto> byYear = wfp.Concat(aip)
+            .GroupBy(kv => kv.Key)
+            .Select(g => new FundUsageYearDto(g.Key, g.Sum(kv => kv.Value)))
+            .OrderBy(y => y.FiscalYear)
+            .ToList();
+        return new FundOwnershipImpactDto(byYear.Sum(y => y.Lines), byYear);
+    }
+
+    /// <summary>"FY2027: 145, FY2028: 1" — the split the confirmation turns on.</summary>
+    private static string DescribeYears(FundOwnershipImpactDto impact)
+        => string.Join(", ", impact.ByFiscalYear.Select(y => $"FY{y.FiscalYear}: {y.Lines}"));
 
     /// <inheritdoc />
     public async Task<ServiceResult<FundingSourceDto>> DeleteAsync(

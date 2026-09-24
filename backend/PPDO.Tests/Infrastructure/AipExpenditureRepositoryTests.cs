@@ -95,6 +95,11 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 is_synthetic INTEGER NOT NULL DEFAULT 0,
                 funding_source_id INTEGER NULL
             );
+            -- PPDO-128: the usage counts group by the record's fiscal year.
+            CREATE TABLE aip_records (
+                id INTEGER PRIMARY KEY,
+                fiscal_year INTEGER NOT NULL
+            );
             -- PPDO-128: WFP lines reach their office through the AIP activity they hang off.
             CREATE TABLE wfp_activities (
                 id INTEGER PRIMARY KEY,
@@ -335,6 +340,7 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
 
         await using AppDbContext ctx = new(_options);
         await ctx.Database.ExecuteSqlRawAsync("""
+            INSERT INTO aip_records (id, fiscal_year) VALUES (44, 2027);
             INSERT INTO aip_offices (id, aip_record_id, ref_code, name, sector, office_id)
                 VALUES (572, 44, 'rc', 'UNMATCHED', 'GENERAL', NULL);
             INSERT INTO aip_programs (id, office_id, ref_code, name) VALUES (5720, 572, 'p', 'Program');
@@ -361,10 +367,11 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
         }
 
         await using AppDbContext ctx = new(_options);
-        int outside = await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice);
+        IReadOnlyDictionary<int, int> outside =
+            await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice);
 
-        // 9004 line + 9006 line + 9004 activity. None of 9001's three rows.
-        Assert.Equal(3, outside);
+        // 9004 line + 9006 line + 9004 activity, all in the FY2027 record. None of 9001's three rows.
+        Assert.Equal(new Dictionary<int, int> { [2027] = 3 }, outside);
     }
 
     [Fact]
@@ -375,9 +382,11 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
 
         await using AppDbContext ctx = new(_options);
 
-        Assert.Equal(0, await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice));
+        // Absent rather than a 0 entry — a year with no rows produces no group.
+        Assert.Empty(await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice));
         // …and the same row IS outside from any other office's point of view.
-        Assert.Equal(1, await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OtherOffice));
+        Assert.Equal(new Dictionary<int, int> { [2027] = 1 },
+            await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OtherOffice));
     }
 
     [Fact]
@@ -397,10 +406,10 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
         }
 
         await using AppDbContext ctx = new(_options);
-        int outside = await new WfpExpenditureRepository(ctx)
+        IReadOnlyDictionary<int, int> outside = await new WfpExpenditureRepository(ctx)
             .CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice);
 
-        Assert.Equal(2, outside);
+        Assert.Equal(new Dictionary<int, int> { [2027] = 2 }, outside);
     }
 
     // ── The form's Funding Source column (PPDO-80) ────────────────────────────

@@ -110,9 +110,11 @@ public interface IWfpExpenditureRepository : IRepository<WfpExpenditure>
     /// <see cref="CountByFundingSourceAsync"/> restricted to WFP lines of any office OTHER than
     /// <paramref name="officeId"/> (PPDO-128). A WFP line's office is its AIP activity's office —
     /// WFP activities hang off AIP activities — so this is read through that chain rather than
-    /// assuming WFP is PPDO-only. An unattributed AIP office counts as outside. Counted in SQL.
+    /// assuming WFP is PPDO-only. An unattributed AIP office counts as outside. Keyed by the AIP
+    /// record's fiscal year and grouped in SQL; a year with no rows is absent.
     /// </summary>
-    Task<int> CountByFundingSourceOutsideOfficeAsync(int fundingSourceId, int officeId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<int, int>> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default);
 
     /// <summary>
     /// WFP-activity coverage for the Dashboard's "activities with WFP expenditures" stat

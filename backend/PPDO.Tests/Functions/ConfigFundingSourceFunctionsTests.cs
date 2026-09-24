@@ -449,6 +449,42 @@ public sealed class ConfigFundingSourceFunctionsTests
         _funding.Verify(s => s.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ── Ownership impact (PPDO-128) ───────────────────────────────────────────
+
+    [Fact]
+    public async Task OwnershipImpact_AsConfigManager_PassesTheTargetOffice()
+    {
+        AuthenticateConfigManager();
+        int? captured = -1;
+        _funding.Setup(s => s.GetOwnershipImpactAsync(1, It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int? officeId, CancellationToken _) => captured = officeId)
+            .ReturnsAsync(ServiceResult<FundOwnershipImpactDto>.Ok(new FundOwnershipImpactDto(0, [])));
+
+        HttpResponseData response = await Sut.OwnershipImpact(
+            FunctionHttp.Get($"officeId={ForeignOffice}", path: "config/funding-sources/1/ownership-impact"),
+            1, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(ForeignOffice, captured);
+    }
+
+    /// <summary>
+    /// ⚠️ It reports on OTHER offices' data, and only a config manager can change ownership anyway.
+    /// </summary>
+    [Fact]
+    public async Task OwnershipImpact_AsDepartmentHead_ReturnsForbidden()
+    {
+        AuthenticateDepartmentHead();
+
+        HttpResponseData response = await Sut.OwnershipImpact(
+            FunctionHttp.Get($"officeId={OwnOffice}", path: "config/funding-sources/9/ownership-impact"),
+            9, CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _funding.Verify(s => s.GetOwnershipImpactAsync(
+            It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Delete ────────────────────────────────────────────────────────────────
 
     [Fact]
