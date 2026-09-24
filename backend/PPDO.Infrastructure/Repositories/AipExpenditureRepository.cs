@@ -196,4 +196,20 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
             .CountAsync(a => a.FundingSourceId == fundingSourceId, ct);
         return lines + activities;
     }
+
+    /// <inheritdoc />
+    public async Task<int> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default)
+    {
+        // ⚠️ `!= officeId` on a nullable column: EF's C# null semantics make NULL != 7 TRUE, which
+        // is what counts an unattributed row as outside. Do not "simplify" this to a SQL-side
+        // comparison that would drop NULLs.
+        int lines = await _context.Set<AipExpenditure>()
+            .CountAsync(e => e.FundingSourceId == fundingSourceId
+                          && e.Activity.Project.Program.Office.OfficeId != officeId, ct);
+        int activities = await _context.Set<AipActivity>()
+            .CountAsync(a => a.FundingSourceId == fundingSourceId
+                          && a.Project.Program.Office.OfficeId != officeId, ct);
+        return lines + activities;
+    }
 }

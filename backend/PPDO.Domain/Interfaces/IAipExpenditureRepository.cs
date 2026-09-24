@@ -173,6 +173,16 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     /// as one number because the caller only needs to say how many rows would be left dangling.
     /// </summary>
     Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The same two-table count as <see cref="CountByFundingSourceAsync"/>, restricted to rows that
+    /// belong to any office OTHER than <paramref name="officeId"/> (PPDO-128) — the rows that would
+    /// lose sight of the fund if it were limited to that office. Counted in SQL.
+    ///
+    /// ⚠️ A row under an AIP office with no config office id (a pre-V18-32 row the backfill did
+    /// not match) counts as OUTSIDE. Its owner is unknown, so it cannot be shown to be safe.
+    /// </summary>
+    Task<int> CountByFundingSourceOutsideOfficeAsync(int fundingSourceId, int officeId, CancellationToken ct = default);
 }
 
 /// <summary>

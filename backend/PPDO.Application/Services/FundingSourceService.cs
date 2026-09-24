@@ -196,29 +196,29 @@ public sealed class FundingSourceService : IFundingSourceService
             // the fund from offices that may already have lines under it, orphaning their budget
             // data from their own pickers. Widening (→ shared) hides nothing, so it is never refused.
             //
-            // Deliberately coarse: ANY usage blocks a narrowing, even usage belonging to the target
-            // office itself. Attributing each line to an office means walking the AIP and WFP
-            // hierarchies; a false refusal costs PPDO one conversation, a false pass silently strips
-            // another office's budget lines.
+            // ↩️ Only usage by OTHER offices blocks it. The target office's own lines keep seeing the
+            // fund, so they are no reason to refuse — and counting them made the expected setup
+            // (only General Fund shared, every other fund limited to the office that uses it)
+            // impossible for any fund already in use. The first cut of PPDO-128 counted everything.
             //
-            // ⚠️ Counts the same rows as the delete guard. Ceilings and division allocations also
-            // name a fund and are NOT counted — a fund carrying only a ceiling can still be narrowed.
-            if (newOfficeId is not null)
+            // ⚠️ Ceilings and division allocations also name a fund and are NOT counted — a fund
+            // carrying only another office's ceiling can still be narrowed.
+            if (newOfficeId is int target)
             {
                 // Sequential, not Task.WhenAll — one DbContext, which is not thread-safe (CLAUDE.md).
-                int wfpRows = await _wfpExpRepo.CountByFundingSourceAsync(id, cancellationToken);
-                int aipRows = await _aipExpRepo.CountByFundingSourceAsync(id, cancellationToken);
+                int wfpRows = await _wfpExpRepo.CountByFundingSourceOutsideOfficeAsync(id, target, cancellationToken);
+                int aipRows = await _aipExpRepo.CountByFundingSourceOutsideOfficeAsync(id, target, cancellationToken);
                 int inUse   = wfpRows + aipRows;
 
                 if (inUse > 0)
                 {
                     _logger.LogWarning(
-                        "Funding source ownership change blocked — still in use. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
+                        "Funding source ownership change blocked — used by other offices. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}, Rows: {Rows}",
                         entity.Code, oldOfficeId, newOfficeId, inUse);
                     return ServiceResult<FundingSourceDto>.Conflict(
                         $"{entity.Name} ({entity.Code}) is used by {inUse} AIP/WFP " +
-                        $"{(inUse == 1 ? "line" : "lines")}, so it cannot be limited to one office — " +
-                        "other offices would lose sight of it. It can still be made shared.");
+                        $"{(inUse == 1 ? "line" : "lines")} in other offices, so it cannot be limited " +
+                        "to this one — those offices would lose sight of it. It can still be made shared.");
                 }
             }
         }

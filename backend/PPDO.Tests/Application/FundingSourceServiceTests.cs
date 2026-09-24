@@ -35,7 +35,8 @@ public sealed class FundingSourceServiceTests
 
     private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(
         List<FundingSource> seed, IAuditService? audit = null,
-        int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null)
+        int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null,
+        int wfpOutside = 0, int aipOutside = 0, Action<int>? onOutsideOffice = null)
     {
         Mock<IRepository<FundingSource>> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -52,9 +53,16 @@ public sealed class FundingSourceServiceTests
         Mock<IWfpExpenditureRepository> wfpExp = new();
         wfpExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(wfpUsage);
+        // PPDO-128 — usage by offices other than the one a fund is being limited to.
+        wfpExp.Setup(r => r.CountByFundingSourceOutsideOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int officeId, CancellationToken _) => onOutsideOffice?.Invoke(officeId))
+            .ReturnsAsync(wfpOutside);
         Mock<IAipExpenditureRepository> aipExp = new();
         aipExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(aipUsage);
+        aipExp.Setup(r => r.CountByFundingSourceOutsideOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int officeId, CancellationToken _) => onOutsideOffice?.Invoke(officeId))
+            .ReturnsAsync(aipOutside);
 
         return (new FundingSourceService(
             repo.Object, officeRepo.Object, wfpExp.Object, aipExp.Object,
@@ -512,13 +520,13 @@ public sealed class FundingSourceServiceTests
         // ⚠️ The failure mode the guard exists for: other offices already have lines under a shared
         // fund, and limiting it to GSO would take it out of their pickers.
         List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
-        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, wfpUsage: 2, aipUsage: 1);
+        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, wfpOutside: 2, aipOutside: 1);
 
         ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
             new UpsertFundingSourceDto("LDRRMF", "Renamed", null, OfficeId: GsoOfficeId));
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
-        Assert.Contains("3 AIP/WFP lines", result.Error);
+        Assert.Contains("3 AIP/WFP lines in other offices", result.Error);
         Assert.Null(seed.Single().OfficeId);
         // The refused request must not half-apply — the rename in the same body is not saved either.
         Assert.Equal("Disaster Fund", seed.Single().Name);
@@ -526,16 +534,37 @@ public sealed class FundingSourceServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_SharedToOffice_UsedOnlyByThatOffice_MovesOwnership()
+    {
+        // ↩️ The case that reshaped the guard: PS is used, but only by PPDO's own lines, and PPDO
+        // wants it limited to PPDO. Nobody loses sight of it, so it must save — this is how "only
+        // General Fund stays shared" gets set up for funds already in use.
+        int? askedAbout = null;
+        List<FundingSource> seed = [Fs(17, "PS", "Personal Services")];
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 1, aipUsage: 4,
+            onOutsideOffice: office => askedAbout = office);
+
+        ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(17,
+            new UpsertFundingSourceDto("PS", "Personal Services", null, OfficeId: GsoOfficeId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
+        // The guard asked about usage outside the TARGET office, not the old owner or none.
+        Assert.Equal(GsoOfficeId, askedAbout);
+    }
+
+    [Fact]
     public async Task UpdateAsync_OfficeToAnotherOffice_InUse_ReturnsConflict()
     {
+        // GSO's own lines are "outside" PHO, so moving GSO's fund to PHO is refused.
         List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
-        (FundingSourceService sut, _) = Build(seed, aipUsage: 1);
+        (FundingSourceService sut, _) = Build(seed, aipOutside: 1);
 
         ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
             new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: PhoOfficeId));
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
-        Assert.Contains("1 AIP/WFP line,", result.Error);
+        Assert.Contains("1 AIP/WFP line in other offices", result.Error);
         Assert.Equal(GsoOfficeId, seed.Single().OfficeId);
     }
 
@@ -544,7 +573,7 @@ public sealed class FundingSourceServiceTests
     {
         // Widening hides the fund from nobody, so usage never blocks it.
         List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
-        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90);
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90, wfpOutside: 40, aipOutside: 90);
 
         ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
             new UpsertFundingSourceDto("GSOX", "GSO Fund", null, OfficeId: null));
@@ -558,7 +587,7 @@ public sealed class FundingSourceServiceTests
     {
         // The common case — an ordinary rename of a fund in heavy use — must never meet the guard.
         List<FundingSource> seed = [Fs(3, "GSOX", "GSO Fund", officeId: GsoOfficeId)];
-        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90);
+        (FundingSourceService sut, _) = Build(seed, wfpUsage: 40, aipUsage: 90, wfpOutside: 40, aipOutside: 90);
 
         ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(3,
             new UpsertFundingSourceDto("GSOX", "Renamed", null, OfficeId: GsoOfficeId));

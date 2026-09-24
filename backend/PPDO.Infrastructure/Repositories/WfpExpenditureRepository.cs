@@ -54,6 +54,14 @@ public sealed class WfpExpenditureRepository : Repository<WfpExpenditure>, IWfpE
             .CountAsync(e => e.FundingSourceId == fundingSourceId, ct);
 
     /// <inheritdoc />
+    public async Task<int> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default)
+        // ⚠️ `!=` on the nullable office id keeps EF's C# null semantics: an unattributed row counts.
+        => await _context.Set<WfpExpenditure>()
+            .CountAsync(e => e.FundingSourceId == fundingSourceId
+                          && e.WfpActivity.AipActivity.Project.Program.Office.OfficeId != officeId, ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<WfpExpenditure>> GetByWfpActivityIdsAsync(
         IReadOnlyList<int> wfpActivityIds, CancellationToken ct = default)
     {
