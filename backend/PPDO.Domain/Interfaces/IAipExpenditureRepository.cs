@@ -74,6 +74,24 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
         int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>
+    /// Every fund at once: one row per (activity, fund) for config office
+    /// <paramref name="configOfficeId"/> in AIP record <paramref name="aipRecordId"/>, carrying the
+    /// activity's program ref code and its MOOE and CO summed over that fund's lines — what the
+    /// dashboard's division table needs to say how much of each division's allocation the AIP has
+    /// used (FY2028+, where there is no WFP ledger to read).
+    ///
+    /// ⚠️ Per-activity and un-summed for the same reason as
+    /// <see cref="SumMooeCoByConfigOfficeAndFundAsync"/>: the caller rounds each figure up to the
+    /// thousand before adding (DECISION 9), so the result agrees with the ceiling check.
+    ///
+    /// ⚠️ Carries the program's REF CODE, not its id — division assignments are keyed by ref code
+    /// (<c>ProgramDivision</c> survives across fiscal years; see the project notes on why it is not an
+    /// FK). Lines naming no fund are omitted; PS is not returned (exempt, like the ceiling).
+    /// </summary>
+    Task<IReadOnlyList<AipActivityProgramFundTotalsDto>> SumMooeCoByConfigOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default);
+
+    /// <summary>
     /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).
     ///
     /// ⚠️ Counts, not rows. The submit checklist asks only "does this activity have any lines?" for
@@ -216,6 +234,17 @@ public sealed record AipExpenditureTotalsDto(
 /// </summary>
 public sealed record AipActivityFundTotalsDto(
     int     ActivityId,
+    decimal Mooe,
+    decimal Co);
+
+/// <summary>
+/// One activity's MOOE and CO for one fund, with the program it belongs to — see
+/// <see cref="IAipExpenditureRepository.SumMooeCoByConfigOfficeAsync"/>.
+/// </summary>
+public sealed record AipActivityProgramFundTotalsDto(
+    string  ProgramRefCode,
+    int     ActivityId,
+    int     FundingSourceId,
     decimal Mooe,
     decimal Co);
 

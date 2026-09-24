@@ -186,6 +186,29 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityProgramFundTotalsDto>> SumMooeCoByConfigOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default)
+        // The all-funds sibling of SumMooeCoByConfigOfficeAndFundAsync: same office-wide scope (every
+        // group row of the config office, bounded to the record), one GROUP BY, no per-fund loop.
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId != null
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId
+                     && e.Activity.Project.Program.Office.OfficeId == configOfficeId)
+            .GroupBy(e => new
+            {
+                e.ActivityId,
+                ProgramRefCode  = e.Activity.Project.Program.RefCode,
+                FundingSourceId = e.FundingSourceId!.Value,
+            })
+            .Select(g => new AipActivityProgramFundTotalsDto(
+                g.Key.ProgramRefCode,
+                g.Key.ActivityId,
+                g.Key.FundingSourceId,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default)
     {
         // Two sequential counts, not Task.WhenAll — they share one DbContext, which is not

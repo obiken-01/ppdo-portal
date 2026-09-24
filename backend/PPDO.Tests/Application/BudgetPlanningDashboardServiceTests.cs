@@ -190,7 +190,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IUserRepository>? userRepoMock = null,
         Mock<IPermissionService>? permissionsMock = null,
         List<AipOfficeRollupDto>? officeRollups = null,
-        List<AipProgramRollupDto>? programRollups = null)
+        List<AipProgramRollupDto>? programRollups = null,
+        List<AipActivityProgramFundTotalsDto>? aipFundLines = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -274,6 +275,12 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .ReturnsAsync((IReadOnlyList<DivisionFundUsedAmountDto>)[]);
         }
 
+        // FY2028+ per-fund usage (the AIP, not the WFP ledger). Always set up, empty by default.
+        Mock<IAipExpenditureRepository> aipExpRepo = new();
+        aipExpRepo.Setup(r => r.SumMooeCoByConfigOfficeAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivityProgramFundTotalsDto>)(aipFundLines ?? []));
+
         Mock<IAuditRepository> auditRepo = new();
         auditRepo
             .Setup(r => r.GetRecentAsync(
@@ -310,7 +317,7 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
-            officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
+            aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object,
             ceilingRepo.Object, userRepo.Object, permissions.Object);
 
@@ -676,6 +683,109 @@ public sealed class BudgetPlanningDashboardServiceTests
             PpdoOfficeId, 2027, It.IsAny<CancellationToken>()), Times.Once);
         allocation.Verify(a => a.GetAllocationsAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── GetDashboardAsync — FY2028+ usage comes from the AIP, by the ceiling's rule ─────
+    // ↩️ Found live 2026-09-24: a guest office's General Fund row read "used ₱0" beside ₱200K of
+    // encoded MOOE, because the fund rows still read the WFP ledger and FY2028 has no WFP.
+
+    private const int GadFundId = 2;
+
+    /// <summary>
+    /// An FY2028 PPDO dashboard with ADMIN (1) and ICT (2), GF allocated to ADMIN, and
+    /// PROG-1 assigned to <paramref name="prog1Divisions"/>.
+    /// </summary>
+    private static (BudgetPlanningDashboardService Svc, Mock<IWfpAllocationLedgerRepository> Ledger)
+        BuildFy2028(IReadOnlyList<int> prog1Divisions, List<AipActivityProgramFundTotalsDto> lines,
+            decimal adminGfAllocation = 7_000_000m)
+    {
+        List<AipRecord> aips = [Aip(10, 2028, "Draft")];
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative"), Div(2, PpdoOfficeId, "ICT")];
+        List<FundingSource> funds = [Fund(GfFundId, "GF", "General Fund"), Fund(GadFundId, "GAD", "GAD Fund")];
+
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
+        Mock<IAllocationService> allocation = AllocationMockWithDefaults();
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
+                [new DivisionAllocationDto(1, 1, "Administrative", 2028, GfFundId, "GF", "General Fund", adminGfAllocation)]);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(PpdoOfficeId, 2028, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)
+                [new ProgramAssignmentDto("1000-000-1-01-010", "PROG-1", "Program 1", "General", prog1Divisions)]);
+
+        Mock<IWfpAllocationLedgerRepository> ledger = new();
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], aips, [], offices, [], divisions, funds,
+            aipRepoMock: aipRepo, allocationMock: allocation, ledgerRepoMock: ledger,
+            programRollups: [new AipProgramRollupDto(50, "PROG-1", 2, 2, 999_999m)],
+            aipFundLines: lines);
+        return (sut, ledger);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_FundUsed_FollowsTheCeilingRule_NotTheWfpLedger()
+    {
+        // 200,000 MOOE → 200,000. 1,200 MOOE + 1,200 CO → 2,000 + 2,000 = 4,000 (rounded up per
+        // figure, THEN summed — DECISION 9). PS never reaches this query at all.
+        (BudgetPlanningDashboardService sut, Mock<IWfpAllocationLedgerRepository> ledger) = BuildFy2028([1],
+        [
+            new("PROG-1", 80, GfFundId, 200_000m, 0m),
+            new("PROG-1", 81, GfFundId, 1_200m, 1_200m),
+        ]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        DivisionSummaryDto admin = result.ByDivision.Single(d => d.DivisionId == 1);
+        DivisionFundAmountDto gf = Assert.Single(admin.AllocationByFund);
+        Assert.Equal(204_000m, gf.Used);
+        Assert.Equal(7_000_000m - 204_000m, gf.Remaining);
+        // The row is the sum of its fund rows — NOT the rollup's all-funds, PS-included 999,999.
+        Assert.Equal(204_000m, admin.CostedInAip);
+        Assert.Equal(7_000_000m - 204_000m, admin.Remaining);
+        // An entered year has no WFP; the ledger is not even asked.
+        ledger.Verify(l => l.SumUsedAmountsByDivisionsAsync(
+            It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_SharedProgram_CountsInFullAgainstEachDivision()
+    {
+        // ⚠️ The documented rule until PPDO-130 answers how a shared program splits — the same rule
+        // the row's activity counts already follow. Not additive, on purpose.
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1, 2],
+            [new("PROG-1", 80, GfFundId, 100_000m, 0m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        Assert.All(result.ByDivision, row => Assert.Equal(100_000m, row.CostedInAip));
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_UsageInAFundWithNoAllocation_IsStillShown()
+    {
+        // ICT has no allocation in anything but spends GF — the overspend must be visible, not
+        // filtered out with the zero-allocation rows.
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([2],
+            [new("PROG-1", 80, GfFundId, 50_000m, 0m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        DivisionSummaryDto ict = result.ByDivision.Single(d => d.DivisionId == 2);
+        DivisionFundAmountDto gf = Assert.Single(ict.AllocationByFund);
+        Assert.Equal(0m, gf.Amount);
+        Assert.Equal(50_000m, gf.Used);
+        Assert.Equal(-50_000m, ict.Remaining);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_UnassignedProgram_ChargesNoDivision()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
+            [new("PROG-UNASSIGNED", 90, GfFundId, 80_000m, 0m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        Assert.All(result.ByDivision, row => Assert.Equal(0m, row.CostedInAip));
     }
 
     // ── GetDashboardAsync — WFP-by-division per-fund Remaining (RAL-176) ─────
