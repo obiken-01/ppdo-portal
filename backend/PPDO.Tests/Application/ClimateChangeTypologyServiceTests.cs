@@ -76,6 +76,68 @@ public sealed class ClimateChangeTypologyServiceTests
             Times.Never);
     }
 
+    // ── Column widths ─────────────────────────────────────────────────────────
+    // ↩️ The validator used to know nothing about lengths, so an over-long name reached SQL and the
+    // whole CSV import died as an unexplained 500 ("String or binary data would be truncated").
+
+    [Fact]
+    public async Task CreateAsync_NameAtTheLimit_IsAccepted()
+    {
+        // The real list's longest title is 356 characters (A611-02) — the reason the column is 500.
+        (ClimateChangeTypologyService sut, _) = Build([]);
+
+        ServiceResult<ClimateChangeTypologyDto> result = await sut.CreateAsync(
+            Dto("A611-02", name: new string('x', ClimateChangeTypology.NameMaxLength)));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameOverTheLimit_ReturnsBadRequest_WithoutSaving()
+    {
+        (ClimateChangeTypologyService sut, Mock<IClimateChangeTypologyRepository> repo) = Build([]);
+
+        ServiceResult<ClimateChangeTypologyDto> result = await sut.CreateAsync(
+            Dto("A611-02", name: new string('x', ClimateChangeTypology.NameMaxLength + 1)));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        repo.Verify(r => r.AddAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_CodeOverTheLimit_ReturnsBadRequest()
+    {
+        (ClimateChangeTypologyService sut, _) = Build([]);
+
+        ServiceResult<ClimateChangeTypologyDto> result = await sut.CreateAsync(
+            Dto(new string('A', ClimateChangeTypology.CodeMaxLength + 1)));
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverLongName_IsARowError_AndTheOtherRowsStillImport()
+    {
+        // The shape of the real failure: one bad row among good ones. It must be named and skipped,
+        // not take the whole file down with it.
+        List<ClimateChangeTypology> seed = [];
+        (ClimateChangeTypologyService sut, _) = Build(seed);
+        string csv = string.Join("\r\n",
+            "code,name,category,description,is_active",
+            "A111-01,Regulate commodity shifting,Adaptation,,TRUE",
+            $"A611-02,{new string('x', ClimateChangeTypology.NameMaxLength + 1)},Adaptation,,TRUE",
+            "M111-01,Energy efficiency,Mitigation,,TRUE");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3:") && e.Contains("at most 500"));
+        Assert.Equal(["A111-01", "M111-01"], seed.Select(t => t.Code));
+    }
+
     [Fact]
     public async Task CreateAsync_WithUnknownCategory_ReturnsBadRequest()
     {
