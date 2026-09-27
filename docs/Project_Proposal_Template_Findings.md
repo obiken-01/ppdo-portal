@@ -143,7 +143,8 @@ One row per AIP activity, with Gender Issues typed in per row.
 ### H. Estimated Cost / Budgetary Requirements, Annex H-1 (A)
 
 **Column order corrected by hand:** the printed "MOOE | PS | CO" is re-labelled to
-**PS | MOOE | CO** (DBM standard order, same as AIP/WFP).
+**PS | MOOE | CO** (DBM standard order, same as AIP/WFP). **Settled 2026-09-27**, even though
+current submissions still use the template order (Q18).
 
 **Row structure** (from the page-3 notes and the separate sketch; see §8.2 for how the samples
 actually fill H, with written computations that `AipProcurementItem` can generate):
@@ -346,9 +347,9 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 17. **Zero-cost rows (new):** G and H list steps with no budget ("Preparation of Travel Order",
     "Reporting", "Liquidation"). These are unlikely to be AIP activities. Allow extra
     proposal-only work-plan rows that print in G and in H with blank amounts?
-18. **H column order (new):** all three samples print **MOOE | PS | CO**, the order the
-    template ships with. The pen note changes it to **PS | MOOE | CO**. Confirm the switch is
-    intended (it matches AIP/Annex B), since it differs from what offices submit today.
+18. ~~H column order~~ **Settled 2026-09-27: PS | MOOE | CO.** The switch from the template's
+    MOOE | PS | CO (which all three samples still use) is intended; it matches the AIP and
+    Annex B.
 19. **Rich text (new):** C and J use bullet and numbered lists; the PAMB rationale embeds a
     table; D cells hold bullet lists. Is bold/italic + lists enough for v1, or must tables
     inside narrative sections be supported?
