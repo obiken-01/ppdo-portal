@@ -1,6 +1,8 @@
 # PGOM Investment Proposal — Template Findings
 
-> **Status:** Exploration / template study. Not yet specced or scheduled to a release.
+> **Status:** Findings — complete. Promoted to
+> [Investment_Proposal_Requirements.md](Investment_Proposal_Requirements.md) (draft, v1.9.0 proposed),
+> which is authoritative from here on.
 > **Date:** 2026-09-27
 > **Samples reviewed 2026-09-27:** three filled FY2027 proposals, see §8.
 > **Source:** 5-page printed template "PGOM PROJECT PROPOSAL" (Provincial Government of
@@ -490,7 +492,8 @@ probably 15,000 and mistyped. Either way, a generated document cannot disagree w
 ## 9. Suggested next steps
 
 1. ~~Review the sample `.docx` files~~ Done, see §8.
-2. ~~Answer §7~~ Done. Next: write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
+2. ~~Answer §7~~ Done. ~~Write the spec~~ Drafted as
+   [Investment_Proposal_Requirements.md](Investment_Proposal_Requirements.md). Original note: write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
    non-goals, acceptance list).
 3. Likely ticket split: **(a)** entity + migration + CRUD for the proposal record,
    **(b)** auto-fill service (AIP + `AipExpenditure` reader + HGDG attribution), **(c)** Word export,
