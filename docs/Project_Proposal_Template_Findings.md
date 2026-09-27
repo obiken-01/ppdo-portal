@@ -331,9 +331,9 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 | Risk | Detail |
 |---|---|
-| **Built on v1.8.0** | Every "A" field reads the redesigned AIP, so this feature goes on `release/1.8.0` (or a later 1.8.x). Pre-v1.8 AIPs (FY2027) have no `AipExpenditure` lines, so H-1 falls back to activity totals (Q14) |
-| Activities without expenditure lines | Annex H-1 degrades to one row per activity. Consider a warning in the UI ("3 activities have no expenditure detail") before export |
-| Snapshot vs live | If the AIP is edited after the proposal is drafted, do auto fields refresh? Recommend **live on export while Draft, snapshot on Finalize**, matching the AIP/WFP Draft→Final pattern |
+| **Built on v1.8.0** | Every "A" field reads the redesigned AIP, so this feature goes on `release/1.8.0` (or a later 1.8.x). **FY2028+ only** (Q14): FY2027 projects cannot have a proposal |
+| Activities without expenditure lines | Annex H-1 prints the activity's own totals as one row, with a pre-export warning (Q5) |
+| Snapshot vs live | **Settled (Q15):** AIP-sourced values are read live on every export while Draft and **snapshotted on Finalize**, matching the AIP/WFP Draft→Final pattern |
 | Scope / roles | Office-scoped like WFP: an office user sees only their office's proposals. SuperAdmin/Admin see all. Needs the per-role table in the spec |
 | New tables | ~8–10 child tables (beneficiaries, benefits, logframe, work plan, team, trainings, M&E, risks). Snake_case per `NAMING_CONVENTIONS.md`. ⚠️ Migration needs a manual prod run |
 
@@ -350,8 +350,9 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
    or computed from a checklist? *Samples: checklist, score and attributed GAD budget are
    **blank in all three**, and KAPISAN (a GAD-funded project) drops the rows entirely. Proposed:
    optional fields, blank by default.*
-5. **Annex H-1**: confirmed from `AipExpenditure`. Remaining question: for an activity with no
-   expenditure lines, print one row with the activity totals, or block export until detailed?
+5. ~~Annex H-1 empty activities~~ **Settled 2026-09-27:** an AIP activity with no expenditure
+   lines prints **one row with its own PS/MOOE/CO totals**, and the portal shows a **warning
+   before export** ("2 activities have no expenditure detail"). Export is not blocked.
 6. **Logframe / Work plan**: OK as "auto-prefill, then editable"? Impact/Outcome/Gender
    Issues have no data source.
 7. ~~Guidance text in the export~~ **Answered by the samples: no.** None of the three prints it.
@@ -367,10 +368,11 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 13. Signatories: is the LCE name a config value? Prepared-by = logged-in user? *Samples: the
     labels differ in every file (see §8.4). Proposed: three slots with editable label, name and
     position.*
-14. **Which fiscal year** will the office first prepare these for? FY2028 (v1.8 format) gets
-    the full H-1; FY2027 would only get activity totals.
-15. Workflow: is there a review/approval step (e.g. PPDO/GAD Focal Point checks it) before
-    export, or just Draft → Final?
+14. ~~First fiscal year~~ **Settled 2026-09-27: FY2028 onward only.** Proposals can be created
+    only for projects in a v1.8-format AIP. FY2027 (old format) is out of scope.
+15. ~~Workflow~~ **Settled 2026-09-27: Draft → Final.** Editable while Draft, exportable at any
+    time; Finalize locks the proposal and snapshots the AIP-sourced values. No in-portal
+    review/return flow (review stays on paper).
 16. ~~Component grouping~~ **Settled 2026-09-27: option (b).** Each row in G and H is an **AIP
     Activity**; the sub-headers (e.g. "Capability Building of Women and Planning Activities") are
     **free-text component groups that exist only in the proposal**. See §2-G for the rules.
@@ -379,9 +381,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 18. ~~H column order~~ **Settled 2026-09-27: PS | MOOE | CO.** The switch from the template's
     MOOE | PS | CO (which all three samples still use) is intended; it matches the AIP and
     Annex B.
-19. **Rich text (new):** C and J use bullet and numbered lists; the PAMB rationale embeds a
-    table; D cells hold bullet lists. Is bold/italic + lists enough for v1, or must tables
-    inside narrative sections be supported?
+19. ~~Rich text~~ **Settled 2026-09-27: bold, italic, bulleted and numbered lists.** No tables
+    inside narrative sections in v1 (the PAMB rationale's table would be written as a list).
 
 ---
 
