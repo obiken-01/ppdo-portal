@@ -339,35 +339,46 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 ---
 
-## 7. Open questions
+## 7. Questions and decisions
+
+> As of 2026-09-27 every question is settled or carries a stated assumption (8, 9, 12). The
+> one item still to check is the HGDG checklist list and % scale against the PCW manual (Q4).
 
 1. ~~Title~~ **Settled 2026-09-27: "PGOM Investment Proposal"**, with Program Title above
    Project Title in Section A, both auto.
 2. ~~Unit of a proposal~~ **Settled 2026-09-27: one proposal per AIP Project** (level 3).
    "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
 3. ~~Project Type~~ **Deferred 2026-09-27: printed blank for now.** Out of scope for v1.
-4. **HGDG**: confirm the checklist list and the score → % attribution scale in §4. Typed score
-   or computed from a checklist? *Samples: checklist, score and attributed GAD budget are
-   **blank in all three**, and KAPISAN (a GAD-funded project) drops the rows entirely. Proposed:
-   optional fields, blank by default.*
+4. ~~HGDG~~ **Settled 2026-09-27: optional, with an auto-computed GAD budget.** Checklist Used is
+   a picklist and HGDG Score a typed number (0–20), both optional. When a score is entered,
+   Attributed GAD Budget = Project Cost × the PCW attribution % in §4 (0/25/50/75/100) and is
+   not typed. With no score, all three print blank (as in every sample). The checklist list and
+   the % scale still need confirming against the PCW HGDG manual before the spec is final.
 5. ~~Annex H-1 empty activities~~ **Settled 2026-09-27:** an AIP activity with no expenditure
    lines prints **one row with its own PS/MOOE/CO totals**, and the portal shows a **warning
    before export** ("2 activities have no expenditure detail"). Export is not blocked.
-6. **Logframe / Work plan**: OK as "auto-prefill, then editable"? Impact/Outcome/Gender
-   Issues have no data source.
+6. ~~Logframe prefill~~ **Settled 2026-09-27:** pre-fill **General Goals/Objectives** from
+   `AipProject.Objective` and the **Input/Activities** row with the project's activity names.
+   Impact, Outcome, Output and every Performance Target / Means of Verification cell are typed.
+   Everything stays editable. (Work plan G: activity, Timeline and OPR auto for AIP rows; the
+   rest typed.)
 7. ~~Guidance text in the export~~ **Answered by the samples: no.** None of the three prints it.
-8. **Maps/geotagged photos** in Section B: do we need image upload in v1?
-9. Rationale: one free-text box, or structured SDG / PDP-chapter pickers?
-10. Section D "Project Cost" column: negative effects as text (per the template note), not
-    pesos. Correct?
-11. Section A beneficiaries vs Section F beneficiaries: same data, or entered separately?
-    *Samples: identical rows in two of three (Dev Plan, KAPISAN). Proposed: F's Direct rows
-    default to a copy of A's table, editable.*
-12. Section M Climate Typology: auto from AIP `CcTypologyCode`? *Samples: blank or "N/A" in
-    all three. Proposed: auto, and print "N/A" when the AIP has no code.*
-13. Signatories: is the LCE name a config value? Prepared-by = logged-in user? *Samples: the
-    labels differ in every file (see §8.4). Proposed: three slots with editable label, name and
-    position.*
+8. **Assumed (2026-09-27): no image upload in v1.** No sample includes a map or photo. Revisit
+   if an office asks for one.
+9. **Assumed (2026-09-27): one rich-text box for Rationale.** No structured SDG / PDP-chapter
+   pickers in v1; the samples write alignment as prose.
+10. ~~Section D "Project Cost"~~ **Answered by the samples: negative effects, as text.** Label the
+    UI column "Project Cost (negative effects)" so encoders don't type amounts.
+11. ~~Beneficiary tables~~ **Settled 2026-09-27:** Section A's table is entered once; F's
+    **Direct** rows start as a copy of it and can then be edited independently. F's **Indirect**
+    rows are entered separately. Totals (M + F) are computed; a TOTAL row is computed too.
+12. **Assumed (2026-09-27): Section M is auto** from the project's AIP `CcTypologyCode` values
+    (distinct, comma-separated), printing "N/A" when there are none. Matches the samples, which
+    are blank or "N/A".
+13. ~~Signatories~~ **Settled 2026-09-27: three editable slots**, each with label, name and
+    position. Defaults: *Prepared by* = logged-in user (name + position from their profile);
+    *Submitted by* = the PPDC; *Noted by* = Local Chief Executive, with the LCE name from a
+    **config value** rather than retyped per proposal.
 14. ~~First fiscal year~~ **Settled 2026-09-27: FY2028 onward only.** Proposals can be created
     only for projects in a v1.8-format AIP. FY2027 (old format) is out of scope.
 15. ~~Workflow~~ **Settled 2026-09-27: Draft → Final.** Editable while Draft, exportable at any
@@ -479,7 +490,7 @@ probably 15,000 and mistyped. Either way, a generated document cannot disagree w
 ## 9. Suggested next steps
 
 1. ~~Review the sample `.docx` files~~ Done, see §8.
-2. Answer §7 (especially 16–18), then write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
+2. ~~Answer §7~~ Done. Next: write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
    non-goals, acceptance list).
 3. Likely ticket split: **(a)** entity + migration + CRUD for the proposal record,
    **(b)** auto-fill service (AIP + `AipExpenditure` reader + HGDG attribution), **(c)** Word export,
