@@ -53,7 +53,8 @@ The WFP is **not** needed as a source anywhere.
 
 | Field | Mark | Proposed source | Notes |
 |---|---|---|---|
-| **Project Title** (pen note wrote "Program Title") | A | `AipProject.Name`, with the parent `AipProgram.Name` available as a Program Title line above it | Arrow from "**Pull down / Office**": the user picks the office, then the project (grouped under its program) from a dropdown, and the title fills in. Whether the printed label reads "Program Title", "Project Title" or both is Q1 |
+| **Program Title** (new row, added by pen note) | A | parent `AipProgram.Name` | Settled 2026-09-27: printed **above** Project Title so the reader sees which program the project belongs to. Not in the printed template, so the export adds this row |
+| **Project Title** | A | `AipProject.Name` | Arrow from "**Pull down / Office**": the user picks the office, then the project (grouped under its program) from a dropdown, and both title rows fill in |
 | Project Proponent | A | `AipOffice.Name` / `Office.OfficeName` | The office picked in the dropdown |
 | Project Type | A | Unclear. Candidates: `AipOffice.Sector` (General/Social/Economic/Others), `AipActivity.EsreCode` (SS/ES/ID/EN), or "Program / Project / Activity" | **Q3** |
 | Project Location | Input? | Not in AIP | Free text, e.g. municipality/barangay list. Could become a municipality multi-select later |
@@ -305,8 +306,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 ## 7. Open questions (to answer with the samples)
 
-1. **Title and label**: "PGOM Investment Project Proposal"? And should the first row read
-   "Project Title", "Program Title", or show both (program above project)?
+1. **Title**: "PGOM Investment Project Proposal"? (The title rows are settled: Program Title
+   above Project Title, both auto.)
 2. ~~Unit of a proposal~~ **Settled 2026-09-27: one proposal per AIP Project** (level 3).
    "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
 3. **Project Type**: what values? Sector (Social/Economic/…), ESRE code, or something else?
