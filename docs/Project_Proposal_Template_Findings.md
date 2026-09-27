@@ -14,7 +14,7 @@
 
 ## 1. What the document is
 
-A **GAD-oriented project proposal** that the province requires per program/project. Its
+A **GAD-oriented project proposal** that the province requires **per AIP Project** (settled 2026-09-27). Its
 structure follows the PCW **Harmonized Gender and Development Guidelines (HGDG)** project
 design format — beneficiaries sex-disaggregated, gender issues in the rationale, work plan,
 implementing team, M&E and risks — plus a DBM-style cost section (PS / MOOE / CO) and the
@@ -53,14 +53,14 @@ The WFP is **not** needed as a source anywhere.
 
 | Field | Mark | Proposed source | Notes |
 |---|---|---|---|
-| **Program Title** (renamed from "Project Title") | A | `AipProgram.Name` or `AipProject.Name` (Q2; v1.8 evidence points to Project, see §2-B) | Arrow from "**Pull down / Office**": the user picks the office, then the program from a dropdown, and the title fills in |
+| **Project Title** (pen note wrote "Program Title") | A | `AipProject.Name`, with the parent `AipProgram.Name` available as a Program Title line above it | Arrow from "**Pull down / Office**": the user picks the office, then the project (grouped under its program) from a dropdown, and the title fills in. Whether the printed label reads "Program Title", "Project Title" or both is Q1 |
 | Project Proponent | A | `AipOffice.Name` / `Office.OfficeName` | The office picked in the dropdown |
 | Project Type | A | Unclear. Candidates: `AipOffice.Sector` (General/Social/Economic/Others), `AipActivity.EsreCode` (SS/ES/ID/EN), or "Program / Project / Activity" | **Q3** |
 | Project Location | Input? | Not in AIP | Free text, e.g. municipality/barangay list. Could become a municipality multi-select later |
-| Implementation Schedule: Start / End | A | `AipActivity.StartDate` / `EndDate` (earliest start, latest end across the program's activities) | AIP stores **month names as strings** ("January"), not dates. Output would be "January 2027 – December 2027" (fiscal year appended) |
-| Project Cost | A | Σ `AipActivity.Total` under the program/project | v1.8.0 stores AIP amounts in **pesos** (`MigrateAipAmountsToPesos`), so there is no ×1000. Should equal the Annex H-1 grand total |
+| Implementation Schedule: Start / End | A | `AipActivity.StartDate` / `EndDate` (earliest start, latest end across the project's activities) | AIP stores **month names as strings** ("January"), not dates. Output would be "January 2027 – December 2027" (fiscal year appended) |
+| Project Cost | A | Σ `AipActivity.Total` under the project | v1.8.0 stores AIP amounts in **pesos** (`MigrateAipAmountsToPesos`), so there is no ×1000. Should equal the Annex H-1 grand total |
 | Attributed GAD Budget | A | **Computed** = Project Cost × HGDG attribution % (see §4) | Only possible once the HGDG score is known |
-| Funding Source | A | `AipActivity.FundingSourceSnapshot` → `FundingSource.Name` | A program can mix funds (e.g. "GF/20% DF"), so show the distinct list |
+| Funding Source | A | `AipActivity.FundingSourceSnapshot` → `FundingSource.Name` | A project can mix funds (e.g. "GF/20% DF"), so show the distinct list |
 | HGDG Checklist Used | \* | Picklist of HGDG checklists | §4 |
 | HGDG Score | (none) | Input (0–20) | Drives Attributed GAD Budget |
 
@@ -76,8 +76,8 @@ report.** So:
 
 - Section B **prefills from `AipProject.Description`** (editable in the proposal).
 - Section E *General Goals/Objectives* **prefills from `AipProject.Objective`**.
-- Both fields live on the **Project** (level 3), which is strong evidence that one proposal =
-  one AIP Project (Q2).
+- Both fields live on the **Project** (level 3), consistent with the settled rule that one
+  proposal = one AIP Project.
 
 Rich text, guideline says 3–5 sentences. "Maps can be used (geotagged)", so the section
 needs **an optional image attachment**. This is a storage decision (Q8).
@@ -113,7 +113,7 @@ What the portal can actually fill:
 
 | Row | Available data |
 |---|---|
-| Input/Activities | AIP activity names under the program ✅ |
+| Input/Activities | AIP activity names under the project ✅ |
 | Output | `AipActivity.ExpectedOutputs` ✅ |
 | Performance Target / Indicator | **Not stored in the AIP**, so Input (legacy WFP lines have `SuccessIndicator`, but pulling from WFP is not worth the coupling) |
 | Means of Verification | **Not stored in the AIP**, so Input |
@@ -131,7 +131,7 @@ whether one can feed the other (Q11).
 
 | Column | Source |
 |---|---|
-| Inputs/Activities/Project Components | AIP activities under the program ✅ |
+| Inputs/Activities/Project Components | AIP activities under the project ✅ |
 | Performance Target and/or Indicator | Input (could copy from the matching logframe row) |
 | Gender Issues to be addressed | **Not stored**, so Input |
 | Timeline/Duration | `AipActivity.StartDate`–`EndDate` ✅ |
@@ -213,7 +213,7 @@ Each phase has repeating rows *M&E Activity / Schedule-Frequency / Monitoring To
 ### M. Climate Change Expenditure Typology (unmarked, but data exists)
 
 `AipActivity.CcTypologyCode` (+ `CcAdaptation` / `CcMitigation` amounts) is already
-stored, so this can be **auto** (distinct codes across the program's activities).
+stored, so this can be **auto** (distinct codes across the project's activities).
 Suggest marking it A (Q12).
 
 ### Signatories
@@ -305,11 +305,10 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 ## 7. Open questions (to answer with the samples)
 
-1. **Title**: "PGOM Investment Project Proposal"? Or "Investment *Program* Proposal"?
-2. **Unit of a proposal**: one per AIP **Program** (the title was changed to "Program
-   Title") or per **Project** (level 3)? v1.8.0 puts `Description`/`Objective` on the Project,
-   which points to Project. This decides what "Activity 1, 2…" in the work plan and Annex H-1
-   means.
+1. **Title and label**: "PGOM Investment Project Proposal"? And should the first row read
+   "Project Title", "Program Title", or show both (program above project)?
+2. ~~Unit of a proposal~~ **Settled 2026-09-27: one proposal per AIP Project** (level 3).
+   "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
 3. **Project Type**: what values? Sector (Social/Economic/…), ESRE code, or something else?
 4. **HGDG**: confirm the checklist list and the score → % attribution scale in §4. Typed score
    or computed from a checklist?
