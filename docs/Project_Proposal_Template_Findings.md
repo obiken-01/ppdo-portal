@@ -2,6 +2,7 @@
 
 > **Status:** Exploration / template study. Not yet specced or scheduled to a release.
 > **Date:** 2026-09-27
+> **Samples reviewed 2026-09-27:** three filled FY2027 proposals, see §8.
 > **Source:** 5-page printed template "PGOM PROJECT PROPOSAL" (Provincial Government of
 > Occidental Mindoro letterhead) with pen annotations, plus one hand-drawn sketch of the
 > Section H layout. Sample filled-in proposals are to follow.
@@ -144,7 +145,8 @@ One row per AIP activity, with Gender Issues typed in per row.
 **Column order corrected by hand:** the printed "MOOE | PS | CO" is re-labelled to
 **PS | MOOE | CO** (DBM standard order, same as AIP/WFP).
 
-**Row structure** (from the page-3 notes and the separate sketch):
+**Row structure** (from the page-3 notes and the separate sketch; see §8.2 for how the samples
+actually fill H, with written computations that `AipProcurementItem` can generate):
 
 ```
 Activity 1                                   PS     MOOE    CO     Total   Source of Fund
@@ -283,7 +285,7 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
   instructions for the writer. In the portal they belong as **helper text under each input**,
   and the exported `.docx` should contain only headings, tables and the user's content.
   (Confirm against the samples, Q7.)
-- **Page size:** the printout looks like **A4 portrait**. Confirm against a sample `.docx`.
+- **Page setup:** A4 portrait, Verdana 10 pt, 1.78 cm margins. Confirmed from the samples (§8.1).
 - **Money formatting:** pesos with thousands separators, 2 decimals. On v1.8.0 all AIP
   amounts are already pesos, so **no ×1000 anywhere** in this feature.
 - Endpoint shape would mirror the existing report exports (`ReportFunctions.cs`), e.g.
@@ -303,7 +305,7 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 ---
 
-## 7. Open questions (to answer with the samples)
+## 7. Open questions
 
 1. ~~Title~~ **Settled 2026-09-27: "PGOM Investment Proposal"**, with Program Title above
    Project Title in Section A, both auto.
@@ -311,31 +313,142 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
    "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
 3. ~~Project Type~~ **Deferred 2026-09-27: printed blank for now.** Out of scope for v1.
 4. **HGDG**: confirm the checklist list and the score → % attribution scale in §4. Typed score
-   or computed from a checklist?
+   or computed from a checklist? *Samples: checklist, score and attributed GAD budget are
+   **blank in all three**, and KAPISAN (a GAD-funded project) drops the rows entirely. Proposed:
+   optional fields, blank by default.*
 5. **Annex H-1**: confirmed from `AipExpenditure`. Remaining question: for an activity with no
    expenditure lines, print one row with the activity totals, or block export until detailed?
 6. **Logframe / Work plan**: OK as "auto-prefill, then editable"? Impact/Outcome/Gender
    Issues have no data source.
-7. Should the italic guidance text appear in the exported Word file? (Assumption: no.)
+7. ~~Guidance text in the export~~ **Answered by the samples: no.** None of the three prints it.
 8. **Maps/geotagged photos** in Section B: do we need image upload in v1?
 9. Rationale: one free-text box, or structured SDG / PDP-chapter pickers?
 10. Section D "Project Cost" column: negative effects as text (per the template note), not
     pesos. Correct?
 11. Section A beneficiaries vs Section F beneficiaries: same data, or entered separately?
-12. Section M Climate Typology: auto from AIP `CcTypologyCode`?
-13. Signatories: is the LCE name a config value? Prepared-by = logged-in user?
+    *Samples: identical rows in two of three (Dev Plan, KAPISAN). Proposed: F's Direct rows
+    default to a copy of A's table, editable.*
+12. Section M Climate Typology: auto from AIP `CcTypologyCode`? *Samples: blank or "N/A" in
+    all three. Proposed: auto, and print "N/A" when the AIP has no code.*
+13. Signatories: is the LCE name a config value? Prepared-by = logged-in user? *Samples: the
+    labels differ in every file (see §8.4). Proposed: three slots with editable label, name and
+    position.*
 14. **Which fiscal year** will the office first prepare these for? FY2028 (v1.8 format) gets
     the full H-1; FY2027 would only get activity totals.
 15. Workflow: is there a review/approval step (e.g. PPDO/GAD Focal Point checks it) before
     export, or just Draft → Final?
+16. **Component grouping (new, from samples):** two samples group activities under sub-headers
+    in G and H (e.g. "Capability Building of Women and Planning Activities" → "Reorientation and
+    Planning Activities", "Strategic Planning activity"). The AIP has only Project → Activity.
+    What are the sub-headers in AIP terms? Options: (a) each sub-header is an AIP Activity and
+    the rows under it are its expenditure lines; (b) each row is an AIP Activity and the
+    sub-headers are a free-text grouping added in the proposal; (c) no grouping in v1.
+17. **Zero-cost rows (new):** G and H list steps with no budget ("Preparation of Travel Order",
+    "Reporting", "Liquidation"). These are unlikely to be AIP activities. Allow extra
+    proposal-only work-plan rows that print in G and in H with blank amounts?
+18. **H column order (new):** all three samples print **MOOE | PS | CO**, the order the
+    template ships with. The pen note changes it to **PS | MOOE | CO**. Confirm the switch is
+    intended (it matches AIP/Annex B), since it differs from what offices submit today.
+19. **Rich text (new):** C and J use bullet and numbered lists; the PAMB rationale embeds a
+    table; D cells hold bullet lists. Is bold/italic + lists enough for v1, or must tables
+    inside narrative sections be supported?
 
 ---
 
-## 8. Suggested next steps
+## 8. What the samples show
 
-1. Review the sample `.docx` files. Confirm page setup, fonts, what gets printed, and how real
-   proposals fill Annex H-1 and the logframe.
-2. Answer §7, then write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
+Reviewed 2026-09-27: three FY2027 proposals, all from PPDO.
+
+| # | File | Project | Cost (A) | Fund |
+|---|---|---|---|---|
+| 1 | `1. Formulation and Updating of Development Plan Proposal 2027` | Formulation/Updating of Development Plans… | 539,200.00 | General Fund |
+| 5 | `5. 2027 Proposal - KAPISAN BAKAJUANAN` | bakaJUANAn Project (Year 4) | 1,871,778.00 | GAD Fund |
+| 10 | `10. PAMB Proposal 2027 OK` | PAMB Representations | 118,000.00 (H says 132,000.00) | General Fund |
+
+### 8.1 Confirmed
+
+- **Page and type:** A4 portrait, all margins 1009 twips (≈1.78 cm), header 709, footer 289.
+  **Verdana** throughout, body **10 pt** (headings 14–16 pt, table notes 8–9 pt).
+- **Letterhead** lives in the page **header** (seal + Bagong Pilipinas logo images, and the four
+  lines "Republic of the Philippines / MIMAROPA Region / Province of Occidental Mindoro /
+  PROVINCIAL GOVERNMENT OF OCCIDENTAL MINDORO"). **Footer** is "Page {PAGE} of {NUMPAGES}"
+  fields. A template `.docx` carrying this header and footer is the right approach (§5).
+  ⚠️ The seal image is a **2.1 MB PNG**; compress it before embedding in the template (the same
+  lesson as the 17 MB Bagong Pilipinas logo in v1.0.1).
+- **No guidance text is printed.** Only headings, tables and the user's content (Q7).
+- **Section A** fields match the template. Values: schedule is "January 2027 / December 2027"
+  (month + year); Funding Source is the fund **name** ("General Fund", "GAD Fund"); Proponent
+  varies ("Provincial Planning and Development Office", "PPDO", "Planning Division-PPDO").
+- **Logframe (E):** every row is narrative, including Impact and Outcome. Nothing a system could
+  compute. Confirms E is Input, with at most the Input/Activities row prefilled (Q6).
+- **Section B** is 1–2 paragraphs; **C** runs 4–12 paragraphs. No maps or photos in any
+  sample (Q8 can wait).
+- **Section D:** "Project Cost" is filled with **negative effects as text** in the two samples
+  that fill it (Q10 answered: yes, text).
+- **Implementing Team:** Overall Project Supervisor is the PPDC in all three; Project Manager is
+  a Planning Officer IV. Member rows: name, sex (M/F), trainings, expertise.
+- **M&E (K):** the three fixed phases hold. KAPISAN uses a Phase column instead of phase
+  header rows; the export should pick one layout (template: header rows).
+
+### 8.2 Annex H-1 in practice (the important part)
+
+The samples do **not** list account codes. Each activity's MOOE cell holds a **written
+computation**:
+
+```
+Mangrove Restoration
+  Breakfast        295.00 x 30 pax x 2 days  = 17,700.00
+  Snacks AM        155.00 x 50 pax x 2 days  = 15,500.00
+  Accommodation  2,072.00 x 14 rooms x 2 days = 58,016.00
+  Fuel              75.00 x 66 liters         =  4,950.00
+  Planting Stocks and Other Materials           25,000.00
+                                        Total  183,946.00
+```
+
+This is exactly the shape of v1.8.0 **`AipProcurementItem`** (`Name`, `UnitPrice`, `Qty`,
+`Unit`, `NumberOfDays`, `LineTotal`) under each `AipExpenditure`. So the export can generate
+these lines instead of the user typing them:
+
+- Line: `{Name}  {UnitPrice} x {Qty} {Unit} [x {NumberOfDays} days] = {LineTotal}`
+- Group by expenditure line (account), with the account title as the group heading. This
+  combines the pen sketch (account codes) with what offices already write (computations).
+- A line typed as a single amount (no procurement items) prints as `{AccountTitle}  {amount}`.
+- CO items appear the same way in the CO column ("Procurement of Drone 200,000.00").
+
+### 8.3 Arithmetic errors in the samples
+
+Hand-typed computations have real mistakes. This is the strongest argument for generating H
+from AIP data:
+
+| Sample | What's written | Correct |
+|---|---|---|
+| PAMB | Section A Project Cost **118,000.00**; H total **132,000.00** | A and H must agree; H's own math (2,200 × 3 × 5 × 4) is 132,000 |
+| Dev Plan | Venue 15,000 × 5 days = **55,000.00** | 75,000.00 (the 280,000 activity total and the 539,200 project cost carry the error) |
+| KAPISAN | Venue 15,500 × 3 days = **45,000.00** (twice) | 46,500.00 |
+| KAPISAN | Venue 15,500 × 2 days = **30,000.00** (three times) | 31,000.00 |
+| Dev Plan | Total typed as "259.200.00" | 259,200.00 |
+
+The KAPISAN totals are internally consistent (H sums to 1,871,778 = A), so the unit price was
+probably 15,000 and mistyped. Either way, a generated document cannot disagree with itself.
+
+### 8.4 Variations to decide on
+
+| Area | Variation | Proposal |
+|---|---|---|
+| Title | All three still say "PGOM PROJECT PROPOSAL" (one omits it) | Use the settled "PGOM INVESTMENT PROPOSAL" |
+| Section A | KAPISAN relabels "Project Cost" to "Cost of Program" and drops the HGDG and GAD rows | Fixed labels; HGDG/GAD rows always printed, blank allowed |
+| Money | "539,200.00" vs "PhP 118,000.00" | One format: `#,##0.00`, "PhP" only on the Section A cost |
+| Signatories | (1) Prepared / Noted / Approved (LCE); (5) Prepared / Submitted / Noted (LCE); (10) Prepared / Reviewed and Submitted / Approved (Governor) | 3 slots, each with editable label, name and position. Defaults: Prepared by = logged-in user, Submitted by = PPDC, Noted by = Local Chief Executive |
+| Beneficiary tables | Some rows are labels only (no numbers), others have a TOTAL row | Allow rows with blank counts; compute the TOTAL row |
+| Capacity training (I) | KAPISAN gives one training to all members (merged cell) | Store per member; the export may merge identical consecutive cells |
+| Source of Fund in H | Blank in most rows | Auto from the line's fund, so never blank |
+
+---
+
+## 9. Suggested next steps
+
+1. ~~Review the sample `.docx` files~~ Done, see §8.
+2. Answer §7 (especially 16–18), then write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
    non-goals, acceptance list).
 3. Likely ticket split: **(a)** entity + migration + CRUD for the proposal record,
    **(b)** auto-fill service (AIP + `AipExpenditure` reader + HGDG attribution), **(c)** Word export,
