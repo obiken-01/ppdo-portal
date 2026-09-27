@@ -1,4 +1,4 @@
-# PGOM (Investment) Project Proposal — Template Findings
+# PGOM Investment Proposal — Template Findings
 
 > **Status:** Exploration / template study. Not yet specced or scheduled to a release.
 > **Date:** 2026-09-27
@@ -36,10 +36,9 @@ annotations draw that line.
 
 ### Title change
 
-"**Investment**" is written above "PROJECT" in the title, so the export title is probably
-**"PGOM INVESTMENT PROJECT PROPOSAL"**. This ties the document to the **AIP** (Annual
-*Investment* Program), which is where most auto fields come from. → *Confirm the exact
-title (Q1).*
+**Settled 2026-09-27:** the export title is **"PGOM INVESTMENT PROPOSAL"**. The pen note
+replaces "PROJECT" with "Investment". This ties the document to the **AIP** (Annual
+*Investment* Program), which is where most auto fields come from.
 
 ---
 
@@ -306,8 +305,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 ## 7. Open questions (to answer with the samples)
 
-1. **Title**: "PGOM Investment Project Proposal"? (The title rows are settled: Program Title
-   above Project Title, both auto.)
+1. ~~Title~~ **Settled 2026-09-27: "PGOM Investment Proposal"**, with Program Title above
+   Project Title in Section A, both auto.
 2. ~~Unit of a proposal~~ **Settled 2026-09-27: one proposal per AIP Project** (level 3).
    "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
 3. **Project Type**: what values? Sector (Social/Economic/…), ESRE code, or something else?
