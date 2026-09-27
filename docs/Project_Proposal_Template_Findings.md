@@ -140,6 +140,22 @@ whether one can feed the other (Q11).
 
 One row per AIP activity, with Gender Issues typed in per row.
 
+**Component groups (settled 2026-09-27, Q16 option b).** The samples put activities under
+sub-headers. These are **not** in the AIP; they are stored on the proposal:
+
+- The user may create **component groups** (a free-text label and a sort order) and assign each
+  of the project's AIP activities to at most one group. Order of activities within a group is
+  also set in the proposal.
+- The **same grouping drives both G and H-1**, so the two sections always list the same rows in
+  the same order.
+- Groups are optional. With no groups, rows print flat in AIP ref-code order. Activities left
+  unassigned when groups exist print after the grouped ones, under no header.
+- A group with no activities is not printed.
+- Group headers carry **no amounts in G**. In H-1 they print as a header row; whether they also
+  get a group sub-total is a small layout choice for the spec (samples show none).
+- If an AIP activity is added to the project after the proposal was drafted, it appears
+  unassigned; if one is removed, its group assignment is dropped with it.
+
 ### H. Estimated Cost / Budgetary Requirements, Annex H-1 (A)
 
 **Column order corrected by hand:** the printed "MOOE | PS | CO" is re-labelled to
@@ -172,6 +188,7 @@ exactly what the sketch needs:
 
 | Sketch element | `AipExpenditure` / related column |
 |---|---|
+| Component group header (optional) | proposal-only group label (Q16, see §2-G) |
 | Activity header row | parent `AipActivity.Name` |
 | Account code + object of expenditure | `AccountNumberSnapshot` + `AccountTitleSnapshot` |
 | PS / MOOE / CO | `Ps` / `Mooe` / `Co` (pesos) |
@@ -338,12 +355,9 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
     the full H-1; FY2027 would only get activity totals.
 15. Workflow: is there a review/approval step (e.g. PPDO/GAD Focal Point checks it) before
     export, or just Draft → Final?
-16. **Component grouping (new, from samples):** two samples group activities under sub-headers
-    in G and H (e.g. "Capability Building of Women and Planning Activities" → "Reorientation and
-    Planning Activities", "Strategic Planning activity"). The AIP has only Project → Activity.
-    What are the sub-headers in AIP terms? Options: (a) each sub-header is an AIP Activity and
-    the rows under it are its expenditure lines; (b) each row is an AIP Activity and the
-    sub-headers are a free-text grouping added in the proposal; (c) no grouping in v1.
+16. ~~Component grouping~~ **Settled 2026-09-27: option (b).** Each row in G and H is an **AIP
+    Activity**; the sub-headers (e.g. "Capability Building of Women and Planning Activities") are
+    **free-text component groups that exist only in the proposal**. See §2-G for the rules.
 17. **Zero-cost rows (new):** G and H list steps with no budget ("Preparation of Travel Order",
     "Reporting", "Liquidation"). These are unlikely to be AIP activities. Allow extra
     proposal-only work-plan rows that print in G and in H with blank amounts?
