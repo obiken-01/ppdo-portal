@@ -1,8 +1,8 @@
 # v1.8.0 — Admin-configurable default fiscal year (PPDO-136)
 
-> **Status: draft for review** — 2026-09-27. Parent: PPDO-122 (Demo 2 change requests), item 2.14.
-> Written to `docs/SPEC_STANDARD.md`. Decisions 1–2 are Ralph's (Linear, 2026-09-24 and 2026-09-27);
-> decisions 3–9 are the defaults proposed in the PPDO-136 thread and accepted for this draft.
+> **Status: accepted** — 2026-09-27. Parent: PPDO-122 (Demo 2 change requests), item 2.14.
+> Written to `docs/SPEC_STANDARD.md`. Decisions 1, 2 and 6 are Ralph's (Linear 2026-09-24; session
+> 2026-09-27); decisions 3–5 and 7–9 are the defaults proposed in the PPDO-136 thread and accepted.
 
 ---
 
@@ -12,7 +12,7 @@ Investment Planning pages each decide "which fiscal year" on their own today —
 calendar year + 1, the newest AIP record, or the break year `FIRST_ENTERED_FISCAL_YEAR` — so as FY2028
 entry ramps up beside FY2027 close-out, encoders and reviewers land on different years depending on
 which page they open. This adds **one province-wide default fiscal year that a config manager sets**,
-which every Investment Planning page opens on. Users can still switch year on any page. When the
+which every Investment Planning page opens on. Only the host office (PPDO) can set it. Users can still switch year on any page. When the
 default is not set, every page behaves exactly as it does today.
 
 ---
@@ -34,9 +34,18 @@ default is not set, every page behaves exactly as it does today.
 5. **A year in the URL still wins.** `?fiscalYear=` (and WFP's `?aipId=`) are deep links from the
    kanban, review search, the returned-work banner and the WFP → Report link. The default only
    fills the gap when the URL says nothing — it never overrides an explicit link.
-6. **Gate: `CanManageConfig`**, the same gate as every other province-wide config value (Accounts,
-   ESRE codes, CC typologies, shared funding sources). No new permission flag — adding one would mean
-   a new row in `Permission_Matrix.md` and `PermissionMatrixTests` for a single-field setting.
+6. **Gate: `CanManageConfig` AND host office; SuperAdmin always.** (Ralph, 2026-09-27.) The value
+   moves every office's pages, so it is PPDO's to set — a guest-office Admin, who holds
+   `CanManageConfig` by role, must not be able to. SuperAdmin keeps it wherever their office points,
+   for support access (the same load-bearing exemption as the per-user grants,
+   `Permission_Matrix.md` §1). Resolved by a new **`PermissionService.CanManageInvestmentPlanningSettingsAsync`**
+   — composed from existing inputs, **no new column or override** — because `CLAUDE.md` forbids
+   inlining permission logic in a handler, and a method on `IPermissionService` gets a matrix row
+   and a pinning test (`Matrix_CoversEveryFlagOnThePermissionService`) for free.
+
+   ⚠️ Note the difference from `CanUploadAipAsync`, which is described as host-office-only but lets
+   **any** Admin through before the host check. This method must check the office for Admin too —
+   only SuperAdmin bypasses it.
 7. **Read path: the existing `GET /api/budget-planning/fiscal-years`.** Every in-scope page's user
    already holds `CanAccessBudgetPlanning`, which that endpoint gates on, and three of the pages
    (dashboard, Office Ceilings, Report) already resolve their year through it. Readers get the
@@ -49,9 +58,6 @@ default is not set, every page behaves exactly as it does today.
 
 ### Open follow-ups (not blocking)
 
-- **Should a guest-office Admin be able to change a province-wide value?** Under decision 6 they can,
-  exactly as they can already edit shared funding sources. If PPDO wants this host-office-only, it is
-  a one-line `&& caller is host office` on the PUT plus one test — decide before T1 merges.
 - **LDIP pages and AIP New** are not in scope (see §7). Revisit if encoders ask for them.
 - **A "Default" marker in the year pickers** (so a user can tell they have moved off it) — nice to
   have, not requested.
@@ -74,9 +80,13 @@ default is not set, every page behaves exactly as it does today.
 | Failure: malformed body | — | Body missing or `defaultFiscalYear` is not an integer or null | 400 "Request body is missing or malformed." |
 | Failure: save fails | DB unavailable | Saves | 500 `LogError` with `ex`; UI shows the error banner and keeps the typed value |
 | Role: SuperAdmin | — | Opens / saves | Allowed |
-| Role: Admin (host or guest office) | — | Opens / saves | Allowed (`CanManageConfig` auto-grants Admin — see open follow-up) |
-| Role: Staff with `CanManageConfig` | Override or division flag true | Opens / saves | Allowed |
+| Role: SuperAdmin in a guest office (or no office) | — | Opens / saves | Allowed — support exemption (decision 6) |
+| Role: Admin, host office | — | Opens / saves | Allowed |
+| Role: Admin, guest office | Holds `CanManageConfig` by role | Calls GET or PUT on the config route | **403**; no tile on `/config`; direct navigation shows the forbidden state |
+| Role: Staff, host office, with `CanManageConfig` | Override or division flag true | Opens / saves | Allowed |
+| Role: Staff, guest office, with `CanManageConfig` override | — | Calls GET or PUT | 403 — the office check applies whatever the override says |
 | Role: Staff without `CanManageConfig` | — | Calls GET or PUT on the config route | 403; the config hub shows no tile; direct navigation shows the forbidden state |
+| Role: user with no office (null `office_id`) | Not SuperAdmin | Calls GET or PUT | 403 — unassigned is not host (`OfficeScope.IsHostOfficeUser`) |
 | Unauthenticated | — | Calls either route | 401 |
 
 ### 3.2 Reading the default (every in-scope page)
@@ -115,7 +125,7 @@ default is not set, every page behaves exactly as it does today.
 
 ## 4. API contract
 
-### `GET /api/config/investment-planning/default-fiscal-year` — JWT + `PermissionService.CanManageConfigAsync`
+### `GET /api/config/investment-planning/default-fiscal-year` — JWT + `PermissionService.CanManageInvestmentPlanningSettingsAsync`
 
 - 200: `ApiResponse<DefaultFiscalYearDto>`
 
@@ -124,9 +134,9 @@ default is not set, every page behaves exactly as it does today.
     "updatedAt": "2026-10-01T00:15:00Z",  // UTC | null when never set
     "updatedByName": "Juan Dela Cruz" }   // string | null
   ```
-- 401 — no/invalid JWT. 403 — not a config manager.
+- 401 — no/invalid JWT. 403 — not a host-office config manager (and not SuperAdmin).
 
-### `PUT /api/config/investment-planning/default-fiscal-year` — JWT + `CanManageConfigAsync`
+### `PUT /api/config/investment-planning/default-fiscal-year` — JWT + `CanManageInvestmentPlanningSettingsAsync`
 
 - Request: `{ "defaultFiscalYear": 2028 }` — `null` clears it.
 - 200: `ApiResponse<DefaultFiscalYearDto>` (the saved state).
@@ -202,7 +212,7 @@ can still switch year on any page. Leave unset to let each page choose."*, a num
 | Empty (unset) | Input empty with placeholder `e.g. 2028`; line reads "Not set — each page uses its own default." No Clear link |
 | Error (load) | Inline error banner "Could not load the setting." with **Retry**; input hidden |
 | Success | Toast on save/clear (copy in §3.1); last-changed line updates: "Last changed {Manila date/time} by {name}" |
-| Read-only / forbidden | No tile on `/config` for non-config-managers (**hidden**). Direct URL → the config section's existing forbidden state |
+| Read-only / forbidden | Tile **hidden** unless the user is SuperAdmin, or a config manager whose `/auth/me` has `isHostOffice: true` (courtesy only — the server enforces). Direct URL → the config section's existing forbidden state |
 | Validation | Under the input: "Fiscal year must be between 2020 and {max}." — shown client-side before submit, and the server's 400 message rendered in the same place |
 
 **Clear default** opens `ConfirmDialog`: *"Clear the default fiscal year? Every Investment Planning
@@ -255,7 +265,7 @@ No new controls. The only visible change is which year is selected on arrival.
 
 | Ticket | Scope | Blocked by |
 |---|---|---|
-| **T1 — backend** | Entity + configuration + migration (⚠️), repository, service + validator, `ConfigInvestmentPlanningFunctions.cs` (GET/PUT), `FiscalYearsDto.DefaultFiscalYear`, `ResolveFiscalYearsAsync` change, tests (§11) | — |
+| **T1 — backend** | Entity + configuration + migration (⚠️), repository, service + validator, `CanManageInvestmentPlanningSettingsAsync` + `Permission_Matrix.md` row, `ConfigInvestmentPlanningFunctions.cs` (GET/PUT), `FiscalYearsDto.DefaultFiscalYear`, `ResolveFiscalYearsAsync` change, tests (§11) | — |
 | **T2 — config page** | `/config/investment-planning` page + config hub tile, `lib/config.ts` client functions | T1 |
 | **T3 — page readers** | `useDefaultFiscalYear()` hook; Allocation, AIP index, AIP Entry, Review, Review Search, WFP, WFP Entry per §3.3; verify dashboard / Office Ceilings / Report pick it up with no edit | T1 (T2 not required — can be tested by setting the row directly) |
 
@@ -281,6 +291,8 @@ copy. T1 is **not** a candidate: it carries an EF migration and a permission gat
 - [ ] **Clear default** asks for confirmation; after confirming, pages behave as in the first line
 - [ ] A guest-office Staff user opening Budget Planning lands on the default year and still sees only their own office's data
 - [ ] A Staff user without `CanManageConfig` sees no tile on `/config`, and opening `/config/investment-planning` directly shows the forbidden state
+- [ ] An Admin account tied to a guest office sees no tile on `/config`, and opening `/config/investment-planning` directly shows the forbidden state
+- [ ] A SuperAdmin account tied to a guest office can still open the page and save
 - [ ] Loading AIP Entry from the sidebar never shows one year and then jumps to another
 - [ ] After a save, the Recent Activity / audit log shows the change with old and new year
 
@@ -296,6 +308,10 @@ copy. T1 is **not** a candidate: it carries an EF migration and a permission gat
   newest AIP; unset falls through to newest AIP, then UTC year + 1; setting with no AIP record is
   added to `availableFiscalYears` without duplicating an existing year; `DefaultFiscalYear` echoes
   the raw setting (including null).
-- **Functions (integration)** — GET/PUT: 401 without JWT; 403 for Staff without `CanManageConfig`;
-  200 for SuperAdmin, Admin and Staff holding the flag; 400 for malformed body.
+- **`PermissionMatrixTests`** (TDD) — `CanManageInvestmentPlanningSettingsAsync`: SuperAdmin true in
+  host, guest and no office; Admin true in host, **false in guest and no office**; host Staff follows
+  `CanManageConfig` (override/division); guest Staff with override `true` is false. Add the matching
+  §2 row to `Permission_Matrix.md`.
+- **Functions (integration)** — GET/PUT: 401 without JWT; 403 for guest-office Admin and for Staff
+  without `CanManageConfig`; 200 for SuperAdmin and host-office Admin; 400 for malformed body.
 - **Frontend** — no unit harness for pages; covered by §10.
