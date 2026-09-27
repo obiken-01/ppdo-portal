@@ -107,11 +107,13 @@ push back on unless PGOM is also taking over hosting.
 ### Needed under **any** option (do these regardless)
 1. **Store refresh tokens hashed.** `Users.RefreshToken` is stored as plaintext
    (`AuthService.cs:96`). Anyone with DB read access could hijack a session. Store a SHA-256 hash
-   and look up by hash. *(Required before Option B or C; good hygiene for A.)* ⚠️ MIGRATION
-   (the column holds a hash; existing sessions are invalidated once).
+   and look up by hash. *(Required before Option B or C; good hygiene for A.)* No migration:
+   a 64-char hex hash fits the existing `nvarchar(100)`. Existing sessions are invalidated once.
+   → **PPDO-141**
 2. **Stop leaking exception text from `/api/health`.** `HealthFunctions.cs` returns `error =
    ex.Message` anonymously. That can expose server or DB names to the public. Log the exception
-   and return only `database: "unavailable"`.
+   and return only `database: "unavailable"`. The handler also uses `AppDbContext` directly,
+   which breaks the Functions → Application layering rule. → **PPDO-142**
 3. **Stable office codes.** Confirm our `Office.OfficeCode` values match the codes PGOM, iDTMS and
    IOKSI use. If they don't, add an `external_office_code` column (snake_case, per
    `NAMING_CONVENTIONS.md`). ⚠️ MIGRATION
@@ -224,4 +226,4 @@ the admin credentials (currently one developer, which is a continuity risk).
 - Record the decisions in this file (add a "Decisions" section) and update the AIP contract to
   reflect them.
 - Turn the chosen option(s) into specs (`SPEC_STANDARD.md`) and Linear tickets. §4 items 1–2
-  are small, spec-free hardening tickets and can go into the next patch whatever is decided.
+  are already ticketed (PPDO-141, PPDO-142, `techdebt`). They are small, spec-free hardening tickets and can go into the next patch whatever is decided.
