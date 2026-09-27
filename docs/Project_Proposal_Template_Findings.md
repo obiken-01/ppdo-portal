@@ -55,7 +55,7 @@ The WFP is **not** needed as a source anywhere.
 | **Program Title** (new row, added by pen note) | A | parent `AipProgram.Name` | Settled 2026-09-27: printed **above** Project Title so the reader sees which program the project belongs to. Not in the printed template, so the export adds this row |
 | **Project Title** | A | `AipProject.Name` | Arrow from "**Pull down / Office**": the user picks the office, then the project (grouped under its program) from a dropdown, and both title rows fill in |
 | Project Proponent | A | `AipOffice.Name` / `Office.OfficeName` | The office picked in the dropdown |
-| Project Type | A | Unclear. Candidates: `AipOffice.Sector` (General/Social/Economic/Others), `AipActivity.EsreCode` (SS/ES/ID/EN), or "Program / Project / Activity" | **Q3** |
+| Project Type | A (deferred) | **None for now.** Settled 2026-09-27: the row prints with a **blank value**. No field is stored and nothing is entered | Revisit later. Candidates noted for then: `AipOffice.Sector`, `AipActivity.EsreCode` |
 | Project Location | Input? | Not in AIP | Free text, e.g. municipality/barangay list. Could become a municipality multi-select later |
 | Implementation Schedule: Start / End | A | `AipActivity.StartDate` / `EndDate` (earliest start, latest end across the project's activities) | AIP stores **month names as strings** ("January"), not dates. Output would be "January 2027 – December 2027" (fiscal year appended) |
 | Project Cost | A | Σ `AipActivity.Total` under the project | v1.8.0 stores AIP amounts in **pesos** (`MigrateAipAmountsToPesos`), so there is no ×1000. Should equal the Annex H-1 grand total |
@@ -309,7 +309,7 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
    Project Title in Section A, both auto.
 2. ~~Unit of a proposal~~ **Settled 2026-09-27: one proposal per AIP Project** (level 3).
    "Activity 1, 2…" in the work plan and Annex H-1 are that project's `AipActivity` rows.
-3. **Project Type**: what values? Sector (Social/Economic/…), ESRE code, or something else?
+3. ~~Project Type~~ **Deferred 2026-09-27: printed blank for now.** Out of scope for v1.
 4. **HGDG**: confirm the checklist list and the score → % attribution scale in §4. Typed score
    or computed from a checklist?
 5. **Annex H-1**: confirmed from `AipExpenditure`. Remaining question: for an activity with no
