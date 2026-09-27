@@ -156,6 +156,22 @@ sub-headers. These are **not** in the AIP; they are stored on the proposal:
 - If an AIP activity is added to the project after the proposal was drafted, it appears
   unassigned; if one is removed, its group assignment is dropped with it.
 
+**Proposal-only rows (settled 2026-09-27, Q17).** The samples list steps with no budget
+("Preparation of Travel Order", "Reporting", "Reimbursement of claims/Liquidation of cash
+advance"). These are not AIP activities, so the proposal stores them itself:
+
+- A proposal-only row has a **name** plus the same G columns as an AIP row (Performance Target,
+  Gender Issues, Timeline, OPR), all typed in. Unlike AIP rows, its Timeline and OPR are not
+  auto-filled.
+- It **never carries money.** In H-1 it prints with PS, MOOE, CO, Total and Source of Fund
+  **blank**, so the H-1 grand total always equals Σ AIP activity totals (= Section A Project
+  Cost).
+- It sits in a component group and is ordered like any AIP row. AIP rows and proposal-only rows
+  can be mixed in the same group (the Dev Plan sample does exactly this).
+- The UI should mark the two kinds differently (e.g. an "AIP" tag vs "Proposal only"), because
+  only proposal-only rows can be renamed or deleted in the proposal. An AIP row's name and
+  amounts come from the AIP and are read-only here.
+
 ### H. Estimated Cost / Budgetary Requirements, Annex H-1 (A)
 
 **Column order corrected by hand:** the printed "MOOE | PS | CO" is re-labelled to
@@ -358,9 +374,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 16. ~~Component grouping~~ **Settled 2026-09-27: option (b).** Each row in G and H is an **AIP
     Activity**; the sub-headers (e.g. "Capability Building of Women and Planning Activities") are
     **free-text component groups that exist only in the proposal**. See §2-G for the rules.
-17. **Zero-cost rows (new):** G and H list steps with no budget ("Preparation of Travel Order",
-    "Reporting", "Liquidation"). These are unlikely to be AIP activities. Allow extra
-    proposal-only work-plan rows that print in G and in H with blank amounts?
+17. ~~Zero-cost rows~~ **Settled 2026-09-27: allowed.** Proposal-only rows print in G and H-1
+    with blank amounts. See §2-G for the rules.
 18. ~~H column order~~ **Settled 2026-09-27: PS | MOOE | CO.** The switch from the template's
     MOOE | PS | CO (which all three samples still use) is intended; it matches the AIP and
     Annex B.
