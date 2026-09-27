@@ -46,6 +46,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IBudgetCeilingRepository       _ceilingRepo;
     private readonly IUserRepository                _userRepo;
     private readonly IPermissionService             _permissions;
+    private readonly IInvestmentPlanningSettingsRepository _settingsRepo;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -61,7 +62,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IAllocationService             allocationService,
         IBudgetCeilingRepository       ceilingRepo,
         IUserRepository                userRepo,
-        IPermissionService             permissions)
+        IPermissionService             permissions,
+        IInvestmentPlanningSettingsRepository settingsRepo)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -77,6 +79,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _ceilingRepo       = ceilingRepo;
         _userRepo          = userRepo;
         _permissions       = permissions;
+        _settingsRepo      = settingsRepo;
     }
 
     /// <inheritdoc />
@@ -87,7 +90,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             ?? throw new InvalidOperationException(
                 "No office is flagged as the host office (offices.is_host_office).");
 
-        (int resolvedFY, IReadOnlyList<int> availableFiscalYears) = await ResolveFiscalYearsAsync(fiscalYear, ct);
+        (int resolvedFY, IReadOnlyList<int> availableFiscalYears, _) = await ResolveFiscalYearsAsync(fiscalYear, ct);
 
         OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(host.Id, resolvedFY, ct);
         OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(host.Id, resolvedFY, ct);
@@ -130,18 +133,40 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     public async Task<FiscalYearsDto> GetFiscalYearsAsync(
         int? fiscalYear, CancellationToken cancellationToken = default)
     {
-        (int resolvedFY, IReadOnlyList<int> availableFiscalYears) =
+        (int resolvedFY, IReadOnlyList<int> availableFiscalYears, int? defaultFiscalYear) =
             await ResolveFiscalYearsAsync(fiscalYear, cancellationToken);
-        return new FiscalYearsDto(resolvedFY, availableFiscalYears);
+        return new FiscalYearsDto(resolvedFY, availableFiscalYears, defaultFiscalYear);
     }
 
-    private async Task<(int ResolvedFY, IReadOnlyList<int> AvailableFiscalYears)> ResolveFiscalYearsAsync(
-        int? fiscalYear, CancellationToken ct)
+    /// <summary>
+    /// Which fiscal year a Budget Planning read is for, and which years the picker offers.
+    ///
+    /// Resolution order (PPDO-136): the requested year (a year in the URL is a deep link and always
+    /// wins) → the admin-set default → the newest year with an AIP → next calendar year. With the
+    /// default unset this is exactly the rule it replaced.
+    ///
+    /// The default is added to the list when no AIP record carries it yet — moving everyone to
+    /// FY2029 before any FY2029 AIP exists is the case a stored default exists for, and the picker
+    /// has to be able to show the year it selected.
+    ///
+    /// Two sequential reads on the shared DbContext — never <c>Task.WhenAll</c>.
+    /// </summary>
+    private async Task<(int ResolvedFY, IReadOnlyList<int> AvailableFiscalYears, int? DefaultFiscalYear)>
+        ResolveFiscalYearsAsync(int? fiscalYear, CancellationToken ct)
     {
-        IReadOnlyList<int> availableFiscalYears = await _aipRepo.GetDistinctFiscalYearsAsync(ct);
+        IReadOnlyList<int> aipFiscalYears = await _aipRepo.GetDistinctFiscalYearsAsync(ct);
+        int? defaultFiscalYear = await _settingsRepo.GetDefaultFiscalYearAsync(ct);
+
+        IReadOnlyList<int> availableFiscalYears =
+            defaultFiscalYear is int fy && !aipFiscalYears.Contains(fy)
+                ? aipFiscalYears.Append(fy).OrderByDescending(y => y).ToList()
+                : aipFiscalYears;
+
         int resolvedFY = fiscalYear
-            ?? (availableFiscalYears.Count > 0 ? availableFiscalYears[0] : DateTime.UtcNow.Year + 1);
-        return (resolvedFY, availableFiscalYears);
+            ?? defaultFiscalYear
+            ?? (aipFiscalYears.Count > 0 ? aipFiscalYears[0] : DateTime.UtcNow.Year + 1);
+
+        return (resolvedFY, availableFiscalYears, defaultFiscalYear);
     }
 
     private async Task<Dictionary<int, IReadOnlyList<DivisionAllocationDto>>> GetAllocationsByFundAsync(

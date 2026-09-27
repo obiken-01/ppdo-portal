@@ -176,6 +176,20 @@ public sealed class PermissionService : IPermissionService
         return Task.FromResult(user.OverrideCanManageOfficeSetup ?? false);
     }
 
+    /// <inheritdoc />
+    public async Task<bool> CanManageInvestmentPlanningSettingsAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // SuperAdmin passes from any office, or none — support access.
+        if (user.Role is UserRole.SuperAdmin) return true;
+
+        // ⚠️ The office check comes BEFORE the CanManageConfig role bypass, so it binds Admin too.
+        // A province-wide value is the host office's to set; a guest-office Admin holds
+        // CanManageConfig by role and must still be refused (PPDO-136).
+        if (!OfficeScope.IsHostOfficeUser(user)) return false;
+
+        return await CanManageConfigAsync(user, cancellationToken);
+    }
+
     /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>
     private static bool IsAdminOrAbove(User user)
         => user.Role is UserRole.SuperAdmin or UserRole.Admin;

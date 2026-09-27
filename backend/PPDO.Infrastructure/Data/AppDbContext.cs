@@ -102,6 +102,9 @@ public sealed class AppDbContext : DbContext
     // ── v1.8 New AIP| eSRE Codes (RAL-248) ─────────────────────────────────
     public DbSet<EsreCode> EsreCodes { get; set; } = null!;
 
+    // ── v1.8.0 — Investment Planning settings, single row (PPDO-136) ──────────
+    public DbSet<InvestmentPlanningSettings> InvestmentPlanningSettings { get; set; } = null!;
+
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 
     public DbSet<PartnerApiKey> PartnerApiKeys { get; set; } = null!;

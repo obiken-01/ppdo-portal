@@ -192,7 +192,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipOfficeRollupDto>? officeRollups = null,
         List<AipProgramRollupDto>? programRollups = null,
         List<AipActivityProgramFundTotalsDto>? aipFundLines = null,
-        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null)
+        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
+        int? defaultFiscalYear = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -320,11 +321,16 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .ReturnsAsync(false);
         }
 
+        // PPDO-136: the admin-set default fiscal year. Unset unless a test passes one.
+        Mock<IInvestmentPlanningSettingsRepository> settingsRepo = new();
+        settingsRepo.Setup(r => r.GetDefaultFiscalYearAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultFiscalYear);
+
         BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
             aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object,
-            ceilingRepo.Object, userRepo.Object, permissions.Object);
+            ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object);
 
         return (svc, auditRepo);
     }
@@ -411,6 +417,110 @@ public sealed class BudgetPlanningDashboardServiceTests
         FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: 2025);
 
         Assert.Equal(2025, result.FiscalYear);
+    }
+
+    // ── Default fiscal year (PPDO-136) ───────────────────────────────────────
+    // Resolution order: requested ?? admin default ?? newest AIP year ?? UTC year + 1.
+    // Spec: docs/v1.8/Default_Fiscal_Year_Spec.md §4.
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_DefaultSet_BeatsTheNewestAipYear()
+    {
+        List<AipRecord> aips = [Aip(1, 2029), Aip(2, 2028)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], [], defaultFiscalYear: 2028);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(2028, result.FiscalYear);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_RequestedYear_BeatsTheDefault()
+    {
+        // A year in the URL is a deep link (kanban, review search, WFP → Report) and always wins.
+        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2028)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], [], defaultFiscalYear: 2028);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: 2027);
+
+        Assert.Equal(2027, result.FiscalYear);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_DefaultWithNoAipRecord_IsAddedToTheListInOrder()
+    {
+        // Decision 8: moving everyone to FY2029 before any FY2029 AIP exists must still leave a
+        // picker that can show the year it selected.
+        List<AipRecord> aips = [Aip(1, 2030), Aip(2, 2028)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], [], defaultFiscalYear: 2029);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(2029, result.FiscalYear);
+        Assert.Equal([2030, 2029, 2028], result.AvailableFiscalYears);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_DefaultThatHasAnAipRecord_IsNotListedTwice()
+    {
+        List<AipRecord> aips = [Aip(1, 2028), Aip(2, 2027)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], [], defaultFiscalYear: 2028);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal([2028, 2027], result.AvailableFiscalYears);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_DefaultWithNoAipRecordsAtAll_IsTheOnlyYear()
+    {
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], [], defaultFiscalYear: 2028);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(2028, result.FiscalYear);
+        Assert.Equal([2028], result.AvailableFiscalYears);
+    }
+
+    [Theory]
+    [InlineData(2028)]
+    [InlineData(null)]
+    public async Task GetFiscalYearsAsync_EchoesTheRawSetting_EvenWhenAYearIsRequested(int? setting)
+    {
+        // The client pages keep their own fallback when the setting is unset (decision 4), so they
+        // need the raw value — the resolved FiscalYear cannot tell "unset" from "set".
+        List<AipRecord> aips = [Aip(1, 2027)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], [], defaultFiscalYear: setting);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: 2027);
+
+        Assert.Equal(setting, result.DefaultFiscalYear);
+    }
+
+    [Fact]
+    public async Task GetFiscalYearsAsync_Unset_BehavesExactlyAsBefore()
+    {
+        List<AipRecord> aips = [Aip(1, 2027), Aip(2, 2026)];
+        (BudgetPlanningDashboardService sut, _) = Build([], aips, [], [], []);
+
+        FiscalYearsDto result = await sut.GetFiscalYearsAsync(fiscalYear: null);
+
+        Assert.Equal(2027, result.FiscalYear);
+        Assert.Equal([2027, 2026], result.AvailableFiscalYears);
+        Assert.Null(result.DefaultFiscalYear);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_DefaultSet_OpensTheReadinessBoardOnIt()
+    {
+        // The dashboard shares the resolver — it must not keep its own "newest AIP year" rule.
+        List<AipRecord> aips = [Aip(1, 2029), Aip(2, 2028)];
+        (BudgetPlanningDashboardService sut, _) =
+            Build([], aips, [], [Off(PpdoOfficeId, "PPDO")], [], defaultFiscalYear: 2028);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: null, divisionId: null);
+
+        Assert.Equal(2028, result.FiscalYear);
     }
 
     [Fact]

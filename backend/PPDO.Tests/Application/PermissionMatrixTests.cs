@@ -49,6 +49,7 @@ public sealed class PermissionMatrixTests
         ["CanViewAuditLog"]         = (s, u) => s.CanViewAuditLogAsync(u),
         ["CanManageApiKeys"]        = (s, u) => s.CanManageApiKeysAsync(u),
         ["CanManageOfficeSetup"]    = (s, u) => s.CanManageOfficeSetupAsync(u),
+        ["CanManageInvestmentPlanningSettings"] = (s, u) => s.CanManageInvestmentPlanningSettingsAsync(u),
     };
 
     /// <summary>The five flags that follow the plain role-bypass / override / division chain.</summary>
@@ -131,6 +132,21 @@ public sealed class PermissionMatrixTests
         rows.Add("CanViewAuditLog", UserRole.Admin,      null, true,  true, false);
         rows.Add("CanViewAuditLog", UserRole.Staff,      true,  true, true, false);
 
+        // ── CanManageInvestmentPlanningSettings: CanManageConfig AND host office (PPDO-136) ──
+        // A province-wide value, so PPDO's to set. SuperAdmin keeps it anywhere (support access);
+        // ⚠️ Admin does NOT bypass the office check — unlike CanUploadAip, whose Admin row above
+        // passes before the office is read. The override/division inputs are CanManageConfig's.
+        const string ips = "CanManageInvestmentPlanningSettings";
+        rows.Add(ips, UserRole.SuperAdmin, null,  false, true,  true);
+        rows.Add(ips, UserRole.SuperAdmin, null,  false, false, true);   // guest office: support exemption
+        rows.Add(ips, UserRole.Admin,      null,  false, true,  true);
+        rows.Add(ips, UserRole.Admin,      null,  false, false, false);  // guest-office Admin: never
+        rows.Add(ips, UserRole.Staff,      null,  false, true,  false);
+        rows.Add(ips, UserRole.Staff,      null,  true,  true,  true);
+        rows.Add(ips, UserRole.Staff,      true,  false, true,  true);
+        rows.Add(ips, UserRole.Staff,      false, true,  true,  false);
+        rows.Add(ips, UserRole.Staff,      true,  true,  false, false);  // guest office: never, however set
+
         return rows;
     }
 
@@ -178,6 +194,24 @@ public sealed class PermissionMatrixTests
             $"Flags with a resolver but no matrix row: {string.Join(", ", unexercised)}.");
     }
 
+    /// <summary>
+    /// An unassigned user (null <c>office_id</c>) is not the host office — DECISION F (RAL-258).
+    /// Only SuperAdmin clears the office check without one. The grid cannot express this row:
+    /// its fixture always assigns an office.
+    /// </summary>
+    [Theory]
+    [InlineData(UserRole.SuperAdmin, true)]
+    [InlineData(UserRole.Admin,      false)]
+    [InlineData(UserRole.Staff,      false)]
+    public async Task CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin(UserRole role, bool expected)
+    {
+        User user = MakeUser("CanManageInvestmentPlanningSettings", role, true, true, isHostOffice: true);
+        user.OfficeId = null;
+        user.Office   = null;
+
+        Assert.Equal(expected, await _sut.CanManageInvestmentPlanningSettingsAsync(user));
+    }
+
     // ── Fixture ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -220,6 +254,7 @@ public sealed class PermissionMatrixTests
                 user.Division!.CanManageResourceLinks = divisionFlag;
                 user.OverrideCanManageResourceLinks = overrideValue; break;
             case "CanManageConfig":
+            case "CanManageInvestmentPlanningSettings":   // reads CanManageConfig's inputs
                 user.Division!.CanManageConfig = divisionFlag;
                 user.OverrideCanManageConfig = overrideValue; break;
             case "CanAccessBudgetPlanning":

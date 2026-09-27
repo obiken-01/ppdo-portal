@@ -6,7 +6,7 @@
 > The two are a pair: change a rule and the corresponding row fails until both are updated. A flag
 > added to `IPermissionService` without a row fails the build (`Matrix_CoversEveryFlagOnThePermissionService`).
 >
-> **Read this instead of `PermissionService`.** The model now carries 14 flags across three
+> **Read this instead of `PermissionService`.** The model now carries 15 flags across three
 > mechanisms plus three scope dimensions and one subtractive guard — past the point where "read the
 > code" is a reasonable answer.
 
@@ -88,6 +88,30 @@ blank override means granted. An explicit `false` still turns it off.
 | Staff | **guest** | `true` | `true` | ❌ **never, however set** |
 
 The uploaded file contains *every* office's records, so upload is host-office-only by construction.
+
+### 2.3a `CanManageInvestmentPlanningSettings` — config manager in the host office (PPDO-136)
+
+Composed from existing inputs; it has **no override column and no division flag of its own**. The
+override and division inputs below are `CanManageConfig`'s.
+
+| Role | Office | Override (`CanManageConfig`) | Division flag (`CanManageConfig`) | Result |
+|---|---|---|---|---|
+| SuperAdmin | any, or none | — | — | ✅ support access |
+| Admin | host | — | — | ✅ |
+| Admin | **guest**, or none | — | — | ❌ **the office check binds Admin** |
+| Staff | host | `null` | `false` | ❌ |
+| Staff | host | `null` | `true` | ✅ |
+| Staff | host | `true` | `false` | ✅ |
+| Staff | host | `false` | `true` | ❌ |
+| Staff | **guest**, or none | `true` | `true` | ❌ **never, however set** |
+
+It gates the province-wide default fiscal year (`docs/v1.8/Default_Fiscal_Year_Spec.md`), which
+moves every office's Investment Planning pages — so it is PPDO's to set, not any config manager's.
+
+> ⚠️ **Not the same shape as §2.3.** `CanUploadAip` lets every Admin through before it reads the
+> office; this flag reads the office first, so a guest-office Admin — who holds `CanManageConfig` by
+> role — is refused. Only SuperAdmin skips the office check. Pinned by the matrix rows and by
+> `CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin`.
 
 ### 2.4 Per-user grants
 
@@ -402,4 +426,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143)*
