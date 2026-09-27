@@ -6,6 +6,9 @@
 > Occidental Mindoro letterhead) with pen annotations, plus one hand-drawn sketch of the
 > Section H layout. Sample filled-in proposals are to follow.
 > **Output format:** Word (`.docx`) export.
+> **Target branch / data model:** `release/1.8.0`, i.e. the redesigned AIP (peso amounts,
+> `AipExpenditure` lines, `AipProject.Description/Objective`). All field sources below refer to
+> the v1.8.0 entities, not the v1.7 ones on `main`.
 
 ---
 
@@ -17,8 +20,8 @@ design format — beneficiaries sex-disaggregated, gender issues in the rational
 implementing team, M&E and risks — plus a DBM-style cost section (PS / MOOE / CO) and the
 Climate Change Expenditure Typology.
 
-Much of its header and cost data **already exists in the portal** (AIP, WFP, config
-tables). The narrative sections are free text that only the proponent can write. The
+Much of its header and cost data **already exists in the portal** (the v1.8.0 AIP and
+config tables). The narrative sections are free text that only the proponent can write. The
 annotations draw that line.
 
 ### Annotation legend (from the top-right of page 1)
@@ -42,20 +45,20 @@ title (Q1).*
 
 ## 2. Section-by-section breakdown
 
-Legend for the **Source** column: `AIP` = `AipOffice/AipProgram/AipProject/AipActivity`,
-`WFP` = `WfpExpenditure(+Lines)`, `Cfg` = config tables (`Office`, `FundingSource`,
-`Account`).
+Legend for the **Source** column: `AIP` = `AipOffice/AipProgram/AipProject/AipActivity`
+plus `AipExpenditure` (v1.8.0), `Cfg` = config tables (`Office`, `FundingSource`, `Account`).
+The WFP is **not** needed as a source anywhere.
 
 ### A. Project Summary
 
 | Field | Mark | Proposed source | Notes |
 |---|---|---|---|
-| **Program Title** (renamed from "Project Title") | A | `AipProgram.Name` (or `AipProject.Name`, see Q2) | Arrow from "**Pull down / Office**": the user picks the office, then the program from a dropdown, and the title fills in |
+| **Program Title** (renamed from "Project Title") | A | `AipProgram.Name` or `AipProject.Name` (Q2; v1.8 evidence points to Project, see §2-B) | Arrow from "**Pull down / Office**": the user picks the office, then the program from a dropdown, and the title fills in |
 | Project Proponent | A | `AipOffice.Name` / `Office.OfficeName` | The office picked in the dropdown |
 | Project Type | A | Unclear. Candidates: `AipOffice.Sector` (General/Social/Economic/Others), `AipActivity.EsreCode` (SS/ES/ID/EN), or "Program / Project / Activity" | **Q3** |
 | Project Location | Input? | Not in AIP | Free text, e.g. municipality/barangay list. Could become a municipality multi-select later |
 | Implementation Schedule: Start / End | A | `AipActivity.StartDate` / `EndDate` (earliest start, latest end across the program's activities) | AIP stores **month names as strings** ("January"), not dates. Output would be "January 2027 – December 2027" (fiscal year appended) |
-| Project Cost | A | Σ `AipActivity.Total` under the program | ⚠️ AIP amounts are **₱ thousands**, so ×1000 for display. Or Σ WFP totals (pesos) if the cost should come from WFP (Q5) |
+| Project Cost | A | Σ `AipActivity.Total` under the program/project | v1.8.0 stores AIP amounts in **pesos** (`MigrateAipAmountsToPesos`), so there is no ×1000. Should equal the Annex H-1 grand total |
 | Attributed GAD Budget | A | **Computed** = Project Cost × HGDG attribution % (see §4) | Only possible once the HGDG score is known |
 | Funding Source | A | `AipActivity.FundingSourceSnapshot` → `FundingSource.Name` | A program can mix funds (e.g. "GF/20% DF"), so show the distinct list |
 | HGDG Checklist Used | \* | Picklist of HGDG checklists | §4 |
@@ -64,7 +67,17 @@ Legend for the **Source** column: `AIP` = `AipOffice/AipProgram/AipProject/AipAc
 **Disaggregated Data of Intended Beneficiaries** (Input): repeating rows of
 *Indicator / Male / Female / Total*. **Total = Male + Female should be auto-computed.**
 
-### B. Project Description (Input)
+### B. Project Description (marked Input, but prefillable)
+
+v1.8.0 added **`AipProject.Description`** and **`AipProject.Objective`** (PPDO-99, requested at
+the 2026-09-15 PDC demo). The entity comment says they are deliberately kept off Annex B and
+*"feed a separate report that is not yet specified"*. **This proposal is almost certainly that
+report.** So:
+
+- Section B **prefills from `AipProject.Description`** (editable in the proposal).
+- Section E *General Goals/Objectives* **prefills from `AipProject.Objective`**.
+- Both fields live on the **Project** (level 3), which is strong evidence that one proposal =
+  one AIP Project (Q2).
 
 Rich text, guideline says 3–5 sentences. "Maps can be used (geotagged)", so the section
 needs **an optional image attachment**. This is a storage decision (Q8).
@@ -92,7 +105,7 @@ exactly that. Treat both columns as free text, and consider relabelling the UI c
 
 ### E. Logical Framework (A)
 
-- **General Goals/Objectives**: one text field (unmarked, so Input).
+- **General Goals/Objectives**: one text field, prefilled from `AipProject.Objective` (v1.8.0).
 - Grid of **Impact / Outcome / Output / Input-Activities** × *Performance Target and/or
   Indicator* / *Means of Verification*. Marked **A**.
 
@@ -102,8 +115,8 @@ What the portal can actually fill:
 |---|---|
 | Input/Activities | AIP activity names under the program ✅ |
 | Output | `AipActivity.ExpectedOutputs` ✅ |
-| Performance Target / Indicator | `WfpExpenditureLine.SuccessIndicator` (legacy WFP lines only) ⚠️ partial |
-| Means of Verification | `WfpExpenditureLine.MeansOfVerification` (legacy only) ⚠️ partial |
+| Performance Target / Indicator | **Not stored in the AIP**, so Input (legacy WFP lines have `SuccessIndicator`, but pulling from WFP is not worth the coupling) |
+| Means of Verification | **Not stored in the AIP**, so Input |
 | Impact, Outcome | **Not stored anywhere**, so these have to be Input |
 
 → In practice this is **auto-prefill + editable**, not purely auto (Q6).
@@ -119,7 +132,7 @@ whether one can feed the other (Q11).
 | Column | Source |
 |---|---|
 | Inputs/Activities/Project Components | AIP activities under the program ✅ |
-| Performance Target and/or Indicator | Same partial source as E ⚠️ |
+| Performance Target and/or Indicator | Input (could copy from the matching logframe row) |
 | Gender Issues to be addressed | **Not stored**, so Input |
 | Timeline/Duration | `AipActivity.StartDate`–`EndDate` ✅ |
 | OPR (Office of Primary Responsibility) | `AipActivity.ImplementingOffice` ✅ |
@@ -150,18 +163,29 @@ GRAND TOTAL
 - The sketch circles "**code**" next to the fund column, so **Source of Fund shows the fund
   code** (GF, 20% DF…), not the full name.
 
-**Data source: this is the most important finding.** The AIP only holds **one PS / MOOE /
-CO total per activity**. The **account-code breakdown exists only in the WFP**
-(`WfpExpenditure.AccountNumberSnapshot / AccountTitleSnapshot`, amounts, fund per line). So:
+**Data source: already in the AIP (v1.8.0).** The AIP expenditure-line feature was copied
+from the WFP, so **`AipExpenditure`** (one row per account line under an `AipActivity`) holds
+exactly what the sketch needs:
 
-- Full Annex H-1 = **WFP-sourced**. The proposal can only be fully generated **after that
-  office's WFP for the fiscal year has expenditures entered**.
-- Fallback when no WFP exists: one line per activity with the AIP PS/MOOE/CO totals and no
-  account codes.
-- WFP stores the **account number but not an expenditure class**. To place a WFP line in the
-  PS vs MOOE vs CO column we need a class per `Account`. The `Account` entity comment says
-  classification is *no longer derived from the AccountNumber prefix*, so check where the
-  class lives today before relying on it. (Q5)
+| Sketch element | `AipExpenditure` / related column |
+|---|---|
+| Activity header row | parent `AipActivity.Name` |
+| Account code + object of expenditure | `AccountNumberSnapshot` + `AccountTitleSnapshot` |
+| PS / MOOE / CO | `Ps` / `Mooe` / `Co` (pesos) |
+| Total | `Total` (computed on write, never trusted from input) |
+| Source of Fund (code) | `FundingSourceSnapshot` (the code, e.g. `GF`), matching the circled "code" in the sketch |
+| Activity sub-total | Σ lines per activity |
+
+Notes:
+
+- Use the **snapshot** columns, not the live `Account`/`FundingSource` joins, so an old
+  proposal still prints what the AIP said when it was encoded (the entity's own guidance).
+- Procurement-itemised lines (`AipProcurementItem`) already roll up into the line's amount.
+  Annex H-1 shows the line only, not the items.
+- **Fallback:** an activity with no `AipExpenditure` lines (e.g. a synthetic activity, or one
+  not yet detailed) prints as a single row with the activity-level PS/MOOE/CO.
+- **Consistency check:** Section A *Project Cost* should equal the H-1 grand total. Both
+  read the same data, so they agree by construction.
 
 ### I. Implementing Team (Input)
 
@@ -204,8 +228,8 @@ every proposal, so it should be a **config value**, not retyped each time (Q13).
 
 | Kind | Count (approx.) | Examples |
 |---|---|---|
-| Auto from AIP | ~9 | title, proponent, schedule, cost, fund source, activities, OPR, outputs, CC typology |
-| Auto from WFP | 1 section | Annex H-1 account-code breakdown |
+| Auto from AIP | ~11 | title, proponent, schedule, cost, fund source, activities, OPR, outputs, CC typology, description + objective (prefill) |
+| Auto from AIP expenditure lines | 1 section | Annex H-1 account-code breakdown (`AipExpenditure`) |
 | Computed | 3 | Attributed GAD budget, every M/F Total, H sub-totals/grand total |
 | Input (short) | ~6 | location, HGDG score, supervisor, manager, signatories |
 | Input (long text) | 5 | description, rationale, J, general objective, women's-impact strategy |
@@ -260,9 +284,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
   and the exported `.docx` should contain only headings, tables and the user's content.
   (Confirm against the samples, Q7.)
 - **Page size:** the printout looks like **A4 portrait**. Confirm against a sample `.docx`.
-- **Money formatting:** pesos with thousands separators, 2 decimals. Remember the AIP
-  ×1000 conversion. The project already has a rule that this conversion lives in one place
-  (`WfpCeilingService` / `AllocationService`), so reuse that pattern.
+- **Money formatting:** pesos with thousands separators, 2 decimals. On v1.8.0 all AIP
+  amounts are already pesos, so **no ×1000 anywhere** in this feature.
 - Endpoint shape would mirror the existing report exports (`ReportFunctions.cs`), e.g.
   `GET /api/project-proposals/{id}/export` returning `application/vnd.openxmlformats-officedocument.wordprocessingml.document`.
 
@@ -272,9 +295,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 | Risk | Detail |
 |---|---|
-| **v1.8.0 AIP redesign** | FY2028+ uses a new AIP format (clean break, no migration). Every "A" field reads the AIP, so the proposal must either wait for the v1.8 model or support both formats. **Build against whichever FY the office will first use this for (Q14).** |
-| WFP dependency for Annex H-1 | No WFP expenditures, no account-code breakdown. Needs the AIP-totals fallback described above |
-| Units | AIP = ₱ thousands, WFP = pesos. A missed ×1000 would show a ₱5M project as ₱5,000 |
+| **Built on v1.8.0** | Every "A" field reads the redesigned AIP, so this feature goes on `release/1.8.0` (or a later 1.8.x). Pre-v1.8 AIPs (FY2027) have no `AipExpenditure` lines, so H-1 falls back to activity totals (Q14) |
+| Activities without expenditure lines | Annex H-1 degrades to one row per activity. Consider a warning in the UI ("3 activities have no expenditure detail") before export |
 | Snapshot vs live | If the AIP is edited after the proposal is drafted, do auto fields refresh? Recommend **live on export while Draft, snapshot on Finalize**, matching the AIP/WFP Draft→Final pattern |
 | Scope / roles | Office-scoped like WFP: an office user sees only their office's proposals. SuperAdmin/Admin see all. Needs the per-role table in the spec |
 | New tables | ~8–10 child tables (beneficiaries, benefits, logframe, work plan, team, trainings, M&E, risks). Snake_case per `NAMING_CONVENTIONS.md`. ⚠️ Migration needs a manual prod run |
@@ -285,13 +307,14 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 
 1. **Title**: "PGOM Investment Project Proposal"? Or "Investment *Program* Proposal"?
 2. **Unit of a proposal**: one per AIP **Program** (the title was changed to "Program
-   Title") or per **Project** (level 3)? This decides what "Activity 1, 2…" in the work plan and
-   Annex H-1 means.
+   Title") or per **Project** (level 3)? v1.8.0 puts `Description`/`Objective` on the Project,
+   which points to Project. This decides what "Activity 1, 2…" in the work plan and Annex H-1
+   means.
 3. **Project Type**: what values? Sector (Social/Economic/…), ESRE code, or something else?
 4. **HGDG**: confirm the checklist list and the score → % attribution scale in §4. Typed score
    or computed from a checklist?
-5. **Annex H-1 source**: WFP lines (full account-code breakdown) with AIP-totals fallback?
-   Should Project Cost in Section A then equal the Annex H grand total?
+5. **Annex H-1**: confirmed from `AipExpenditure`. Remaining question: for an activity with no
+   expenditure lines, print one row with the activity totals, or block export until detailed?
 6. **Logframe / Work plan**: OK as "auto-prefill, then editable"? Impact/Outcome/Gender
    Issues have no data source.
 7. Should the italic guidance text appear in the exported Word file? (Assumption: no.)
@@ -302,8 +325,8 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 11. Section A beneficiaries vs Section F beneficiaries: same data, or entered separately?
 12. Section M Climate Typology: auto from AIP `CcTypologyCode`?
 13. Signatories: is the LCE name a config value? Prepared-by = logged-in user?
-14. **Which fiscal year** will the office first prepare these for, i.e. FY2027 (old AIP format)
-    or FY2028 (v1.8 format)?
+14. **Which fiscal year** will the office first prepare these for? FY2028 (v1.8 format) gets
+    the full H-1; FY2027 would only get activity totals.
 15. Workflow: is there a review/approval step (e.g. PPDO/GAD Focal Point checks it) before
     export, or just Draft → Final?
 
@@ -316,7 +339,7 @@ bigger scope), or just **accept a typed score**? Recommend typed score for v1.
 2. Answer §7, then write the spec per `docs/SPEC_STANDARD.md` (per-role cases, UI states,
    non-goals, acceptance list).
 3. Likely ticket split: **(a)** entity + migration + CRUD for the proposal record,
-   **(b)** auto-fill service (AIP/WFP reader + HGDG attribution), **(c)** Word export,
+   **(b)** auto-fill service (AIP + `AipExpenditure` reader + HGDG attribution), **(c)** Word export,
    **(d)** entry page (sectioned form, one tab per letter A–M), **(e)** proposal list page.
 
 **Manual-implementation candidate:** the **HGDG score → attribution % → attributed budget**
