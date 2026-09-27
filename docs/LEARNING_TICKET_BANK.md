@@ -98,6 +98,48 @@ are four folders that should not exist.
 
 ---
 
+## B3 🟢 Move the health check behind an Application service ([PPDO-142])
+
+**Backend, three layers, TDD. A step up from B1: you create a new service and a new
+Infrastructure implementation, not just a validator.**
+
+`GET /api/health` is public. When the database is down, it returns the raw `ex.Message` in the
+response body (`error`), and nothing logs the failure. The handler also injects `AppDbContext`
+directly, which breaks the `CLAUDE.md` rule that Functions never reference Infrastructure. One
+refactor fixes all three. The ticket has the full current → target behaviour and acceptance
+checklist.
+
+- **Target:** `backend/PPDO.Functions/Functions/HealthFunctions.cs`. At the end it depends on one
+  Application service and shapes the response. Nothing else.
+- **Sibling to copy the shape from: the holiday provider.** `IHolidayProvider` is an interface
+  declared in `PPDO.Application/Services/`, implemented in Infrastructure by
+  `NagerHolidayProvider.cs`, registered in `Program.cs` (~line 124), consumed by
+  `DashboardService.cs`, and mocked in `DashboardServiceTests.cs`. That is exactly the
+  interface-up, implementation-down split the `SELECT 1` probe needs.
+- **Keep the contract:** the 200 body and both status codes stay the same, and the endpoint stays
+  anonymous. The login page (`frontend/src/app/(public)/login/page.tsx`, ~line 101) and **C1's
+  planned deploy smoke test** both depend on it.
+
+**What you'll learn:** how the dependency direction works across Domain → Application →
+Infrastructure → Functions in practice, DI registration, structured `ILogger<T>` logging, and
+unit-testing a failure path with Moq.
+
+**The judgment calls to make yourself:**
+1. **Where does the probe interface live?** The ticket suggests `PPDO.Domain/Interfaces/` next to
+   the repository interfaces. The holiday sibling puts its interface in `PPDO.Application/Services/`.
+   Both exist in the codebase. Pick one and be able to say why.
+2. **How do you prove the error was logged?** No test in the suite verifies an `ILogger` call yet.
+   `LogError(...)` is an *extension method*, so Moq can't verify it directly; you have to verify the
+   underlying `ILogger.Log(...)` call. Whatever you work out becomes the pattern for the next person.
+
+**Verify:** `dotnet test backend/PPDO.slnx --filter HealthServiceTests`. Then `func start` with SQL
+Express stopped: `curl http://localhost:7071/api/health` returns 503 with no `error` key and the
+exception appears in the console. Start SQL again and it returns 200.
+
+[PPDO-142]: https://linear.app/ralphoksiprojects/issue/PPDO-142/health-stop-returning-raw-exception-text-from-anonymous-get-apihealth
+
+---
+
 ## F1 🟢 Finish the `formatMoney` consolidation
 
 **Frontend, contained, visible result.**
