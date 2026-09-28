@@ -1,9 +1,9 @@
 # v1.8.0 — Division heads submit to the department head (PPDO-130)
 
-> **Status: draft for review** — 2026-09-28. Parent: PPDO-122 (Demo 2 change requests), item 2.8.
-> Written to `docs/SPEC_STANDARD.md`. Decisions 1–5 and 12 are Ralph's (session 2026-09-28).
-> Decisions 6–11 follow from those answers and are **proposed** — marked *(proposed)*; confirm or
-> correct them before T1 starts.
+> **Status: accepted** — 2026-09-28. Parent: PPDO-122 (Demo 2 change requests), item 2.8.
+> Written to `docs/SPEC_STANDARD.md`. All decisions are Ralph's (session 2026-09-28): 1–8 and 12
+> chosen directly; 9–11 proposed and accepted, with 11 revised to the simpler "PPDO return reopens
+> every division"; 13 (ceiling) added on review.
 >
 > ⚠️ **This reverses part of `AIP_Review_Spec.md` decision 4** (PPDO-70, 2026-09-08: "the lock falls
 > at `SubmittedToPpdo`, not at the first submit"). For an office **with divisions**, a division's
@@ -58,27 +58,35 @@ needs to know its submitted work cannot be changed under it.
 8. **Target: v1.8.0, landed on `release/1.8.0` before go-live** (Ralph, 2026-09-28). The
    pre-deployment checklist grows by the migration in §5.
 
-### Proposed — confirm before T1
+### Workflow details
 
-9. *(proposed)* **The office's `workflow_status` is kept and derived from its divisions.** In an office
+9. **The office's `workflow_status` is kept and derived from its divisions.** In an office
    with divisions it stays `Draft` while any division is still working, and **moves to
    `DepartmentReview` automatically when the last division with activities submits**. Why: the kanban,
    the readiness board, notification counts, the review search and `SubmitToPpdoAsync` all key on
    `DepartmentReview` today. Keeping the existing state means none of them change. The per-division
    state lives in a new table (§5) instead of new office states, so `AipWorkflowStatus.All` and the
    "closed is the safe default" rule are untouched.
-10. *(proposed)* **Which divisions must submit: those with ≥ 1 activity in this office for this AIP
+10. **Which divisions must submit: those with ≥ 1 activity in this office for this AIP
     record.** A division with nothing tagged has nothing to submit and does not block the office.
     Division membership of the activity decides this — not division membership of users.
-11. *(proposed)* **A PPDO return leaves the divisions as they are.** `ReturnedByPpdo` moves the office
-    back, as today. In a divisioned office the divisions stay `Submitted`, so division encoders stay
-    locked. The department head reads PPDO's comments, edits what they can themselves, and returns
-    specific divisions for the rest. Re-sending to PPDO again requires every division with activities
-    to be `Submitted`. Why: under decision 2, reopening every division on a PPDO return would unlock
-    work PPDO had no complaint about.
+11. **A PPDO return reopens every division** (Ralph, 2026-09-28 — chosen as the less complicated
+    option). The office moves to `ReturnedByPpdo`, as today, and every division row goes back to
+    `Draft`. Divisions then resubmit exactly as in the first round. When the last one does, the office
+    moves to `DepartmentReview` (decision 9), and the department head sends it to PPDO again. Why:
+    this re-uses the first-round path with no special cases. The alternative (divisions stay locked,
+    and the department head returns them selectively) needed extra rules for how the office state
+    moves when a division is returned out of `ReturnedByPpdo`. The cost is accepted: every division
+    must press submit again, including ones PPDO had no comment on.
 12. **FY2028+ only.** The division flow applies to AIP records with
     `FiscalYear >= AipFiscalYears.FirstEnteredFiscalYear`. FY ≤ 2027 records have no entry flow to
     change — clean fiscal-year break (CLAUDE.md, v1.8.0).
+13. **The ceiling is checked at every submit, and only blocks the send to PPDO** (Ralph,
+    2026-09-28). A division submit runs the office-wide ceiling check. When the office is over its
+    ceiling, the submit **still succeeds, with a warning** that names the overage. `SubmitToPpdo`
+    keeps refusing while the office is over its ceiling, as it does today. Why: division heads find
+    out about the overage while there is time to fix it, and the department head, who owns the
+    whole-office total, is the one it finally gates.
 
 Further rules implied by the above (not separate choices):
 
@@ -108,6 +116,10 @@ Further rules implied by the above (not separate choices):
   decided. This spec only reads it for the backfill and bulk creation.
 - **Division with zero activities.** Decision 10 lets the office proceed without it. If PPDO wants
   "Division C confirms it has nothing" as an explicit act, that is a later addition.
+- **Offices without divisions still block the encoder's submit on the ceiling** (today's rule,
+  `AipReadinessDto`: "there is no submit anyway"). Decision 13 applies to division submits only. To
+  make one rule everywhere (warn at the department-head submit, block only at PPDO), change
+  `AipSubmitService.SubmitAsync` to match. Awaiting Ralph's call.
 - **Notify the department head when a division submits.** Counts on the existing notifications
   endpoint are in scope (§6.3); email/push is not.
 
@@ -151,7 +163,7 @@ department head within the scope `OfficeScope` already gives them.
 | Failure: record not Draft | Record Final/Archived | Submits A | 400 "The FY {fy} AIP is '{status}' and cannot be submitted." (existing text) |
 | Failure: no-division office | Office with zero divisions | Calls division submit | 400 "This office has no divisions — submit the whole office instead." |
 | Failure: office-level submit in a divisioned office | Office with divisions | Calls the existing `POST …/submit` | 400 "This office submits by division. Each division head submits their own division." |
-| Ceiling | Office is over its ceiling | A submits | **Allowed.** The ceiling is office-wide and is checked at `SubmitToPpdo` (unchanged). The readiness panel shows it as a warning |
+| Ceiling | Office is over its ceiling | A submits | **Allowed, with a warning** (decision 13): the response carries `ceilingWarning` "This office is ₱{overage} over its ceiling. Your department head cannot send it to PPDO until it is within the ceiling." The confirm dialog shows it before submitting, and the toast repeats it after. Sending to PPDO stays refused until the overage is fixed |
 | Concurrency | Dept head re-tags an activity into A while A's encoder submits | Both land | Transitions check state inside the save; a re-tag into a Submitted division is legal (decision 2). No lost update on the status row — unique key (§5) |
 
 ### 3.3 Editing under the lock
@@ -178,7 +190,8 @@ department head within the scope `OfficeScope` already gives them.
 | Failure: other office | Department head of X | Returns a division of Y | 404, same text as a missing office (PPDO-46) |
 | To PPDO | Every division with activities Submitted | Department head submits to PPDO | Unchanged: full readiness incl. ceiling re-run, office → `SubmittedToPpdo` |
 | Failure: to PPDO early | B still Draft | Submits to PPDO | 400 "Division B has not submitted yet." (lists every one) |
-| PPDO returns | Office `SubmittedToPpdo` | PPDO reviewer returns it | Office → `ReturnedByPpdo`; divisions stay Submitted (decision 11); department head edits or returns divisions; re-send needs all Submitted |
+| PPDO returns | Office `SubmittedToPpdo`, all divisions Submitted | PPDO reviewer returns it | Office → `ReturnedByPpdo`; **every division → Draft** (decision 11); each division's encoders can edit again; audit one `ReturnDivision` row per division, attributed to the PPDO reviewer |
+| Resubmit after PPDO return | Office `ReturnedByPpdo`, divisions Draft | Divisions resubmit one by one | The office stays `ReturnedByPpdo` (so the "returned by PPDO" banner stays up) until the last division submits, then moves to `DepartmentReview`; the department head sends it to PPDO again |
 
 ### 3.5 Per-role summary
 
@@ -222,7 +235,8 @@ them; they never block (decision 10).
 ### `POST /api/budget-planning/aip/{aipId}/divisions/{divisionId}/submit` — JWT + `CanAccessBudgetPlanningAsync`
 
 Caller must be a member of the division, or the office's department head, or Admin/SuperAdmin in scope.
-No body. 200 `ApiResponse<AipDivisionSubmitResultDto>` `{ divisionId, status, officeWorkflowStatus }`.
+No body. 200 `ApiResponse<AipDivisionSubmitResultDto>`
+`{ divisionId, status, officeWorkflowStatus, ceilingWarning }`. `ceilingWarning` is a string or null (decision 13).
 400 / 403 / 404 per §3.2.
 
 ### `POST /api/budget-planning/aip/{aipId}/divisions/{divisionId}/return` — JWT + `CanReviewBudgetPlanningAsync` (own office) or Admin/SuperAdmin
@@ -242,7 +256,9 @@ Body `{ "divisionId": 4 }` (`[JsonRequired]`; not nullable in a divisioned offic
 - **`POST …/offices/{officeId}/return-to-encoder`** — in a divisioned office, returns every Submitted
   division (§3.4).
 - **`POST …/offices/{officeId}/submit-to-ppdo`** — adds the "every division with activities is
-  Submitted" check before the existing checklist.
+  Submitted" check before the existing checklist, which still includes the blocking ceiling check.
+- **PPDO return (`POST …/offices/{officeId}/return`)** — in a divisioned office, also resets every
+  division row to Draft (decision 11).
 - **Activity create** — body may carry `divisionId`; honoured only for department head/Admin (§3.1).
 - **`AipActivityDto`** gains `divisionId: int | null`, `divisionName: string | null`,
   `canEdit: bool` (computed for the caller, so the UI does not re-derive the lock rules).
@@ -314,7 +330,12 @@ Follow `docs/DESIGN_SYSTEM.md`: flat, PPDO tokens only, no `text-slate-700`. Reu
 | No division | Staff with no division: banner "You are not assigned to a division. Ask your department head to assign you one." Tree read-only |
 
 The submit button opens `ConfirmDialog`: *"Submit Planning Division? You won't be able to edit these
-activities unless your department head returns them."*
+activities unless your department head returns them."* When the office is over its ceiling, the
+dialog adds the warning from §3.2 in the warning style (an amber panel, as in the existing readiness
+panel). The submit still goes ahead.
+
+The strip also shows the office's ceiling position (remaining / over) at every stage, read from the
+existing readiness `Ceiling` field.
 
 ### 6.2 AIP Entry / Review — department head
 
@@ -344,7 +365,7 @@ States as in §6.1. Forbidden: the re-tag select and Return are **hidden** for n
   unchanged.
 - **No division-level comments or comment filtering.** Comments stay office-scoped.
 - **No change to FY ≤ 2027 records** (decision 12).
-- **No per-division ceiling check at division submit.** The office ceiling is checked where it is today.
+- **No per-division ceiling.** The ceiling check is office-wide at every stage (decision 13), and division allocations are not checked here.
 - **Not a per-user lock or a concurrent-edit guard** — V18-71 is separate.
 
 ---
@@ -394,7 +415,8 @@ sibling is the existing office card's status chip.
 - [ ] Engineering submits; the office card on the readiness board moves to Department Review
 - [ ] The department head returns Planning; Planning's encoders can edit again, Engineering stays locked, and the office card leaves Department Review
 - [ ] Planning resubmits; the department head submits to PPDO and the office locks for everyone
-- [ ] PPDO returns the office; divisions still show Submitted; the department head returns Engineering only, Engineering resubmits, and the office can go to PPDO again
+- [ ] PPDO returns the office; every division shows Draft and its encoders can edit; once all divisions resubmit, the office is back in Department Review and can go to PPDO again
+- [ ] With the office over its ceiling, a division submit shows the overage warning in the confirm dialog and still submits; **Submit to PPDO** stays refused with the ceiling message
 - [ ] A Staff user in the office with no division sees the "not assigned to a division" banner and cannot edit
 - [ ] An encoder in office X cannot open office Y's divisions (404)
 - [ ] The audit log shows division submit, return and re-tag rows with the acting user
@@ -413,7 +435,9 @@ TDD — this is workflow state and permission resolution.
   return a Draft division refused; return-all.
 - **`AipSubmitServiceTests`**: office submit refused in a divisioned office; unchanged in a no-division
   office; submit-to-PPDO refused while a division is Draft, with every waiting division named; PPDO
-  return leaves division rows Submitted.
+  return resets every division row to Draft and the office stays `ReturnedByPpdo` until the last one
+  resubmits; over-ceiling division submit succeeds with `ceilingWarning` set, and submit-to-PPDO over
+  the ceiling is still refused.
 - **`AipWriteGuard` / `AipServiceTests` / `AipExpenditureServiceTests`**: encoder locked on own Submitted
   division; encoder refused on another division's activity; department head allowed on locked;
   container delete with foreign activities refused; the division rule never allows a write the office
