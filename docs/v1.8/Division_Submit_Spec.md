@@ -212,6 +212,37 @@ department head within the scope `OfficeScope` already gives them.
 | PPDO reviewer (other office) | Read-only, as today | No | No | No | No | No | No |
 | Staff of another office | 404, as today | — | — | — | — | — | — |
 
+> ↩️ **Deviations and findings, 2026-09-28 (PPDO-148, T2).** Rules the spec implied but did not
+> state, settled while building the write guard. The permission side is in `Permission_Matrix.md` §3.2.
+> 1. **Encoders cannot edit an untagged activity.** It is no division's work yet, so "their own"
+>    does not cover it. Letting any encoder edit it would make the tag the department head is about
+>    to set meaningless. The refusal tells them to ask their department head to assign it.
+> 2. **Adding an activity to a division that has already submitted is refused to its encoders.** It
+>    is an edit of locked work (§3.3). The department head may add to it, as they may edit it.
+> 3. **A Staff member whose division belongs to another office counts as having none here.** In
+>    practice that is a PPDO Staff user writing a *divisioned* guest office on FY2028+: they are now
+>    refused as "not assigned to a division in this office". Tagging the activity with their PPDO
+>    division would put another office's division on it. This does not affect guest offices without
+>    divisions (15 of 19 as of Demo 2), and it does not affect PPDO's department head or Admins.
+> 4. **Bulk tagging has nothing to run on today.** Upload and re-upload are refused from FY2028
+>    (`AipFiscalYears.RefuseUpload`). Opening a year and seeding from the LDIP create programs, not
+>    activities. AIP carry-forward was removed by PPDO-63. Every FY2028+ activity is created one at a
+>    time through `AddActivityAsync`, which tags it. If a bulk path that creates FY2028+ activities
+>    is ever added, it must apply `AddAipDivisionSubmit.BackfillSql`'s rule.
+> 5. **`PUT …/activities/{id}/is-creation` now takes the division lock.** It is a WFP-era field
+>    write that never took the office-state guard, and it still does not. Adding that guard is a
+>    separate change.
+> 6. **The review screen's tree carries `divisionId` but not `divisionName` or a meaningful
+>    `canEdit`** (always false; it has its own `AipActivityReviewDto.CanEdit`). T5 fills it in when
+>    the department head's panel needs it.
+> 7. ⚠️ **Open — decision 6 conflicts with the current read scope.** `AipReadScope` (PPDO-134) still
+>    narrows a Staff caller *with a division* to the programs `ProgramDivision` assigns to that
+>    division. So a division encoder does **not** see the whole office tree. Within the programs they
+>    do see, other divisions' activities come back with `canEdit: false`, which is what this ticket
+>    needed. PPDO-134 called the unnarrowed view a leak, and T2's scope did not cover the read side,
+>    so it was left alone. **Decide before T4**, whose acceptance line 4 ("sees Engineering's
+>    activities with inputs disabled") only holds today inside a program assigned to both divisions.
+
 ---
 
 ## 4. API contract

@@ -202,6 +202,8 @@ var host = new HostBuilder()
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
+        // PPDO-148 — the division lock AipService and AipExpenditureService consult on every write.
+        services.AddScoped<IAipDivisionLock, AipDivisionLock>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.8.0 Phase 5 — Partner API keys (PPDO-15) -----------------------

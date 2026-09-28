@@ -141,6 +141,15 @@ export interface CreateAipActivityRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+  /**
+   * PPDO-148 — required from the department head in an office with divisions, and ignored for
+   * an encoder, whose activity always takes their own division.
+   */
+  divisionId?: number | null;
+}
+
+export interface UpdateAipActivityDivisionRequest {
+  divisionId: number;
 }
 
 // ── AIP inline activity edit (RAL-179) ────────────────────────────────────────
@@ -246,6 +255,19 @@ export interface AipActivityDetail {
    * those responses into its tree rather than reloading it.
    */
   fundCodes: string[];
+  /**
+   * The division whose work this is (PPDO-148). Null when untagged, and for every activity of an
+   * office without divisions or an FY ≤ 2027 record.
+   */
+  divisionId: number | null;
+  /** That division's name, for the row's pill. Null when untagged. */
+  divisionName: string | null;
+  /**
+   * Whether the signed-in user may write this activity right now — record Draft, office still in
+   * its own hands, and the division lock. Computed by the server; do not re-derive it here.
+   * ⚠️ Always false on the review screen's tree, which carries its own `canEdit`.
+   */
+  canEdit: boolean;
 }
 
 export interface AipProjectDetail {

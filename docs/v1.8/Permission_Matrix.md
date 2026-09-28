@@ -200,6 +200,43 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 > ⚠️ **Consume both axes together.** For a guest-office caller the division axis reads "every
 > division", which is only safe because the office axis pins them to one office in the same query.
 
+### 3.2 The AIP division lock — who may write which activity (PPDO-148)
+
+`docs/v1.8/Division_Submit_Spec.md` decisions 2, 5 and 6. Not a flag: a rule over *who the caller
+is in this office* × *whose activity it is* × *whether that division has submitted*. It applies only
+where the office uses the division flow: an **FY2028+** record and an office with **at least one
+active division**. Everywhere else, including every FY ≤ 2027 record, the rules are today's.
+
+**Department head** here means Admin/SuperAdmin, or the holder of `CanReviewBudgetPlanning` whose
+`office_id` is **this** office (an office comparison, never `OfficeScope` — a PPDO reviewer is not
+every office's head). **Encoder in A** means Staff whose `division_id` is an active division of this
+office. A Staff member whose division belongs to another office — a PPDO user looking at a guest
+office, say — counts as having none.
+
+| Caller | Activity | Its division Draft | Its division Submitted |
+|---|---|---|---|
+| Encoder in A | A's | ✅ edit | ❌ "…submitted to the department head" |
+| Encoder in A | B's | ❌ "belongs to B" | ❌ |
+| Encoder in A | untagged | ❌ "no division yet" | — |
+| Staff, no division in this office | any | ❌ read-only | ❌ |
+| Department head | any | ✅ | ✅ (decision 2) |
+| Admin / SuperAdmin | any | ✅ | ✅ |
+| Office without divisions, or FY ≤ 2027 | any | today's rules | today's rules |
+
+| Action | Who |
+|---|---|
+| Create an activity | Encoder: tagged with their own division, and any client value is ignored; refused once their division has submitted. Department head / Admin: must name an active division of this office. |
+| Re-tag (`PUT …/activities/{id}/division`) | Department head / Admin only, in any division state. Everyone else gets **403**. |
+| Delete a program, project or office group | Encoder: only if every activity underneath is their own and not yet submitted. Department head: always. |
+| Rename or add to a program/project | Anyone who may write the office, except Staff with no division here. |
+| Expenditure lines | Follow their activity's row above. |
+
+⚠️ **The lock only refuses, and it runs after the office-state guard** (`AipWriteGuard.CheckAsync`).
+A department head is exempt from the division rule, not from the office rule: once the office is
+with PPDO, nobody writes. Pinned by `PermissionMatrixTests.DivisionLock_*`,
+`AipServiceTests.EditActivity_ByDepartmentHead_OnceTheOfficeIsWithPpdo_IsStillRefused` and
+`AipExpenditureDivisionLockTests`. Division **submit** and **return** rows arrive with PPDO-149 (T3).
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)
@@ -426,4 +463,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148)*

@@ -535,4 +535,26 @@ public sealed class AipFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _aip.UpdateActivityDetailsAsync(id, body, caller!, ct), ct);
     }
+
+    // ── PUT /api/budget-planning/aip/activities/{activityId}/division ─────────
+    // PPDO-148 — the department head's re-tag (Division_Submit_Spec.md §4). Gated here on
+    // CanAccessBudgetPlanning like every AIP write; "department head of THIS office, or
+    // Admin/SuperAdmin" needs the activity's office, so the service decides it and answers an
+    // encoder with 403. A comment-only PPDO reviewer is stopped by AuthorizeWriteAsync first.
+    [Function("AipRetagActivityDivision")]
+    public async Task<HttpResponseData> RetagActivityDivision(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "budget-planning/aip/activities/{activityId:int}/division")] HttpRequestData req,
+        int activityId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        UpdateAipActivityDivisionDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipActivityDivisionDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipActivityDto>.Fail("Request body is missing or malformed. It needs a divisionId."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.RetagActivityDivisionAsync(activityId, body.DivisionId, caller!, ct), ct);
+    }
 }
