@@ -167,7 +167,7 @@ public sealed class AipCeilingService : IAipCeilingService
 
         AipLedgerAttribution attribution = await ResolveAttributionAsync(activity, ct);
 
-        // ⚠️ Only one of these four outcomes writes a row. Two of the other three matter and are
+        // ⚠️ Only one of these outcomes writes a row. Two of the other three matter and are
         // not the same as each other — collapsing them back into a null division is what
         // V18-47 / PPDO-57 exists to stop: one is the correct resting state of a guest office, the
         // other is a host-office misconfiguration that silently reserves nothing.
@@ -193,11 +193,26 @@ public sealed class AipCeilingService : IAipCeilingService
                     aipActivityId, attribution.OfficeRefCode, attribution.ProgramRefCode);
                 return;
 
+            case LedgerAttributionKind.HostActivityUntagged:
+                // PPDO-150 — an FY2028+ host-office activity nobody has tagged yet. Same shape as an
+                // unassigned program: it reserves against no division until its department head
+                // tags it, and the re-tag re-runs this upsert. The dashboard shows it on its
+                // "No division" row meanwhile.
+                _logger.LogWarning(
+                    "AIP activity reserves against no division: it is untagged. "
+                    + "AipActivityId: {AipActivityId}, OfficeRefCode: {OfficeRefCode}",
+                    aipActivityId, attribution.OfficeRefCode);
+                return;
+
             case LedgerAttributionKind.Unresolvable:
                 return;
         }
 
         AipLedgerContext context = attribution.Context!;
+
+        // PPDO-150 — the activity's reservation lives under ONE division. After a re-tag, the rows
+        // it left under its old division are removed here rather than left reserving forever.
+        await _ledgerRepo.DeleteForActivityOutsideDivisionAsync(aipActivityId, context.DivisionId, ct);
 
         IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdAsync(aipActivityId, ct);
 
@@ -308,6 +323,16 @@ public sealed class AipCeilingService : IAipCeilingService
         if (!configOffice.IsHostOffice)
             return AipLedgerAttribution.GuestOffice;
 
+        // ↩️ PPDO-150 (Division_Submit_Spec.md decision 7, revised): from FY2028 an activity carries
+        // its own division tag, and the reservation follows it — one division, the one whose work
+        // it is. ProgramDivision stays the rule for FY ≤ 2027, where there are no tags, and stays
+        // in use for FY2028+ for everything that is not money (read scope, the tag backfill).
+        if (AipFiscalYears.IsEntered(record.FiscalYear))
+            return activity.DivisionId is int tagged
+                ? AipLedgerAttribution.ToDivision(
+                    new AipLedgerContext(tagged, configOfficeId, record.FiscalYear))
+                : AipLedgerAttribution.Untagged(office.RefCode);
+
         int? divisionId = await ResolveDivisionIdAsync(office, program, ct);
         if (divisionId is null)
             return AipLedgerAttribution.Unassigned(office.RefCode, program.RefCode);
@@ -318,7 +343,8 @@ public sealed class AipCeilingService : IAipCeilingService
 
     /// <summary>
     /// The division a host-office program's reservation is attributed to, or null when no
-    /// <c>ProgramDivision</c> row claims it.
+    /// <c>ProgramDivision</c> row claims it. ⚠️ <b>FY ≤ 2027 only</b> since PPDO-150 — an entered
+    /// year attributes by the activity's own tag and never reaches this.
     ///
     /// ⚠️ <b>Only ever called for the host office</b> — see <see cref="ResolveAttributionAsync"/>.
     /// A null here means an unassigned host program, one specific and fixable state, never a guest
@@ -359,8 +385,9 @@ public sealed class AipCeilingService : IAipCeilingService
     private sealed record AipLedgerContext(int DivisionId, int ConfigOfficeId, int FiscalYear);
 
     /// <summary>
-    /// The four outcomes of resolving where an activity's reservation belongs — three of which
-    /// write no ledger row, for three different reasons (V18-47 / PPDO-57).
+    /// The outcomes of resolving where an activity's reservation belongs — only
+    /// <see cref="LedgerAttributionKind.Division"/> writes a row, and each of the others has its own
+    /// reason (V18-47 / PPDO-57; the untagged case added by PPDO-150).
     /// </summary>
     private enum LedgerAttributionKind
     {
@@ -384,6 +411,12 @@ public sealed class AipCeilingService : IAipCeilingService
         /// match to a config office. Nothing to do and nothing to say.
         /// </summary>
         Unresolvable,
+
+        /// <summary>
+        /// An FY2028+ host-office activity with no division tag (PPDO-150). Reserves nothing until
+        /// it is tagged. Logged, like <see cref="HostProgramUnassigned"/>.
+        /// </summary>
+        HostActivityUntagged,
     }
 
     /// <summary>
@@ -405,5 +438,8 @@ public sealed class AipCeilingService : IAipCeilingService
         public static AipLedgerAttribution Unassigned(string officeRefCode, string programRefCode)
             => new(LedgerAttributionKind.HostProgramUnassigned,
                    OfficeRefCode: officeRefCode, ProgramRefCode: programRefCode);
+
+        public static AipLedgerAttribution Untagged(string officeRefCode)
+            => new(LedgerAttributionKind.HostActivityUntagged, OfficeRefCode: officeRefCode);
     }
 }

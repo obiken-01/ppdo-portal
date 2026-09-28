@@ -188,6 +188,23 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .ToListAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipDivisionRollupDto>> GetDivisionRollupsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default)
+    {
+        if (aipOfficeIds.Count == 0) return [];
+        return await (
+                from activity in _context.Set<AipActivity>()
+                where aipOfficeIds.Contains(activity.Project.Program.OfficeId)
+                group activity by activity.DivisionId into g
+                select new AipDivisionRollupDto(
+                    g.Key,
+                    g.Count(),
+                    g.Count(a => a.Total != null && a.Total != 0m),
+                    g.Sum(a => a.Total ?? 0m)))
+            .ToListAsync(ct);
+    }
+
     // ── Notifications (V18-58 / PPDO-75) ──────────────────────────────────────
 
     /// <inheritdoc />

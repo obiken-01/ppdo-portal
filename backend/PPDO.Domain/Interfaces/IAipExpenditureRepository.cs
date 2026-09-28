@@ -263,12 +263,17 @@ public sealed record AipOfficeActivityFundTotalsDto(
     decimal Mooe,
     decimal Co);
 
+/// <param name="DivisionId">
+/// The activity's own division tag (PPDO-150) — what FY2028+ division figures attribute by. Null
+/// when untagged. <see cref="ProgramRefCode"/> is kept for FY ≤ 2027's program-based attribution.
+/// </param>
 public sealed record AipActivityProgramFundTotalsDto(
     string  ProgramRefCode,
     int     ActivityId,
     int     FundingSourceId,
     decimal Mooe,
-    decimal Co);
+    decimal Co,
+    int?    DivisionId = null);
 
 /// <summary>
 /// How many expenditure lines one activity has, and how many of them name no funding source

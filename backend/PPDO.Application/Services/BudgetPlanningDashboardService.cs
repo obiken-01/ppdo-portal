@@ -118,15 +118,18 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
             await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);
 
-        IReadOnlyList<DivisionSummaryDto> byDivision =
-            await BuildByDivisionAsync(host.Id, host.OfficeRefCode, resolvedFY, divisions, activeFunds, allocationsByFund, ct);
+        // The "No division" row is for a caller who sees every division; a division-scoped caller
+        // is narrowed to their own row, and untagged work is not theirs (PPDO-150).
+        (IReadOnlyList<DivisionSummaryDto> byDivision, DivisionSummaryDto? noDivision) =
+            await BuildByDivisionAsync(host.Id, host.OfficeRefCode, resolvedFY, divisions, activeFunds,
+                allocationsByFund, includeNoDivision: divisionId is null, ct);
         IReadOnlyList<FundCeilingDto> ceilingByFund =
             await BuildCeilingByFundAsync(
                 host.Id, resolvedFY, divisions, activeFunds, allocationsByFund, _allocationService, ct);
 
         return new PpdoDashboardDto(
             resolvedFY, availableFiscalYears, host.Id, host.OfficeCode, host.OfficeName,
-            ldip, aip, byDivision, ceilingByFund);
+            ldip, aip, byDivision, ceilingByFund, noDivision);
     }
 
     /// <inheritdoc />
@@ -213,21 +216,51 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// name="officeRefCode"/> used to be read off a PPDO-only <c>Office</c> parameter named "host"
     /// only because there was exactly one call site.
     /// </summary>
-    private async Task<IReadOnlyList<DivisionSummaryDto>> BuildByDivisionAsync(
+    ///
+    /// <para>
+    /// ↩️ <b>PPDO-150: FY2028+ attributes by each activity's own division tag</b>
+    /// (<c>Division_Submit_Spec.md</c> decision 7, revised 2026-09-28). Every activity counts once,
+    /// against the division whose work it is, so a shared program no longer counts in full against
+    /// each division it is assigned to, and the rows add up to the office. Untagged activities come
+    /// back as <c>NoDivision</c>, neither spread nor dropped, and only when
+    /// <paramref name="includeNoDivision"/> (a caller who sees every division). FY ≤ 2027 has no
+    /// tags and keeps the program-based rule described above.
+    /// </para>
+    /// </summary>
+    private async Task<(IReadOnlyList<DivisionSummaryDto> Rows, DivisionSummaryDto? NoDivision)> BuildByDivisionAsync(
         int officeId, string? officeRefCode, int fiscalYear, IReadOnlyList<Division> divisions,
         IReadOnlyList<FundingSource> activeFunds,
         IReadOnlyDictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund,
+        bool includeNoDivision,
         CancellationToken ct)
     {
         // Sequential throughout — DbContext is not thread-safe, and Task.WhenAll over two repo
         // calls sharing it is what produced the GetStatsAsync production 500.
         AipRecord? primaryAip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
+        bool entered = AipFiscalYears.IsEntered(fiscalYear);
 
         Dictionary<int, (int Costed, int Total, decimal Amount)> aipByDivision = [];
-        // Hoisted: the FY2028+ per-fund usage below attributes by the same assignments.
+        // FY <= 2027: the per-fund usage below attributes by the same assignments.
         Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = new(StringComparer.OrdinalIgnoreCase);
+        // PPDO-150: an entered year's untagged activities, for the "No division" row.
+        (int Costed, int Total) untaggedCounts = (0, 0);
 
-        if (primaryAip is not null && officeRefCode is not null)
+        if (entered && primaryAip is not null && officeRefCode is not null)
+        {
+            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct))
+                .Where(o => o.OfficeId == officeId)
+                .Select(o => o.Id)
+                .ToList();
+
+            foreach (AipDivisionRollupDto rollup in await _aipRepo.GetDivisionRollupsAsync(aipOfficeIds, ct))
+            {
+                if (rollup.DivisionId is int tagged)
+                    aipByDivision[tagged] = (rollup.CostedActivityCount, rollup.ActivityCount, rollup.CostedTotal);
+                else
+                    untaggedCounts = (rollup.CostedActivityCount, rollup.ActivityCount);
+            }
+        }
+        else if (primaryAip is not null && officeRefCode is not null)
         {
             IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
             List<int> hostAipOfficeIds = aipOffices
@@ -273,15 +306,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // rounded UP to the thousand before adding (DECISION 9) — so the fund row can never disagree
         // with the submit card's "Encoded" figure for the same money.
         //
-        // ⚠️ A program shared by several divisions counts IN FULL against each, the same rule as the
-        // row's activity counts. How a shared program should split is PPDO-130's open question;
-        // this deliberately does not answer it.
+        // ↩️ PPDO-150: charged to the activity's own tag, once. (Until then a program shared by
+        // several divisions counted IN FULL against each; that was the open question PPDO-130
+        // left, and the tag answers it.) Untagged money collects under the "No division" row.
         //
         // FY2027 and earlier keep the WFP ledger figure (RAL-176) — those years have a real WFP,
         // and the Allocation page's ledger view reads the same field. One grouped query either way;
         // the naive alternative is a per-division-per-fund N+1 inside the loop below.
-        bool entered = AipFiscalYears.IsEntered(fiscalYear);
         Dictionary<(int DivisionId, int FundingSourceId), decimal> usedByDivisionFund = [];
+        Dictionary<int, decimal> untaggedUsedByFund = [];
 
         if (entered)
         {
@@ -291,14 +324,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                     await _aipExpRepo.SumMooeCoByConfigOfficeAsync(primaryAip.Id, officeId, ct);
                 foreach (AipActivityProgramFundTotalsDto line in lines)
                 {
-                    if (!divisionsByProgramRefCode.TryGetValue(line.ProgramRefCode, out IReadOnlyList<int>? divisionIds))
-                        continue; // unassigned PPA — no division to charge, same as the row counts
-
                     decimal amount = AipRounding.UpToThousand(line.Mooe) + AipRounding.UpToThousand(line.Co);
-                    foreach (int divisionId in divisionIds)
+                    if (line.DivisionId is int tagged)
                     {
-                        (int, int) key = (divisionId, line.FundingSourceId);
+                        (int, int) key = (tagged, line.FundingSourceId);
                         usedByDivisionFund[key] = usedByDivisionFund.GetValueOrDefault(key) + amount;
+                    }
+                    else
+                    {
+                        untaggedUsedByFund[line.FundingSourceId] =
+                            untaggedUsedByFund.GetValueOrDefault(line.FundingSourceId) + amount;
                     }
                 }
             }
@@ -349,8 +384,40 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 allocationByFund));
         }
 
-        return result;
+        return (result, includeNoDivision && entered && untaggedCounts.Total > 0
+            ? BuildNoDivisionRow(untaggedCounts, untaggedUsedByFund, activeFunds, primaryAip)
+            : null);
     }
+
+    /// <summary>
+    /// The FY2028+ untagged activities as one row (PPDO-150). ⚠️ No allocation, and
+    /// <c>Remaining</c> is 0 rather than negative: this is work waiting to be tagged, not a division
+    /// over its share, and an "Over ceiling" pill here would say the wrong thing. The table renders
+    /// its Allocated and Remaining cells as a dash.
+    /// </summary>
+    private static DivisionSummaryDto BuildNoDivisionRow(
+        (int Costed, int Total) counts, IReadOnlyDictionary<int, decimal> usedByFund,
+        IReadOnlyList<FundingSource> activeFunds, AipRecord? primaryAip)
+    {
+        List<DivisionFundAmountDto> byFund = activeFunds
+            .Where(f => usedByFund.GetValueOrDefault(f.Id) > 0m)
+            .Select(f => new DivisionFundAmountDto(f.Id, f.Code, f.Name, 0m, usedByFund[f.Id], 0m))
+            .ToList();
+
+        return new DivisionSummaryDto(
+            NoDivisionId, null, "No division",
+            Allocated: 0m,
+            CostedInAip: byFund.Sum(f => f.Used),
+            Remaining: 0m,
+            CostedActivityCount: counts.Costed,
+            TotalActivities: counts.Total,
+            AipStatus: PlanningStage.ForAip(primaryAip?.Status, counts.Total),
+            SubmissionStatus: PlanningStage.Todo,
+            AllocationByFund: byFund);
+    }
+
+    /// <summary>The id the "No division" row carries. No real division has it (identity starts at 1).</summary>
+    public const int NoDivisionId = 0;
 
     private static async Task<IReadOnlyList<FundCeilingDto>> BuildCeilingByFundAsync(
         int officeId, int fiscalYear, IReadOnlyList<Division> divisionsInScope,
@@ -566,10 +633,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await BuildOfficeLdipSummaryAsync(officeId, fiscalYear, cancellationToken);
         OfficeAipSummaryDto aip =
             await BuildOfficeAipSummaryAsync(officeId, fiscalYear, cancellationToken);
-        IReadOnlyList<DivisionSummaryDto> byDivision = await BuildOfficeDivisionsAsync(
-            officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
+        (IReadOnlyList<DivisionSummaryDto> byDivision, DivisionSummaryDto? noDivision) =
+            await BuildOfficeDivisionsAsync(officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
-        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision);
+        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision, noDivision);
     }
 
     /// <summary>
@@ -577,14 +644,14 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// name="divisionId"/> (PPDO-127). Reuses <see cref="BuildByDivisionAsync"/> — the same build
     /// PPDO's own dashboard uses — rather than re-deriving a second version of it.
     /// </summary>
-    private async Task<IReadOnlyList<DivisionSummaryDto>> BuildOfficeDivisionsAsync(
+    private async Task<(IReadOnlyList<DivisionSummaryDto>, DivisionSummaryDto?)> BuildOfficeDivisionsAsync(
         int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId, CancellationToken ct)
     {
         // seeAllDivisions=false and divisionId=null means a Staff caller with no division assigned
         // — must resolve to NO rows, never every row. `d.Id == divisionId.Value` on a null id
         // would throw, so the empty case is short-circuited explicitly rather than folded into
         // the LINQ predicate below.
-        if (!seeAllDivisions && divisionId is null) return [];
+        if (!seeAllDivisions && divisionId is null) return ([], null);
 
         List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
             .Where(d => d.OfficeId == officeId && d.IsActive
@@ -594,7 +661,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         // An office with none configured yet (still common among guest offices — PPDO-122) or a
         // division-scoped caller whose one division didn't match: nothing further to query.
-        if (divisions.Count == 0) return [];
+        if (divisions.Count == 0) return ([], null);
 
         Office? office = await _officeRepo.GetByIdAsync(officeId, ct);
 
@@ -607,7 +674,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await GetAllocationsByFundAsync(officeId, fiscalYear, activeFunds, ct);
 
         return await BuildByDivisionAsync(
-            officeId, office?.OfficeRefCode, fiscalYear, divisions, activeFunds, allocationsByFund, ct);
+            officeId, office?.OfficeRefCode, fiscalYear, divisions, activeFunds, allocationsByFund,
+            includeNoDivision: seeAllDivisions, ct);
     }
 
     private async Task<AllocationSetupSummaryDto> BuildAllocationSummaryAsync(

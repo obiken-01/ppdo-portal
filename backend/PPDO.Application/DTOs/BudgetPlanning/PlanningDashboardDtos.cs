@@ -97,5 +97,7 @@ public record OfficeDashboardDto(
     AllocationSetupSummaryDto Allocation,
     OfficeLdipSummaryDto Ldip,
     OfficeAipSummaryDto Aip,
-    IReadOnlyList<DivisionSummaryDto> ByDivision
+    IReadOnlyList<DivisionSummaryDto> ByDivision,
+    // PPDO-150: see PpdoDashboardDto.NoDivision. Same rule, for a department head's own office.
+    DivisionSummaryDto? NoDivision = null
 );

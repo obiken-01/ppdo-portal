@@ -156,6 +156,8 @@ export default function AipEntryPage() {
   // doesn't fight this page's own "one node at a time" decluttering (PPDO-89). Fetched
   // independently of `record`/readiness: it comes from the Dashboard payload, not the AIP one.
   const [divisionRows, setDivisionRows] = useState<DivisionSummary[]>([]);
+  // PPDO-150 — the untagged "No division" row, from the same payload.
+  const [noDivisionRow, setNoDivisionRow] = useState<DivisionSummary | null>(null);
   const [divisionRowsLoading, setDivisionRowsLoading] = useState(true);
 
   // Only the caller's own office's groups.
@@ -283,11 +285,11 @@ export default function AipEntryPage() {
     if (officeId == null) { setDivisionRowsLoading(false); return; }
     setDivisionRowsLoading(true);
     const load = me?.isHostOffice
-      ? getDashboard(fiscalYear).then((d) => d.byDivision)
-      : getOfficeDashboard(officeId, fiscalYear).then((d) => d.byDivision);
+      ? getDashboard(fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }))
+      : getOfficeDashboard(officeId, fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }));
     load
-      .then(setDivisionRows)
-      .catch(() => setDivisionRows([]))
+      .then(({ rows, none }) => { setDivisionRows(rows); setNoDivisionRow(none); })
+      .catch(() => { setDivisionRows([]); setNoDivisionRow(null); })
       .finally(() => setDivisionRowsLoading(false));
   }, [officeId, fiscalYear, me?.isHostOffice]);
 
@@ -560,6 +562,7 @@ export default function AipEntryPage() {
             ) : (
               <DivisionTable
                 divisions={divisionRows}
+                noDivision={noDivisionRow}
                 canManageAllocation={
                   me?.isHostOffice ? me?.canManagePpdoAllocation === true : me?.canManageOfficeSetup === true
                 }

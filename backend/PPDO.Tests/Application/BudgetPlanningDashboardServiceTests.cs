@@ -192,6 +192,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipOfficeRollupDto>? officeRollups = null,
         List<AipProgramRollupDto>? programRollups = null,
         List<AipActivityProgramFundTotalsDto>? aipFundLines = null,
+        List<AipDivisionRollupDto>? divisionRollups = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         int? defaultFiscalYear = null)
     {
@@ -235,6 +236,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         aipRepo.Setup(r => r.GetProgramRollupsAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgramRollupDto>)(programRollups ?? []));
+        // PPDO-150 — FY2028+ counts by activity tag. Unconditional for the same reason as above.
+        aipRepo.Setup(r => r.GetDivisionRollupsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipDivisionRollupDto>)(divisionRollups ?? []));
 
         Mock<IWfpRepository> wfpRepo = new();
         wfpRepo.Setup(r => r.GetFilteredAsync(
@@ -809,10 +814,15 @@ public sealed class BudgetPlanningDashboardServiceTests
     /// <summary>
     /// An FY2028 PPDO dashboard with ADMIN (1) and ICT (2), GF allocated to ADMIN, and
     /// PROG-1 assigned to <paramref name="prog1Divisions"/>.
+    ///
+    /// ↩️ PPDO-150: from FY2028 the money follows each line's activity <b>tag</b>
+    /// (<see cref="AipActivityProgramFundTotalsDto.DivisionId"/>), and the program assignment no
+    /// longer decides it. It is kept in the fixture so every test below also proves the assignment
+    /// is ignored for money.
     /// </summary>
     private static (BudgetPlanningDashboardService Svc, Mock<IWfpAllocationLedgerRepository> Ledger)
         BuildFy2028(IReadOnlyList<int> prog1Divisions, List<AipActivityProgramFundTotalsDto> lines,
-            decimal adminGfAllocation = 7_000_000m)
+            decimal adminGfAllocation = 7_000_000m, List<AipDivisionRollupDto>? divisionRollups = null)
     {
         List<AipRecord> aips = [Aip(10, 2028, "Draft")];
         List<Office> offices = [Off(PpdoOfficeId, "PPDO", refCode: "1-01-010")];
@@ -833,7 +843,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             [], aips, [], offices, [], divisions, funds,
             aipRepoMock: aipRepo, allocationMock: allocation, ledgerRepoMock: ledger,
             programRollups: [new AipProgramRollupDto(50, "PROG-1", 2, 2, 999_999m)],
-            aipFundLines: lines);
+            aipFundLines: lines,
+            divisionRollups: divisionRollups);
         return (sut, ledger);
     }
 
@@ -844,8 +855,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         // figure, THEN summed — DECISION 9). PS never reaches this query at all.
         (BudgetPlanningDashboardService sut, Mock<IWfpAllocationLedgerRepository> ledger) = BuildFy2028([1],
         [
-            new("PROG-1", 80, GfFundId, 200_000m, 0m),
-            new("PROG-1", 81, GfFundId, 1_200m, 1_200m),
+            new("PROG-1", 80, GfFundId, 200_000m, 0m, DivisionId: 1),
+            new("PROG-1", 81, GfFundId, 1_200m, 1_200m, DivisionId: 1),
         ]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
@@ -862,17 +873,42 @@ public sealed class BudgetPlanningDashboardServiceTests
             It.IsAny<IReadOnlyList<int>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// ↩️ <b>PPDO-150 — the rule this replaces is "a shared program counts in full against each
+    /// division".</b> PROG-1 is assigned to both divisions, and each activity is charged once, to its
+    /// own tag, so the rows add up to the office.
+    /// </summary>
     [Fact]
-    public async Task GetDashboardAsync_Fy2028_SharedProgram_CountsInFullAgainstEachDivision()
+    public async Task GetDashboardAsync_Fy2028_SharedProgram_EachActivityCountsOnce_AgainstItsOwnTag()
     {
-        // ⚠️ The documented rule until PPDO-130 answers how a shared program splits — the same rule
-        // the row's activity counts already follow. Not additive, on purpose.
         (BudgetPlanningDashboardService sut, _) = BuildFy2028([1, 2],
-            [new("PROG-1", 80, GfFundId, 100_000m, 0m)]);
+        [
+            new("PROG-1", 80, GfFundId, 100_000m, 0m, DivisionId: 1),
+            new("PROG-1", 81, GfFundId, 40_000m,  0m, DivisionId: 2),
+        ]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
 
-        Assert.All(result.ByDivision, row => Assert.Equal(100_000m, row.CostedInAip));
+        Assert.Equal(100_000m, result.ByDivision.Single(d => d.DivisionId == 1).CostedInAip);
+        Assert.Equal(40_000m,  result.ByDivision.Single(d => d.DivisionId == 2).CostedInAip);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_ActivityCounts_FollowTheTag()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1, 2], [],
+            divisionRollups:
+            [
+                new AipDivisionRollupDto(1, 3, 2, 500_000m),
+                new AipDivisionRollupDto(2, 1, 1, 90_000m),
+            ]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        DivisionSummaryDto admin = result.ByDivision.Single(d => d.DivisionId == 1);
+        DivisionSummaryDto ict   = result.ByDivision.Single(d => d.DivisionId == 2);
+        Assert.Equal((2, 3), (admin.CostedActivityCount, admin.TotalActivities));
+        Assert.Equal((1, 1), (ict.CostedActivityCount, ict.TotalActivities));
     }
 
     [Fact]
@@ -881,7 +917,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         // ICT has no allocation in anything but spends GF — the overspend must be visible, not
         // filtered out with the zero-allocation rows.
         (BudgetPlanningDashboardService sut, _) = BuildFy2028([2],
-            [new("PROG-1", 80, GfFundId, 50_000m, 0m)]);
+            [new("PROG-1", 80, GfFundId, 50_000m, 0m, DivisionId: 2)]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
 
@@ -893,27 +929,25 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
-    public async Task GetDashboardAsync_Fy2028_OfficeTile_UsesTheCeilingRule_CountingASharedProgramOnce()
+    public async Task GetDashboardAsync_Fy2028_OfficeTile_UsesTheCeilingRule_AndTheRowsNowAddUpToIt()
     {
         // ↩️ Found live 2026-09-24 on SPO: the tile read ₱830K (every fund, PS included) above
-        // division rows at ₱300K each, for the same two activities. The tile now uses the rows'
-        // rule — but counts each activity ONCE, so it stays the office's real figure while a
-        // program shared by several divisions still shows in full on each row.
+        // division rows at ₱300K each, for the same two activities. The tile uses the rows' rule
+        // and counts each activity once. ↩️ Since PPDO-150 the rows do too, so they sum to it.
         (BudgetPlanningDashboardService sut, _) = BuildFy2028([1, 2],
         [
-            new("PROG-1", 80, GfFundId,  200_000m, 0m),
-            new("PROG-1", 81, GfFundId,  0m,       99_500m),   // rounds up to 100,000
-            new("PROG-1", 81, 99,        50_000m,  0m),        // an office's OWN fund — not counted
+            new("PROG-1", 80, GfFundId,  200_000m, 0m,      DivisionId: 1),
+            new("PROG-1", 81, GfFundId,  0m,       99_500m, DivisionId: 2),   // rounds up to 100,000
+            new("PROG-1", 81, 99,        50_000m,  0m,      DivisionId: 2),   // an office's OWN fund — not counted
         ]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
 
         Assert.Equal(300_000m, result.Aip.CostedInAip);
-        Assert.All(result.ByDivision, row => Assert.Equal(300_000m, row.CostedInAip));
-        // Against the ceiling: GF only — here the same 300,000, since the office fund is excluded.
         Assert.Equal(300_000m, result.Aip.CostedAgainstCeiling);
-        // The rows are not additive for a shared program; the tile is the real total.
-        Assert.Equal(600_000m, result.ByDivision.Sum(r => r.CostedInAip));
+        Assert.Equal(200_000m, result.ByDivision.Single(d => d.DivisionId == 1).CostedInAip);
+        Assert.Equal(100_000m, result.ByDivision.Single(d => d.DivisionId == 2).CostedInAip);
+        Assert.Equal(result.Aip.CostedInAip, result.ByDivision.Sum(r => r.CostedInAip));
     }
 
     [Fact]
@@ -923,8 +957,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         // counts on the division rows and in CostedInAip — but must not shrink the GF remaining.
         (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
         [
-            new("PROG-1", 80, GfFundId,  200_000m, 0m),
-            new("PROG-1", 80, GadFundId, 50_000m,  0m),
+            new("PROG-1", 80, GfFundId,  200_000m, 0m, DivisionId: 1),
+            new("PROG-1", 80, GadFundId, 50_000m,  0m, DivisionId: 1),
         ]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
@@ -933,15 +967,51 @@ public sealed class BudgetPlanningDashboardServiceTests
         Assert.Equal(200_000m, result.Aip.CostedAgainstCeiling);
     }
 
+    /// <summary>
+    /// PPDO-150 decision — untagged work is charged to no division and shown on its own
+    /// "No division" row, counted once, with no allocation and no negative Remaining.
+    /// </summary>
     [Fact]
-    public async Task GetDashboardAsync_Fy2028_UnassignedProgram_ChargesNoDivision()
+    public async Task GetDashboardAsync_Fy2028_UntaggedActivity_GoesToTheNoDivisionRow()
     {
+        // PROG-1 is assigned to ADMIN, but the activity is untagged — the assignment does not claim it.
         (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
-            [new("PROG-UNASSIGNED", 90, GfFundId, 80_000m, 0m)]);
+            [new("PROG-1", 90, GfFundId, 80_000m, 0m, DivisionId: null)],
+            divisionRollups: [new AipDivisionRollupDto(null, 1, 1, 80_000m)]);
 
         PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
 
         Assert.All(result.ByDivision, row => Assert.Equal(0m, row.CostedInAip));
+        DivisionSummaryDto none = Assert.IsType<DivisionSummaryDto>(result.NoDivision);
+        Assert.Equal("No division", none.DivisionName);
+        Assert.Equal((80_000m, 0m, 0m), (none.CostedInAip, none.Allocated, none.Remaining));
+        Assert.Equal((1, 1), (none.CostedActivityCount, none.TotalActivities));
+        Assert.DoesNotContain(result.ByDivision, d => d.DivisionName == "No division");
+    }
+
+    /// <summary>A division-scoped caller sees only their own row — untagged work is not theirs.</summary>
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_DivisionScopedCaller_GetsNoNoDivisionRow()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
+            [new("PROG-1", 90, GfFundId, 80_000m, 0m, DivisionId: null)],
+            divisionRollups: [new AipDivisionRollupDto(null, 1, 1, 80_000m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: 1);
+
+        Assert.Null(result.NoDivision);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_NothingUntagged_HasNoNoDivisionRow()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildFy2028([1],
+            [new("PROG-1", 80, GfFundId, 80_000m, 0m, DivisionId: 1)],
+            divisionRollups: [new AipDivisionRollupDto(1, 1, 1, 80_000m)]);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        Assert.Null(result.NoDivision);
     }
 
     // ── GetDashboardAsync — WFP-by-division per-fund Remaining (RAL-176) ─────
