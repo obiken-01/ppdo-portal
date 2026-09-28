@@ -1330,15 +1330,25 @@ export interface AipReadinessIssue {
   message: string;
 }
 
-/** ⚠️ A gate, not a summary — there is no "submit anyway". */
+/**
+ * ⚠️ A gate, not a summary — there is no "submit anyway" for completeness.
+ *
+ * ↩️ The ceiling is two-level since PPDO-146: over it is a warning at the submit to the
+ * department head (`canSubmit` ignores it) and a block at the send to PPDO (`canSubmitToPpdo`).
+ */
 export interface AipReadiness {
   aipRecordId: number;
   officeId: number;
   workflowStatus: string;
+  /** The submit to the department head: every completeness check passes. */
   canSubmit: boolean;
   activityCount: number;
   issues: AipReadinessIssue[];
   ceiling: AipCeilingStatus | null;
+  /** The ceiling service's own sentence when over the ceiling (fund, total, ceiling, overage), else null. */
+  ceilingWarning: string | null;
+  /** The send to PPDO: `canSubmit` AND within the ceiling. */
+  canSubmitToPpdo: boolean;
 }
 
 export interface AipSubmitResult {
@@ -1347,6 +1357,8 @@ export interface AipSubmitResult {
   workflowStatus: string;
   /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
   groupsMoved: number;
+  /** Set only when the submit to the department head went through over the ceiling (PPDO-146). */
+  ceilingWarning?: string | null;
 }
 
 /**

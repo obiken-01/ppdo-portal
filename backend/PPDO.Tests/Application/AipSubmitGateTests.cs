@@ -21,7 +21,14 @@ namespace PPDO.Tests.Application;
 /// <para>
 /// ⚠️ <b>This is a gate, not a summary.</b> DECISION C allows over-ceiling encoding and blocks at
 /// submit, so if these checks are dismissible there is no ceiling enforcement anywhere in the
-/// system. There is no "submit anyway", and no test below asserts one.
+/// system. There is no "submit anyway" for completeness, and no test below asserts one.
+/// </para>
+///
+/// <para>
+/// ↩️ <b>The ceiling moved in PPDO-146</b> (<c>Division_Submit_Spec.md</c> decision 13). Over the
+/// ceiling is now a <b>warning</b> at the submit to the department head and stays a <b>block</b> at
+/// the send to PPDO, which is still the gate that enforces it. The tests pin both halves: an
+/// over-ceiling department-head submit that is refused, or a send to PPDO that is not, both fail.
 /// </para>
 /// </summary>
 public sealed class AipSubmitGateTests
@@ -207,22 +214,108 @@ public sealed class AipSubmitGateTests
         Assert.True(result.IsSuccess);
     }
 
+    private const string OverCeiling =
+        "General Fund MOOE + CO totals ₱2,000,000.00, which is ₱1,000,000.00 over the ceiling of ₱1,000,000.00.";
+
+    private void GivenOverCeiling()
+        => _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OverCeiling);
+
+    /// <summary>
+    /// ↩️ Was <c>Submit_OverCeiling_IsRefusedWithTheCeilingServicesOwnWording</c>. PPDO-146
+    /// (decision 13): the department-head submit goes through, and the warning travels with it so
+    /// the encoder is told at the moment they send it.
+    /// </summary>
     [Fact]
-    public async Task Submit_OverCeiling_IsRefusedWithTheCeilingServicesOwnWording()
+    public async Task Submit_OverCeiling_SucceedsAndCarriesTheCeilingServicesOwnWording()
     {
         AipSubmitService sut = Build(GoodActivity());
         GivenLines(700);
-        _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("General Fund MOOE + CO totals ₱2,000,000.00, which is ₱1,000,000.00 over the ceiling of ₱1,000,000.00.");
+        GivenOverCeiling();
+
+        ServiceResult<AipSubmitResultDto> result = await sut.SubmitAsync(RecordId, Encoder());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, _groups[0].WorkflowStatus);
+        // ⚠️ The fund, the total, the ceiling and the overage, not the bare phrase "over ceiling",
+        // which tells an encoder nothing about how much to remove.
+        Assert.Equal(OverCeiling, result.Value!.CeilingWarning);
+    }
+
+    [Fact]
+    public async Task Submit_WithinCeiling_CarriesNoWarning()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+
+        ServiceResult<AipSubmitResultDto> result = await sut.SubmitAsync(RecordId, Encoder());
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.CeilingWarning);
+    }
+
+    /// <summary>
+    /// ⚠️ Relaxing the ceiling must not relax completeness. Over the ceiling AND incomplete is
+    /// refused on the completeness issue, and nothing moves.
+    /// </summary>
+    [Fact]
+    public async Task Submit_OverCeilingAndIncomplete_IsStillRefusedOnCompleteness()
+    {
+        AipActivity bad = GoodActivity();
+        bad.EsreCode = null;
+        AipSubmitService sut = Build(bad);
+        GivenLines(700);
+        GivenOverCeiling();
 
         ServiceResult<AipSubmitResultDto> result = await sut.SubmitAsync(RecordId, Encoder());
 
         Assert.False(result.IsSuccess);
-        // ⚠️ The fund, the total, the ceiling and the overage — not the bare phrase "over ceiling",
-        // which tells an encoder nothing about how much to remove.
-        Assert.Contains("General Fund", result.Error!);
-        Assert.Contains("2,000,000", result.Error!);
-        Assert.Contains("1,000,000", result.Error!);
+        Assert.Contains("eSRE", result.Error!);
+        Assert.Equal(AipWorkflowStatus.Draft, _groups[0].WorkflowStatus);
+    }
+
+    [Fact]
+    public async Task Readiness_OverCeiling_CanSubmitToTheDepartmentHeadButNotToPpdo()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenOverCeiling();
+
+        AipReadinessDto readiness = (await sut.GetReadinessAsync(RecordId, Encoder())).Value!;
+
+        Assert.True(readiness.CanSubmit);
+        Assert.False(readiness.CanSubmitToPpdo);
+        Assert.Equal(OverCeiling, readiness.CeilingWarning);
+        // The ceiling is a warning now, not a blocking issue. Leaving it in Issues as well would
+        // show "1 item to fix before submitting" beside an enabled Submit button.
+        Assert.DoesNotContain(readiness.Issues, i => i.Kind == "ceiling");
+    }
+
+    [Fact]
+    public async Task Readiness_WithinCeilingAndComplete_CanSubmitBothHops()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+
+        AipReadinessDto readiness = (await sut.GetReadinessAsync(RecordId, Encoder())).Value!;
+
+        Assert.True(readiness.CanSubmit);
+        Assert.True(readiness.CanSubmitToPpdo);
+        Assert.Null(readiness.CeilingWarning);
+    }
+
+    [Fact]
+    public async Task Readiness_Incomplete_CanSubmitNeitherHop()
+    {
+        AipActivity bad = GoodActivity();
+        bad.EsreCode = null;
+        AipSubmitService sut = Build(bad);
+        GivenLines(700);
+
+        AipReadinessDto readiness = (await sut.GetReadinessAsync(RecordId, Encoder())).Value!;
+
+        Assert.False(readiness.CanSubmit);
+        Assert.False(readiness.CanSubmitToPpdo);
     }
 
     /// <summary>An office with nothing in it is empty, not ready. Submitting would hand the department head a blank document.</summary>
@@ -557,6 +650,45 @@ public sealed class AipSubmitGateTests
         Assert.False(result.IsSuccess);
         Assert.Contains("exceeds the", result.Error!);
         Assert.Equal(AipWorkflowStatus.DepartmentReview, _groups[0].WorkflowStatus);
+    }
+
+    /// <summary>
+    /// ⚠️ PPDO-146's other half. The encoder's hop no longer enforces the ceiling, so this is now
+    /// the <b>only</b> place it is enforced. A resubmit after a PPDO return goes through the same
+    /// gate.
+    /// </summary>
+    [Fact]
+    public async Task SubmitToPpdo_OverCeilingOnAResubmit_IsRefused()
+    {
+        AipSubmitService sut = Build(GoodActivity());
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.ReturnedByPpdo);
+        GivenOverCeiling();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("over the ceiling", result.Error!);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo, _groups[0].WorkflowStatus);
+    }
+
+    [Fact]
+    public async Task SubmitToPpdo_OverCeilingAndIncomplete_NamesBoth()
+    {
+        AipActivity bad = GoodActivity();
+        bad.EsreCode = null;
+        AipSubmitService sut = Build(bad);
+        GivenLines(700);
+        GivenGroupsAt(AipWorkflowStatus.DepartmentReview);
+        GivenOverCeiling();
+
+        ServiceResult<AipSubmitResultDto> result =
+            await sut.SubmitToPpdoAsync(RecordId, OfficeId, DeptHead());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("eSRE", result.Error!);
+        Assert.Contains("over the ceiling", result.Error!);
     }
 
     /// <summary>An activity stripped of its last line during review is caught here too.</summary>

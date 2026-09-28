@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { useToast } from "@/components/ui/Toast";
 import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
   aipErrorMessage,
@@ -147,6 +148,7 @@ export default function AipEntryPage() {
   const [notOpened, setNotOpened] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
 
   const officeId = me?.officeId ?? null;
 
@@ -347,9 +349,17 @@ export default function AipEntryPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitAip(record.id);
+      const result = await submitAip(record.id);
       await load();
       void refreshAipNotifications();
+      // PPDO-146: it went through over the ceiling. The confirm said so before; this repeats it
+      // once it has happened, so the encoder leaves knowing the department head is blocked on it.
+      if (result.ceilingWarning) {
+        toast.warn(
+          "Submitted over the ceiling",
+          "Your department head cannot send it to PPDO until it is within the ceiling."
+        );
+      }
     } catch (e) {
       setError(aipErrorMessage(e, "Could not submit this AIP."));
     } finally {
