@@ -10,7 +10,7 @@
 > work now locks for that division's encoders when they submit it. Offices without divisions keep
 > decision 4 exactly as it is.
 >
-> ⚠️ **It also relaxes `AIP_Review_Spec.md` §6.2 ("there is no submit anyway") for the ceiling, in
+> ⚠️ **It also relaxes `AIP_Entry_Spec.md` §6.2 ("there is no submit anyway") for the ceiling, in
 > every office** (decision 13). Being over the ceiling becomes a warning at the submit to the
 > department head, and stays a hard block at the send to PPDO. Completeness issues still block every
 > submit.

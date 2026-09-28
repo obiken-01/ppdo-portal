@@ -530,6 +530,12 @@ Each failing item names the node and links to it. The ceiling row shows ceiling,
 
 ⚠️ **This is a gate, not a summary.** There is no "submit anyway".
 
+> ↩️ **Amended 2026-09-28 (PPDO-146, `Division_Submit_Spec.md` decision 13).** The ceiling no
+> longer blocks the submit to the department head. Over the ceiling is a **warning** there: a
+> confirm that names the overage, then a toast. It stays a **block** at the send to PPDO
+> (`AipReadinessDto.CanSubmitToPpdo`). Completeness is unchanged: there is still no "submit
+> anyway" for an incomplete activity.
+
 ### 6.3 Allocation page (V18-48 — picker already shipped)
 
 PPDO-17 shipped the office picker, the cross-office flag, and the role-based re-labelling

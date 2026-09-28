@@ -4,8 +4,12 @@
  * The submit checklist and the ceiling strip (V18-49 / PPDO-59, V18-46 / PPDO-56).
  *
  * ⚠️ **This is a gate, not a summary.** Over-ceiling encoding is allowed and expected; submit is
- * where it is blocked (DECISION C). So there is deliberately **no "submit anyway"** — if this is
- * ever built as a dismissible warning, there is no ceiling enforcement anywhere in the system.
+ * where it is blocked (DECISION C). There is deliberately **no "submit anyway"** for completeness.
+ *
+ * ↩️ **The ceiling blocks one hop later since PPDO-146** (`Division_Submit_Spec.md` decision 13).
+ * Over the ceiling, the encoder's submit to the department head goes through after a confirm that
+ * names the overage. The send to PPDO stays blocked (`canSubmitToPpdo`), and that is still the one
+ * place the ceiling is enforced. Do not make the PPDO hop dismissible too.
  *
  * ⚠️ **The remaining figure may be NEGATIVE and is rendered signed.** That is not an error state to
  * tidy away: after PBO cuts a ceiling below what an office has already encoded, the negative is the
@@ -127,7 +131,18 @@ export default function AipSubmitChecklist({
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
   // own tree off the screen behind a wall of issues it had not asked to read yet.
   const [expanded, setExpanded] = useState(false);
-  const { ceiling, issues, canSubmit } = readiness;
+  const { ceiling, ceilingWarning } = readiness;
+
+  // ↩️ PPDO-146: which gate applies depends on the hop. The encoder's needs completeness only; the
+  // send to PPDO also needs the office within its ceiling. On that hop the ceiling is shown as a
+  // blocking item again, first, so the reader sees what is actually stopping them.
+  const canSubmit = stage.kind === "toPpdo" ? readiness.canSubmitToPpdo : readiness.canSubmit;
+  const issues: AipReadinessIssue[] =
+    stage.kind === "toPpdo" && ceilingWarning
+      ? [{ kind: "ceiling", activityId: null, refCode: null, message: ceilingWarning }, ...readiness.issues]
+      : readiness.issues;
+  // The encoder-side warning: over the ceiling, but not what stops them.
+  const showCeilingWarning = ceilingWarning != null && stage.kind !== "toPpdo" && stage.kind !== "locked";
 
   // Group by kind so an office with 80 uncosted activities shows one heading and a count rather
   // than 80 identical-looking lines.
@@ -165,6 +180,7 @@ export default function AipSubmitChecklist({
   // The division → department head hop (PPDO-130) does not exist yet; decide it there.
   const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingCeiling, setConfirmingCeiling] = useState(false);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
 
   const warnsOnThisHop =
@@ -172,6 +188,13 @@ export default function AipSubmitChecklist({
   const needsUnresolvedWarning = warnsOnThisHop && (unresolved?.total ?? 0) > 0;
 
   function onActionClick() {
+    // The ceiling confirm comes first, and only on the encoder's hop. On the PPDO hop the button
+    // is disabled while over the ceiling, so there is nothing to confirm.
+    if (stage.kind === "encoder" && ceilingWarning) setConfirmingCeiling(true);
+    else proceedPastCeiling();
+  }
+
+  function proceedPastCeiling() {
     if (needsUnresolvedWarning) setConfirming(true);
     else if (stage.kind === "encoder" || stage.kind === "toPpdo") stage.onSubmit();
   }
@@ -243,9 +266,23 @@ export default function AipSubmitChecklist({
             label="Remaining (in thousand pesos)"
             value={fmtThousandsReadout(ceiling.remaining)}
             negative={ceiling.remaining < 0}
-            hint={ceiling.remaining < 0 ? "Over ceiling — this blocks submit" : undefined}
+            hint={ceiling.remaining < 0 ? "Over ceiling — blocks sending to PPDO" : undefined}
           />
         </div>
+      )}
+
+      {/* ── Ceiling warning (PPDO-146) ───────────────────────────────────── */}
+      {/* ⚠️ A warning, not an item to fix: it does not stop the submit to the department head, so
+          it stays out of the "items to fix" count. It names the consequence, because "over the
+          ceiling" alone would read as either harmless or blocking. */}
+      {showCeilingWarning && (
+        <p className="flex gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span aria-hidden>⚠️</span>
+          <span>
+            {ceilingWarning} You can still submit to your department head, but it cannot be sent to
+            PPDO until it is within the ceiling.
+          </span>
+        </p>
       )}
 
       {/* ── Issues ───────────────────────────────────────────────────────── */}
@@ -324,6 +361,18 @@ export default function AipSubmitChecklist({
             </ul>
           )}
         </div>
+      )}
+
+      {confirmingCeiling && stage.kind === "encoder" && ceilingWarning && (
+        <ConfirmDialog
+          title="Submit over the ceiling?"
+          message={`${ceilingWarning} Your department head cannot send it to PPDO until it is within the ceiling.`}
+          confirmLabel="Submit anyway"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={proceedPastCeiling}
+          onClose={() => setConfirmingCeiling(false)}
+        />
       )}
 
       {confirming && stage.kind === "toPpdo" && unresolved && (

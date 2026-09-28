@@ -106,8 +106,17 @@ public sealed class AipSubmitService : IAipSubmitService
             + "Groups: {GroupCount}, Activities: {ActivityCount}",
             aipRecordId, ctx.OfficeId, ctx.Groups.Count, readiness.ActivityCount);
 
+        // ⚠️ Over the ceiling does not stop this hop (PPDO-146, decision 13). It is carried back so
+        // the encoder is told as they send it, and it blocks one hop later, at SubmitToPpdoAsync.
+        if (readiness.CeilingWarning is not null)
+            _logger.LogWarning(
+                "AIP submitted for department review over its ceiling. AipRecordId: {AipRecordId}, "
+                + "OfficeId: {OfficeId}, UserId: {UserId}",
+                aipRecordId, ctx.OfficeId, caller.Id);
+
         return ServiceResult<AipSubmitResultDto>.Ok(new AipSubmitResultDto(
-            aipRecordId, ctx.OfficeId, AipWorkflowStatus.DepartmentReview, ctx.Groups.Count));
+            aipRecordId, ctx.OfficeId, AipWorkflowStatus.DepartmentReview, ctx.Groups.Count,
+            readiness.CeilingWarning));
     }
 
     // ── Submit onward to PPDO (V18-51 / PPDO-69) ──────────────────────────────
@@ -159,9 +168,13 @@ public sealed class AipSubmitService : IAipSubmitService
         // ⚠️ Run the whole checklist again. The department head may edit values during review
         // (spec decision 4), so an edit made in good faith can push the office over its ceiling or
         // strip the last line off an activity — and this is the last gate before PPDO sees it.
+        //
+        // ↩️ PPDO-146: this is now the ONLY hop that enforces the ceiling. The encoder's submit
+        // lets an over-ceiling office through with a warning, so CanSubmitToPpdo, not CanSubmit.
         AipReadinessDto readiness = await BuildAsync(ctx, ct);
-        if (!readiness.CanSubmit)
-            return ServiceResult<AipSubmitResultDto>.BadRequest(FormatRefusal(readiness));
+        if (!readiness.CanSubmitToPpdo)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(
+                FormatRefusal(readiness, includeCeiling: true));
 
         // Captured before the loop: after it, every row reads SubmittedToPpdo and the state the
         // office came from — which is what makes a re-submit legible in the history — is gone.
@@ -338,21 +351,29 @@ public sealed class AipSubmitService : IAipSubmitService
 
         // The ceiling is checked once for the office, not per group: the bound is the office's own
         // General Fund ceiling (V18-46).
+        //
+        // ↩️ PPDO-146 (Division_Submit_Spec.md decision 13): a WARNING, not an issue. Over the
+        // ceiling no longer blocks the submit to the department head; it blocks the send to PPDO.
+        // Kept out of `issues` so CanSubmit means "complete" and nothing else.
         AipCeilingStatusDto? ceiling = null;
+        string? ceilingWarning = null;
         if (ctx.Groups.Count > 0)
         {
             ceiling = await _ceiling.GetStatusAsync(ctx.Groups[0].Id, ct);
-            if (await _ceiling.ValidateForSubmitAsync(ctx.Groups[0].Id, ct) is string ceilingError)
-                issues.Add(new AipReadinessIssueDto("ceiling", null, null, ceilingError));
+            ceilingWarning = await _ceiling.ValidateForSubmitAsync(ctx.Groups[0].Id, ct);
         }
+
+        bool complete = issues.Count == 0;
 
         return new AipReadinessDto(
             ctx.Record.Id, ctx.OfficeId,
             ctx.Groups.Count > 0 ? ctx.Groups[0].WorkflowStatus : AipWorkflowStatus.Draft,
-            CanSubmit: issues.Count == 0,
+            CanSubmit: complete,
             ActivityCount: activities.Count,
             Issues: issues,
-            Ceiling: ceiling);
+            Ceiling: ceiling,
+            CeilingWarning: ceilingWarning,
+            CanSubmitToPpdo: complete && ceilingWarning is null);
     }
 
     /// <summary>
@@ -360,13 +381,22 @@ public sealed class AipSubmitService : IAipSubmitService
     /// (spec §4 error shapes) — and capped, because an office that has costed nothing would
     /// otherwise produce hundreds of lines nobody reads.
     /// </summary>
-    private static string FormatRefusal(AipReadinessDto readiness)
+    /// <param name="includeCeiling">
+    /// True for the send to PPDO, where the ceiling blocks (PPDO-146). The ceiling line goes
+    /// <b>first</b> so the cap on listed issues can never hide it.
+    /// </param>
+    private static string FormatRefusal(AipReadinessDto readiness, bool includeCeiling = false)
     {
         const int shown = 10;
-        IEnumerable<string> lines = readiness.Issues.Take(shown).Select(i => "• " + i.Message);
+        List<string> messages = [];
+        if (includeCeiling && readiness.CeilingWarning is string ceilingWarning)
+            messages.Add(ceilingWarning);
+        messages.AddRange(readiness.Issues.Select(i => i.Message));
+
+        IEnumerable<string> lines = messages.Take(shown).Select(m => "• " + m);
         string body = string.Join("\n", lines);
 
-        int remaining = readiness.Issues.Count - shown;
+        int remaining = messages.Count - shown;
         if (remaining > 0)
             body += $"\n• …and {remaining} more.";
 
