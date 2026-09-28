@@ -201,6 +201,7 @@ var host = new HostBuilder()
         services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
         services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
+        services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.8.0 Phase 5 — Partner API keys (PPDO-15) -----------------------

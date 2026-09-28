@@ -93,7 +93,8 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 name TEXT NOT NULL DEFAULT '',
                 is_creation INTEGER NOT NULL DEFAULT 0,
                 is_synthetic INTEGER NOT NULL DEFAULT 0,
-                funding_source_id INTEGER NULL
+                funding_source_id INTEGER NULL,
+                division_id INTEGER NULL
             );
             -- PPDO-128: the usage counts group by the record's fiscal year.
             CREATE TABLE aip_records (

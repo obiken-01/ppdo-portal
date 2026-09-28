@@ -298,9 +298,9 @@ recheck the count).
 | `division_id` | `int` | no | FK → `divisions`, restrict |
 | `status` | `nvarchar(20)` | no | `Draft` / `Submitted` (a `CHECK` on the domain) |
 | `submitted_at` | `datetime2` | yes | UTC |
-| `submitted_by_user_id` | `uniqueidentifier` | yes | FK → `Users`, set null |
+| `submitted_by_user_id` | `uniqueidentifier` | yes | FK → `Users`, restrict (see note) |
 | `returned_at` | `datetime2` | yes | UTC |
-| `returned_by_user_id` | `uniqueidentifier` | yes | FK → `Users`, set null |
+| `returned_by_user_id` | `uniqueidentifier` | yes | FK → `Users`, restrict (see note) |
 
 Unique index `(aip_record_id, division_id)`. **No row means Draft** — rows are created on first submit,
 so opening a year writes nothing here. Entity `AipDivisionSubmission` + configuration; repository
@@ -315,7 +315,21 @@ state, with no division rows. Its divisions read as Draft, so the department hea
 (everything reopens) or sends it on to PPDO — and send-on is refused until the divisions submit
 (§3.4). Note this in the UAT reset step (§8).
 
-`AuditAction` gains `SubmitDivision`, `ReturnDivision`, `RetagActivityDivision`.
+`AuditAction` gains `SubmitDivision` (`SUBMIT_DIV`), `ReturnDivision` (`RETURN_DIV`) and
+`RetagActivityDivision` (`RETAG_DIV`). T1 declares them. Whether they join `AuditAction.AipHandOffs`
+(which drives History and the returned-work notice) is T3's decision.
+
+> ↩️ **Deviations, 2026-09-28 (PPDO-147, T1).**
+> 1. **User FKs are `RESTRICT`, not `SET NULL`.** SQL Server refuses two `SET NULL` paths from
+>    `Users` into one table ("multiple cascade paths"). `RESTRICT` matches the other AIP workflow
+>    actors (`aip_review_comments.resolved_by`, `aip_records.uploaded_by`), and users are deactivated,
+>    never hard-deleted.
+> 2. **The backfill rule is narrower than "exactly one assignment".** It counts only **active**
+>    divisions **of the activity's own config office**, and counts each division once
+>    (`COUNT(DISTINCT)`). An inactive division is hidden from every picker, so it shouldn't make a
+>    program ambiguous. A malformed assignment naming another office's division must not leak
+>    across. The statement is `AddAipDivisionSubmit.BackfillSql`, and `AipDivisionBackfillTests`
+>    runs that exact text.
 
 ---
 
