@@ -93,4 +93,30 @@ public interface IAipSubmitService
     /// </summary>
     Task<ServiceResult<AipSubmitResultDto>> ReturnToEncoderAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    // ── Division submit (v1.8.0 — PPDO-149, Division_Submit_Spec.md §3.2, §3.4, §4) ──
+
+    /// <summary>
+    /// Every division of one office and where it stands, with <c>CanSubmit</c>/<c>CanReturn</c>
+    /// worked out for the caller. Readable by the office's own people and by anyone
+    /// <see cref="OfficeScope.ResolveForReview"/> lets see the office; NotFound otherwise (PPDO-46).
+    /// </summary>
+    Task<ServiceResult<AipDivisionStatusListDto>> GetDivisionsAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// A division hands its work to the department head (Draft → Submitted). The division's own
+    /// encoder, or the department head / Admin on its behalf. When it is the last division with
+    /// activities to submit, the office moves to <c>DepartmentReview</c> (decision 9). Over the
+    /// ceiling succeeds with a warning (decision 13).
+    /// </summary>
+    Task<ServiceResult<AipDivisionSubmitResultDto>> SubmitDivisionAsync(
+        int aipRecordId, int divisionId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The department head hands one division's work back (Submitted → Draft). Only that division
+    /// reopens; an office in department review drops back to Draft (decision 3).
+    /// </summary>
+    Task<ServiceResult<AipDivisionSubmitResultDto>> ReturnDivisionAsync(
+        int aipRecordId, int divisionId, User caller, CancellationToken ct = default);
 }

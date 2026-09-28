@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PPDO.Domain.Common;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
@@ -46,6 +47,23 @@ public sealed class AipDivisionSubmissionRepository : IAipDivisionSubmissionRepo
         => await _context.AipDivisionSubmissions.AddAsync(submission, ct);
 
     /// <inheritdoc />
+    public async Task<Division?> GetDivisionAsync(int divisionId, CancellationToken ct = default)
+        => await _context.Divisions.AsNoTracking().FirstOrDefaultAsync(d => d.Id == divisionId, ct);
+
+    /// <inheritdoc />
     public async Task SaveChangesAsync(CancellationToken ct = default)
-        => await _context.SaveChangesAsync(ct);
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+        {
+            // Same translation as Repository<T>: Application cannot see DbUpdateException.
+            // Two encoders pressing Submit on the same division at once race to insert the first
+            // row; the loser lands here and the service answers 409 (PPDO-149).
+            throw new UniqueConstraintViolationException(
+                "A unique constraint rejected this write.", SqlErrors.IndexNameOf(ex), ex);
+        }
+    }
 }

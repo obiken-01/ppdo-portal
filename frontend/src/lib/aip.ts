@@ -8,6 +8,8 @@
 import api from "./api";
 import type {
   UpdateAipActivityDivisionRequest,
+  AipDivisionStatusList,
+  AipDivisionSubmitResult,
   AipRecordResponse,
   AipRecordDetail,
   AipRecordSummary,
@@ -417,6 +419,39 @@ export async function returnAipToEncoder(
 ): Promise<AipSubmitResult> {
   const { data } = await api.post<ApiResponse<AipSubmitResult>>(
     `/budget-planning/aip/${aipId}/offices/${officeId}/return-to-encoder`, {}
+  );
+  return unwrap(data);
+}
+
+/** PPDO-149 — every division of one office and where it stands, with the caller's actions. */
+export async function getAipOfficeDivisions(
+  aipId: number, officeId: number
+): Promise<AipDivisionStatusList> {
+  const { data } = await api.get<ApiResponse<AipDivisionStatusList>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/divisions`
+  );
+  return unwrap(data);
+}
+
+/**
+ * PPDO-149 — a division hands its work to the department head. The last division with activities
+ * moves the office to department review. Over the ceiling still succeeds, with `ceilingWarning`.
+ */
+export async function submitAipDivision(
+  aipId: number, divisionId: number
+): Promise<AipDivisionSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipDivisionSubmitResult>>(
+    `/budget-planning/aip/${aipId}/divisions/${divisionId}/submit`, {}
+  );
+  return unwrap(data);
+}
+
+/** PPDO-149 — the department head reopens one division; the others stay submitted. */
+export async function returnAipDivision(
+  aipId: number, divisionId: number
+): Promise<AipDivisionSubmitResult> {
+  const { data } = await api.post<ApiResponse<AipDivisionSubmitResult>>(
+    `/budget-planning/aip/${aipId}/divisions/${divisionId}/return`, {}
   );
   return unwrap(data);
 }

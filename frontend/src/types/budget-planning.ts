@@ -1369,8 +1369,58 @@ export interface AipReadiness {
   ceiling: AipCeilingStatus | null;
   /** The ceiling service's own sentence when over the ceiling (fund, total, ceiling, overage), else null. */
   ceilingWarning: string | null;
-  /** The send to PPDO: `canSubmit` AND within the ceiling. */
+  /**
+   * The send to PPDO: complete AND within the ceiling — and, in an office that submits by division,
+   * every division with activities has submitted and nothing is untagged (PPDO-149).
+   */
   canSubmitToPpdo: boolean;
+  /**
+   * PPDO-149. The office uses the division flow, so the office-level submit is closed (`canSubmit`
+   * is false) and each division submits on its own. Use `getAipOfficeDivisions` for their state.
+   */
+  submitsByDivision: boolean;
+  /** PPDO-149. Divisions with activities that have not submitted — "Waiting on: …". */
+  waitingDivisions: string[];
+}
+
+// ── Division submit (PPDO-149, Division_Submit_Spec.md §4) ───────────────────
+
+export interface AipDivisionStatus {
+  divisionId: number;
+  code: string | null;
+  name: string;
+  isActive: boolean;
+  /** `"Draft"` or `"Submitted"`. */
+  status: string;
+  /** Tagged activities. Zero is listed, and never blocks the office. */
+  activityCount: number;
+  submittedAt: string | null;
+  submittedByName: string | null;
+  returnedAt: string | null;
+  /** Whether the signed-in user may submit it right now. Computed server-side. */
+  canSubmit: boolean;
+  /** Whether the signed-in user may return it right now. Computed server-side. */
+  canReturn: boolean;
+  /** Why it cannot be submitted, in the refusal's own words. Empty when ready or submitted. */
+  blockers: string[];
+}
+
+export interface AipDivisionStatusList {
+  officeId: number;
+  officeWorkflowStatus: string;
+  /** False outside the division flow (FY ≤ 2027, or no active division); `divisions` is empty then. */
+  hasDivisions: boolean;
+  untaggedActivityCount: number;
+  divisions: AipDivisionStatus[];
+}
+
+export interface AipDivisionSubmitResult {
+  divisionId: number;
+  status: string;
+  /** `DepartmentReview` when this was the last division to submit; otherwise unchanged or `Draft`. */
+  officeWorkflowStatus: string;
+  /** Submit only: the office-wide overage. The submit went ahead (decision 13). */
+  ceilingWarning: string | null;
 }
 
 export interface AipSubmitResult {

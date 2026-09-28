@@ -242,6 +242,33 @@ department head within the scope `OfficeScope` already gives them.
 >    needed. PPDO-134 called the unnarrowed view a leak, and T2's scope did not cover the read side,
 >    so it was left alone. **Decide before T4**, whose acceptance line 4 ("sees Engineering's
 >    activities with inputs disabled") only holds today inside a program assigned to both divisions.
+>    **Settled 2026-09-28 (Ralph): keep the read scope as it is.** A division encoder sees only the
+>    programs assigned to their division. T4 should read acceptance line 4 as "within a program
+>    shared with another division".
+
+> ↩️ **Deviations and findings, 2026-09-28 (PPDO-149, T3).**
+> 1. **A plain Admin can submit a division on its behalf but cannot return one.** §4 names Admin
+>    for the return. The office-level `return-to-encoder` has never admitted a plain Admin, since
+>    `CanReviewBudgetPlanning` is a per-user grant Admin is not given, so the division return is
+>    gated the same way. SuperAdmin passes. Granting the flag is how an Admin gets it.
+> 2. **Division submit and return act on the caller's own office only**, like every office
+>    hand-off. §3.5's "Admin/SuperAdmin per `OfficeScope`" would have let a PPDO Admin move a guest
+>    office's division while being refused the same office's whole-office return.
+> 3. **Division submit goes through `AuthorizeWriteAsync`**, the same as the office submit it
+>    replaces. A comment-only PPDO reviewer cannot hand an office's work on.
+> 4. **Division rows are not added to `AuditAction.AipHandOffs`.** History and the returned-work
+>    notice read the office's own rows, and the office still gets one whenever *its* state moves:
+>    `SUBMIT_DH` when the last division submits, and `RETURN_DH` when a division return takes it out
+>    of review. The per-division record is `SUBMIT_DIV` / `RETURN_DIV` on
+>    `aip_division_submissions` rows, and the divisions endpoint shows the latest submit.
+> 5. **A PPDO re-open of accepted work also reopens every division.** It lands in `ReturnedByPpdo`
+>    exactly as a return does, so decision 11 applies to both.
+> 6. **The send to PPDO also refuses while any activity is untagged.** Tagging runs ahead of every
+>    division submit, but the legacy `DepartmentReview` state (§5) could otherwise reach PPDO with
+>    untagged work.
+> 7. **An inactive division that still holds tagged work is listed, and it must be submitted**
+>    (by the department head on its behalf) or the work moved. Its activities count under
+>    decision 10 like any other.
 
 ---
 

@@ -103,6 +103,10 @@ public sealed class ReviewerWriteGuardCoverageTests
         // Added 2026-09-14 — returning work to the encoders. SubmitToPpdo's sibling: the department
         // head's alone. Dedicated assertion in ReturnToEncoder_IsGatedOnTheDepartmentHeadFlag.
         $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.ReturnToEncoder)}",
+
+        // PPDO-149 — returning ONE division. ReturnToEncoder's sibling at division grain, gated the
+        // same way. Dedicated assertion in ReturnDivision_IsGatedOnTheDepartmentHeadFlag.
+        $"{nameof(AipSubmitFunctions)}.{nameof(AipSubmitFunctions.ReturnDivision)}",
     ];
 
     /// <summary>
@@ -338,6 +342,25 @@ public sealed class ReviewerWriteGuardCoverageTests
     /// directly for the reason <see cref="SubmitToPpdo_IsGatedOnTheDepartmentHeadFlag"/> is: an
     /// encoder must not be able to pull their own work back out of their department head's hands.
     /// </summary>
+    /// <summary>
+    /// The gate <see cref="AipSubmitFunctions.ReturnDivision"/> has (PPDO-149). An encoder must not
+    /// be able to pull their own submitted division back — only the department head reopens it.
+    /// ⚠️ The fixture caller is an Admin, so this also pins that a plain Admin is NOT let through.
+    /// </summary>
+    [Fact]
+    public async Task ReturnDivision_IsGatedOnTheDepartmentHeadFlag()
+    {
+        string ordinary = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.ReturnDivision),
+            crossOfficeReviewer: false, departmentHeadReviewer: false);
+        string departmentHead = await OutcomeAsync(
+            typeof(AipSubmitFunctions).FullName!, nameof(AipSubmitFunctions.ReturnDivision),
+            crossOfficeReviewer: false, departmentHeadReviewer: true);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", ordinary);
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", departmentHead);
+    }
+
     [Fact]
     public async Task ReturnToEncoder_IsGatedOnTheDepartmentHeadFlag()
     {

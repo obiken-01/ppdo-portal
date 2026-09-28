@@ -204,6 +204,8 @@ var host = new HostBuilder()
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         // PPDO-148 — the division lock AipService and AipExpenditureService consult on every write.
         services.AddScoped<IAipDivisionLock, AipDivisionLock>();
+        // PPDO-149 — division state + reopen-all, shared by AipSubmitService and AipReviewService.
+        services.AddScoped<IAipDivisionWorkflow, AipDivisionWorkflow>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.8.0 Phase 5 — Partner API keys (PPDO-15) -----------------------
