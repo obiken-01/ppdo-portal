@@ -35,6 +35,13 @@ namespace PPDO.Application.Common;
 /// own office had vanished. Only check 1 hides existence, and only from someone with no business
 /// knowing it.
 /// </para>
+///
+/// <para>
+/// ↩️ <b>PPDO-148 adds a fourth, the division lock</b> (<see cref="CheckDivision{T}"/> and
+/// <see cref="CheckContainer{T}"/>). It is separate from <see cref="CheckAsync{T}"/> because it
+/// needs the activity, which a program or project write does not have. It always runs after the
+/// three above.
+/// </para>
 /// </summary>
 public static class AipWriteGuard
 {
@@ -67,6 +74,38 @@ public static class AipWriteGuard
 
         return null;
     }
+
+    /// <summary>
+    /// The fourth check, for a write to one activity or its expenditure lines: the division lock
+    /// (v1.8.0 — PPDO-148, <c>Division_Submit_Spec.md</c> §3.3). Returns null when the write may
+    /// proceed.
+    ///
+    /// <para>
+    /// ⚠️ <b>Call it only after <see cref="CheckAsync{T}"/> has returned null, never instead.</b>
+    /// It can only refuse, so running it second is what guarantees that the division rule never
+    /// allows a write the office's state refuses. A department head passes this check, and an
+    /// office sitting with PPDO still stops them at the check before.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>BadRequest</c>, like checks 2 and 3: the caller has passed ownership and can see the
+    /// activity. The spec's own wording (§3.3) is a 400 for every one of these.
+    /// </para>
+    /// </summary>
+    public static ServiceResult<T>? CheckDivision<T>(AipDivisionContext divisions, int? activityDivisionId)
+        => divisions.RefuseActivityWrite(activityDivisionId) is string refused
+            ? ServiceResult<T>.BadRequest(refused)
+            : null;
+
+    /// <summary>
+    /// The division rule for a write that is not about one activity — a program, project or office
+    /// group. Refuses only the encoder with no division in a divisioned office, who is read-only.
+    /// Same ordering rule as <see cref="CheckDivision{T}"/>: after <see cref="CheckAsync{T}"/>.
+    /// </summary>
+    public static ServiceResult<T>? CheckContainer<T>(AipDivisionContext divisions)
+        => divisions.RefuseContainerWrite() is string refused
+            ? ServiceResult<T>.BadRequest(refused)
+            : null;
 
     /// <summary>
     /// A workflow state as a person reads it, so a refusal tells an encoder who holds their work

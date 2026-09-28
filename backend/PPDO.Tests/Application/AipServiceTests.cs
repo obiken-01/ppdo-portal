@@ -104,7 +104,9 @@ public sealed partial class AipServiceTests
             List<LdipOffice>? ldipOfficeSeed = null,
             List<AipExpenditure>? expSeed = null,
             List<AipReviewComment>? commentSeed = null,
-            Mock<IAipAllocationLedgerRepository>? ledgerRepo = null)
+            Mock<IAipAllocationLedgerRepository>? ledgerRepo = null,
+            AipDivisionLockFixture? divisions = null,
+            List<ProgramDivision>? programDivisionSeed = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IRepository<FundingSource>> fsRepo   = new();
@@ -133,9 +135,11 @@ public sealed partial class AipServiceTests
             .ReturnsAsync(officeConfigList);
 
         Mock<IAllocationRepository> allocationRepo = new();
+        List<ProgramDivision> programDivisions = programDivisionSeed ?? [];
         allocationRepo.Setup(r => r.GetProgramDivisionsByOfficeIdAsync(
                 It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<ProgramDivision>)[]);
+            .ReturnsAsync((int officeId, CancellationToken _) =>
+                (IReadOnlyList<ProgramDivision>)programDivisions.Where(pd => pd.OfficeId == officeId).ToList());
 
         Mock<IRepository<AipProgram>> programRepo = new();
         programRepo.Setup(r => r.AddAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
@@ -313,6 +317,8 @@ public sealed partial class AipServiceTests
             parser.Object, audit.Object, ctx, officeRepo.Object, wfpRepo.Object,
             officeConfigRepo.Object, programRepo.Object, projectRepo.Object, activityRepo.Object,
             ldipRepo.Object, allocationRepo.Object, expRepo.Object, ledgerRepo.Object, commentRepo.Object,
+            // PPDO-148 — the real lock; no divisions unless the test seeds some.
+            (divisions ?? new AipDivisionLockFixture()).Build(aipRepo.Object, new PermissionService()),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,

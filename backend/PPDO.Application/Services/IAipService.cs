@@ -88,6 +88,16 @@ public interface IAipService
     Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
         int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
 
+    /// <summary>
+    /// PPDO-148 — the department head moves an activity to another division of the same office
+    /// (<c>Division_Submit_Spec.md</c> decision 5, §3.1). Encoders are refused with Forbidden.
+    /// Allowed into or out of a Submitted division: the department head edits locked work
+    /// (decision 2). Still refused while the office is past department review — the office-state
+    /// guard runs first, as for every write.
+    /// </summary>
+    Task<ServiceResult<AipActivityDto>> RetagActivityDivisionAsync(
+        int activityId, int divisionId, User caller, CancellationToken ct = default);
+
     /// <summary>Renames an office (only Name is editable — RefCode/Sector are immutable).
     /// Draft-only.</summary>
     Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(

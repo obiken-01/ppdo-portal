@@ -18,6 +18,21 @@ public interface IAipDivisionSubmissionRepository
     Task<IReadOnlyList<AipDivisionSubmission>> GetForOfficeAsync(
         int aipRecordId, int officeId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The submitted rows for several offices of one AIP record, <b>untracked</b> — the read side of
+    /// the division lock (PPDO-148). One query for a whole tree, never one per office.
+    /// </summary>
+    Task<IReadOnlyList<AipDivisionSubmission>> GetForOfficesAsync(
+        int aipRecordId, IReadOnlyList<int> officeIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every division of the given config offices, <b>active or not</b>, untracked (PPDO-148).
+    /// Inactive ones are returned so an activity still tagged with one can show its name; callers
+    /// decide "does this office have divisions" from the active ones only.
+    /// </summary>
+    Task<IReadOnlyList<Division>> GetDivisionsByOfficeIdsAsync(
+        IReadOnlyList<int> officeIds, CancellationToken ct = default);
+
     /// <summary>Stages a new row. It is written by <see cref="SaveChangesAsync"/>.</summary>
     Task AddAsync(AipDivisionSubmission submission, CancellationToken ct = default);
 

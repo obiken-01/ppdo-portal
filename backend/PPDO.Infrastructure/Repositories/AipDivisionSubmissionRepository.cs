@@ -21,6 +21,27 @@ public sealed class AipDivisionSubmissionRepository : IAipDivisionSubmissionRepo
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipDivisionSubmission>> GetForOfficesAsync(
+        int aipRecordId, IReadOnlyList<int> officeIds, CancellationToken ct = default)
+        => officeIds.Count == 0
+            ? []
+            : await _context.AipDivisionSubmissions
+                .AsNoTracking()
+                .Where(s => s.AipRecordId == aipRecordId && officeIds.Contains(s.OfficeId))
+                .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Division>> GetDivisionsByOfficeIdsAsync(
+        IReadOnlyList<int> officeIds, CancellationToken ct = default)
+        => officeIds.Count == 0
+            ? []
+            : await _context.Divisions
+                .AsNoTracking()
+                .Where(d => officeIds.Contains(d.OfficeId))
+                .OrderBy(d => d.Id)
+                .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task AddAsync(AipDivisionSubmission submission, CancellationToken ct = default)
         => await _context.AipDivisionSubmissions.AddAsync(submission, ct);
 

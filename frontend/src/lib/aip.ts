@@ -7,6 +7,7 @@
 
 import api from "./api";
 import type {
+  UpdateAipActivityDivisionRequest,
   AipRecordResponse,
   AipRecordDetail,
   AipRecordSummary,
@@ -279,6 +280,21 @@ export async function updateAipActivityDetails(
 ): Promise<AipActivityDetail> {
   const { data } = await api.put<ApiResponse<AipActivityDetail>>(
     `/budget-planning/aip/activities/${activityId}/details`, body
+  );
+  return unwrap(data);
+}
+
+/**
+ * PPDO-148 — the department head moves an activity to another division of its office. Encoders
+ * get a 403; the office must still be in its own hands. Returns the activity with its new
+ * `divisionId`/`divisionName`, ready to splice into the tree.
+ */
+export async function retagAipActivityDivision(
+  activityId: number, divisionId: number
+): Promise<AipActivityDetail> {
+  const body: UpdateAipActivityDivisionRequest = { divisionId };
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
+    `/budget-planning/aip/activities/${activityId}/division`, body
   );
   return unwrap(data);
 }
