@@ -11,8 +11,8 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **24 as of 2026-09-24** (PPDO-137 added
-one after the release was called complete). The count has drifted three times now (13 → 15 → 23 → 24), so **recheck it rather than trusting any
+v1.8.0 carries migrations that production has never seen — **25 as of 2026-09-27** (PPDO-137 and
+PPDO-143 each added one after the release was called complete). The count has drifted four times now (13 → 15 → 23 → 24 → 25), so **recheck it rather than trusting any
 number written here**:
 
 ```bash
@@ -29,6 +29,7 @@ All of them are additive (new tables, columns, permission flags) except one:
 | 14 | `20260903023255_AddAipOfficeOwnershipFk` (V18-32 / PPDO-33) | Schema, additive — **plus a backfill** |
 | 15–23 | `20260907020223_AddAipDivisionAllocationLedger` … `20260920234022_AddFundingSourceOfficeId` | Schema, additive |
 | 24 | `20260924064806_WidenClimateChangeTypologyName` (PPDO-137) | Schema — widens `climate_change_typologies.name` 200 → 500. Up is lossless; **Down fails** once any name exceeds 200 |
+| 25 | `20260927060651_AddInvestmentPlanningSettings` (PPDO-143) | Schema, additive — new single-row `investment_planning_settings` table, seeded **unset**. ⚠️ **Must run before the code deploys**: `GET /budget-planning/fiscal-years` reads it, and the dashboard, Office Ceilings and Report load their year through that endpoint |
 
 ↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
 reversed the office-owned record shape and **dropped** the migration rather than reversing it,

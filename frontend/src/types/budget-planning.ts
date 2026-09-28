@@ -510,6 +510,11 @@ export interface FundCeiling {
 export interface FiscalYears {
   fiscalYear: number;
   availableFiscalYears: number[];
+  /**
+   * The admin-set default fiscal year, raw — `null` when unset (PPDO-136). `fiscalYear` already
+   * folds it in; this is for pages that keep their own fallback when nothing is set.
+   */
+  defaultFiscalYear: number | null;
 }
 
 /**

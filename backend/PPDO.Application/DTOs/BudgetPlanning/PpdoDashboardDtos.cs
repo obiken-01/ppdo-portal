@@ -71,10 +71,15 @@ public record FundCeilingDto(
 /// year with an AIP. Split out of <see cref="PpdoDashboardDto"/> so callers that only need the
 /// picker (e.g. the Report page) don't pay for the LDIP/AIP/WFP-by-division/ceiling-by-fund
 /// build on every page load.
+///
+/// <see cref="DefaultFiscalYear"/> (PPDO-136) is the admin-set default, raw — <c>null</c> when
+/// unset. <see cref="FiscalYear"/> already folds it in; the raw value is for the client pages
+/// that keep their own fallback when nothing is set, which the resolved year cannot tell apart.
 /// </summary>
 public record FiscalYearsDto(
     int FiscalYear,
-    IReadOnlyList<int> AvailableFiscalYears);
+    IReadOnlyList<int> AvailableFiscalYears,
+    int? DefaultFiscalYear);
 
 /// <summary>
 /// The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old multi-office

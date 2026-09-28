@@ -155,4 +155,18 @@ public interface IPermissionService
     /// stays that way) and of both reviewer grants, in both directions.
     /// </summary>
     Task<bool> CanManageOfficeSetupAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may change the province-wide Investment Planning settings — the default
+    /// fiscal year every office's pages open on (v1.8.0 — PPDO-136).
+    ///
+    /// <see cref="CanManageConfigAsync"/> AND a seat in the host office. The value moves every
+    /// office, so it is PPDO's to set: a guest-office Admin, who holds CanManageConfig by role,
+    /// must not reach it. SuperAdmin passes from any office (or none), for support access.
+    ///
+    /// ⚠️ Admin does <b>not</b> bypass the office check. <see cref="CanUploadAipAsync"/> is also
+    /// described as host-office-only but lets every Admin through before reading the office — do
+    /// not copy that shape here.
+    /// </summary>
+    Task<bool> CanManageInvestmentPlanningSettingsAsync(User user, CancellationToken cancellationToken = default);
 }
