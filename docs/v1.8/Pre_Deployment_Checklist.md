@@ -11,8 +11,8 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **25 as of 2026-09-27** (PPDO-137 and
-PPDO-143 each added one after the release was called complete). The count has drifted four times now (13 → 15 → 23 → 24 → 25), so **recheck it rather than trusting any
+v1.8.0 carries migrations that production has never seen — **26 as of 2026-09-28** (PPDO-137,
+PPDO-143 and PPDO-147 each added one after the release was called complete). The count has drifted five times now (13 → 15 → 23 → 24 → 25 → 26), so **recheck it rather than trusting any
 number written here**:
 
 ```bash
@@ -30,6 +30,7 @@ All of them are additive (new tables, columns, permission flags) except one:
 | 15–23 | `20260907020223_AddAipDivisionAllocationLedger` … `20260920234022_AddFundingSourceOfficeId` | Schema, additive |
 | 24 | `20260924064806_WidenClimateChangeTypologyName` (PPDO-137) | Schema — widens `climate_change_typologies.name` 200 → 500. Up is lossless; **Down fails** once any name exceeds 200 |
 | 25 | `20260927060651_AddInvestmentPlanningSettings` (PPDO-143) | Schema, additive — new single-row `investment_planning_settings` table, seeded **unset**. ⚠️ **Must run before the code deploys**: `GET /budget-planning/fiscal-years` reads it, and the dashboard, Office Ceilings and Report load their year through that endpoint |
+| 26 | `20260928024451_AddAipDivisionSubmit` (PPDO-147, PPDO-130 T1) | Schema, additive — new nullable `aip_activities.division_id` and new `aip_division_submissions` table — **plus a backfill**: FY2028+ activities whose program has exactly one active division of their own office in `program_divisions` get that division; everything else stays NULL. No existing value changes. Down drops both, so the tags are lost. ⚠️ **Must run before the code deploys**: every AIP tree read maps `division_id` |
 
 ↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
 reversed the office-owned record shape and **dropped** the migration rather than reversing it,
@@ -173,6 +174,28 @@ data rather than add to it.
          activities. Cheapest, and reversible from the same backup the units migration needs anyway.
 
       ⚠️ Do this *after* the migrations and *before* announcing the release, per the step above.
+
+- [ ] **Record the division-tag backfill's untagged count** (PPDO-147, migration #26). Additive and
+      NULL-only, so it cannot damage data. But in an office **with divisions**, every untagged
+      FY2028+ activity blocks all of that office's division submits until the department head tags
+      it (`Division_Submit_Spec.md` decision 4). Run it after applying, and tell each office with a
+      non-zero count before division submit goes live:
+
+      ```sql
+      SELECT o.office_id,
+             COUNT(*)                                                 AS activities,
+             SUM(CASE WHEN a.division_id IS NULL THEN 1 ELSE 0 END)   AS untagged
+      FROM   aip_activities a
+      JOIN   aip_projects p ON p.id = a.project_id
+      JOIN   aip_programs g ON g.id = p.program_id
+      JOIN   aip_offices  o ON o.id = g.office_id
+      JOIN   aip_records  r ON r.id = o.aip_record_id
+      WHERE  r.fiscal_year >= 2028
+        AND  EXISTS (SELECT 1 FROM divisions d WHERE d.office_id = o.office_id AND d.is_active = 1)
+      GROUP  BY o.office_id ORDER BY untagged DESC;
+      ```
+
+      Offices without divisions are left out on purpose: untagged is their permanent, correct state.
 
 > ⚠️ **`Down` is not a general rollback.** It divides by 1000, which exactly reverses the multiply
 > — but only while nothing has been written since. The moment a user saves an AIP activity through

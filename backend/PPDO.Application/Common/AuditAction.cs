@@ -69,6 +69,25 @@ public static class AuditAction
     /// </summary>
     public const string ReturnToEncoder = "RETURN_DH";
 
+    // ── Division submit (v1.8.0 — PPDO-130, Division_Submit_Spec.md) ──────────
+    //
+    // ⚠️ Declared here by T1 (PPDO-147) so the spellings are fixed before anything writes them.
+    // They are deliberately NOT added to AipHandOffs yet. That list drives History and the
+    // returned-work notice (PPDO-75, PPDO-77), and whether a division hand-off belongs in either
+    // is T3's decision (PPDO-149), made together with the endpoints that write them.
+
+    /// <summary>A division submitted its work to the department head (Draft → Submitted). Ten characters.</summary>
+    public const string SubmitDivision = "SUBMIT_DIV";
+
+    /// <summary>
+    /// A division's work was handed back (Submitted → Draft), by the department head or as part of
+    /// a PPDO return (spec decision 11). Ten characters.
+    /// </summary>
+    public const string ReturnDivision = "RETURN_DIV";
+
+    /// <summary>The department head moved an activity to another division. Nine characters.</summary>
+    public const string RetagActivityDivision = "RETAG_DIV";
+
     /// <summary>
     /// Every AIP workflow hand-off, in one place (PPDO-77 read them for History; PPDO-75 reads the
     /// latest one for the returned notice). Add a new hand-off here, or both reads miss it.

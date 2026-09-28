@@ -105,6 +105,9 @@ public sealed class AppDbContext : DbContext
     // ── v1.8.0 — Investment Planning settings, single row (PPDO-136) ──────────
     public DbSet<InvestmentPlanningSettings> InvestmentPlanningSettings { get; set; } = null!;
 
+    // ── v1.8.0 — Division submit to the department head (PPDO-130) ─────────────
+    public DbSet<AipDivisionSubmission> AipDivisionSubmissions { get; set; } = null!;
+
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 
     public DbSet<PartnerApiKey> PartnerApiKeys { get; set; } = null!;

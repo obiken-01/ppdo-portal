@@ -84,6 +84,26 @@ public sealed class AipActivity
     /// </summary>
     public bool IsSynthetic { get; set; }
 
+    /// <summary>
+    /// The division whose work this activity is (v1.8.0 — PPDO-130,
+    /// <c>docs/v1.8/Division_Submit_Spec.md</c> decision 1). FK to <c>divisions</c>; nullable.
+    ///
+    /// <para>
+    /// Null means untagged. That is the permanent state for an office with no divisions and for
+    /// every FY ≤ 2027 row. In an office <b>with</b> divisions, an untagged activity blocks every
+    /// division's submit until the department head tags it (decision 4).
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>Carried on the activity, not inferred from <see cref="ProgramDivision"/>.</b> A program
+    /// may be assigned to several divisions, so "which division's work is this" has no answer at
+    /// program grain. This does not change the B12-b rule that an <i>office</i> and a <i>record</i>
+    /// are never division-owned (<c>AipDivisionColumnTests</c>). This column only says who in the
+    /// office is responsible for one leaf.
+    /// </para>
+    /// </summary>
+    public int? DivisionId { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP project.</summary>
@@ -91,4 +111,7 @@ public sealed class AipActivity
 
     /// <summary>The funding source config record. Null when unmatched.</summary>
     public FundingSource? FundingSource { get; set; }
+
+    /// <summary>The division this activity is tagged with. Null when untagged.</summary>
+    public Division? Division { get; set; }
 }

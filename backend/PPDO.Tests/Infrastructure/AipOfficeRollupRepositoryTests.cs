@@ -87,7 +87,8 @@ public sealed class AipOfficeRollupRepositoryTests : IDisposable
                 cc_mitigation TEXT NULL,
                 cc_typology_code TEXT NULL,
                 is_creation INTEGER NOT NULL DEFAULT 0,
-                is_synthetic INTEGER NOT NULL DEFAULT 0
+                is_synthetic INTEGER NOT NULL DEFAULT 0,
+                division_id INTEGER NULL
             );
             """);
     }

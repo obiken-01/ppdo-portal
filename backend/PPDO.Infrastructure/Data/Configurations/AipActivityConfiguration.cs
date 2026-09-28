@@ -91,6 +91,11 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
             .IsRequired()
             .HasDefaultValue(false);
 
+        // PPDO-130 — which division's work this activity is. Nullable: untagged is the permanent
+        // state for offices without divisions and for FY ≤ 2027 (Division_Submit_Spec.md §5).
+        builder.Property(a => a.DivisionId)
+            .HasColumnName("division_id");
+
         builder.HasIndex(a => new { a.ProjectId, a.RefCode })
             .IsUnique()
             .HasDatabaseName("UX_aip_activities_project_id_ref_code");
@@ -114,5 +119,18 @@ public sealed class AipActivityConfiguration : IEntityTypeConfiguration<AipActiv
             .HasForeignKey(a => a.FundingSourceId)
             .HasConstraintName("FK_aip_activities_funding_sources_funding_source_id")
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Restrict for the same reason: divisions are soft-deleted (is_active), and a hard delete
+        // of a division still tagged on activities must fail loudly, not orphan the tags.
+        // Unidirectional, so Division gains no activities collection.
+        builder.HasOne(a => a.Division)
+            .WithMany()
+            .HasForeignKey(a => a.DivisionId)
+            .HasConstraintName("FK_aip_activities_divisions_division_id")
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
+        builder.HasIndex(a => a.DivisionId)
+            .HasDatabaseName("IX_aip_activities_division_id");
     }
 }
