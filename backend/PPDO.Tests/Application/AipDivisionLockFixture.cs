@@ -32,7 +32,29 @@ internal sealed class AipDivisionLockFixture
             .ReturnsAsync((int recordId, IReadOnlyList<int> ids, CancellationToken _) =>
                 (IReadOnlyList<AipDivisionSubmission>)Submissions
                     .Where(s => s.AipRecordId == recordId && ids.Contains(s.OfficeId)).ToList());
+
+        // PPDO-149 — the workflow's reads and writes. "Tracked" here means the same instances the
+        // list holds, so a transition that edits a row in place is visible to the next read.
+        Repo.Setup(r => r.GetForOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int recordId, int officeId, CancellationToken _) =>
+                (IReadOnlyList<AipDivisionSubmission>)Submissions
+                    .Where(s => s.AipRecordId == recordId && s.OfficeId == officeId).ToList());
+        Repo.Setup(r => r.GetDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => Divisions.FirstOrDefault(d => d.Id == id));
+        Repo.Setup(r => r.AddAsync(It.IsAny<AipDivisionSubmission>(), It.IsAny<CancellationToken>()))
+            .Callback<AipDivisionSubmission, CancellationToken>((s, _) =>
+            {
+                if (s.Id == 0) s.Id = 9000 + Submissions.Count;
+                Submissions.Add(s);
+            })
+            .Returns(Task.CompletedTask);
+        Repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
     }
+
+    /// <summary>The real <see cref="AipDivisionWorkflow"/> over the same lists (PPDO-149).</summary>
+    public IAipDivisionWorkflow Workflow(IAuditService audit)
+        => new AipDivisionWorkflow(Repo.Object, audit,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AipDivisionWorkflow>.Instance);
 
     public IAipDivisionLock Build(IAipRepository aipRepo, IPermissionService permissions)
         => new AipDivisionLock(aipRepo, Repo.Object, permissions);

@@ -43,6 +43,9 @@ public sealed class AipSubmitGateTests
     private readonly Mock<IAipCeilingService>        _ceiling = new();
     private readonly Mock<IRepository<AipOffice>>    _officeRepo = new();
     private readonly Mock<IAuditService>             _audit = new();
+    // PPDO-149 — no divisions unless a test seeds some; the division tests share this fixture.
+    private readonly AipDivisionLockFixture          _divisions = new();
+    private readonly Mock<IUserRepository>           _userRepo = new();
 
     private readonly List<AipOffice> _groups =
     [
@@ -74,9 +77,13 @@ public sealed class AipSubmitGateTests
         _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
+        _userRepo.Setup(r => r.GetNamesByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string>());
+
         return new AipSubmitService(
             _aipRepo.Object, _expRepo.Object, _ceiling.Object, _officeRepo.Object,
-            _audit.Object, NullLogger<AipSubmitService>.Instance);
+            _audit.Object, _divisions.Repo.Object, _divisions.Workflow(_audit.Object),
+            new PermissionService(), _userRepo.Object, NullLogger<AipSubmitService>.Instance);
     }
 
     /// <summary>An activity that passes every check.</summary>

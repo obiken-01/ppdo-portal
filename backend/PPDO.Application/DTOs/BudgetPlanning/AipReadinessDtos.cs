@@ -57,7 +57,18 @@ public sealed record AipReadinessIssueDto(
 /// total, the ceiling and the overage. Null when within it.
 /// </param>
 /// <param name="CanSubmitToPpdo">
-/// Whether the send to PPDO may go ahead: <see cref="CanSubmit"/> <b>and</b> within the ceiling.
+/// Whether the send to PPDO may go ahead: <see cref="CanSubmit"/> <b>and</b> within the ceiling,
+/// and — in an office that submits by division — every division with activities has submitted and
+/// nothing is untagged (PPDO-149).
+/// </param>
+/// <param name="SubmitsByDivision">
+/// PPDO-149. True when the office uses the division flow (FY2028+, at least one active division).
+/// The office-level submit is refused then, so <see cref="CanSubmit"/> is false; each division
+/// submits through <c>POST …/divisions/{divisionId}/submit</c> instead.
+/// </param>
+/// <param name="WaitingDivisions">
+/// PPDO-149. The divisions with activities that have not submitted, by name — the department
+/// head's "Waiting on: …". Empty outside the division flow.
 /// </param>
 public sealed record AipReadinessDto(
     int                                  AipRecordId,
@@ -68,7 +79,70 @@ public sealed record AipReadinessDto(
     IReadOnlyList<AipReadinessIssueDto>  Issues,
     AipCeilingStatusDto?                 Ceiling,
     string?                              CeilingWarning,
-    bool                                 CanSubmitToPpdo);
+    bool                                 CanSubmitToPpdo,
+    bool                                 SubmitsByDivision = false,
+    IReadOnlyList<string>?               WaitingDivisions = null);
+
+// ── Division submit (v1.8.0 — PPDO-149, Division_Submit_Spec.md §4) ───────────
+
+/// <summary>
+/// Body of <c>GET …/aip/{aipId}/offices/{officeId}/divisions</c>: every division of one office and
+/// where each one stands.
+/// </summary>
+/// <param name="HasDivisions">False outside the division flow; <see cref="Divisions"/> is then empty.</param>
+/// <param name="UntaggedActivityCount">
+/// Activities in the office with no division. Any number above zero blocks every division submit
+/// (decision 4) until the department head tags them.
+/// </param>
+public sealed record AipDivisionStatusListDto(
+    int OfficeId,
+    string OfficeWorkflowStatus,
+    bool HasDivisions,
+    int UntaggedActivityCount,
+    IReadOnlyList<AipDivisionStatusDto> Divisions);
+
+/// <summary>One division's row in <see cref="AipDivisionStatusListDto"/>.</summary>
+/// <param name="Status"><c>Draft</c> or <c>Submitted</c> (<c>AipDivisionStatus</c>).</param>
+/// <param name="ActivityCount">
+/// Its tagged activities. ⚠️ Zero is listed rather than hidden, so the department head can see the
+/// division exists; a division with none never blocks the office (decision 10).
+/// </param>
+/// <param name="CanSubmit">Whether THIS caller may submit it now: allowed to, and nothing blocks it.</param>
+/// <param name="CanReturn">Whether THIS caller may return it now.</param>
+/// <param name="Blockers">
+/// Why it cannot be submitted, as the refusal would say it — the untagged count, "no activities",
+/// and the completeness issues of this division's own activities. Empty when ready.
+/// </param>
+public sealed record AipDivisionStatusDto(
+    int       DivisionId,
+    string?   Code,
+    string    Name,
+    bool      IsActive,
+    string    Status,
+    int       ActivityCount,
+    DateTime? SubmittedAt,
+    string?   SubmittedByName,
+    DateTime? ReturnedAt,
+    bool      CanSubmit,
+    bool      CanReturn,
+    IReadOnlyList<string> Blockers);
+
+/// <summary>
+/// Result of a division submit or return (<c>Division_Submit_Spec.md</c> §4).
+/// </summary>
+/// <param name="OfficeWorkflowStatus">
+/// The office's state after the transition — <c>DepartmentReview</c> when this was the last
+/// division to submit (decision 9), otherwise unchanged or back to <c>Draft</c> on a return.
+/// </param>
+/// <param name="CeilingWarning">
+/// The office-wide overage, on a submit only (decision 13). The submit went ahead; this is what the
+/// toast repeats. Null on a return and when within the ceiling.
+/// </param>
+public sealed record AipDivisionSubmitResultDto(
+    int     DivisionId,
+    string  Status,
+    string  OfficeWorkflowStatus,
+    string? CeilingWarning = null);
 
 /// <summary>
 /// Where the office's work now sits after a workflow transition.

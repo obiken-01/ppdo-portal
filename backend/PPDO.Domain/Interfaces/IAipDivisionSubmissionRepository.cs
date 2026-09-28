@@ -33,8 +33,17 @@ public interface IAipDivisionSubmissionRepository
     Task<IReadOnlyList<Division>> GetDivisionsByOfficeIdsAsync(
         IReadOnlyList<int> officeIds, CancellationToken ct = default);
 
+    /// <summary>One division by id, untracked, active or not — null when there is none (PPDO-149).</summary>
+    Task<Division?> GetDivisionAsync(int divisionId, CancellationToken ct = default);
+
     /// <summary>Stages a new row. It is written by <see cref="SaveChangesAsync"/>.</summary>
     Task AddAsync(AipDivisionSubmission submission, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves every pending change on the shared context — the division row AND the office's
+    /// workflow state, so a transition commits as one (PPDO-149). ⚠️ Throws
+    /// <see cref="PPDO.Domain.Common.UniqueConstraintViolationException"/> when the
+    /// (aip_record_id, division_id) index rejects a second first-submit of the same division.
+    /// </summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }

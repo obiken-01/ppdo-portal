@@ -235,7 +235,19 @@ office, say — counts as having none.
 A department head is exempt from the division rule, not from the office rule: once the office is
 with PPDO, nobody writes. Pinned by `PermissionMatrixTests.DivisionLock_*`,
 `AipServiceTests.EditActivity_ByDepartmentHead_OnceTheOfficeIsWithPpdo_IsStillRefused` and
-`AipExpenditureDivisionLockTests`. Division **submit** and **return** rows arrive with PPDO-149 (T3).
+`AipExpenditureDivisionLockTests`.
+
+**Division submit and return (PPDO-149).** Both act on the caller's **own** office only, as every
+office hand-off does. Another office's division answers 404, the same as a missing one (PPDO-46).
+
+| Action | Endpoint gate | Who, in the service |
+|---|---|---|
+| List divisions (`GET …/offices/{id}/divisions`) | `CanAccessBudgetPlanning` | Readable by anyone `OfficeScope.ResolveForReview` lets see the office. The `canSubmit` and `canReturn` flags are only ever true for the office's own people |
+| Submit a division | `CanAccessBudgetPlanning`, through `AuthorizeWriteAsync` like the office submit | That division's own encoder, or the department head / Admin on its behalf. Anyone else gets **403** |
+| Return a division | `CanReviewBudgetPlanning`, through `AuthorizeAsync` like `return-to-encoder` | The department head only. ⚠️ **A plain Admin is refused**, as they are for the office-level return (spec T3 note). SuperAdmin resolves the grant |
+
+Pinned by `AipDivisionSubmitServiceTests` and
+`ReviewerWriteGuardCoverageTests.ReturnDivision_IsGatedOnTheDepartmentHeadFlag`.
 
 ---
 
