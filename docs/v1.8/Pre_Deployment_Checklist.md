@@ -245,6 +245,26 @@ data rather than add to it.
       thousand on every subsequent edit.
 - [ ] Upload an FY2027 `.xlsm` into a scratch record and confirm the amounts land as pesos. The
       province's workbook is denominated in ₱000 and `AipXlsmParser` converts on import.
+- [ ] *(Optional — PPDO-150.)* Re-point existing FY2028+ AIP reservation rows to their activity's
+      division tag. Nothing reads this ledger yet, and each row is rewritten on its activity's next
+      expenditure save, so this only tidies what is already there. Rows for an untagged activity
+      are removed; they post again once the activity is tagged.
+
+      ```sql
+      BEGIN TRAN;
+      DELETE l FROM aip_division_allocation_ledger l
+        JOIN aip_activities a ON a.id = l.aip_activity_id
+       WHERE l.fiscal_year >= 2028 AND a.division_id IS NULL;
+      UPDATE l SET l.division_id = a.division_id, l.updated_at = SYSUTCDATETIME()
+        FROM aip_division_allocation_ledger l
+        JOIN aip_activities a ON a.id = l.aip_activity_id
+       WHERE l.fiscal_year >= 2028 AND a.division_id <> l.division_id;
+      -- expect 0 rows from the check below before committing
+      SELECT division_id, fiscal_year, funding_source_id, aip_activity_id, COUNT(*)
+        FROM aip_division_allocation_ledger
+       GROUP BY division_id, fiscal_year, funding_source_id, aip_activity_id HAVING COUNT(*) > 1;
+      COMMIT;
+      ```
 
 ---
 

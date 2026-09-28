@@ -671,6 +671,7 @@ export default function BudgetPlanningPage() {
           ) : (
             <DivisionTable
               divisions={divisionsForBand}
+              noDivision={isHost ? dashboard?.noDivision : officeDashboard?.noDivision}
               canManageAllocation={canManageAllocationForBand}
               officeId={officeId}
               fiscalYear={fiscalYear}

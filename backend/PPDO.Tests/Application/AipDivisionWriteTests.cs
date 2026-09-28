@@ -47,7 +47,8 @@ public sealed partial class AipServiceTests
         AipService Sut,
         AipDivisionLockFixture Divisions,
         List<AipActivity> Activities,
-        Mock<IAuditService> Audit);
+        Mock<IAuditService> Audit,
+        Mock<IAipCeilingService> Ceiling);
 
     private static DivisionWorld BuildDivisionWorld(
         int fiscalYear = 2028,
@@ -88,6 +89,7 @@ public sealed partial class AipServiceTests
         }
         divisions.AddDivision(DivHostOffice, HostOfficeId, "PPDO Planning");
 
+        Mock<IAipCeilingService> ceiling = new();
         var built = Build(recs, [], officeSeed: offices, programSeed: programs, projectSeed: projects,
             actSeed: acts,
             officeConfigSeed: [ConfigOffice(HostOfficeId, true), ConfigOffice(GuestOfficeId, false)],
@@ -98,9 +100,10 @@ public sealed partial class AipServiceTests
             [
                 new() { OfficeId = GuestOfficeId, ProgramRefCode = "P", DivisionId = DivPlanning },
                 new() { OfficeId = GuestOfficeId, ProgramRefCode = "P", DivisionId = DivEngineering },
-            ]);
+            ],
+            ceiling: ceiling);
 
-        return new DivisionWorld(built.Item1, divisions, acts, built.Item6);
+        return new DivisionWorld(built.Item1, divisions, acts, built.Item6, ceiling);
     }
 
     private static CreateAipActivityDto NewActivity(int? divisionId = null) =>
@@ -480,6 +483,27 @@ public sealed partial class AipServiceTests
         Assert.Equal("Engineering Division", result.Value!.DivisionName);
         w.Audit.Verify(a => a.LogAsync("aip_activities", ActPlanning, AuditAction.RetagActivityDivision,
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>PPDO-150 — the reservation follows the tag, so a re-tag re-posts the ledger.</summary>
+    [Fact]
+    public async Task Retag_RePostsTheActivitysCeilingReservation()
+    {
+        DivisionWorld w = BuildDivisionWorld();
+
+        await w.Sut.RetagActivityDivisionAsync(ActPlanning, DivEngineering, DepartmentHead());
+
+        w.Ceiling.Verify(c => c.UpsertLedgerForActivityAsync(ActPlanning, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Retag_ToTheSameDivision_ChangesNothing_AndTouchesNoLedger()
+    {
+        DivisionWorld w = BuildDivisionWorld();
+
+        await w.Sut.RetagActivityDivisionAsync(ActPlanning, DivPlanning, DepartmentHead());
+
+        w.Ceiling.Verify(c => c.UpsertLedgerForActivityAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

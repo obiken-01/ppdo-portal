@@ -61,6 +61,7 @@ needs to know its submitted work cannot be changed under it.
    `AipCeilingService.ResolveDivisionIdAsync` keeps attributing through `ProgramDivision` (lowest
    division id). Moving the host-office ledger to the activity's tag is a **separate follow-up
    ticket** (§2 Open follow-ups): it changes allocation figures and deserves its own review.
+   ↩️ **Done in PPDO-150** — see the addendum at the end of §2.
 8. **Target: v1.8.0, landed on `release/1.8.0` before go-live** (Ralph, 2026-09-28). The
    pre-deployment checklist grows by the migration in §5.
 
@@ -121,15 +122,61 @@ Further rules implied by the above (not separate choices):
 
 ### Open follow-ups (not blocking)
 
-- **Ceiling ledger by activity division** — replace `ProgramDivision` attribution in
-  `AipCeilingService` with `aip_activities.division_id` for FY2028+. File as its own Demo 2 ticket
-  when this spec is accepted (decision 7).
-- **Should `ProgramDivision` pre-fill tags at all** once tags exist, or be retired for FY2028+? Not
-  decided. This spec only reads it for the backfill and bulk creation.
+- ~~**Ceiling ledger by activity division**~~ — done in PPDO-150 (addendum below).
+- ~~**Should `ProgramDivision` pre-fill tags at all** once tags exist, or be retired for FY2028+?~~
+  Kept (addendum below, decision A3).
 - **Division with zero activities.** Decision 10 lets the office proceed without it. If PPDO wants
   "Division C confirms it has nothing" as an explicit act, that is a later addition.
 - **Notify the department head when a division submits.** Counts on the existing notifications
   endpoint are in scope (§6.3); email/push is not.
+
+### Addendum — division money follows the tag (PPDO-150, 2026-09-28)
+
+Written after investigating the ticket, and decided by Ralph the same day.
+
+**Finding that reframed the ticket.** The AIP reservation ledger (`aip_division_allocation_ledger`)
+is written on every expenditure save, but **nothing reads it for FY2028+**. WFP netting is deferred,
+and an entered year has no WFP. Re-attributing the ledger alone would change no figure anyone sees.
+The per-division figures people *do* see are the dashboard's division rows (PPDO-127/138). They
+attributed each program's money through `ProgramDivision`, counting a program assigned to several
+divisions **in full against each**. That was the "how does a shared program split" question
+PPDO-130 left open.
+
+Local before/after (FY2028, MOOE + CO rounded up per activity):
+
+| Office | Division | Before (`ProgramDivision`) | After (activity tag) |
+|---|---|---|---|
+| SPO | Administrative / Records / Test | ₱300,000 **each** (₱900K for a ₱300K office) | ₱0 each, with ₱300K on the "No division" row (3 untagged activities) |
+| PTO | Admin / Cash | ₱699,000 / ₱440,000 | unchanged |
+| PPDO | Administrative / Sectoral Planning | ₱1,116,000 / ₱311,000 | unchanged |
+
+Where every program has exactly one division, nothing moves. The change is entirely in shared programs.
+
+**Decisions.**
+
+- **A1 — FY2028+ division figures count each activity once, against its own tag.** On the dashboard
+  and in the entry page's Division allocations panel, a division's activity counts, "Costed in
+  AIP" and per-fund Used all follow the tag. The rows now add up to the office. The program
+  assignment no longer decides money for FY2028+.
+- **A1a — untagged activities sit on a separate "No division" row** (Ralph's pick over leaving them
+  out or falling back to `ProgramDivision`). They are counted once, with no allocation. Allocated
+  and Remaining show as a dash, and the row never shows "Over ceiling". Only a viewer who sees
+  every division gets the row; a division-scoped viewer sees only their own row. It is carried as
+  a separate `noDivision` field, never inside `byDivision`, so no per-division sum picks it up.
+- **A2 — the ledger follows the tag for the host office only.** FY2028+ host-office
+  reservations post to `activity.division_id`. An untagged activity writes no row and logs a
+  warning, like an unassigned program. A re-tag re-posts the reservation, and the upsert deletes
+  the activity's rows under any other division. **Guest offices still write no ledger rows**
+  until something reads them.
+- **A3 — `ProgramDivision` stays.** It still decides which programs a division encoder sees (the
+  read scope Ralph kept) and what the tag backfill uses. It just stops deciding money for FY2028+.
+- **FY ≤ 2027 is untouched** — no tags exist there. The dashboard keeps the program rule and the WFP
+  ledger, and the AIP ledger keeps `ProgramDivision`.
+
+**Deployment.** No migration. One optional post-deploy data step re-points existing FY2028+
+host-office ledger rows to their activity's tag (`Pre_Deployment_Checklist.md` §3). It is optional
+because nothing reads the ledger yet. Every row is also rewritten the next time its activity's
+lines are saved.
 
 ---
 

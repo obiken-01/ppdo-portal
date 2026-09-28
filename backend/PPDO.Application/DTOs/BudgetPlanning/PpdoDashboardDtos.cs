@@ -102,7 +102,10 @@ public record PpdoDashboardDto(
     OfficeLdipSummaryDto Ldip,
     OfficeAipSummaryDto  Aip,
     IReadOnlyList<DivisionSummaryDto> ByDivision,
-    IReadOnlyList<FundCeilingDto>     CeilingByFund
+    IReadOnlyList<FundCeilingDto>     CeilingByFund,
+    // PPDO-150: FY2028+ untagged activities as one row, for a caller who sees every division, else
+    // null. Kept OUT of ByDivision so no per-division total can sum it by accident.
+    DivisionSummaryDto?               NoDivision = null
 );
 
 /// <summary>

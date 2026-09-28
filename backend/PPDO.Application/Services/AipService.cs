@@ -47,6 +47,8 @@ public sealed class AipService : IAipService
     private readonly IAipReviewCommentRepository    _commentRepo;
     // PPDO-148 — the division lock. Every write below consults it after the office checks.
     private readonly IAipDivisionLock               _divisionLock;
+    // PPDO-150 — a re-tag moves the activity's ceiling reservation to its new division.
+    private readonly IAipCeilingService             _ceiling;
     private readonly ILogger<AipService>            _logger;
 
     public AipService(
@@ -68,8 +70,10 @@ public sealed class AipService : IAipService
         IAipAllocationLedgerRepository ledgerRepo,
         IAipReviewCommentRepository commentRepo,
         IAipDivisionLock divisionLock,
+        IAipCeilingService ceiling,
         ILogger<AipService> logger)
     {
+        _ceiling      = ceiling;
         _divisionLock = divisionLock;
         _ledgerRepo  = ledgerRepo;
         _commentRepo = commentRepo;
@@ -1543,6 +1547,9 @@ public sealed class AipService : IAipService
             await _aipRepo.SaveChangesAsync(ct);
             await _audit.LogAsync("aip_activities", activity.Id, AuditAction.RetagActivityDivision,
                 new { DivisionId = oldDivisionId }, new { DivisionId = divisionId }, ct);
+            // The reservation follows the tag (PPDO-150): re-posted under the new division, and
+            // the rows it left under the old one are removed by the upsert itself.
+            await _ceiling.UpsertLedgerForActivityAsync(activity.Id, ct);
             _logger.LogInformation(
                 "AIP activity re-tagged. ActivityId: {ActivityId}, OldDivisionId: {OldDivisionId}, "
                 + "NewDivisionId: {NewDivisionId}, UserId: {UserId}",

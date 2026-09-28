@@ -124,6 +124,16 @@ public interface IAipRepository : IRepository<AipRecord>
         IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
 
     /// <summary>
+    /// The same aggregate as <see cref="GetProgramRollupsAsync"/>, grouped by each activity's own
+    /// division tag instead of its program (PPDO-150). One row per tag, plus one with a null
+    /// <see cref="AipDivisionRollupDto.DivisionId"/> for the untagged activities. Every activity is
+    /// counted exactly once — which is the point: a program shared by several divisions no longer
+    /// counts in full against each.
+    /// </summary>
+    Task<IReadOnlyList<AipDivisionRollupDto>> GetDivisionRollupsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
+
+    /// <summary>
     /// How many <b>offices</b> sit at <paramref name="workflowStatus"/>, per fiscal year, across
     /// records at <paramref name="recordStatus"/> from <paramref name="minFiscalYear"/> on
     /// (PPDO-75 — the PPDO reviewer's sidebar count).
@@ -272,6 +282,13 @@ public sealed record AipOfficeStatusRow(
 /// The same rollup one level down, per program ref code (PPDO-20). See
 /// <see cref="IAipRepository.GetProgramRollupsAsync"/> for why the key is the ref code.
 /// </summary>
+/// <summary>One division tag's activity counts and costed total (PPDO-150). Null = untagged.</summary>
+public sealed record AipDivisionRollupDto(
+    int?    DivisionId,
+    int     ActivityCount,
+    int     CostedActivityCount,
+    decimal CostedTotal);
+
 public sealed record AipProgramRollupDto(
     int     AipOfficeId,
     string  ProgramRefCode,

@@ -62,6 +62,13 @@ public interface IAipAllocationLedgerRepository : IRepository<AipDivisionAllocat
     /// FKs. Skipping it makes the delete fail on the FK (PPDO-88 — it had no caller until then).
     /// </summary>
     Task<int> DeleteByActivityIdsAsync(IReadOnlyList<int> aipActivityIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes one activity's rows posted to any division OTHER than <paramref name="divisionId"/>
+    /// (PPDO-150). A re-tag moves an FY2028+ activity's reservation; without this its old division
+    /// would keep the last reservation forever — the same staleness RAL-154 fixed for funds.
+    /// </summary>
+    Task<int> DeleteForActivityOutsideDivisionAsync(int aipActivityId, int divisionId, CancellationToken ct = default);
 }
 
 /// <summary>One division+fund's total reserved amount for a fiscal year (V18-45).</summary>

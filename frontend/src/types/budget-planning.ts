@@ -555,6 +555,12 @@ export interface PpdoDashboard {
   aip: OfficeAipSummary;
   byDivision: DivisionSummary[];
   ceilingByFund: FundCeiling[];
+  /**
+   * PPDO-150 — FY2028+ activities with no division tag, as one row. Only for a viewer who sees
+   * every division; null otherwise, or when nothing is untagged. Kept out of `byDivision` so no
+   * per-division sum picks it up.
+   */
+  noDivision?: DivisionSummary | null;
 }
 
 export interface RecentActivity {
@@ -624,6 +630,8 @@ export interface OfficeDashboard {
    * uses.
    */
   byDivision: DivisionSummary[];
+  /** PPDO-150 — see `PpdoDashboard.noDivision`. Only for a department head's own office. */
+  noDivision?: DivisionSummary | null;
 }
 
 // ── WFP ──────────────────────────────────────────────────────────────────────
