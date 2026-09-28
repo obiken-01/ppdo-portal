@@ -3,12 +3,17 @@
 > **Status: accepted** — 2026-09-28. Parent: PPDO-122 (Demo 2 change requests), item 2.8.
 > Written to `docs/SPEC_STANDARD.md`. All decisions are Ralph's (session 2026-09-28): 1–8 and 12
 > chosen directly; 9–11 proposed and accepted, with 11 revised to the simpler "PPDO return reopens
-> every division"; 13 (ceiling) added on review.
+> every division"; 13 (ceiling) added on review and extended to offices without divisions.
 >
 > ⚠️ **This reverses part of `AIP_Review_Spec.md` decision 4** (PPDO-70, 2026-09-08: "the lock falls
 > at `SubmittedToPpdo`, not at the first submit"). For an office **with divisions**, a division's
 > work now locks for that division's encoders when they submit it. Offices without divisions keep
 > decision 4 exactly as it is.
+>
+> ⚠️ **It also relaxes `AIP_Review_Spec.md` §6.2 ("there is no submit anyway") for the ceiling, in
+> every office** (decision 13). Being over the ceiling becomes a warning at the submit to the
+> department head, and stays a hard block at the send to PPDO. Completeness issues still block every
+> submit.
 
 ---
 
@@ -40,7 +45,8 @@ needs to know its submitted work cannot be changed under it.
    2026-09-28). Returning Division A reopens only Division A. `SubmitToPpdo` is refused while any
    division with activities is still in Draft.
 4. **Offices with no divisions keep today's single-hop flow unchanged** (Ralph, 2026-09-28). An office
-   with zero active divisions submits, returns and locks exactly as it does now. An office with divisions
+   with zero active divisions submits, returns and locks exactly as it does now, **except the
+   ceiling rule in decision 13, which applies to every office**. An office with divisions
    uses the division flow, and **every activity must be tagged before any division can submit** — the
    readiness panel names the untagged ones.
 5. **A new activity is tagged with its creator's division; only the department head can re-tag**
@@ -81,12 +87,18 @@ needs to know its submitted work cannot be changed under it.
 12. **FY2028+ only.** The division flow applies to AIP records with
     `FiscalYear >= AipFiscalYears.FirstEnteredFiscalYear`. FY ≤ 2027 records have no entry flow to
     change — clean fiscal-year break (CLAUDE.md, v1.8.0).
-13. **The ceiling is checked at every submit, and only blocks the send to PPDO** (Ralph,
-    2026-09-28). A division submit runs the office-wide ceiling check. When the office is over its
-    ceiling, the submit **still succeeds, with a warning** that names the overage. `SubmitToPpdo`
+13. **The ceiling is checked at every submit, and only blocks the send to PPDO — in every office**
+    (Ralph, 2026-09-28). Both a division submit and, in an office without divisions, the encoder's
+    whole-office submit run the office-wide ceiling check. When the office is over its ceiling, the
+    submit **still succeeds, with a warning** that names the overage. `SubmitToPpdo`
     keeps refusing while the office is over its ceiling, as it does today. Why: division heads find
     out about the overage while there is time to fix it, and the department head, who owns the
-    whole-office total, is the one it finally gates.
+    whole-office total, is the one it finally gates. One rule for every office, so an encoder does
+    not meet a different ceiling behaviour depending on whether their office has divisions.
+    **Readiness:** the ceiling issue moves out of the blocking list for the department-head submit.
+    `AipReadinessDto` gains `CeilingWarning` (string or null); `CanSubmit` no longer turns false on
+    the ceiling alone. A separate `CanSubmitToPpdo` (or the existing re-run in `SubmitToPpdoAsync`)
+    keeps it blocking at the PPDO step.
 
 Further rules implied by the above (not separate choices):
 
@@ -116,10 +128,6 @@ Further rules implied by the above (not separate choices):
   decided. This spec only reads it for the backfill and bulk creation.
 - **Division with zero activities.** Decision 10 lets the office proceed without it. If PPDO wants
   "Division C confirms it has nothing" as an explicit act, that is a later addition.
-- **Offices without divisions still block the encoder's submit on the ceiling** (today's rule,
-  `AipReadinessDto`: "there is no submit anyway"). Decision 13 applies to division submits only. To
-  make one rule everywhere (warn at the department-head submit, block only at PPDO), change
-  `AipSubmitService.SubmitAsync` to match. Awaiting Ralph's call.
 - **Notify the department head when a division submits.** Counts on the existing notifications
   endpoint are in scope (§6.3); email/push is not.
 
@@ -252,7 +260,11 @@ Body `{ "divisionId": 4 }` (`[JsonRequired]`; not nullable in a divisioned offic
 
 ### Changed existing endpoints
 
-- **`POST …/aip/{aipId}/submit`** — 400 in a divisioned office (§3.2). Unchanged otherwise.
+- **`POST …/aip/{aipId}/submit`** — 400 in a divisioned office (§3.2). In an office without
+  divisions, over the ceiling now **succeeds with a warning** (decision 13). `AipSubmitResultDto`
+  gains `ceilingWarning` (string or null). Completeness failures still return 400.
+- **`GET …/aip/{aipId}/readiness`** — `AipReadinessDto` gains `ceilingWarning`. The ceiling no longer
+  sets `canSubmit` to false on its own.
 - **`POST …/offices/{officeId}/return-to-encoder`** — in a divisioned office, returns every Submitted
   division (§3.4).
 - **`POST …/offices/{officeId}/submit-to-ppdo`** — adds the "every division with activities is
@@ -389,12 +401,16 @@ States as in §6.1. Forbidden: the re-tag select and Return are **hidden** for n
 |---|---|---|
 | **T1 — data model** | Column + table + entity/config + migration with backfill (⚠️), repository, `AuditAction` values, checklist entry | spec accepted |
 | **T2 — tagging + write guard** | Tag on create (§3.1), re-tag endpoint, bulk-create tagging, division lock added to `AipWriteGuard` for `AipService` + `AipExpenditureService`, container-delete rule, `AipActivityDto.canEdit`/division fields, `Permission_Matrix.md` rows | T1 |
+| **T0 — ceiling warns at the department-head submit** | Decision 13 for offices without divisions: `AipSubmitService.SubmitAsync` + readiness DTO change, `ceilingWarning` on the result, readiness panel shows it as a warning, and the confirm dialog repeats it. `SubmitToPpdoAsync` unchanged | — (independent; can ship first) |
 | **T3 — division submit/return** | `AipDivisionSubmitService` (or methods on `AipSubmitService`), the three new endpoints, office-state derivation (decision 9), changes to office submit / return-to-encoder / submit-to-PPDO | T2 |
 | **T4 — entry UI (encoder)** | §6.1 | T3 |
 | **T5 — department-head UI + board** | §6.2, §6.3 | T3 |
 | *(follow-up, separate ticket)* | Ceiling ledger by activity division (decision 7) | T1 |
 
-**Manual-implementation candidates:** none of T1–T3. T1 is a migration with a backfill; T2 and T3 are
+**Manual-implementation candidates:** **T0** is a fair one. It's small, it's in one service with
+`AipSubmitServiceTests` as a ready feedback loop (`dotnet test`), and the sibling to copy is how
+`SubmitToPpdoAsync` already re-runs the checklist. It relaxes a gate rather than adding a permission.
+None of T1–T3. T1 is a migration with a backfill; T2 and T3 are
 the write guard and permission paths, where a missed check is not caught by the compiler. **T5's
 kanban "n of m divisions submitted" chip** is a reasonable small candidate once T3 exists — the
 sibling is the existing office card's status chip.
@@ -404,6 +420,7 @@ sibling is the existing office card's status chip.
 ## 10. Acceptance checklist
 
 - [ ] In an office with no divisions, an encoder submits the whole office and it goes to department review exactly as before
+- [ ] In an office with no divisions that is over its ceiling, the encoder's submit shows the overage warning and still goes to department review; the department head's **Submit to PPDO** is refused with the ceiling message
 - [ ] In an office with divisions, an encoder in Planning adds an activity and it shows a "Planning" pill
 - [ ] That encoder sees Engineering's activities with inputs disabled and the tooltip "Belongs to Engineering Division"
 - [ ] With one untagged activity in the office, **Submit Planning Division** shows "1 activity in this office has no division…" and nothing changes
@@ -433,8 +450,9 @@ TDD — this is workflow state and permission resolution.
   the division's own activities are counted); cross-division 403; department head submits on behalf;
   no-division office refused; return one reopens only that one and moves the office back to Draft;
   return a Draft division refused; return-all.
-- **`AipSubmitServiceTests`**: office submit refused in a divisioned office; unchanged in a no-division
-  office; submit-to-PPDO refused while a division is Draft, with every waiting division named; PPDO
+- **`AipSubmitServiceTests`**: office submit refused in a divisioned office; in a no-division office,
+  over-ceiling submit succeeds with `ceilingWarning` set, an incomplete activity still blocks, and
+  submit-to-PPDO over the ceiling is refused; submit-to-PPDO refused while a division is Draft, with every waiting division named; PPDO
   return resets every division row to Draft and the office stays `ReturnedByPpdo` until the last one
   resubmits; over-ceiling division submit succeeds with `ceilingWarning` set, and submit-to-PPDO over
   the ceiling is still refused.
