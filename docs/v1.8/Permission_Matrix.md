@@ -6,7 +6,7 @@
 > The two are a pair: change a rule and the corresponding row fails until both are updated. A flag
 > added to `IPermissionService` without a row fails the build (`Matrix_CoversEveryFlagOnThePermissionService`).
 >
-> **Read this instead of `PermissionService`.** The model now carries 14 flags across three
+> **Read this instead of `PermissionService`.** The model now carries 15 flags across three
 > mechanisms plus three scope dimensions and one subtractive guard — past the point where "read the
 > code" is a reasonable answer.
 
@@ -88,6 +88,30 @@ blank override means granted. An explicit `false` still turns it off.
 | Staff | **guest** | `true` | `true` | ❌ **never, however set** |
 
 The uploaded file contains *every* office's records, so upload is host-office-only by construction.
+
+### 2.3a `CanManageInvestmentPlanningSettings` — config manager in the host office (PPDO-136)
+
+Composed from existing inputs; it has **no override column and no division flag of its own**. The
+override and division inputs below are `CanManageConfig`'s.
+
+| Role | Office | Override (`CanManageConfig`) | Division flag (`CanManageConfig`) | Result |
+|---|---|---|---|---|
+| SuperAdmin | any, or none | — | — | ✅ support access |
+| Admin | host | — | — | ✅ |
+| Admin | **guest**, or none | — | — | ❌ **the office check binds Admin** |
+| Staff | host | `null` | `false` | ❌ |
+| Staff | host | `null` | `true` | ✅ |
+| Staff | host | `true` | `false` | ✅ |
+| Staff | host | `false` | `true` | ❌ |
+| Staff | **guest**, or none | `true` | `true` | ❌ **never, however set** |
+
+It gates the province-wide default fiscal year (`docs/v1.8/Default_Fiscal_Year_Spec.md`), which
+moves every office's Investment Planning pages — so it is PPDO's to set, not any config manager's.
+
+> ⚠️ **Not the same shape as §2.3.** `CanUploadAip` lets every Admin through before it reads the
+> office; this flag reads the office first, so a guest-office Admin — who holds `CanManageConfig` by
+> role — is refused. Only SuperAdmin skips the office check. Pinned by the matrix rows and by
+> `CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin`.
 
 ### 2.4 Per-user grants
 
@@ -175,6 +199,55 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 > ⚠️ **Consume both axes together.** For a guest-office caller the division axis reads "every
 > division", which is only safe because the office axis pins them to one office in the same query.
+
+### 3.2 The AIP division lock — who may write which activity (PPDO-148)
+
+`docs/v1.8/Division_Submit_Spec.md` decisions 2, 5 and 6. Not a flag: a rule over *who the caller
+is in this office* × *whose activity it is* × *whether that division has submitted*. It applies only
+where the office uses the division flow: an **FY2028+** record and an office with **at least one
+active division**. Everywhere else, including every FY ≤ 2027 record, the rules are today's.
+
+**Department head** here means Admin/SuperAdmin, or the holder of `CanReviewBudgetPlanning` whose
+`office_id` is **this** office (an office comparison, never `OfficeScope` — a PPDO reviewer is not
+every office's head). **Encoder in A** means Staff whose `division_id` is an active division of this
+office. A Staff member whose division belongs to another office — a PPDO user looking at a guest
+office, say — counts as having none.
+
+| Caller | Activity | Its division Draft | Its division Submitted |
+|---|---|---|---|
+| Encoder in A | A's | ✅ edit | ❌ "…submitted to the department head" |
+| Encoder in A | B's | ❌ "belongs to B" | ❌ |
+| Encoder in A | untagged | ❌ "no division yet" | — |
+| Staff, no division in this office | any | ❌ read-only | ❌ |
+| Department head | any | ✅ | ✅ (decision 2) |
+| Admin / SuperAdmin | any | ✅ | ✅ |
+| Office without divisions, or FY ≤ 2027 | any | today's rules | today's rules |
+
+| Action | Who |
+|---|---|
+| Create an activity | Encoder: tagged with their own division, and any client value is ignored; refused once their division has submitted. Department head / Admin: must name an active division of this office. |
+| Re-tag (`PUT …/activities/{id}/division`) | Department head / Admin only, in any division state. Everyone else gets **403**. |
+| Delete a program, project or office group | Encoder: only if every activity underneath is their own and not yet submitted. Department head: always. |
+| Rename or add to a program/project | Anyone who may write the office, except Staff with no division here. |
+| Expenditure lines | Follow their activity's row above. |
+
+⚠️ **The lock only refuses, and it runs after the office-state guard** (`AipWriteGuard.CheckAsync`).
+A department head is exempt from the division rule, not from the office rule: once the office is
+with PPDO, nobody writes. Pinned by `PermissionMatrixTests.DivisionLock_*`,
+`AipServiceTests.EditActivity_ByDepartmentHead_OnceTheOfficeIsWithPpdo_IsStillRefused` and
+`AipExpenditureDivisionLockTests`.
+
+**Division submit and return (PPDO-149).** Both act on the caller's **own** office only, as every
+office hand-off does. Another office's division answers 404, the same as a missing one (PPDO-46).
+
+| Action | Endpoint gate | Who, in the service |
+|---|---|---|
+| List divisions (`GET …/offices/{id}/divisions`) | `CanAccessBudgetPlanning` | Readable by anyone `OfficeScope.ResolveForReview` lets see the office. The `canSubmit` and `canReturn` flags are only ever true for the office's own people |
+| Submit a division | `CanAccessBudgetPlanning`, through `AuthorizeWriteAsync` like the office submit | That division's own encoder, or the department head / Admin on its behalf. Anyone else gets **403** |
+| Return a division | `CanReviewBudgetPlanning`, through `AuthorizeAsync` like `return-to-encoder` | The department head only. ⚠️ **A plain Admin is refused**, as they are for the office-level return (spec T3 note). SuperAdmin resolves the grant |
+
+Pinned by `AipDivisionSubmitServiceTests` and
+`ReviewerWriteGuardCoverageTests.ReturnDivision_IsGatedOnTheDepartmentHeadFlag`.
 
 ---
 
@@ -402,4 +475,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148)*

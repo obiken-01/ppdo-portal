@@ -49,6 +49,7 @@ public sealed class PermissionMatrixTests
         ["CanViewAuditLog"]         = (s, u) => s.CanViewAuditLogAsync(u),
         ["CanManageApiKeys"]        = (s, u) => s.CanManageApiKeysAsync(u),
         ["CanManageOfficeSetup"]    = (s, u) => s.CanManageOfficeSetupAsync(u),
+        ["CanManageInvestmentPlanningSettings"] = (s, u) => s.CanManageInvestmentPlanningSettingsAsync(u),
     };
 
     /// <summary>The five flags that follow the plain role-bypass / override / division chain.</summary>
@@ -131,6 +132,21 @@ public sealed class PermissionMatrixTests
         rows.Add("CanViewAuditLog", UserRole.Admin,      null, true,  true, false);
         rows.Add("CanViewAuditLog", UserRole.Staff,      true,  true, true, false);
 
+        // ── CanManageInvestmentPlanningSettings: CanManageConfig AND host office (PPDO-136) ──
+        // A province-wide value, so PPDO's to set. SuperAdmin keeps it anywhere (support access);
+        // ⚠️ Admin does NOT bypass the office check — unlike CanUploadAip, whose Admin row above
+        // passes before the office is read. The override/division inputs are CanManageConfig's.
+        const string ips = "CanManageInvestmentPlanningSettings";
+        rows.Add(ips, UserRole.SuperAdmin, null,  false, true,  true);
+        rows.Add(ips, UserRole.SuperAdmin, null,  false, false, true);   // guest office: support exemption
+        rows.Add(ips, UserRole.Admin,      null,  false, true,  true);
+        rows.Add(ips, UserRole.Admin,      null,  false, false, false);  // guest-office Admin: never
+        rows.Add(ips, UserRole.Staff,      null,  false, true,  false);
+        rows.Add(ips, UserRole.Staff,      null,  true,  true,  true);
+        rows.Add(ips, UserRole.Staff,      true,  false, true,  true);
+        rows.Add(ips, UserRole.Staff,      false, true,  true,  false);
+        rows.Add(ips, UserRole.Staff,      true,  true,  false, false);  // guest office: never, however set
+
         return rows;
     }
 
@@ -178,6 +194,78 @@ public sealed class PermissionMatrixTests
             $"Flags with a resolver but no matrix row: {string.Join(", ", unexercised)}.");
     }
 
+    /// <summary>
+    /// An unassigned user (null <c>office_id</c>) is not the host office — DECISION F (RAL-258).
+    /// Only SuperAdmin clears the office check without one. The grid cannot express this row:
+    /// its fixture always assigns an office.
+    /// </summary>
+    [Theory]
+    [InlineData(UserRole.SuperAdmin, true)]
+    [InlineData(UserRole.Admin,      false)]
+    [InlineData(UserRole.Staff,      false)]
+    public async Task CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin(UserRole role, bool expected)
+    {
+        User user = MakeUser("CanManageInvestmentPlanningSettings", role, true, true, isHostOffice: true);
+        user.OfficeId = null;
+        user.Office   = null;
+
+        Assert.Equal(expected, await _sut.CanManageInvestmentPlanningSettingsAsync(user));
+    }
+
+    // ── §3.2 The AIP division lock (PPDO-148) ─────────────────────────────────
+    //
+    // Not a flag — a rule over (who the caller is in this office) × (whose activity) × (has that
+    // division submitted). Each row below is a row of Permission_Matrix.md §3.2; change one and
+    // change the other. Everything here assumes the office uses the division flow (FY2028+, at
+    // least one active division) and that the office-state guard has already passed.
+
+    public static TheoryData<string, string, bool, bool> DivisionLockRows() => new()
+    {
+        // caller,        activity,   its division submitted, may edit
+        { "encoder-A",    "A",        false, true  },
+        { "encoder-A",    "A",        true,  false },
+        { "encoder-A",    "B",        false, false },
+        { "encoder-A",    "B",        true,  false },
+        { "encoder-A",    "untagged", false, false },
+        { "no-division",  "A",        false, false },
+        { "no-division",  "untagged", false, false },
+        { "dept-head",    "A",        false, true  },
+        { "dept-head",    "A",        true,  true  },
+        { "dept-head",    "untagged", false, true  },
+        { "admin",        "B",        true,  true  },
+    };
+
+    [Theory]
+    [MemberData(nameof(DivisionLockRows))]
+    public void DivisionLock_EditActivity(string caller, string activity, bool submitted, bool expected)
+    {
+        const int a = 1, b = 2;
+        int? activityDivision = activity switch { "A" => a, "B" => b, _ => null };
+        bool head = caller is "dept-head" or "admin";
+        int? callerDivision = caller == "encoder-A" ? a : null;
+        HashSet<int> submittedIds = submitted && activityDivision is int d ? [d] : [];
+
+        AipDivisionContext ctx = new(
+            hasDivisions: true, isDepartmentHead: head, callerDivisionId: callerDivision,
+            divisions: new Dictionary<int, Division>
+            {
+                [a] = new() { Id = a, Name = "A", IsActive = true },
+                [b] = new() { Id = b, Name = "B", IsActive = true },
+            },
+            submittedDivisionIds: submittedIds);
+
+        Assert.Equal(expected, ctx.CanWriteActivity(activityDivision));
+        // Re-tag is the department head's alone, in any state (spec §3.1).
+        Assert.Equal(head, ctx.IsDepartmentHead);
+    }
+
+    /// <summary>§3.2's last row: an office outside the division flow keeps today's rules for everyone.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1)]
+    public void DivisionLock_OfficeWithoutDivisions_AllowsEveryone(int? activityDivision)
+        => Assert.True(AipDivisionContext.None.CanWriteActivity(activityDivision));
+
     // ── Fixture ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -220,6 +308,7 @@ public sealed class PermissionMatrixTests
                 user.Division!.CanManageResourceLinks = divisionFlag;
                 user.OverrideCanManageResourceLinks = overrideValue; break;
             case "CanManageConfig":
+            case "CanManageInvestmentPlanningSettings":   // reads CanManageConfig's inputs
                 user.Division!.CanManageConfig = divisionFlag;
                 user.OverrideCanManageConfig = overrideValue; break;
             case "CanAccessBudgetPlanning":

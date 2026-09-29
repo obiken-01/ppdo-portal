@@ -213,13 +213,16 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
                 e.ActivityId,
                 ProgramRefCode  = e.Activity.Project.Program.RefCode,
                 FundingSourceId = e.FundingSourceId!.Value,
+                // PPDO-150 — one value per activity, so grouping on it splits nothing.
+                e.Activity.DivisionId,
             })
             .Select(g => new AipActivityProgramFundTotalsDto(
                 g.Key.ProgramRefCode,
                 g.Key.ActivityId,
                 g.Key.FundingSourceId,
                 g.Sum(e => (decimal?)e.Mooe) ?? 0m,
-                g.Sum(e => (decimal?)e.Co) ?? 0m))
+                g.Sum(e => (decimal?)e.Co) ?? 0m,
+                g.Key.DivisionId))
             .ToListAsync(ct);
 
     /// <inheritdoc />

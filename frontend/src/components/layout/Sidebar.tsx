@@ -468,8 +468,8 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     {pending && (
                       <Link
                         href={pending.href}
-                        title={`${pending.count} ${pending.count === 1 ? "office is" : "offices are"} waiting on you`}
-                        aria-label={`${pending.count} waiting on you`}
+                        title={pending.title}
+                        aria-label={pending.title}
                         className={`${SIDEBAR_PILL} min-w-[1.5rem] text-center tabular-nums`}
                       >
                         {pending.count}

@@ -100,6 +100,7 @@ public sealed class AipExpenditureFundScopeTests
     private AipExpenditureService Build() => new(
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
+        AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
         NullLogger<AipExpenditureService>.Instance);
 
     private static CreateAipExpenditureDto Create(int? fundId) =>

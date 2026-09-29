@@ -125,6 +125,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("co");
 
+                    b.Property<int?>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
                     b.Property<string>("EndDate")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
@@ -197,6 +201,9 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_aip_activities_division_id");
+
                     b.HasIndex("FundingSourceId");
 
                     b.HasIndex("ProjectId")
@@ -260,6 +267,74 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_aip_division_allocation_ledger_division_fy_fund_activity");
 
                     b.ToTable("aip_division_allocation_ledger", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionSubmission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AipRecordId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_record_id");
+
+                    b.Property<int>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("returned_at");
+
+                    b.Property<Guid?>("ReturnedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("returned_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Draft")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid?>("SubmittedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("submitted_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DivisionId");
+
+                    b.HasIndex("OfficeId");
+
+                    b.HasIndex("ReturnedById");
+
+                    b.HasIndex("SubmittedById");
+
+                    b.HasIndex("AipRecordId", "DivisionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_aip_division_submissions_record_division");
+
+                    b.HasIndex("AipRecordId", "OfficeId")
+                        .HasDatabaseName("IX_aip_division_submissions_record_office");
+
+                    b.ToTable("aip_division_submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_aip_division_submissions_status", "[status] IN ('Draft', 'Submitted')");
+                        });
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
@@ -1360,6 +1435,40 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_funding_sources_office_id");
 
                     b.ToTable("funding_sources", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentPlanningSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("DefaultFiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("default_fiscal_year");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("investment_planning_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_planning_settings_singleton", "[id] = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1
+                        });
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.ItemMaster", b =>
@@ -3327,6 +3436,12 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipActivity", b =>
                 {
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_activities_divisions_division_id");
+
                     b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
                         .WithMany()
                         .HasForeignKey("FundingSourceId")
@@ -3339,6 +3454,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_aip_activities_aip_projects_project_id");
+
+                    b.Navigation("Division");
 
                     b.Navigation("FundingSource");
 
@@ -3373,6 +3490,52 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Division");
 
                     b.Navigation("FundingSource");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionSubmission", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipRecord", "AipRecord")
+                        .WithMany()
+                        .HasForeignKey("AipRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_aip_records_aip_record_id");
+
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_divisions_division_id");
+
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_offices_office_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "ReturnedBy")
+                        .WithMany()
+                        .HasForeignKey("ReturnedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_division_submissions_users_returned_by_user_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "SubmittedBy")
+                        .WithMany()
+                        .HasForeignKey("SubmittedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_division_submissions_users_submitted_by_user_id");
+
+                    b.Navigation("AipRecord");
+
+                    b.Navigation("Division");
+
+                    b.Navigation("Office");
+
+                    b.Navigation("ReturnedBy");
+
+                    b.Navigation("SubmittedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
@@ -3687,6 +3850,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_funding_sources_offices_office_id");
 
                     b.Navigation("Office");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentPlanningSettings", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_investment_planning_settings_users_updated_by_user_id");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipOffice", b =>

@@ -41,6 +41,8 @@ public sealed class AipReviewSearchTests
     private readonly Mock<IAipExpenditureRepository> _expRepo     = new();
     private readonly Mock<IPermissionService>        _permissions = new();
     private readonly Mock<IAuditService>             _audit       = new();
+    // PPDO-149 — no divisions unless a test seeds some.
+    private readonly AipDivisionLockFixture          Divisions    = new();
 
     /// <summary>The query the service actually sent down, captured at the boundary.</summary>
     private AipReviewSearchQuery? _sent;
@@ -65,7 +67,8 @@ public sealed class AipReviewSearchTests
 
         return new AipReviewService(
             _aipRepo.Object, _officeRepo.Object, _officeConfigRepo.Object, _expRepo.Object,
-            _permissions.Object, _audit.Object, NullLogger<AipReviewService>.Instance);
+            _permissions.Object, _audit.Object, Divisions.Workflow(_audit.Object),
+            NullLogger<AipReviewService>.Instance);
     }
 
     private User MakeUser(int? officeId, bool hostOffice, bool ppdoReviewer, bool deptHead = false)

@@ -18,7 +18,7 @@ import type {
   AccountResponse, AipActivityDetail, AipDeleteResult, AipExpenditure,
   AipExpenditureWriteResult, FundingSourceResponse, OfficeResponse, PriceIndexPickerItem,
 } from "@/types";
-import { aipErrorMessage, listAipExpenditures } from "@/lib/aip";
+import { aipErrorMessage, listAipExpenditures, retagAipActivityDivision } from "@/lib/aip";
 import AipActivityFields from "./AipActivityFields";
 import AipExpenditureTable from "./AipExpenditureTable";
 import AipDeleteNodeButton from "./AipDeleteNodeButton";
@@ -26,11 +26,14 @@ import { AipCommentAnchor } from "./AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "./AipHierarchy";
 import { AipFigureStrip, AipFundPill, activityFundLabel } from "./AipRowFigures";
 import { AipPanel, AipPanelError } from "./AipEntryPanelParts";
+import {
+  AipDivisionPill, AipDivisionSelect, activityDivisionLock, type AipDivisionView,
+} from "./AipDivisionParts";
 
 export default function AipActivityPanel({
   activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   offices, proponentOfficeCode, onTotals, onDetails, onDeleted,
-  onChangeActivity, onChangeProject, onDone,
+  onChangeActivity, onChangeProject, onDone, divisionView = null,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -56,9 +59,36 @@ export default function AipActivityPanel({
   onChangeActivity: () => void;
   onChangeProject: () => void;
   onDone: () => void;
+  /** PPDO-151 — the caller's place in the division flow; null outside it (no visual change). */
+  divisionView?: AipDivisionView | null;
 }) {
+  // ⚠️ `canEdit` arrives already AND-ed with the server's per-activity `canEdit`; this only picks
+  // the sentence for a division lock. An office lock names its holder through `lockedReason`.
+  const divisionLock = activityDivisionLock(activity, divisionView);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
+
+  // PPDO-152 — the department head re-tags an activity to another division of the office. The
+  // select replaces the pill for them; encoders keep the pill. Gated on `canEdit` as well, because
+  // the server refuses a re-tag once the office has left its own hands (§3.1).
+  const canRetag = divisionView?.isHead === true && canEdit;
+  const [retagging, setRetagging] = useState(false);
+  const [retagError, setRetagError] = useState<string | null>(null);
+
+  async function retag(divisionId: number) {
+    if (divisionId === activity.divisionId) return;
+    setRetagging(true);
+    setRetagError(null);
+    try {
+      // The response is the activity with its new tag and `canEdit`, spliced upward like any
+      // details save — which also refreshes the readiness and division counts it moves.
+      onDetails(await retagAipActivityDivision(activity.id, divisionId));
+    } catch (e) {
+      setRetagError(aipErrorMessage(e, "Could not move this activity to that division."));
+    } finally {
+      setRetagging(false);
+    }
+  }
 
   // ⚠️ Which activity the panel is currently showing, for the refetch below — belt and braces
   // beside the caller's `key`. A component that silently renders another row's money if someone
@@ -91,6 +121,18 @@ export default function AipActivityPanel({
               <AipRefCode code={activity.refCode} />
               {/* The form's Funding Source column (7) — beside the name, never among the numbers. */}
               <AipFundPill label={activityFundLabel(activity)} />
+              {canRetag && divisionView ? (
+                <AipDivisionSelect
+                  view={divisionView}
+                  label="Division"
+                  value={activity.divisionId}
+                  keepId={activity.divisionId}
+                  disabled={retagging}
+                  onChange={(id) => void retag(id)}
+                />
+              ) : (
+                <AipDivisionPill activity={activity} view={divisionView} locked={divisionLock != null} />
+              )}
             </div>
             {/* The encoder's own line breaks are kept (PPDO-85). */}
             <p className="mt-0.5 whitespace-pre-line text-sm text-slate-800">{activity.name}</p>
@@ -107,6 +149,21 @@ export default function AipActivityPanel({
         </div>
         <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
       </div>
+
+      {/* ⚠️ Said, not only disabled. Fields that simply stop responding read as a broken page, and
+          the encoder needs to know whose it is to know whom to ask. */}
+      {retagError && (
+        <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">
+          {retagError}
+        </p>
+      )}
+
+      {divisionLock && (
+        <p role="status" className="flex gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+          <span aria-hidden>🔒</span>
+          <span>{divisionLock}</span>
+        </p>
+      )}
 
       {/* ⚠️ Above the lines, not below. eSRE blocks submit just as hard as a missing costing does,
           and an encoder who opens an activity to cost it should see what else it still needs in

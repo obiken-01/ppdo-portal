@@ -30,12 +30,19 @@ public static class AipTreeMapper
     /// One activity, optionally carrying the fund codes of its expenditure lines (the form's
     /// Funding Source column 7).
     /// </summary>
+    /// <param name="divisionName">The tag's name (PPDO-148). Null leaves the pill blank.</param>
+    /// <param name="canEdit">
+    /// The caller's write permission on this row, already resolved (PPDO-148). ⚠️ Defaults to
+    /// false: a caller that has not worked it out must not advertise an editable row.
+    /// </param>
     public static AipActivityDto MapActivity(
-        AipActivity a, IReadOnlyList<string>? fundCodes = null) => new(
+        AipActivity a, IReadOnlyList<string>? fundCodes = null,
+        string? divisionName = null, bool canEdit = false) => new(
         a.Id, a.ProjectId, a.RefCode, a.Name, a.EsreCode, a.ImplementingOffice,
         a.StartDate, a.EndDate, a.ExpectedOutputs, a.FundingSourceId, a.FundingSourceSnapshot,
         a.Ps, a.Mooe, a.Co, a.Total, a.CcAdaptation, a.CcMitigation, a.CcTypologyCode,
-        a.IsCreation, a.IsSynthetic, fundCodes ?? []);
+        a.IsCreation, a.IsSynthetic, fundCodes ?? [],
+        a.DivisionId, divisionName, canEdit);
 
     /// <summary>
     /// The nested tree for <paramref name="offices"/>, drawing each level from the flat lists

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PPDO.Application.DTOs.BudgetPlanning;
 
 // ── Read DTOs ─────────────────────────────────────────────────────────────────
@@ -43,7 +45,24 @@ public record AipActivityDto(
     /// straight into its tree instead of reloading; both fill it.
     /// </para>
     /// </summary>
-    IReadOnlyList<string>? FundCodes = null);
+    IReadOnlyList<string>? FundCodes = null,
+    /// <summary>
+    /// The division whose work this activity is (PPDO-148, <c>Division_Submit_Spec.md</c> §4).
+    /// Null for an untagged activity and for every activity of an office without divisions.
+    /// </summary>
+    int?    DivisionId = null,
+    /// <summary>
+    /// That division's name, for the row's pill. ⚠️ Filled by the entry side's tree and write
+    /// responses; the review screen's tree leaves it null for now (PPDO-148 scope, T5 extends it).
+    /// </summary>
+    string? DivisionName = null,
+    /// <summary>
+    /// Whether THIS caller may write this activity now: the record is Draft, the office is still
+    /// in its own hands, the caller may write the office, and the division lock allows it. Computed
+    /// server-side so the page never re-derives the lock rules (spec §4). ⚠️ False on the review
+    /// screen's tree, which has its own <c>AipActivityReviewDto.CanEdit</c>.
+    /// </summary>
+    bool    CanEdit = false);
 
 public record AipProjectDto(
     int    Id,
@@ -380,7 +399,18 @@ public record CreateAipActivityDto(
     decimal? Co,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+    // PPDO-148 — honoured only for the department head and Admin/SuperAdmin in an office with
+    // divisions, where it is required. An encoder's activity always takes the encoder's own
+    // division, whatever is sent here (Division_Submit_Spec.md decision 5).
+    int?     DivisionId = null);
+
+/// <summary>
+/// Body of <c>PUT /api/budget-planning/aip/activities/{activityId}/division</c> (PPDO-148). The
+/// department head's re-tag. Required and non-null: an activity in a divisioned office is not
+/// moved back to "no division".
+/// </summary>
+public record UpdateAipActivityDivisionDto([property: JsonRequired] int DivisionId);
 
 // ── Inline activity edit (RAL-179) ───────────────────────────────────────────
 

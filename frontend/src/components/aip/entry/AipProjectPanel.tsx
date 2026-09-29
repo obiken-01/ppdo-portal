@@ -20,12 +20,16 @@ import { AipLevelChip, AipRefCode, aipHeaderRow } from "./AipHierarchy";
 import { AipFigureStrip, sumActivityAmounts } from "./AipRowFigures";
 import AipDeleteNodeButton from "./AipDeleteNodeButton";
 import {
+  AipDivisionPill, AipDivisionSelect, activityDivisionLock, addActivityBlockedReason,
+  divisionChoices, type AipDivisionView,
+} from "./AipDivisionParts";
+import {
   AipChildList, AipChildRow, AipInlineAdd, AipPanel,
 } from "./AipEntryPanelParts";
 
 export default function AipProjectPanel({
   project, canEdit, lockedReason, isLastSibling, proponentOfficeCode, unresolvedCount,
-  onSelectActivity, onActivityAdded, onDeleted, onUpdated,
+  onSelectActivity, onActivityAdded, onDeleted, onUpdated, divisionView = null,
 }: {
   project: AipProjectDetail;
   canEdit: boolean;
@@ -41,8 +45,26 @@ export default function AipProjectPanel({
   onDeleted: (result: AipDeleteResult) => void;
   /** The project's own fields after a save — never its activities, which the endpoint omits. */
   onUpdated: (patch: Pick<AipProjectDetail, "id" | "name" | "description" | "objective">) => void;
+  /** PPDO-151 — the caller's place in the division flow; null outside it (no visual change). */
+  divisionView?: AipDivisionView | null;
 }) {
+  // ⚠️ Checked BEFORE the office lock below, but only ever narrows: an office that cannot be
+  // edited already disables the control through `canEdit`.
+  const addBlocked = canEdit ? addActivityBlockedReason(divisionView) : null;
+  // PPDO-152 — a department head or Admin must name the division a new activity belongs to in a
+  // divisioned office (§3.1); an encoder's is always their own, set by the server. Defaults to the
+  // head's own division when they have one, else the first active one.
+  const pickDivision = divisionView?.isHead === true && canEdit;
+  const [newDivisionId, setNewDivisionId] = useState<number | null>(() =>
+    divisionView ? divisionView.mine?.divisionId ?? divisionChoices(divisionView)[0]?.divisionId ?? null : null
+  );
   const amounts = useMemo(() => sumActivityAmounts(project.activities), [project]);
+  // The delete cascades to every activity, so it needs all of them writable — read off the
+  // server's per-activity `canEdit`, not re-derived. Outside the division flow this never fires.
+  const deleteBlocked =
+    divisionView && project.activities.some((a) => !a.canEdit)
+      ? "it holds activities you cannot edit."
+      : null;
 
   return (
     <AipPanel>
@@ -61,6 +83,7 @@ export default function AipProjectPanel({
               target={{ kind: "Project", project, isLastSibling }}
               canEdit={canEdit}
               lockedReason={lockedReason}
+              blockedReason={deleteBlocked}
               onDeleted={onDeleted}
             />
           </div>
@@ -84,12 +107,22 @@ export default function AipProjectPanel({
         emptyText="No activities yet."
         footer={
           canEdit || lockedReason != null ? (
+            <div className="flex flex-wrap items-center gap-3">
+            {pickDivision && divisionView && (
+              <AipDivisionSelect
+                view={divisionView}
+                label="New activities go to"
+                value={newDivisionId}
+                onChange={setNewDivisionId}
+              />
+            )}
             <AipInlineAdd
               label="+ Add activity"
               placeholder="Activity description"
-              disabled={!canEdit}
+              disabled={!canEdit || addBlocked != null}
               disabledReason={
-                lockedReason != null ? `With ${lockedReason} — activities cannot be added here.` : undefined
+                addBlocked
+                  ?? (lockedReason != null ? `With ${lockedReason} — activities cannot be added here.` : undefined)
               }
               onAdd={async (name) => {
                 // ⚠️ The created node is USED, not discarded — the tree absorbs it rather than reloading.
@@ -106,9 +139,12 @@ export default function AipProjectPanel({
                   startDate: null, endDate: null, expectedOutputs: null,
                   fundingSourceRaw: null, ps: null, mooe: null, co: null,
                   ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
+                  // Ignored by the server for an encoder (always their own division).
+                  divisionId: pickDivision ? newDivisionId : null,
                 }));
               }}
             />
+            </div>
           ) : undefined
         }
       >
@@ -120,6 +156,15 @@ export default function AipProjectPanel({
             total={activity.total}
             unresolved={unresolvedCount("Activity", activity.id)}
             onSelect={() => onSelectActivity(activity.id)}
+            // ⚠️ Still selectable when locked — the row opens read-only (spec §6.1: disabled, not
+            // hidden). Only a DIVISION lock earns the glyph; an office lock is said once, above.
+            tag={
+              <AipDivisionPill
+                activity={activity}
+                view={divisionView}
+                locked={activityDivisionLock(activity, divisionView) != null}
+              />
+            }
           />
         ))}
       </AipChildList>

@@ -150,6 +150,23 @@ function OfficeCard({ office, href }: { office: OfficeSummary; href: string }) {
         {plural(office.activityCount, "activity", "activities")}
       </span>
 
+      {/* PPDO-152 — while the office is still with its divisions, how far the division hop has
+          got: In progress (Draft), and Returned, since a PPDO return reopens every division
+          (decision 11). Counted server-side by the submit gate's own "required" rule; absent for an
+          office outside the division flow. */}
+      {(office.readinessColumn === "InProgress" || office.isReturned) &&
+        office.divisionsRequired != null && office.divisionsRequired > 0 && (
+        <span
+          className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+            office.divisionsSubmitted === office.divisionsRequired
+              ? "bg-green-100 text-green-800"
+              : "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {office.divisionsSubmitted ?? 0} of {plural(office.divisionsRequired, "division", "divisions")} submitted
+        </span>
+      )}
+
       {/* Null is "not published", which is not the same as ₱0 and must not read as it. */}
       {office.ceilingAmount == null ? (
         <span className="text-xs text-slate-500">No ceiling published</span>

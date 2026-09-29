@@ -75,6 +75,7 @@ public sealed class AipExpenditureReadScopeTests
     private AipExpenditureService Build() => new(
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
+        AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
         NullLogger<AipExpenditureService>.Instance);
 
     /// <summary>One typed ₱500 MOOE line. <c>Total</c> is computed, so it goes through Recalculate.</summary>

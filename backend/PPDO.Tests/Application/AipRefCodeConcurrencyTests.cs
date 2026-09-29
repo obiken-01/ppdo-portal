@@ -171,6 +171,8 @@ public sealed class AipRefCodeConcurrencyTests
             new Mock<IAipExpenditureRepository>().Object,
             new Mock<IAipAllocationLedgerRepository>().Object,
             new Mock<IAipReviewCommentRepository>().Object,
+            AipDivisionLockFixture.None(aipRepo.Object),
+            new Mock<IAipCeilingService>().Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, activities, activityRepo);

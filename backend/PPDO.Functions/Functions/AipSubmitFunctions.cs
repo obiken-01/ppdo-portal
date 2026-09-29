@@ -130,6 +130,64 @@ public sealed class AipSubmitFunctions
             await _submit.ReturnToEncoderAsync(aipId, officeId, caller!, ct), ct);
     }
 
+    // ── Division submit (v1.8.0 — PPDO-149, Division_Submit_Spec.md §4) ────────
+
+    // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/divisions ────
+    [Function("AipOfficeDivisions")]
+    public async Task<HttpResponseData> OfficeDivisions(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/divisions")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _submit.GetDivisionsAsync(aipId, officeId, caller!, ct), ct);
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/divisions/{divisionId}/submit ──
+    //
+    // The division-grained twin of AipSubmit above, gated the same way: CanAccessBudgetPlanning,
+    // through AuthorizeWriteAsync, so a comment-only PPDO reviewer cannot hand an office's work on.
+    // Who may submit WHICH division is the service's call: its own encoder, or the department head
+    // / Admin on its behalf.
+    [Function("AipSubmitDivision")]
+    public async Task<HttpResponseData> SubmitDivision(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/divisions/{divisionId:int}/submit")] HttpRequestData req,
+        int aipId, int divisionId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _submit.SubmitDivisionAsync(aipId, divisionId, caller!, ct), ct);
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/divisions/{divisionId}/return ──
+    // No body — the reason goes in a comment, as with office returns (§4).
+    //
+    // Gated exactly like ReturnToEncoder, its whole-office sibling: the department-head flag
+    // (SuperAdmin resolves it true), through AuthorizeAsync because moving your own office's
+    // workflow is not content. ↩️ The spec also named a plain Admin; they are NOT let through,
+    // matching the office-level return they cannot do either — recorded in the spec's T3 note.
+    [Function("AipReturnDivision")]
+    public async Task<HttpResponseData> ReturnDivision(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/divisions/{divisionId:int}/return")] HttpRequestData req,
+        int aipId, int divisionId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanReview, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _submit.ReturnDivisionAsync(aipId, divisionId, caller!, ct), ct);
+    }
+
     // ── GET /api/budget-planning/aip/{aipId}/ceiling ─────────────────────────
     // ⚠️ Remaining may be NEGATIVE and must render as such — it is the only signal an office gets
     // that PBO cut its ceiling below what is already encoded (A5-b).

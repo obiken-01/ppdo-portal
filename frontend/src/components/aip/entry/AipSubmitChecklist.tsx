@@ -4,8 +4,12 @@
  * The submit checklist and the ceiling strip (V18-49 / PPDO-59, V18-46 / PPDO-56).
  *
  * ⚠️ **This is a gate, not a summary.** Over-ceiling encoding is allowed and expected; submit is
- * where it is blocked (DECISION C). So there is deliberately **no "submit anyway"** — if this is
- * ever built as a dismissible warning, there is no ceiling enforcement anywhere in the system.
+ * where it is blocked (DECISION C). There is deliberately **no "submit anyway"** for completeness.
+ *
+ * ↩️ **The ceiling blocks one hop later since PPDO-146** (`Division_Submit_Spec.md` decision 13).
+ * Over the ceiling, the encoder's submit to the department head goes through after a confirm that
+ * names the overage. The send to PPDO stays blocked (`canSubmitToPpdo`), and that is still the one
+ * place the ceiling is enforced. Do not make the PPDO hop dismissible too.
  *
  * ⚠️ **The remaining figure may be NEGATIVE and is rendered signed.** That is not an error state to
  * tidy away: after PBO cuts a ceiling below what an office has already encoded, the negative is the
@@ -13,11 +17,12 @@
  */
 
 import { useState } from "react";
-import type { AipReadiness, AipReadinessIssue, AipUnresolvedCounts } from "@/types";
+import type { AipDivisionStatus, AipReadiness, AipReadinessIssue, AipUnresolvedCounts } from "@/types";
 import { fmtThousandsReadout } from "@/lib/aip-units";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useUnresolvedCounts } from "./AipComments";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
+import { fmtDivisionStamp } from "./AipDivisionParts";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -31,6 +36,11 @@ const KIND_LABELS: Record<string, string> = {
   // the issue's own message, so a stale label here would be worse than none.
   ceiling: "Over ceiling",
   empty: "Nothing to submit",
+  // PPDO-151 — a division's refusal lines arrive as plain sentences (`AipDivisionStatus.blockers`),
+  // already in the words the submit would refuse with, so they share one heading.
+  division: "Before this division can submit",
+  waiting: "Divisions still working",
+  untagged: "Activities with no division",
 };
 
 /**
@@ -56,6 +66,13 @@ export type AipSubmitStage =
        * review — the one state the server accepts it from — so its absence hides the button.
        */
       onReturnToEncoder?: () => void;
+      /**
+       * PPDO-151 — in an office that submits by division, what else holds the send besides the
+       * checklist: divisions with activities still in Draft, and untagged activities. Without them
+       * the button sat disabled over "0 items to fix".
+       */
+      waitingDivisions?: string[];
+      untaggedCount?: number;
     }
   /**
    * The office still holds the work and can edit it, but **this** reader cannot send it on —
@@ -71,7 +88,20 @@ export type AipSubmitStage =
    * **who has it**, never a bare "read-only", which tells a reader nothing about how to get it
    * back.
    */
-  | { kind: "locked"; holder: string };
+  | { kind: "locked"; holder: string }
+  /**
+   * PPDO-151 — an encoder in an office that submits by division. The office-level submit is closed
+   * there (`readiness.canSubmit` is false); their own division submits instead, and the strip names
+   * it. Also used once it has submitted, so the reader sees whose it now is.
+   */
+  | { kind: "division"; division: AipDivisionStatus; onSubmit: () => void }
+  /**
+   * PPDO-151 — the department head (or an Admin) while the divisions are still working. Nothing to
+   * submit yet at office level; it names who it is waiting on. T5 adds the per-division panel.
+   */
+  | { kind: "awaitingDivisions"; waiting: string[] }
+  /** PPDO-151 — Staff in a divisioned office with no division of it. Read-only; says whom to ask. */
+  | { kind: "noDivision" };
 
 const STAGE_COPY = {
   encoder: {
@@ -127,7 +157,42 @@ export default function AipSubmitChecklist({
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
   // own tree off the screen behind a wall of issues it had not asked to read yet.
   const [expanded, setExpanded] = useState(false);
-  const { ceiling, issues, canSubmit } = readiness;
+  const { ceiling, ceilingWarning } = readiness;
+
+  // ↩️ PPDO-146: which gate applies depends on the hop. The encoder's needs completeness only; the
+  // send to PPDO also needs the office within its ceiling. On that hop the ceiling is shown as a
+  // blocking item again, first, so the reader sees what is actually stopping them.
+  const canSubmit =
+    stage.kind === "toPpdo" ? readiness.canSubmitToPpdo
+      : stage.kind === "division" ? stage.division.canSubmit
+        : readiness.canSubmit;
+  // ⚠️ A division's gate is its OWN blockers, never the office's issue list: another division's
+  // uncosted activity is not this division's to fix and does not hold its submit (spec §3.2).
+  const issues: AipReadinessIssue[] =
+    stage.kind === "division"
+      ? stage.division.blockers.map((message) => ({ kind: "division", activityId: null, refCode: null, message }))
+      : stage.kind === "toPpdo"
+        ? [
+            ...(stage.waitingDivisions?.length
+              ? [{ kind: "waiting", activityId: null, refCode: null, message: `Waiting on: ${stage.waitingDivisions.join(", ")}` }]
+              : []),
+            ...(stage.untaggedCount
+              ? [{
+                  kind: "untagged", activityId: null, refCode: null,
+                  message: `${stage.untaggedCount} ${stage.untaggedCount === 1 ? "activity has" : "activities have"} no division yet.`,
+                }]
+              : []),
+            ...(ceilingWarning ? [{ kind: "ceiling", activityId: null, refCode: null, message: ceilingWarning }] : []),
+            ...readiness.issues,
+          ]
+        : readiness.issues;
+  const divisionSubmitted = stage.kind === "division" && stage.division.status === "Submitted";
+  // The encoder-side warning: over the ceiling, but not what stops them. Only where a submit to
+  // the department head is still ahead of this reader — its copy says "you can still submit".
+  const showCeilingWarning =
+    ceilingWarning != null &&
+    (stage.kind === "encoder" || stage.kind === "awaitingReviewer" ||
+      (stage.kind === "division" && !divisionSubmitted));
 
   // Group by kind so an office with 80 uncosted activities shows one heading and a count rather
   // than 80 identical-looking lines.
@@ -145,6 +210,11 @@ export default function AipSubmitChecklist({
   // `stage.holder` and `stage.onSubmit` need non-null assertions that would silently survive a
   // future stage being added to the wrong side.
   const hasAction = stage.kind === "encoder" || stage.kind === "toPpdo";
+  const heading =
+    hasAction ? copy.heading
+      : stage.kind === "division" ? stage.division.name
+        : stage.kind === "awaitingDivisions" ? "Division submissions"
+          : "Submit";
 
   // ── The unresolved-comment warning on re-submit (PPDO-72) ──────────────────
   //
@@ -162,18 +232,31 @@ export default function AipSubmitChecklist({
   //   • Department head → PPDO, first time: SILENT. The only possible unresolved comments are the
   //     department head's own, which they can resolve themselves (spec decision 10).
   //   • Department head → PPDO, re-submit: WARNS (PPDO-72 decision 10).
-  // The division → department head hop (PPDO-130) does not exist yet; decide it there.
+  //   • Division → department head: WARNS (PPDO-151, decided with the hop). Same reason as the
+  //     encoder's: after a per-division return, its encoders re-submit past the head's comments.
   const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
   const [confirming, setConfirming] = useState(false);
+  const [confirmingCeiling, setConfirmingCeiling] = useState(false);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
+  const [confirmingDivision, setConfirmingDivision] = useState(false);
 
   const warnsOnThisHop =
-    stage.kind === "encoder" || (stage.kind === "toPpdo" && stage.resubmit);
+    stage.kind === "encoder" || stage.kind === "division" || (stage.kind === "toPpdo" && stage.resubmit);
   const needsUnresolvedWarning = warnsOnThisHop && (unresolved?.total ?? 0) > 0;
 
   function onActionClick() {
+    // A division submit ALWAYS confirms (spec §6.1): it locks the encoder out of their own rows,
+    // and the ceiling warning, when there is one, rides in the same dialog.
+    if (stage.kind === "division") setConfirmingDivision(true);
+    // The ceiling confirm comes first, and only on the encoder's hop. On the PPDO hop the button
+    // is disabled while over the ceiling, so there is nothing to confirm.
+    else if (stage.kind === "encoder" && ceilingWarning) setConfirmingCeiling(true);
+    else proceedPastCeiling();
+  }
+
+  function proceedPastCeiling() {
     if (needsUnresolvedWarning) setConfirming(true);
-    else if (stage.kind === "encoder" || stage.kind === "toPpdo") stage.onSubmit();
+    else if (stage.kind === "encoder" || stage.kind === "toPpdo" || stage.kind === "division") stage.onSubmit();
   }
 
   return (
@@ -181,11 +264,15 @@ export default function AipSubmitChecklist({
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-800">
-            {hasAction ? copy.heading : "Submit"}
+            {heading}
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">
-            {readiness.activityCount} activit{readiness.activityCount === 1 ? "y" : "ies"} in this
-            office
+            {stage.kind === "division"
+              ? divisionSubmitted
+                ? `Submitted ${fmtDivisionStamp(stage.division.submittedAt)}${
+                    stage.division.submittedByName ? ` by ${stage.division.submittedByName}` : ""}`
+                : `Draft · ${stage.division.activityCount} activit${stage.division.activityCount === 1 ? "y" : "ies"}`
+              : `${readiness.activityCount} activit${readiness.activityCount === 1 ? "y" : "ies"} in this office`}
           </p>
         </div>
 
@@ -203,16 +290,23 @@ export default function AipSubmitChecklist({
               Return to encoders
             </button>
           )}
-          {stage.kind === "encoder" || stage.kind === "toPpdo" ? (
+          {stage.kind === "encoder" || stage.kind === "toPpdo" ||
+            (stage.kind === "division" && !divisionSubmitted) ? (
             <button
               type="button"
               onClick={onActionClick}
               disabled={!canSubmit || submitting}
               className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {submitting ? copy.busy : copy.button}
+              {submitting
+                ? copy.busy
+                : stage.kind === "division" ? `Submit ${stage.division.name}` : copy.button}
             </button>
-          ) : (
+          ) : stage.kind === "division" ? (
+            <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+              With your department head
+            </span>
+          ) : stage.kind === "awaitingDivisions" || stage.kind === "noDivision" ? null : (
             // ⚠️ Names who holds the work rather than just hiding the button. An encoder told only
             // "read-only" has no idea who has their work or how to get it back.
             <span className="border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
@@ -243,9 +337,23 @@ export default function AipSubmitChecklist({
             label="Remaining (in thousand pesos)"
             value={fmtThousandsReadout(ceiling.remaining)}
             negative={ceiling.remaining < 0}
-            hint={ceiling.remaining < 0 ? "Over ceiling — this blocks submit" : undefined}
+            hint={ceiling.remaining < 0 ? "Over ceiling — blocks sending to PPDO" : undefined}
           />
         </div>
+      )}
+
+      {/* ── Ceiling warning (PPDO-146) ───────────────────────────────────── */}
+      {/* ⚠️ A warning, not an item to fix: it does not stop the submit to the department head, so
+          it stays out of the "items to fix" count. It names the consequence, because "over the
+          ceiling" alone would read as either harmless or blocking. */}
+      {showCeilingWarning && (
+        <p className="flex gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span aria-hidden>⚠️</span>
+          <span>
+            {ceilingWarning} You can still submit to your department head, but it cannot be sent to
+            PPDO until it is within the ceiling.
+          </span>
+        </p>
       )}
 
       {/* ── Issues ───────────────────────────────────────────────────────── */}
@@ -257,6 +365,36 @@ export default function AipSubmitChecklist({
       {stage.kind === "locked" ? (
         <p className="px-4 py-3 text-sm text-slate-600">
           This office&rsquo;s AIP is with {stage.holder} and cannot be changed here.
+        </p>
+      ) : stage.kind === "noDivision" ? (
+        <p role="status" className="flex gap-2 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span aria-hidden>⚠️</span>
+          <span>You are not assigned to a division. Ask your department head to assign you one.</span>
+        </p>
+      ) : stage.kind === "awaitingDivisions" ? (
+        <p className="px-4 py-3 text-sm text-slate-600">
+          {stage.waiting.length > 0 ? (
+            <>
+              Each division submits its own work to you.{" "}
+              <strong className="text-slate-800">Waiting on: {stage.waiting.join(", ")}</strong>.
+            </>
+          ) : "Every division with activities has submitted."}
+        </p>
+      ) : divisionSubmitted ? (
+        <p role="status" className="flex gap-2 px-4 py-3 text-sm text-slate-600">
+          <span aria-hidden>🔒</span>
+          <span>Submitted — your department head can return it if changes are needed.</span>
+        </p>
+      ) : stage.kind === "division" && stage.division.activityCount === 0 ? (
+        // ⚠️ Said plainly rather than as a blocker line: an empty division is not something to
+        // fix, and "1 item to fix" over "has no activities to submit" reads as an error.
+        <p className="px-4 py-3 text-sm text-slate-600">
+          No activities yet in {stage.division.name}.
+        </p>
+      ) : stage.kind === "division" && canSubmit ? (
+        <p className="px-4 py-3 text-sm text-slate-600">
+          Everything in {stage.division.name} checks out. Submitting hands it to your department
+          head, and its activities lock for you until they return it.
         </p>
       ) : canSubmit ? (
         <p className="px-4 py-3 text-sm text-slate-600">
@@ -326,6 +464,18 @@ export default function AipSubmitChecklist({
         </div>
       )}
 
+      {confirmingCeiling && stage.kind === "encoder" && ceilingWarning && (
+        <ConfirmDialog
+          title="Submit over the ceiling?"
+          message={`${ceilingWarning} Your department head cannot send it to PPDO until it is within the ceiling.`}
+          confirmLabel="Submit anyway"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={proceedPastCeiling}
+          onClose={() => setConfirmingCeiling(false)}
+        />
+      )}
+
       {confirming && stage.kind === "toPpdo" && unresolved && (
         <ConfirmDialog
           title="Re-submit with unresolved comments?"
@@ -338,7 +488,24 @@ export default function AipSubmitChecklist({
         />
       )}
 
-      {confirming && stage.kind === "encoder" && unresolved && (
+      {confirmingDivision && stage.kind === "division" && (
+        <ConfirmDialog
+          title={`Submit ${stage.division.name}?`}
+          message={
+            "You won’t be able to edit these activities unless your department head returns them." +
+            (ceilingWarning
+              ? ` ⚠️ ${ceilingWarning} It still goes to your department head, but they cannot send it to PPDO until the office is within the ceiling.`
+              : "")
+          }
+          confirmLabel={ceilingWarning ? "Submit anyway" : `Submit ${stage.division.name}`}
+          cancelLabel="Go back"
+          variant={ceilingWarning ? "warning" : "primary"}
+          onConfirm={proceedPastCeiling}
+          onClose={() => setConfirmingDivision(false)}
+        />
+      )}
+
+      {confirming && (stage.kind === "encoder" || stage.kind === "division") && unresolved && (
         <ConfirmDialog
           title="Submit with unresolved comments?"
           message={unresolvedWarning(unresolved, "your department head")}

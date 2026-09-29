@@ -138,12 +138,21 @@ default is not set, every page behaves exactly as it does today.
 
 ### `PUT /api/config/investment-planning/default-fiscal-year` — JWT + `CanManageInvestmentPlanningSettingsAsync`
 
-- Request: `{ "defaultFiscalYear": 2028 }` — `null` clears it.
+- Request: `{ "defaultFiscalYear": 2028 }` — `null` clears it. The property is **required**
+  (`[JsonRequired]`): an empty `{}` is a 400, not a clear.
 - 200: `ApiResponse<DefaultFiscalYearDto>` (the saved state).
 - 400: `ApiResponse.Fail("Request body is missing or malformed.")`, or
   `ApiResponse.Fail("Fiscal year must be between 2020 and {max}.")` where `max` = current Manila year + 3
-  (validator: `Validators/Config/UpdateDefaultFiscalYearValidator.cs`).
-- 401 / 403 as above. 500 — save failure, generic message; exception logged, not returned.
+  (checked in `InvestmentPlanningSettingsService` — see the note below).
+- 401 / 403 as above. 500 — save failure: the service logs it (`LogError` with `ex`) and rethrows,
+  and the Functions exception middleware returns the generic 500. `ServiceResult` has no code
+  that maps to 500, so the failure is not returned as one.
+
+> ↩️ **Deviation, 2026-09-27 (PPDO-143).** This section first named a FluentValidation class,
+> `Validators/Config/UpdateDefaultFiscalYearValidator.cs`. No service in the codebase uses one —
+> every `Validators/*` folder holds only a `.gitkeep`, and services validate inline (e.g.
+> `EsreCodeService`). The range check therefore lives in the service, with the same message and
+> bounds, and is tested in `InvestmentPlanningSettingsServiceTests`.
 
 ### `GET /api/budget-planning/fiscal-years?fiscalYear={int?}` — **existing**, JWT + `CanAccessBudgetPlanningAsync`
 
@@ -265,7 +274,7 @@ No new controls. The only visible change is which year is selected on arrival.
 
 | Ticket | Scope | Blocked by |
 |---|---|---|
-| **T1 — backend** | Entity + configuration + migration (⚠️), repository, service + validator, `CanManageInvestmentPlanningSettingsAsync` + `Permission_Matrix.md` row, `ConfigInvestmentPlanningFunctions.cs` (GET/PUT), `FiscalYearsDto.DefaultFiscalYear`, `ResolveFiscalYearsAsync` change, tests (§11) | — |
+| **T1 — backend** | Entity + configuration + migration (⚠️), repository, service (with the range check), `CanManageInvestmentPlanningSettingsAsync` + `Permission_Matrix.md` row, `ConfigInvestmentPlanningFunctions.cs` (GET/PUT), `FiscalYearsDto.DefaultFiscalYear`, `ResolveFiscalYearsAsync` change, tests (§11) | — |
 | **T2 — config page** | `/config/investment-planning` page + config hub tile, `lib/config.ts` client functions | T1 |
 | **T3 — page readers** | `useDefaultFiscalYear()` hook; Allocation, AIP index, AIP Entry, Review, Review Search, WFP, WFP Entry per §3.3; verify dashboard / Office Ceilings / Report pick it up with no edit | T1 (T2 not required — can be tested by setting the row directly) |
 
@@ -301,9 +310,9 @@ copy. T1 is **not** a candidate: it carries an EF migration and a permission gat
 ## 11. Test focus
 
 - **`InvestmentPlanningSettingsServiceTests`** (new) — get when unset; set; change; clear; same value
-  writes no audit row; audit row carries old/new; save failure returns a failed `ServiceResult` and logs.
-- **`UpdateDefaultFiscalYearValidatorTests`** (new, TDD) — null accepted; 2020 and current+3 accepted;
-  2019 and current+4 rejected with the §4 message; the bound uses Manila time.
+  writes no audit row; audit row carries old/new; save failure logs and rethrows, with no audit row.
+  Range (TDD, in the same class — see the §4 deviation note): null accepted; 2020 and current+3
+  accepted; 2019 and current+4 rejected with the §4 message; the bound uses Manila time.
 - **`BudgetPlanningDashboardServiceTests`** — resolver order: requested beats setting; setting beats
   newest AIP; unset falls through to newest AIP, then UTC year + 1; setting with no AIP record is
   added to `availableFiscalYears` without duplicating an existing year; `DefaultFiscalYear` echoes
