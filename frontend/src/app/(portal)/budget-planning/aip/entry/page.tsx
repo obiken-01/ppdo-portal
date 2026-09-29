@@ -37,7 +37,7 @@ import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
-  getAipOfficeDivisions, submitAipDivision, aipErrorMessage,
+  getAipOfficeDivisions, submitAipDivision, returnAipDivision, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
@@ -54,6 +54,7 @@ import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
 import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
 import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
 import { buildDivisionView, isUnassignedEncoder } from "@/components/aip/entry/AipDivisionParts";
+import AipDivisionsPanel from "@/components/aip/entry/AipDivisionsPanel";
 import {
   addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity, patchProject,
 } from "@/components/aip/entry/AipEntryTree";
@@ -189,6 +190,13 @@ export default function AipEntryPage() {
   );
 
   const programOptions = useMemo(() => listAipProgramOptions(myGroups), [myGroups]);
+
+  // PPDO-152 — the untagged callout's list, from the tree already loaded (no second fetch).
+  const untaggedActivities = useMemo(
+    () => myGroups.flatMap((g) => g.programs.flatMap((p) => p.projects.flatMap((j) => j.activities)))
+      .filter((a) => a.divisionId == null),
+    [myGroups]
+  );
 
   /**
    * The selected nodes, resolved against the loaded tree.
@@ -468,6 +476,27 @@ export default function AipEntryPage() {
     }
   }
 
+  /**
+   * PPDO-152 — the department head reopens one division. Reloaded rather than spliced for the same
+   * reason as a division submit: the office may leave department review, and every one of that
+   * division's activities changes `canEdit` for its encoders.
+   */
+  async function doReturnDivision(division: AipDivisionStatus) {
+    if (!record) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await returnAipDivision(record.id, division.divisionId);
+      await load();
+      void refreshAipNotifications();
+      toast.success(`${division.name} returned to its encoders.`);
+    } catch (e) {
+      setError(aipErrorMessage(e, `Could not return ${division.name}.`));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   /** The department head hands the work back down to the encoders (added 2026-09-14). */
   async function doReturnToEncoder() {
     if (!record || officeId == null) return;
@@ -739,6 +768,18 @@ export default function AipEntryPage() {
                 stage={submitStage}
                 submitting={submitting}
                 history={{ aipRecordId: record.id, officeId }}
+                onSelectActivity={(activityId) => selectNode("Activity", activityId)}
+              />
+            )}
+
+            {/* PPDO-152 — the department head's view of the division hop. Never for an encoder,
+                who has their own division's stage in the panel above. */}
+            {divisionView?.isHead && (
+              <AipDivisionsPanel
+                list={divisionView.list}
+                untagged={untaggedActivities}
+                busy={submitting}
+                onReturn={(d) => void doReturnDivision(d)}
                 onSelectActivity={(activityId) => selectNode("Activity", activityId)}
               />
             )}

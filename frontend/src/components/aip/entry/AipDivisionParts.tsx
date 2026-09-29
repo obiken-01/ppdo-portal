@@ -110,6 +110,53 @@ export function AipDivisionPill({
   );
 }
 
+/**
+ * The divisions a department head may put work in (PPDO-152): the office's active ones, plus the one
+ * `keepId` already names when it has since been deactivated — so a select opened on such an
+ * activity still shows where it is instead of silently reading as another division.
+ */
+export function divisionChoices(view: AipDivisionView, keepId: number | null = null): AipDivisionStatus[] {
+  return view.list.divisions.filter((d) => d.isActive || d.divisionId === keepId);
+}
+
+/**
+ * A plain division `<select>` (PPDO-152) — the re-tag control on an activity, and the "new activities
+ * go to" choice on a project. Department head only; callers decide that, this only renders.
+ *
+ * ⚠️ No "No division" option. The server refuses to untag in a divisioned office (§4, `[JsonRequired]`),
+ * so an untagged activity shows a disabled placeholder until one is picked.
+ */
+export function AipDivisionSelect({
+  view, value, onChange, disabled = false, label, keepId = null,
+}: {
+  view: AipDivisionView;
+  value: number | null;
+  onChange: (divisionId: number) => void;
+  disabled?: boolean;
+  /** Accessible name — also shown as a small caption before the control. */
+  label: string;
+  keepId?: number | null;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+      <span>{label}</span>
+      <select
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:bg-slate-50 disabled:text-slate-600"
+      >
+        {value == null && <option value="" disabled>Choose a division…</option>}
+        {divisionChoices(view, keepId).map((d) => (
+          <option key={d.divisionId} value={d.divisionId}>
+            {d.name}{d.isActive ? "" : " (inactive)"}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 /** A submitted-at stamp in Manila time, as every other AIP hand-off shows it. */
 export function fmtDivisionStamp(iso: string | null): string {
   if (!iso) return "";

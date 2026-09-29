@@ -505,6 +505,24 @@ States as in §6.1. Forbidden: the re-tag select and Return are **hidden** for n
 - The department head's notification count includes divisions submitted since their last visit,
   using the existing `AipNotificationService` pattern — no email.
 
+> ↩️ **Deviations and findings, 2026-09-29 (PPDO-152, T5).**
+> 1. **The divisions panel is on AIP Entry only.** AIP Review is the PPDO reviewer's read-only
+>    screen. The department head reviews their own office in Entry, where their submit panel is.
+> 2. **The notification count is state-based, not "since their last visit".** Nothing records visits,
+>    and adding that would take a new table. The count is the number of divisions Submitted while the
+>    office is still with them (Draft or ReturnedByPpdo). It falls to zero once the office moves to
+>    department review, where the existing office count takes over, so one piece of work is never
+>    counted twice. The badge tooltip names offices and divisions separately.
+> 3. **Re-tagging is in the activity panel, not on each row.** AIP Entry shows one node at a time
+>    (PPDO-89), and a select nested inside a row's link button would be invalid. "Filter the tree to
+>    untagged activities" is a list of links in the callout, for the same reason.
+> 4. **Adding an activity as department head or Admin now picks a division** ("New activities go to"),
+>    which closes T4 deviation 7. It defaults to the head's own division, or else the first active one.
+> 5. **The board chip also shows on Returned offices**, because a PPDO return reopens every division
+>    (decision 11). Offices outside the division flow show no chip, never "0 of 0".
+> 6. **Submit on behalf is not surfaced.** The server allows it (§3.2), but §6.2 lists only Return.
+>    It is a small addition if the PDC asks for it.
+
 ---
 
 ## 7. Non-goals

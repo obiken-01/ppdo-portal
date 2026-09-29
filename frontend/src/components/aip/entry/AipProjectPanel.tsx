@@ -20,7 +20,8 @@ import { AipLevelChip, AipRefCode, aipHeaderRow } from "./AipHierarchy";
 import { AipFigureStrip, sumActivityAmounts } from "./AipRowFigures";
 import AipDeleteNodeButton from "./AipDeleteNodeButton";
 import {
-  AipDivisionPill, activityDivisionLock, addActivityBlockedReason, type AipDivisionView,
+  AipDivisionPill, AipDivisionSelect, activityDivisionLock, addActivityBlockedReason,
+  divisionChoices, type AipDivisionView,
 } from "./AipDivisionParts";
 import {
   AipChildList, AipChildRow, AipInlineAdd, AipPanel,
@@ -50,6 +51,13 @@ export default function AipProjectPanel({
   // ⚠️ Checked BEFORE the office lock below, but only ever narrows: an office that cannot be
   // edited already disables the control through `canEdit`.
   const addBlocked = canEdit ? addActivityBlockedReason(divisionView) : null;
+  // PPDO-152 — a department head or Admin must name the division a new activity belongs to in a
+  // divisioned office (§3.1); an encoder's is always their own, set by the server. Defaults to the
+  // head's own division when they have one, else the first active one.
+  const pickDivision = divisionView?.isHead === true && canEdit;
+  const [newDivisionId, setNewDivisionId] = useState<number | null>(() =>
+    divisionView ? divisionView.mine?.divisionId ?? divisionChoices(divisionView)[0]?.divisionId ?? null : null
+  );
   const amounts = useMemo(() => sumActivityAmounts(project.activities), [project]);
   // The delete cascades to every activity, so it needs all of them writable — read off the
   // server's per-activity `canEdit`, not re-derived. Outside the division flow this never fires.
@@ -99,6 +107,15 @@ export default function AipProjectPanel({
         emptyText="No activities yet."
         footer={
           canEdit || lockedReason != null ? (
+            <div className="flex flex-wrap items-center gap-3">
+            {pickDivision && divisionView && (
+              <AipDivisionSelect
+                view={divisionView}
+                label="New activities go to"
+                value={newDivisionId}
+                onChange={setNewDivisionId}
+              />
+            )}
             <AipInlineAdd
               label="+ Add activity"
               placeholder="Activity description"
@@ -122,9 +139,12 @@ export default function AipProjectPanel({
                   startDate: null, endDate: null, expectedOutputs: null,
                   fundingSourceRaw: null, ps: null, mooe: null, co: null,
                   ccAdaptation: null, ccMitigation: null, ccTypologyCode: null,
+                  // Ignored by the server for an encoder (always their own division).
+                  divisionId: pickDivision ? newDivisionId : null,
                 }));
               }}
             />
+            </div>
           ) : undefined
         }
       >

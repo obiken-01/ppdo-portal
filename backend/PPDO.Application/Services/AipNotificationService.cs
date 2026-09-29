@@ -15,15 +15,18 @@ public sealed class AipNotificationService : IAipNotificationService
     private readonly IAipRepository     _aipRepo;
     private readonly IAuditRepository   _auditRepo;
     private readonly IPermissionService _permissions;
+    private readonly IAipDivisionSubmissionRepository _divisionSubmissions;
 
     public AipNotificationService(
         IAipRepository     aipRepo,
         IAuditRepository   auditRepo,
-        IPermissionService permissions)
+        IPermissionService permissions,
+        IAipDivisionSubmissionRepository divisionSubmissions)
     {
         _aipRepo     = aipRepo;
         _auditRepo   = auditRepo;
         _permissions = permissions;
+        _divisionSubmissions = divisionSubmissions;
     }
 
     public async Task<ServiceResult<AipReviewNotificationsDto>> GetForCallerAsync(
@@ -46,6 +49,7 @@ public sealed class AipNotificationService : IAipNotificationService
         }
 
         int  pendingForDeptHead = 0;
+        int  divisionsSubmitted = 0;
         int? deptHeadYear       = null;
         List<AipReturnedNoticeDto> returned = [];
 
@@ -70,6 +74,20 @@ public sealed class AipNotificationService : IAipNotificationService
                     deptHeadYear ??= fiscalYear;
                 }
 
+                // PPDO-152 — divisions that have handed their work up while the office is still
+                // with its divisions. One query per open year (at most three), only for a head.
+                if (deptHead && status is AipWorkflowStatus.Draft or AipWorkflowStatus.ReturnedByPpdo)
+                {
+                    int submittedHere = (await _divisionSubmissions.GetForOfficesAsync(
+                            year.Key.AipRecordId, [own], ct))
+                        .Count(s => s.Status == AipDivisionStatus.Submitted);
+                    if (submittedHere > 0)
+                    {
+                        divisionsSubmitted += submittedHere;
+                        deptHeadYear ??= fiscalYear;
+                    }
+                }
+
                 if (status == AipWorkflowStatus.ReturnedByPpdo)
                 {
                     returned.Add(new AipReturnedNoticeDto(fiscalYear, ReturnedByPpdo));
@@ -88,6 +106,6 @@ public sealed class AipNotificationService : IAipNotificationService
         }
 
         return ServiceResult<AipReviewNotificationsDto>.Ok(new AipReviewNotificationsDto(
-            pendingForPpdo, ppdoYear, pendingForDeptHead, deptHeadYear, returned));
+            pendingForPpdo, ppdoYear, pendingForDeptHead, deptHeadYear, returned, divisionsSubmitted));
     }
 }
