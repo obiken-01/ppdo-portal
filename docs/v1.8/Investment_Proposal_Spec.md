@@ -1,19 +1,25 @@
 ---
-status: draft — for Ralph's review
-version: v1.9.0 (proposed)
-tickets: TBD (see §9)
+status: accepted — 2026-09-29
+version: v1.8.0 (Demo 2.15)
+tickets: PPDO-153 (parent), PPDO-154 … PPDO-161
 supersedes: —
 ---
 
-# v1.9.0 — PGOM Investment Proposal
+# v1.8.0 — PGOM Investment Proposal (Demo 2.15)
 
 Governed by [SPEC_STANDARD.md](../SPEC_STANDARD.md). Built from
 [Investment_Proposal_Findings.md](Investment_Proposal_Findings.md), which records the template
 study, the three FY2027 samples and every question answered on 2026-09-27.
 
-> **How to read the decisions.** Decisions marked **(R)** are Ralph's, from the 2026-09-27
-> session. Decisions marked **(P)** are proposed here, with the reasoning, for Ralph to accept or
-> change before the first ticket starts. They cost nothing to change until then.
+> **How to read the decisions.** **(R)** decisions are Ralph's, from the 2026-09-27 session.
+> **(P)** decisions were proposed in this spec with their reasoning and **accepted by Ralph on
+> 2026-09-29**, so both kinds are settled.
+>
+> **Where it lands.** Filed under the *Demo 2 — change requests & fixes* milestone, so it follows
+> that milestone's convention for spec'd items (PPDO-130, PPDO-136): spec in `docs/v1.8/`, feature
+> branches off `release/1.8.0`, PRs into `release/1.8.0`. Related: **PPDO-132** (Demo 2.10, attach a
+> proposal file per project). Generating the proposal covers the Word document that request was
+> about; whether PPDO-132's upload is still needed for scanned/signed copies is its own question.
 
 ---
 
@@ -60,7 +66,7 @@ and therefore always agree with it.
 7. **Amounts are Full value (₱), not the Annex B form figure. (P)** The proposal is a cost
    estimate whose computation lines must add up to the centavo, so it uses the amounts exactly
    as encoded. It is **not** rounded up and has **no +30%**
-   ([AIP_Amount_States.md](../v1.8/AIP_Amount_States.md)). A proposal's Project Cost will
+   ([AIP_Amount_States.md](AIP_Amount_States.md)). A proposal's Project Cost will
    therefore differ from the same project's figure on the Consolidated AIP. A one-line note under
    the Section A cost in the portal says so. The export itself carries no note.
 8. **H-1 total always equals Section A Project Cost.** This holds by construction: since v1.8.0,
@@ -140,8 +146,9 @@ and therefore always agree with it.
     The defaults live in `investment_planning_settings` (decision 25).
 20. **Rich text (R):** bold, italic, bulleted and numbered lists. Applies to B, C, J, the General
     Objective and the D cells. Stored as HTML restricted to `p, strong, em, ul, ol, li, br`. The
-    server **strips anything else** on save; the TipTap editor is configured to produce only
-    these.
+    server **strips anything else** on save, using the `HtmlSanitizer` package Announcements
+    already uses, configured with this allow-list and no attributes. The TipTap editor is
+    configured to produce only these.
 21. **No guidance text in the export (R, samples).** The template's italic instructions become
     helper text under each input in the editor.
 22. **Not included in v1 (R/assumed):** image or map upload in B; structured SDG/PDP pickers in
@@ -150,7 +157,7 @@ and therefore always agree with it.
     the proposal row is the unit of conflict. It gets a `row_version` (`rowversion`). Every write
     sends the version it loaded; a stale one gets **409, nothing written, and the editor keeps
     the user's input**. This is the approved pattern of
-    [AIP_Concurrent_Edit_Spec.md](../v1.8/AIP_Concurrent_Edit_Spec.md) (🅐, 🅒), applied from
+    [AIP_Concurrent_Edit_Spec.md](AIP_Concurrent_Edit_Spec.md) (🅐, 🅒), applied from
     the first release rather than retrofitted.
 24. **One PUT saves the whole editable document. (P)** Content is a few KB; per-section endpoints
     would multiply the concurrency surface for no gain. The editor saves explicitly (Save button
@@ -158,7 +165,7 @@ and therefore always agree with it.
 25. **Signatory defaults in the existing settings row. (P)** Four nullable columns on
     `investment_planning_settings`: `ppdc_name`, `ppdc_position`, `lce_name`, `lce_position`.
     They use the same gate as the default fiscal year (`CanManageInvestmentPlanningSettings`,
-    [Default_Fiscal_Year_Spec.md](../v1.8/Default_Fiscal_Year_Spec.md) decision 6). Only PPDO
+    [Default_Fiscal_Year_Spec.md](Default_Fiscal_Year_Spec.md) decision 6). Only PPDO
     sets province-wide values. If unset, the slot is created with the label only.
 26. **Deleting a project that has a proposal is refused. (P)** `AipService.DeleteProjectAsync`
     returns **409** "This project has an investment proposal. Delete the proposal first." The
@@ -173,7 +180,7 @@ and therefore always agree with it.
 ### Open follow-ups (not blocking)
 
 - **HGDG scale and checklist list**: confirm against the PCW HGDG manual (decision 9). Blocks
-  merging ticket IP-3, not starting it.
+  merging PPDO-156 (T3), not starting it.
 - **Project Type**: deferred (decision 6). Candidates if revived: `AipOffice.Sector`, ESRE code.
 - **Map/photo upload in B**: revisit if an office asks.
 - **PDF export**: not requested; Word is the deliverable.
@@ -224,13 +231,21 @@ applies.
 | Staff, guest office (budget planning defaults ON) | ✅ own office | ✅ own office | ❌ 403 |
 | Department head (`CanReviewBudgetPlanning`), own office | ✅ own office | ✅ (the guard allows dept heads to edit) | ✅ own office |
 | PPDO cross-office reviewer (`CanReviewAllOffices`) | ✅ every office, **read only** (`OfficeScope.ResolveForReview`) | ❌ 403 (`ReviewerWriteGuard`) | ❌ 403 |
+| Staff, host office, divisioned (PPDO-130) | projects whose program `ProgramDivision` gives their division, i.e. **the same programs AIP Entry shows them** | ✅ those projects | ❌ 403 |
+| Staff in a divisioned office with **no division** | ✅ read (as AIP Entry) | ❌ 403 "You are not assigned to a division in this office…", matching AIP Entry | ❌ 403 |
 | Staff without `CanAccessBudgetPlanning` | ❌ 403 | ❌ 403 | ❌ 403 |
 | User with null `office_id` | Sees nothing (list empty; by-id 404) | 404 | 404 |
 | Any caller, record in another office outside scope | 404 | 404 | 404 |
 
+**Division submit does not lock proposals.** A proposal is not AIP content: a division that has
+submitted its AIP work (PPDO-130) can still write its projects' proposals, and a department head's
+return doesn't touch them. The proposal's own Draft → Final is its only lock. A project whose
+activities span two divisions is editable by encoders of **either** division (the scope is the
+program, as in AIP Entry's read scope), and optimistic concurrency (decision 23) covers the overlap.
+
 ⚠️ **The department-head reopen check is an office comparison against `users.office_id`, not
 `OfficeScope.Resolve`.** A host-office department head resolves to `SeeAll` and must not gain
-reopen over every office. This is the same trap as [Permission_Matrix.md](../v1.8/Permission_Matrix.md)
+reopen over every office. This is the same trap as [Permission_Matrix.md](Permission_Matrix.md)
 §4a. A new `PermissionService.CanReopenInvestmentProposalAsync(user, officeId)` carries the rule,
 and it gets a matrix row and a pinning test.
 
@@ -397,7 +412,7 @@ Migration: **`AddInvestmentProposals`** — ⚠️ MIGRATION. All new tables are
 | `signatory{1,2,3}_label` | nvarchar(100) | yes | nine signatory columns in all, flat. Always exactly three slots |
 | `signatory{1,2,3}_name` | nvarchar(200) | yes | |
 | `signatory{1,2,3}_position` | nvarchar(200) | yes | |
-| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4, serialized. Null while Draft |
+| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4, serialized with `"schemaVersion": 1`. Readers must accept every version ever written. Null while Draft |
 | `finalized_at` | datetime2 | yes | UTC |
 | `finalized_by_id` | uniqueidentifier | yes | FK → Users, `SET NULL` |
 | `created_at` / `updated_at` | datetime2 | no | UTC |
@@ -542,8 +557,9 @@ anyone without `CanManageInvestmentPlanningSettings`.
 ## 8. Deployment notes
 
 - **Migration `AddInvestmentProposals`**: run `dotnet ef database update` manually against Azure
-  SQL **before** the code deploys. CI does not run migrations. It depends on v1.8.0's
-  migrations, since `release/1.8.0` must be in production first.
+  SQL **before** the code deploys. CI does not run migrations. It ships inside v1.8.0, so it joins
+  the list in [Pre_Deployment_Checklist.md](Pre_Deployment_Checklist.md) (T1 adds the line). It
+  runs after `AddInvestmentPlanningSettings` (PPDO-143), whose table it extends.
 - **Dependency:** explicit `PackageReference` to `DocumentFormat.OpenXml` in
   `PPDO.Infrastructure`, pinned to the version ClosedXML 0.104.2 already resolves (check
   `obj/project.assets.json`). Nothing new is downloaded at runtime.
@@ -557,23 +573,29 @@ anyone without `CanManageInvestmentPlanningSettings`.
 
 ## 9. Ticket split
 
+Parent **PPDO-153** (child of the Demo 2 epic PPDO-122). Prompts:
+[Investment_Proposal_Ticket_Prompts.md](Investment_Proposal_Ticket_Prompts.md).
+
 | Ticket | Scope | Blocked by |
 |---|---|---|
-| **IP-1** Data model | Entities, configurations, `AddInvestmentProposals` migration, settings columns, repository. ⚠️ MIGRATION | v1.8.0 merged |
-| **IP-2** Service + API (CRUD, lifecycle, scope) | `InvestmentProposalService` (create with pre-fill, get with live/snapshot merge, PUT replace + sanitize, finalize/reopen/delete, concurrency), `CanReopenInvestmentProposalAsync` + matrix row, `InvestmentProposalFunctions`, list endpoint, AIP project-delete 409, signatory-defaults endpoints | IP-1 |
-| **IP-3** HGDG attribution calculator | Pure `HgdgAttribution` class + tests; wired into IP-2's DTO. **Manual-implementation candidate** (see below) | IP-1. Merge needs the PCW scale confirmed |
-| **IP-4** Document model builder | Pure `InvestmentProposalDocumentBuilder` (Application): header, grouped G rows, H-1 blocks with computation strings, totals, rich-text HTML → paragraph runs model. Heavily unit-tested, no Open XML | IP-2 |
-| **IP-5** Word renderer + export endpoint | `IInvestmentProposalWordService` (Application) / `InvestmentProposalWordService` (Infrastructure) rendering IP-4's model into the template; export endpoint; template asset | IP-4 |
-| **IP-6** List page + sidebar | §6.1, access rule in `lib/budget-planning-access` | IP-2 |
-| **IP-7** Editor page | §6.2, `RichTextEditor` extraction, H-1 preview (rendered from the GET response) | IP-2, IP-4 (for preview parity) |
-| **IP-8** Signatory defaults config card | §6.3 | IP-2 |
+| **PPDO-154** T1 Data model | Entities, configurations, `AddInvestmentProposals` migration, settings columns, repository. ⚠️ MIGRATION | — |
+| **PPDO-155** T2 Service + API | `InvestmentProposalService` (create with pre-fill, get with live/snapshot merge, PUT replace + sanitize, finalize/reopen/delete, concurrency), `CanReopenInvestmentProposalAsync` + matrix row, `InvestmentProposalFunctions`, list endpoint, AIP project-delete 409, signatory-defaults endpoints. Ships `attributedGadBudget = null` | PPDO-154 |
+| **PPDO-156** T3 HGDG calculator | Pure `HgdgAttribution` + tests + the one-line wiring into T2. Merge needs the PCW scale confirmed | PPDO-155 |
+| **PPDO-157** T4 Document builder | Pure `InvestmentProposalDocumentBuilder` (Application): header, grouped G rows, H-1 blocks with computation strings, totals, rich-text model. No Open XML | PPDO-155 |
+| **PPDO-158** T5 Word export | `IInvestmentProposalWordService` / `InvestmentProposalWordService`, template asset, export endpoint | PPDO-157 |
+| **PPDO-159** T6 List page | §6.1, sidebar entry via `lib/budget-planning-access` | PPDO-155, PPDO-145 |
+| **PPDO-160** T7 Editor page | §6.2, `RichTextEditor` extraction, H-1 preview | PPDO-155, PPDO-157 |
+| **PPDO-161** T8 Signatory defaults card | §6.3 | PPDO-155, PPDO-144 |
 
-**IP-3 is a good hand-coding candidate for Ralph:** small blast radius, a pure function,
+T3 deliberately follows T2 instead of blocking it, so the hand-coding ticket is never on the
+critical path.
+
+**PPDO-156 (T3) is a good hand-coding candidate for Ralph:** small blast radius, a pure function,
 testable entirely with `dotnet test`, and `WfpExpenditureCalculator` is the sibling to copy the
-shape from. Guidance starts at ladder level 1 (this spec + the sibling). **Not candidates:** IP-2
-(scope and permission logic, where a missing check isn't caught by the compiler), IP-1 (migration),
-IP-5 (layout-heavy Open XML with a slow feedback loop, the same reasons as `ExcelService.cs`) and
-IP-7 (a large page component).
+shape from. Guidance starts at ladder level 1 (this spec + the sibling). **Not candidates:** T2
+(scope and permission logic, where a missing check isn't caught by the compiler), T1 (migration),
+T5 (layout-heavy Open XML with a slow feedback loop, the same reasons as `ExcelService.cs`) and
+T7 (a large page component).
 
 ---
 
@@ -663,4 +685,4 @@ TDD for the service, calculator, builder and permission rule (`CLAUDE.md`).
 
 ---
 
-*Investment Proposal Requirements — v1.9.0 (proposed) — drafted 2026-09-27.*
+*Investment Proposal Spec — v1.8.0 (Demo 2.15) — drafted 2026-09-27, accepted 2026-09-29.*
