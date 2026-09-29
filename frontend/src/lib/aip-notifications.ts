@@ -105,14 +105,26 @@ export function useAipNotifications(me: MeResponse | null): AipReviewNotificatio
  * A PPDO reviewer (or a holder of both flags) goes to the search with "waiting on me" applied; a
  * department head alone goes to their own office's AIP Entry, where the submit panel is.
  */
-export function pendingLink(n: AipReviewNotifications): { count: number; href: string } | null {
-  const count = n.pendingForPpdo + n.pendingForDepartmentHead;
+export function pendingLink(
+  n: AipReviewNotifications,
+): { count: number; href: string; title: string } | null {
+  // PPDO-152 — a division that has handed its work up is waiting on the department head too.
+  const divisions = n.divisionsSubmitted ?? 0;
+  const offices = n.pendingForPpdo + n.pendingForDepartmentHead;
+  const count = offices + divisions;
   if (count === 0) return null;
+  // ⚠️ Names what is waiting. The count now mixes offices and divisions, and "3 offices are
+  // waiting" over one office and two divisions would send the reader looking for offices.
+  const parts: string[] = [];
+  if (offices > 0) parts.push(`${offices} ${offices === 1 ? "office" : "offices"}`);
+  if (divisions > 0) parts.push(`${divisions} ${divisions === 1 ? "division" : "divisions"}`);
+  const title = `${parts.join(" and ")} waiting on you`;
   if (n.pendingForPpdo > 0) {
     return {
       count,
+      title,
       href: `/budget-planning/aip/review/search?mine=true&fiscalYear=${n.ppdoFiscalYear}`,
     };
   }
-  return { count, href: `/budget-planning/aip/entry?fiscalYear=${n.departmentHeadFiscalYear}` };
+  return { count, title, href: `/budget-planning/aip/entry?fiscalYear=${n.departmentHeadFiscalYear}` };
 }

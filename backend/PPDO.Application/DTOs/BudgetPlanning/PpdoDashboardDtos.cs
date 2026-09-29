@@ -138,6 +138,11 @@ public record PpdoDashboardDto(
 /// Returned badge. Not a column of its own.</param>
 /// <param name="AssignedProgramCount">Programs in the office's AIP groups for the year, whether or
 /// not anyone has touched them — the ones LDIP seeded. Zero when the office has no group row.</param>
+/// <param name="DivisionsSubmitted">PPDO-152 — how many of the office's required divisions (those
+/// with tagged activities) have submitted to the department head. <b>Null when the office is not in
+/// the division flow</b> (no active division, or FY ≤ 2027) — not the same as 0.</param>
+/// <param name="DivisionsRequired">PPDO-152 — the "m" of "n of m divisions submitted". Null with
+/// <paramref name="DivisionsSubmitted"/>.</param>
 public record OfficeSummaryDto(
     int      OfficeId,
     string   OfficeCode,
@@ -152,5 +157,7 @@ public record OfficeSummaryDto(
     string?  ReviewerName,
     string   ReadinessColumn,
     bool     IsReturned,
-    int      AssignedProgramCount
+    int      AssignedProgramCount,
+    int?     DivisionsSubmitted = null,
+    int?     DivisionsRequired  = null
 );

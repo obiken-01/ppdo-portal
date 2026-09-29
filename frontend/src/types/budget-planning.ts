@@ -468,6 +468,12 @@ export interface AipReviewNotifications {
   ppdoFiscalYear: number | null;
   /** Open years in which the user's own office is in department review. 0 unless a department head. */
   pendingForDepartmentHead: number;
+  /**
+   * PPDO-152 — divisions of the user's own office that have submitted to them while the office is
+   * still with its divisions. State-based, not "since your last visit". 0 unless a department head.
+   */
+  divisionsSubmitted: number;
+  /** The earliest year with either department-head count. */
   departmentHeadFiscalYear: number | null;
   /** Years in which the user's own office is returned to them, earliest first. */
   returned: AipReturnedNotice[];
@@ -504,6 +510,13 @@ export interface OfficeSummary {
   isReturned: boolean;
   /** Programs in the office's AIP for the year, touched or not — the ones LDIP seeded. */
   assignedProgramCount: number;
+  /**
+   * PPDO-152 — required divisions (those with tagged activities) that have submitted to the
+   * department head. **Null when the office is not in the division flow** — not the same as 0.
+   */
+  divisionsSubmitted: number | null;
+  /** PPDO-152 — the "m" of "n of m divisions submitted". Null with `divisionsSubmitted`. */
+  divisionsRequired: number | null;
 }
 
 /** One division's share of a fund's office-wide ceiling. */

@@ -47,6 +47,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IUserRepository                _userRepo;
     private readonly IPermissionService             _permissions;
     private readonly IInvestmentPlanningSettingsRepository _settingsRepo;
+    private readonly IAipDivisionSubmissionRepository _divisionSubmissionRepo;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -63,7 +64,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IBudgetCeilingRepository       ceilingRepo,
         IUserRepository                userRepo,
         IPermissionService             permissions,
-        IInvestmentPlanningSettingsRepository settingsRepo)
+        IInvestmentPlanningSettingsRepository settingsRepo,
+        IAipDivisionSubmissionRepository divisionSubmissionRepo)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -80,6 +82,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _userRepo          = userRepo;
         _permissions       = permissions;
         _settingsRepo      = settingsRepo;
+        _divisionSubmissionRepo = divisionSubmissionRepo;
     }
 
     /// <inheritdoc />
@@ -527,8 +530,12 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             await _userRepo.GetReviewerNamesByOfficeAsync(officeIds, ct);
 
         AipRecord? aip = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
-        Dictionary<int, OfficeAipFigures> aipByOffice =
-            await BuildAipRollupByOfficeAsync(aip, offices, ct);
+        IReadOnlyList<AipOfficeRollupDto> rollups =
+            aip is null ? [] : await _aipRepo.GetOfficeRollupsAsync(aip.Id, ct);
+        Dictionary<int, OfficeAipFigures> aipByOffice = BuildAipRollupByOffice(rollups, offices);
+        Dictionary<int, DivisionProgress> divisionProgress = entered && aip is not null
+            ? await BuildDivisionProgressAsync(aip.Id, officeIds, rollups, ct)
+            : [];
 
         // One grouped query for every office (not the per-office ceiling read in a loop).
         Dictionary<int, decimal> gfCostedByOffice = [];
@@ -569,7 +576,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 reviewerByOffice.GetValueOrDefault(office.Id),
                 AipReadinessColumn.For(figures.WorkflowStatus, figures.ActivityCount),
                 figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
-                figures.ProgramCount));
+                figures.ProgramCount,
+                divisionProgress.TryGetValue(office.Id, out DivisionProgress p) ? p.Submitted : null,
+                divisionProgress.TryGetValue(office.Id, out DivisionProgress q) ? q.Required : null));
         }
 
         return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(rows);
@@ -595,13 +604,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// BOM-segment code whose tail is the office's own. An office with no ref code configured
     /// cannot be matched at all and is simply absent, which reads as Todo on its row.
     /// </summary>
-    private async Task<Dictionary<int, OfficeAipFigures>> BuildAipRollupByOfficeAsync(
-        AipRecord? aip, IReadOnlyList<Office> offices, CancellationToken ct)
+    private static Dictionary<int, OfficeAipFigures> BuildAipRollupByOffice(
+        IReadOnlyList<AipOfficeRollupDto> rollups, IReadOnlyList<Office> offices)
     {
-        if (aip is null) return [];
-
-        IReadOnlyList<AipOfficeRollupDto> rollups = await _aipRepo.GetOfficeRollupsAsync(aip.Id, ct);
-
         Dictionary<int, OfficeAipFigures> byOffice = [];
         foreach (Office office in offices)
         {
@@ -619,6 +624,56 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 AipReadinessColumn.OfficeStatus(matched.Select(r => r.WorkflowStatus)));
         }
 
+        return byOffice;
+    }
+
+    /// <summary>How many of an office's required divisions have submitted (PPDO-152).</summary>
+    private readonly record struct DivisionProgress(int Submitted, int Required);
+
+    /// <summary>
+    /// OfficeId → "n of m divisions submitted" for every office in the division flow (PPDO-152, spec
+    /// §6.3). Three queries for the whole table — divisions, the per-tag activity rollup, and the
+    /// submitted rows — never one per office.
+    ///
+    /// ⚠️ <b>The same "required" rule as the submit gate</b> (<c>AipDivisionOfficeState.RequiredDivisionIds</c>,
+    /// decision 10): a division counts once it has at least one tagged activity, inactive or not, and
+    /// an empty division never does. An office with no ACTIVE division is outside the flow and gets no
+    /// entry, so the board shows nothing rather than "0 of 0".
+    /// </summary>
+    private async Task<Dictionary<int, DivisionProgress>> BuildDivisionProgressAsync(
+        int aipRecordId, IReadOnlyList<int> officeIds, IReadOnlyList<AipOfficeRollupDto> rollups,
+        CancellationToken ct)
+    {
+        IReadOnlyList<Division> divisions =
+            await _divisionSubmissionRepo.GetDivisionsByOfficeIdsAsync(officeIds, ct);
+        HashSet<int> flowOffices = divisions.Where(d => d.IsActive).Select(d => d.OfficeId).ToHashSet();
+        if (flowOffices.Count == 0) return [];
+
+        List<int> groupIds = rollups
+            .Where(r => r.OfficeId is int o && flowOffices.Contains(o))
+            .Select(r => r.AipOfficeId)
+            .ToList();
+        HashSet<int> withWork = groupIds.Count == 0
+            ? []
+            : (await _aipRepo.GetDivisionRollupsAsync(groupIds, ct))
+                .Where(r => r.DivisionId is not null && r.ActivityCount > 0)
+                .Select(r => r.DivisionId!.Value)
+                .ToHashSet();
+        HashSet<int> submitted = (await _divisionSubmissionRepo.GetForOfficesAsync(
+                aipRecordId, flowOffices.ToList(), ct))
+            .Where(s => s.Status == AipDivisionStatus.Submitted)
+            .Select(s => s.DivisionId)
+            .ToHashSet();
+
+        Dictionary<int, DivisionProgress> byOffice = [];
+        foreach (int officeId in flowOffices)
+        {
+            List<int> required = divisions
+                .Where(d => d.OfficeId == officeId && withWork.Contains(d.Id))
+                .Select(d => d.Id)
+                .ToList();
+            byOffice[officeId] = new DivisionProgress(required.Count(submitted.Contains), required.Count);
+        }
         return byOffice;
     }
 

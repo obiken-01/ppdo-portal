@@ -194,7 +194,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipActivityProgramFundTotalsDto>? aipFundLines = null,
         List<AipDivisionRollupDto>? divisionRollups = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
-        int? defaultFiscalYear = null)
+        int? defaultFiscalYear = null,
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -331,11 +332,22 @@ public sealed class BudgetPlanningDashboardServiceTests
         settingsRepo.Setup(r => r.GetDefaultFiscalYearAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(defaultFiscalYear);
 
+        // PPDO-152 — the board's division progress. No divisions by default: outside the flow.
+        Mock<IAipDivisionSubmissionRepository> divisionSubmissionRepo =
+            divisionSubmissionRepoMock ?? new Mock<IAipDivisionSubmissionRepository>();
+        if (divisionSubmissionRepoMock is null)
+        {
+            divisionSubmissionRepo.Setup(r => r.GetDivisionsByOfficeIdsAsync(
+                    It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<Division>)[]);
+        }
+
         BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
             aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object,
-            ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object);
+            ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
+            divisionSubmissionRepo.Object);
 
         return (svc, auditRepo);
     }
@@ -1577,7 +1589,9 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IBudgetCeilingRepository>? ceilingRepoMock = null,
         Mock<IUserRepository>? userRepoMock = null,
         Mock<IAipRepository>? aipRepoMock = null,
-        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null)
+        List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
+        List<AipDivisionRollupDto>? divisionRollups = null,
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
     {
         // Deliberately a GUEST-office caller in every case: OfficeScope.Resolve would scope them
         // to their own office, so "every office came back" is real evidence the cross-office
@@ -1598,7 +1612,9 @@ public sealed class BudgetPlanningDashboardServiceTests
             userRepoMock: userRepoMock,
             permissionsMock: permissions,
             officeRollups: officeRollups,
-            gfLinesByOffice: gfLinesByOffice);
+            gfLinesByOffice: gfLinesByOffice,
+            divisionRollups: divisionRollups,
+            divisionSubmissionRepoMock: divisionSubmissionRepoMock);
 
         return (svc, caller);
     }
@@ -1831,6 +1847,97 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, 2028);
         return result.Value!.Single(r => r.OfficeCode == "GSO");
+    }
+
+    // ── Division progress on the board (PPDO-152) ───────────────────────────────
+
+    /// <summary>GSO (office 2) with divisions 21, 22, 23; the given ones submitted.</summary>
+    private static Mock<IAipDivisionSubmissionRepository> GsoDivisions(
+        bool thirdActive = true, params int[] submitted)
+    {
+        Mock<IAipDivisionSubmissionRepository> repo = new();
+        repo.Setup(r => r.GetDivisionsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<Division>)
+            [
+                new Division { Id = 21, OfficeId = 2, Name = "Supply", IsActive = true },
+                new Division { Id = 22, OfficeId = 2, Name = "Motorpool", IsActive = true },
+                new Division { Id = 23, OfficeId = 2, Name = "Records", IsActive = thirdActive },
+            ]);
+        repo.Setup(r => r.GetForOfficesAsync(10, It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(submitted
+                .Select(d => new AipDivisionSubmission
+                {
+                    AipRecordId = 10, OfficeId = 2, DivisionId = d, Status = AipDivisionStatus.Submitted,
+                })
+                .ToList());
+        return repo;
+    }
+
+    private static async Task<OfficeSummaryDto> GsoDivisionRowAsync(
+        Mock<IAipDivisionSubmissionRepository> divisions, int fiscalYear = 2028, params AipDivisionRollupDto[] tags)
+    {
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOfficesWithRefCodes(), canReviewAllOffices: true,
+            aips: [Aip(10, fiscalYear, "Draft")],
+            aipRepoMock: AipMockWithOffices(10),
+            officeRollups: [GsoGroup(50, "Draft", activities: 5)],
+            divisionRollups: [.. tags],
+            divisionSubmissionRepoMock: divisions);
+
+        ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, fiscalYear);
+        return result.Value!.Single(r => r.OfficeCode == "GSO");
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_DivisionProgress_CountsOnlyDivisionsWithTaggedWork()
+    {
+        // 21 and 22 hold work, 23 holds none, and one activity is untagged — the untagged one and
+        // the empty division are not "required" (decision 10), so this is 1 of 2, not 1 of 3.
+        OfficeSummaryDto gso = await GsoDivisionRowAsync(
+            GsoDivisions(submitted: 21), 2028,
+            new AipDivisionRollupDto(21, 2, 0, 0m),
+            new AipDivisionRollupDto(22, 2, 0, 0m),
+            new AipDivisionRollupDto(null, 1, 0, 0m));
+
+        Assert.Equal(1, gso.DivisionsSubmitted);
+        Assert.Equal(2, gso.DivisionsRequired);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_DivisionProgress_InactiveDivisionWithWorkStillCounts()
+    {
+        // Same rule as the submit gate: an inactive division still holding tagged work blocks until
+        // it is submitted on its behalf or its work is moved.
+        OfficeSummaryDto gso = await GsoDivisionRowAsync(
+            GsoDivisions(thirdActive: false, 21, 22), 2028,
+            new AipDivisionRollupDto(21, 1, 0, 0m),
+            new AipDivisionRollupDto(22, 1, 0, 0m),
+            new AipDivisionRollupDto(23, 1, 0, 0m));
+
+        Assert.Equal(2, gso.DivisionsSubmitted);
+        Assert.Equal(3, gso.DivisionsRequired);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_OfficeWithoutDivisions_HasNoDivisionProgress()
+    {
+        OfficeSummaryDto gso = await GsoRowAsync(GsoGroup(50, "Draft", 3));
+
+        Assert.Null(gso.DivisionsSubmitted);
+        Assert.Null(gso.DivisionsRequired);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Fy2027_HasNoDivisionProgress_AndNeverQueriesIt()
+    {
+        Mock<IAipDivisionSubmissionRepository> divisions = GsoDivisions(submitted: 21);
+
+        OfficeSummaryDto gso = await GsoDivisionRowAsync(
+            divisions, 2027, new AipDivisionRollupDto(21, 2, 0, 0m));
+
+        Assert.Null(gso.DivisionsSubmitted);
+        divisions.Verify(r => r.GetDivisionsByOfficeIdsAsync(
+            It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]

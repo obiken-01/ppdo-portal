@@ -27,6 +27,8 @@ public sealed class AipNotificationServiceTests
     private readonly Mock<IAipRepository>     _aipRepo     = new();
     private readonly Mock<IAuditRepository>   _auditRepo   = new();
     private readonly Mock<IPermissionService> _permissions = new();
+    private readonly Mock<IAipDivisionSubmissionRepository> _divisionSubmissions = new();
+    private readonly List<AipDivisionSubmission> _divisionRows = [];
 
     private readonly List<AipOfficeStatusRow> _ownRows = [];
     private readonly Dictionary<int, int> _ppdoCounts = [];
@@ -53,7 +55,13 @@ public sealed class AipNotificationServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _latestHandOff);
 
-        return new AipNotificationService(_aipRepo.Object, _auditRepo.Object, _permissions.Object);
+        _divisionSubmissions.Setup(r => r.GetForOfficesAsync(
+                It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int recordId, IReadOnlyList<int> offices, CancellationToken _) =>
+                _divisionRows.Where(r => r.AipRecordId == recordId && offices.Contains(r.OfficeId)).ToList());
+
+        return new AipNotificationService(
+            _aipRepo.Object, _auditRepo.Object, _permissions.Object, _divisionSubmissions.Object);
     }
 
     private static User Caller(int? officeId = OwnOffice) => new()
@@ -70,6 +78,59 @@ public sealed class AipNotificationServiceTests
         ServiceResult<AipReviewNotificationsDto> result = await sut.GetForCallerAsync(caller ?? Caller());
         Assert.True(result.IsSuccess);
         return result.Value!;
+    }
+
+    private void DivisionRow(int recordId, int divisionId, string status = AipDivisionStatus.Submitted)
+        => _divisionRows.Add(new AipDivisionSubmission
+        {
+            AipRecordId = recordId, OfficeId = OwnOffice, DivisionId = divisionId, Status = status,
+        });
+
+    // ── Divisions submitted to the department head (PPDO-152) ──────────────────
+
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    public async Task DepartmentHead_DivisionsSubmittedWhileOfficeIsWithDivisions_AreCounted(string status)
+    {
+        OwnGroup(Record28, 2028, 1, status);
+        DivisionRow(Record28, 7);
+        DivisionRow(Record28, 8);
+        DivisionRow(Record28, 9, AipDivisionStatus.Draft); // returned — not waiting on anyone
+
+        AipReviewNotificationsDto dto = await ReadAsync(Build(deptHead: true));
+
+        Assert.Equal(2, dto.DivisionsSubmitted);
+        Assert.Equal(0, dto.PendingForDepartmentHead);
+        Assert.Equal(2028, dto.DepartmentHeadFiscalYear);
+    }
+
+    [Fact]
+    public async Task DepartmentHead_OfficeInDepartmentReview_CountsTheOfficeNotItsDivisions()
+    {
+        // Every division has submitted and the office moved on. Counting both would show 3 for one
+        // piece of work waiting.
+        OwnGroup(Record28, 2028, 1, AipWorkflowStatus.DepartmentReview);
+        DivisionRow(Record28, 7);
+        DivisionRow(Record28, 8);
+
+        AipReviewNotificationsDto dto = await ReadAsync(Build(deptHead: true));
+
+        Assert.Equal(0, dto.DivisionsSubmitted);
+        Assert.Equal(1, dto.PendingForDepartmentHead);
+    }
+
+    [Fact]
+    public async Task Encoder_DivisionsSubmitted_IsNeverCountedOrQueried()
+    {
+        OwnGroup(Record28, 2028, 1, AipWorkflowStatus.Draft);
+        DivisionRow(Record28, 7);
+
+        AipReviewNotificationsDto dto = await ReadAsync(Build());
+
+        Assert.Equal(0, dto.DivisionsSubmitted);
+        _divisionSubmissions.Verify(r => r.GetForOfficesAsync(
+            It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── The PPDO reviewer's count ──────────────────────────────────────────────

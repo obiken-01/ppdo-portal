@@ -10,7 +10,13 @@ namespace PPDO.Application.DTOs.BudgetPlanning;
 /// Null when the count is zero.</param>
 /// <param name="PendingForDepartmentHead">Open years in which the caller's own office sits at
 /// <c>DepartmentReview</c>. Zero unless the caller holds <c>CanReviewBudgetPlanning</c>.</param>
-/// <param name="DepartmentHeadFiscalYear">The earliest such year, or null.</param>
+/// <param name="DepartmentHeadFiscalYear">The earliest year with either department-head count, or null.</param>
+/// <param name="DivisionsSubmitted">PPDO-152 — divisions of the caller's own office that have submitted
+/// to them while the office is still with its divisions (<c>Draft</c> or <c>ReturnedByPpdo</c>), across
+/// open years. ⚠️ State-based like every other count here, not "since your last visit": nothing
+/// records visits, and the count falls to zero by itself once the office moves to department review,
+/// where <paramref name="PendingForDepartmentHead"/> takes over. Zero unless the caller holds
+/// <c>CanReviewBudgetPlanning</c>.</param>
 /// <param name="Returned">Open years in which the caller's own office is returned to them, earliest
 /// first. Empty when nothing is.</param>
 public sealed record AipReviewNotificationsDto(
@@ -18,7 +24,8 @@ public sealed record AipReviewNotificationsDto(
     int?    PpdoFiscalYear,
     int     PendingForDepartmentHead,
     int?    DepartmentHeadFiscalYear,
-    IReadOnlyList<AipReturnedNoticeDto> Returned);
+    IReadOnlyList<AipReturnedNoticeDto> Returned,
+    int     DivisionsSubmitted = 0);
 
 /// <summary>
 /// One returned year. <paramref name="ReturnedBy"/> is <c>"Ppdo"</c> (the office sits at
