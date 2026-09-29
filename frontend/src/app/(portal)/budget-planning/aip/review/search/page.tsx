@@ -55,7 +55,8 @@ import { searchAipReview } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
 import { listOffices } from "@/lib/config";
 import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
-import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_SECTOR_OPTIONS } from "@/lib/aipConstants";
 import {
   AIP_WORKFLOW, describeAipHolderForReviewer, describeAipHolderForDepartmentHead,
@@ -69,7 +70,7 @@ import type {
   AipReviewSearchResult, AipReviewSearchRow, AipCommentNodeType, OfficeResponse,
 } from "@/types";
 
-const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+const YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
 
 /** The five workflow states, in ladder order — the order the work actually moves through. */
 const STATUSES: string[] = [
@@ -137,9 +138,14 @@ export default function AipReviewSearchPage() {
   // PPDO-75 — the sidebar's pending count opens "waiting on me" directly.
   const requestedMine = searchParams.get("mine") === "true";
 
-  const [fiscalYear, setFiscalYear] = useState(
-    YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
+  // PPDO-145 — the URL's year wins; with none, the admin default when it is an entry year, else
+  // the break year. A search waits for it (`yearSettled`) so it never runs against the fallback first.
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const [pickedYear, setPickedYear] = useState<number | null>(
+    YEARS.includes(requestedYear) ? requestedYear : null
   );
+  const yearSettled = pickedYear != null || defaultReady;
+  const fiscalYear = pickedYear ?? resolveEnteredFiscalYear(null, defaultFiscalYear);
   const [draft, setDraft] = useState<Filters>(EMPTY);
 
   // ⚠️ Two states, not one. `draft` is what the panel shows; `applied` is what produced the results
@@ -194,9 +200,9 @@ export default function AipReviewSearchPage() {
 
   // Re-runs when the applied filters, the year or the page changes — never on a draft edit.
   useEffect(() => {
-    if (applied === null) return;
+    if (applied === null || !yearSettled) return;
     void run(applied, fiscalYear, page);
-  }, [applied, fiscalYear, page, run]);
+  }, [applied, fiscalYear, page, run, yearSettled]);
 
   // An office opened from the readiness board (PPDO-78), or "waiting on me" from the sidebar count
   // (PPDO-75). Once only — after that the panel is the reader's, and clearing it must not be undone by
@@ -296,8 +302,10 @@ export default function AipReviewSearchPage() {
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Fiscal year
           </label>
-          <select value={fiscalYear} onChange={(e) => setFiscalYear(Number(e.target.value))}
+          <select value={yearSettled ? fiscalYear : ""} disabled={!yearSettled}
+            onChange={(e) => setPickedYear(Number(e.target.value))}
             className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
+            {!yearSettled && <option value="">FY …</option>}
             {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
           </select>
         </div>

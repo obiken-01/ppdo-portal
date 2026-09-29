@@ -31,6 +31,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { aipForFiscalYear, fetchDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import {
   getAipSummary,
   listAip,
@@ -950,13 +951,18 @@ function WfpEntryPageInner() {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate()])
-      .then(([aips, offices, rate]) => {
+    // PPDO-145 — the admin default year rides along in the same round trip (it never rejects).
+    Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), fetchDefaultFiscalYear()])
+      .then(([aips, offices, rate, defaultFiscalYear]) => {
         setAipList(aips);
         setOfficeList(offices);
         setReserveRate(rate.rate);
+        const forDefault = aipForFiscalYear(aips, defaultFiscalYear);
         if (urlAipId) {
           setSelectedAipId(Number(urlAipId));
+        } else if (forDefault) {
+          // No ?aipId= — the default year's AIP, before the single-AIP shortcut below.
+          setSelectedAipId(forDefault.id);
         } else if (aips.length === 1) {
           // Only one AIP to pick from — skip the manual selection step.
           setSelectedAipId(aips[0].id);

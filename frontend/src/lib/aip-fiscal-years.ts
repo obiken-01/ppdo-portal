@@ -22,6 +22,29 @@
 export const FIRST_ENTERED_FISCAL_YEAR = 2028;
 
 /**
+ * The three entered years the AIP Entry, Review and Review Search pickers offer — the break year
+ * and the two after it.
+ */
+export const ENTERED_FISCAL_YEAR_OPTIONS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+
+/**
+ * The year an entered-year page opens on (PPDO-145, `Default_Fiscal_Year_Spec.md` §3.3): the URL's
+ * year when it is one of `options`, else the admin default when it is, else the break year.
+ *
+ * ⚠️ A default outside `options` (e.g. FY2027, an uploaded year) falls to the break year rather
+ * than being honoured — these pages cannot select it (§3.2 "default outside a page's range").
+ */
+export function resolveEnteredFiscalYear(
+  requested: number | null,
+  defaultFiscalYear: number | null,
+  options: readonly number[] = ENTERED_FISCAL_YEAR_OPTIONS,
+): number {
+  if (requested != null && options.includes(requested)) return requested;
+  if (defaultFiscalYear != null && options.includes(defaultFiscalYear)) return defaultFiscalYear;
+  return FIRST_ENTERED_FISCAL_YEAR;
+}
+
+/**
  * Why an `.xlsm` upload may not target `fiscalYear`, or `null` when it may.
  *
  * From the break year the AIP is **entered** by the offices rather than imported from a workbook,

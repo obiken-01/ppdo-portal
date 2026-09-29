@@ -45,6 +45,7 @@
  */
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import Link from "next/link";
 import { useMe } from "@/lib/me-cache";
 import { allocationLabels } from "@/lib/budget-planning-labels";
@@ -576,9 +577,13 @@ function AllocationPageInner() {
    * before any office encodes, so ₱0 would be a false reassurance rather than a missing value.
    */
   const [ceilingUsage, setCeilingUsage] = useState<AipCeilingStatus | null>(null);
-  const [selectedFiscalYear, setSelectedFiscalYear] = useState<number>(
-    new Date().getFullYear() + 1
-  );
+  // PPDO-145 — the admin default year when one is set, else the calendar year + 1 as before. There
+  // is no URL year on this page (spec §7). ⚠️ Nothing loads until the default has settled
+  // (`yearSettled`), so the page never loads one year and then switches to another.
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const [pickedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const yearSettled = pickedFiscalYear != null || defaultReady;
+  const selectedFiscalYear = pickedFiscalYear ?? defaultFiscalYear ?? new Date().getFullYear() + 1;
 
   // ── Loaded data ────────────────────────────────────────────────────────────
 
@@ -762,6 +767,7 @@ function AllocationPageInner() {
       setCheckedPrograms(new Set());
       return;
     }
+    if (!yearSettled) return;
 
     let cancelled = false;
 
@@ -842,7 +848,7 @@ function AllocationPageInner() {
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOfficeId, selectedFiscalYear, fundList]);
+  }, [selectedOfficeId, selectedFiscalYear, fundList, yearSettled]);
 
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
@@ -1060,7 +1066,9 @@ function AllocationPageInner() {
             </label>
             <input
               type="number"
-              value={selectedFiscalYear}
+              // Blank until the year is known rather than showing the fallback first.
+              value={yearSettled ? selectedFiscalYear : ""}
+              disabled={!yearSettled}
               min={2020}
               max={2050}
               onChange={(e) => setSelectedFiscalYear(Number(e.target.value))}
@@ -1090,7 +1098,7 @@ function AllocationPageInner() {
         </div>
 
         {/* Loading — skeleton matches the loaded tabs + card structure/height */}
-        {loading && (
+        {(loading || !yearSettled) && (
           <div className="animate-pulse">
             <div className="flex border-b border-slate-200 mb-6">
               {[0, 1].map((i) => (
@@ -1109,14 +1117,14 @@ function AllocationPageInner() {
         )}
 
         {/* Empty state */}
-        {!loading && selectedOfficeId == null && (
+        {!loading && yearSettled && selectedOfficeId == null && (
           <p className="text-slate-600 text-sm py-6">
             {labels.emptyOffice}
           </p>
         )}
 
         {/* Main content */}
-        {!loading && selectedOfficeId != null && (
+        {!loading && yearSettled && selectedOfficeId != null && (
           <>
             {/* Tabs */}
             <div className="flex border-b border-slate-200 mb-6">

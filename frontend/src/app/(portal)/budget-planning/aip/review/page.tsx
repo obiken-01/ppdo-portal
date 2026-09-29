@@ -38,7 +38,8 @@ import { listAccounts, listFundingSources } from "@/lib/config";
 import {
   getAipOfficeReview, returnAipToOffice, acceptAipOffice, reopenAipOffice,
 } from "@/lib/aip-review";
-import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
 import { refreshAipNotifications } from "@/lib/aip-notifications";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -59,7 +60,7 @@ import type {
 } from "@/types";
 
 /** FY2028 onward. There is no workflow, and so nothing to review, below the break year. */
-const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+const YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
 
 export default function AipReviewPage() {
   const searchParams = useSearchParams();
@@ -90,7 +91,12 @@ export default function AipReviewPage() {
 
 
   const requestedYear = Number(searchParams.get("fiscalYear"));
-  const fiscalYear = YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR;
+  // PPDO-145 — the URL's year wins; with none, the admin default when it is an entry year, else the
+  // break year. With no URL year the load waits for the default (the skeleton covers it).
+  const urlYear = YEARS.includes(requestedYear) ? requestedYear : null;
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const yearSettled = urlYear != null || defaultReady;
+  const fiscalYear = resolveEnteredFiscalYear(urlYear, defaultFiscalYear);
 
   // ⚠️ **View and selection are read ONCE here, then mirrored back by the effect below** — same
   // pattern as AIP Entry (PPDO-89). This page is not remounted by a query-only navigation within
@@ -135,7 +141,7 @@ export default function AipReviewPage() {
     }
   }, [fiscalYear, officeId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (yearSettled) void load(); }, [load, yearSettled]);
 
   // Reference data for the read-only expenditure rows — account and fund names. Fetched once, off
   // the critical path; the tree renders without it.
@@ -193,14 +199,14 @@ export default function AipReviewPage() {
   // The view and the selection mirrored back into the URL (spec decision 7). `scroll: false` — a
   // replace that jumped the page on every pick would undo the reason the panel is on screen.
   useEffect(() => {
-    if (officeId == null) return;
+    if (officeId == null || !yearSettled) return;
     const q = new URLSearchParams({ officeId: String(officeId), fiscalYear: String(fiscalYear) });
     if (view === "full") q.set("view", "full");
     if (ids.programId != null) q.set("programId", String(ids.programId));
     if (ids.projectId != null) q.set("projectId", String(ids.projectId));
     if (ids.activityId != null) q.set("activityId", String(ids.activityId));
     router.replace(`/budget-planning/aip/review?${q.toString()}`, { scroll: false });
-  }, [router, officeId, fiscalYear, view, ids]);
+  }, [router, officeId, fiscalYear, view, ids, yearSettled]);
 
   // ⚠️ One setter for every way of choosing a node — the picker, a child row, and a comment all go
   // through here, same as AIP Entry.
