@@ -26,11 +26,12 @@ import { AipCommentAnchor } from "./AipComments";
 import { AipLevelChip, AipRefCode, aipHeaderRow } from "./AipHierarchy";
 import { AipFigureStrip, AipFundPill, activityFundLabel } from "./AipRowFigures";
 import { AipPanel, AipPanelError } from "./AipEntryPanelParts";
+import { AipDivisionPill, activityDivisionLock, type AipDivisionView } from "./AipDivisionParts";
 
 export default function AipActivityPanel({
   activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   offices, proponentOfficeCode, onTotals, onDetails, onDeleted,
-  onChangeActivity, onChangeProject, onDone,
+  onChangeActivity, onChangeProject, onDone, divisionView = null,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -56,7 +57,12 @@ export default function AipActivityPanel({
   onChangeActivity: () => void;
   onChangeProject: () => void;
   onDone: () => void;
+  /** PPDO-151 — the caller's place in the division flow; null outside it (no visual change). */
+  divisionView?: AipDivisionView | null;
 }) {
+  // ⚠️ `canEdit` arrives already AND-ed with the server's per-activity `canEdit`; this only picks
+  // the sentence for a division lock. An office lock names its holder through `lockedReason`.
+  const divisionLock = activityDivisionLock(activity, divisionView);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
 
@@ -91,6 +97,7 @@ export default function AipActivityPanel({
               <AipRefCode code={activity.refCode} />
               {/* The form's Funding Source column (7) — beside the name, never among the numbers. */}
               <AipFundPill label={activityFundLabel(activity)} />
+              <AipDivisionPill activity={activity} view={divisionView} locked={divisionLock != null} />
             </div>
             {/* The encoder's own line breaks are kept (PPDO-85). */}
             <p className="mt-0.5 whitespace-pre-line text-sm text-slate-800">{activity.name}</p>
@@ -107,6 +114,15 @@ export default function AipActivityPanel({
         </div>
         <AipCommentAnchor nodeType="Activity" nodeId={activity.id} />
       </div>
+
+      {/* ⚠️ Said, not only disabled. Fields that simply stop responding read as a broken page, and
+          the encoder needs to know whose it is to know whom to ask. */}
+      {divisionLock && (
+        <p role="status" className="flex gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
+          <span aria-hidden>🔒</span>
+          <span>{divisionLock}</span>
+        </p>
+      )}
 
       {/* ⚠️ Above the lines, not below. eSRE blocks submit just as hard as a missing costing does,
           and an encoder who opens an activity to cost it should see what else it still needs in

@@ -26,7 +26,7 @@ function joinEnglish(parts: string[]): string {
 }
 
 export default function AipDeleteNodeButton({
-  target, canEdit, lockedReason, onDeleted,
+  target, canEdit, lockedReason, onDeleted, blockedReason = null,
 }: {
   target: DeleteTarget;
   canEdit: boolean;
@@ -37,6 +37,12 @@ export default function AipDeleteNodeButton({
    */
   lockedReason: string | null;
   onDeleted: (result: AipDeleteResult) => void;
+  /**
+   * PPDO-151 — why the delete is refused while the office itself is still editable: a project
+   * holding activities this reader cannot write (another division's, untagged, or submitted). The
+   * server refuses the same delete (`RefuseContainerDelete`); saying so beats a 400 on click.
+   */
+  blockedReason?: string | null;
 }) {
   const reloadComments = useReloadAipComments();
   // ⚠️ Read from the provider this button already sits inside — a second fetch here would be the
@@ -109,6 +115,14 @@ export default function AipDeleteNodeButton({
     return (
       <span className="text-xs text-slate-600" title={`With ${lockedReason} — this cannot be deleted here.`}>
         With {lockedReason} — cannot delete
+      </span>
+    );
+  }
+
+  if (blockedReason) {
+    return (
+      <span className="text-xs text-slate-600" title={blockedReason}>
+        Cannot delete — {blockedReason}
       </span>
     );
   }

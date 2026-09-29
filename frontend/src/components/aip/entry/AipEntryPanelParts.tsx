@@ -136,10 +136,12 @@ export function AipUnresolvedBadge({ count }: { count: number }) {
  * panel rather than a link buried in it.
  */
 export function AipChildRow({
-  refCode, name, total, unresolved, onSelect,
+  refCode, name, total, unresolved, onSelect, tag,
 }: {
   refCode: string;
   name: string;
+  /** Shown after the name — the activity's division pill (PPDO-151). */
+  tag?: React.ReactNode;
   /** Null renders as an em dash: never costed, not costed at zero (V18-34). */
   total: number | null;
   unresolved: number;
@@ -156,6 +158,7 @@ export function AipChildRow({
       </span>
       {/* whitespace-pre-line: activity names carry the encoder's own line breaks (PPDO-85). */}
       <span className="min-w-0 flex-1 whitespace-pre-line text-sm text-slate-800">{name}</span>
+      {tag}
       <AipUnresolvedBadge count={unresolved} />
       <span className="shrink-0 tabular-nums text-sm text-slate-800">{fmtThousands(total)}</span>
     </button>

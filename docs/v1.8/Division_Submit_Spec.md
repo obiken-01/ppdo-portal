@@ -468,6 +468,25 @@ panel). The submit still goes ahead.
 The strip also shows the office's ceiling position (remaining / over) at every stage, read from the
 existing readiness `Ceiling` field.
 
+> ↩️ **Deviations and findings, 2026-09-29 (PPDO-151, T4).**
+> 1. **The strip is the existing submit panel, in a new `division` stage**, not a second box above
+>    it. The panel already sits above the tree and already carries the ceiling figures, so a
+>    separate strip would have shown the ceiling twice.
+> 2. **The ceiling warning sits inside the confirm's message**, and the dialog switches to the warning
+>    variant. It is not a separate amber panel, because `ConfirmDialog` takes a string.
+> 3. **"Other divisions' rows" show up only inside shared programs.** Ralph kept the read scope
+>    (PPDO-134), so an encoder never receives another division's programs at all.
+> 4. **Delete project is disabled when the project holds an activity the reader cannot edit**
+>    (read from each activity's `canEdit`). The server already refuses that delete
+>    (`RefuseContainerDelete`), so the button would only have failed.
+> 5. **"Waiting on: …" and the untagged count are pulled forward from T5** into the department
+>    head's send-to-PPDO panel. Without them, once T3 shipped, the button sat disabled over
+>    "0 items to fix".
+> 6. **The division hop warns on unresolved comments**, the same as the encoder hop (PPDO-133's
+>    open question).
+> 7. **Left for T5:** a department head or Admin adding an activity in a divisioned office must
+>    name a division (§3.1). Until T5's select exists, the add gets a 400 from the server.
+
 ### 6.2 AIP Entry / Review — department head
 
 - A **divisions panel** listing every division: status, activity count, submitted-by/at, and a
