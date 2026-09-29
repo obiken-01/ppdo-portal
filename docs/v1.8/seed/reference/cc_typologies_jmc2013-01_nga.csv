@@ -1,0 +1,411 @@
+code,name,category,description
+A111-01,Regulate commodity shifting and agricultural land conversion,Adaptation,1 - Food Security; 1 - General Agriculture; 1 - Policy and Governance
+A111-02,Review and harmonize existing policies on food production and distribution,Adaptation,1 - Food Security; 1 - General Agriculture; 1 - Policy and Governance
+A111-03,Design and implement climate change risk transfer and social protection mechanisms for agriculture and fisheries,Adaptation,1 - Food Security; 1 - General Agriculture; 1 - Policy and Governance
+A112-01,Conduct provincial-level agricultural vulnerability and risk assessment studies and maps,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-02,Conduct of studies and simulation models on the impacts of climate change on major crops and livestock,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-03,Develop and/or update climate change R&D agenda for agriculture,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-04,Develop climate-resilient crop production systems and technologies,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-05,Establish early warning systems for agriculture,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-06,"Develop, test and introduce practices or techniques more resilient to climate change and climate variability in farming",Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-07,"Develop, test and introduce management systems for commons better adapted to CC&CV",Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-08,"Research increased and new threats to agriculture, fishing, and forestry from CC&CV",Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-09,Ex situ conservation of species and germplasm adapted to CC&CV,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-10,Support incorporation of CC&CV into extension services and programs,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A112-11,Awareness raising of risks from CC&CV climate change risks or/and benefits of adaptation,Adaptation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+A113-01,Establish climate information systems and database for agriculture and fisheries sectors,Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A113-02,Conduct IEC on CC to promote best practices,Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A113-03,"Develop accessible and gendered knowledge products on climate change risks, adaptation and DRR for agriculture and fisheries",Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A113-04,Establish a resource network on climate change agriculture,Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A113-05,Review agriculture education and develop climate change-responsive curricula,Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A113-06,Establish farmers' field school to demonstrate best adaptation practices,Adaptation,1 - Food Security; 1 - General Agriculture; 3 - Information and Knowledge Sharing
+A114-01,Conduct climate change and disaster risk reduction training for farming and fishing communities; develop non-formal training programs on CCA best practices,Adaptation,1 - Food Security; 1 - General Agriculture; 4 - Capacity Building
+A115-01,Recover degraded areas for crop production through innovative management practices,Adaptation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+A115-02,"Introduce or expand soil management practices that control soil erosion, nutrient loss and improve the water regime in the soil profile",Adaptation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+A115-03,Introduce or expand use of crops or crop mix more suited to CC&CV,Adaptation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+A115-04,Reduce vulnerability of crop storage facilities to CC&CV,Adaptation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+A121-01,Conduct of studies and simulation models on the impacts of climate change on major livestock based on the VA and climate change scenarios,Adaptation,"1 - Food Security; 2 - Livestock; 1 - Research, Development and Extension"
+A121-02,Develop climate resilient livestock production system and technologies,Adaptation,"1 - Food Security; 2 - Livestock; 1 - Research, Development and Extension"
+A122-01,"Change management practices or techniques to reduce vulnerability to CC&CV in animal health service, pasture management, fodder production and storage practices",Adaptation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+A122-02,Change fish farming and aquaculture practices or techniques to reduce vulnerability to CC&CV,Adaptation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+A131-01,Implement climate-responsive and gender-sensitive Comprehensive National Fisheries Industry Development Plan,Adaptation,1 - Food Security; 3 - Fisheries; 1 - Policy and Governance
+A131-02,Formulate guidelines on reversion of abandoned fishponds back to mangroves,Adaptation,1 - Food Security; 3 - Fisheries; 1 - Policy and Governance
+A131-03,Harmonize climate change adaptation plans in local resource management and local fisheries development; Integrated Coastal Zone Management responding to CC&CV,Adaptation,1 - Food Security; 3 - Fisheries; 1 - Policy and Governance
+A132-01,Conduct of provincial-level vulnerability and risk assessments for the fisheries,Adaptation,"1 - Food Security; 3 - Fisheries; 2 - Research, Development and Extension"
+A132-02,"Conduct researches on best practices in fisheries and coastal climate change adaptation, technologies and tools",Adaptation,"1 - Food Security; 3 - Fisheries; 2 - Research, Development and Extension"
+A132-03,Develop and/or update climate change R&D agenda for fisheries sectors,Adaptation,"1 - Food Security; 3 - Fisheries; 2 - Research, Development and Extension"
+A132-04,Establish early warning systems for fisheries,Adaptation,"1 - Food Security; 3 - Fisheries; 2 - Research, Development and Extension"
+A132-05,Conduct policy study on climate change risk transfer and social protection mechanisms for agriculture and fisheries,Adaptation,"1 - Food Security; 3 - Fisheries; 2 - Research, Development and Extension"
+A133-01,Establish a resource network on climate change and fisheries,Adaptation,1 - Food Security; 3 - Fisheries; 3 - Information and Knowledge Sharing
+A133-02,Review fisheries education and develop climate change-responsive curricula,Adaptation,1 - Food Security; 3 - Fisheries; 3 - Information and Knowledge Sharing
+A133-03,Establish climate information systems and database for fisheries sector,Adaptation,1 - Food Security; 3 - Fisheries; 3 - Information and Knowledge Sharing
+A140-01,"Assess economic, environmental or social impact of CC&CV on agriculture, forestry and fishery",Adaptation,1 - Food Security; 4 - Public Administration
+A140-02,Incorporate CC&CV considerations in rural policies and institutions,Adaptation,1 - Food Security; 4 - Public Administration
+A140-03,Establish or strengthen regulatory institutions and policies as instruments for adaptation to CC&CV,Adaptation,1 - Food Security; 4 - Public Administration
+A140-04,Monitor impacts of CC&CV or the benefits of adaptation measures,Adaptation,1 - Food Security; 4 - Public Administration
+A201-01,Review (w/ CC lens) Water Code for possible amendment,Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-02,Review and streamline existing water resources management and institutional structure and policies,Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-03,"Develop guidelines for implementing Integrated Water Resources Management (IWRM) and climate change adaptation (CCA) at the local, watershed and river basin level",Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-04,"Develop policy and guidelines for water conservation, allocation, recycling and reuse",Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-05,Integrate in the National Building Code a requirement for all water-intensive facilities to have water recovery system,Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-06,Develop and implement a comprehensive ground water management program that includes vulnerability assessment,Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-07,"Review financing, tariffs, and system of incentives to reflect the full cost of providing safe water",Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A201-08,"Conduct a policy study to promote eco-efficient water infrastructures, water conservation, reuse and recycling for water-intensive industries",Adaptation,2 - Water Sufficiency; 1 - Policies and Governance
+A202-01,Conduct ground water resource vulnerability and recharge areas assessment in water stressed cities,Adaptation,2 - Water Sufficiency; 2 - Research and Development
+A202-02,Define areas not suitable for large water infrastructure development and settlements based on the V&A,Adaptation,2 - Water Sufficiency; 2 - Research and Development
+A202-03,"Study ""low-cost, no regrets"" adaptation measures and technologies under various hydrologic conditions, supply demand conditions, and policy scenarios for surface and groundwater systems",Adaptation,2 - Water Sufficiency; 2 - Research and Development
+A202-04,"Develop and implement monitoring networks for hydrologic trend analysis, forecasting and detecting shifts in trends of precipitation and stream flow",Adaptation,2 - Water Sufficiency; 2 - Research and Development
+A202-05,Develop Climate Change Research and Development Agenda for the Water Sector,Adaptation,2 - Water Sufficiency; 2 - Research and Development
+A203-01,Capacity building for farmers to incorporate CC&CV,Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-02,"Review, revise and implement program to improve the capacity of key regulatory agencies to fully implement the Clean Water Act and National Septage and Sewerage Program",Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-03,Training for community-based water associations to manage water supply infrastructures,Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-04,Conduct IWRM and CCA/DRR training for vulnerable communities,Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-05,Develop comprehensive gender-sensitive communication strategy to raise awareness on CC impacts on water resources,Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-06,Develop gendered and accessible knowledge products and IEC materials that include local and indigenous knowledge on water resources management and adaptation best practices,Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A203-07,"Conduct IEC using multi-media campaign, outreach programs, timely reporting of monitoring results",Adaptation,2 - Water Sufficiency; 3 - Capacity Building
+A204-01,Create a Water Regulatory Commission (WRC) for regulation of water resources supply and quality management,Adaptation,2 - Water Sufficiency; 4 - Institutional Development
+A204-02,Review of National Water Resources Board (NWRB) standards for water allocation,Adaptation,2 - Water Sufficiency; 4 - Institutional Development
+A205-01,"Incorporate risks from CC&CV in water, sanitation and flood protection planning",Adaptation,2 - Water Sufficiency; 5 - Public Administration
+A205-02,Establish or strengthen water regulatory institutions and policies as instruments for adaption to CC&CV,Adaptation,2 - Water Sufficiency; 5 - Public Administration
+A205-03,Establish flood warning and disaster assessment systems,Adaptation,2 - Water Sufficiency; 5 - Public Administration
+A205-04,"Assess economic, environmental or social impact of CC&CV on agriculture, and fishery",Adaptation,2 - Water Sufficiency; 5 - Public Administration
+A206-01,Develop public financing mechanism for water supply infrastructures rehabilitation and development,Adaptation,2 - Water Sufficiency; 6 - Financing
+A206-02,"Study, design and implement financing mechanisms for IWRM and CCA implementation in critical watersheds and river basins",Adaptation,2 - Water Sufficiency; 6 - Financing
+A207-01,Develop water monitoring and information systems,Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-02,"Develop and implement equitable sharing arrangements of water resources between competing demands (agriculture, hydropower, industry and household) under CC&CV",Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-03,"Incorporate CC&CV related factors (e.g. changes in precipitation, temperature, run-off, and evapotranspiration) in hydro-meteorological forecasts, total and seasonal water availability, water demand and water storage planning",Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-04,Incorporate water cycles change from CC&CV into national and trans-boundary water basin planning,Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-05,Design and implement conjunctive management strategies for groundwater and surface water incorporating water cycle changes resulting from CC&CV,Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-06,Activities with adaptation co-benefits listed under other subsectors of the Water Sanitation and Flood Protection sector for projects that span more than five sectors,Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-07,"Improve physical system performance of river basins, etc.",Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A207-08,Emergency investments for climate-related natural disaster response,Adaptation,"2 - Water Sufficiency; 7 - General Water, Sanitation and Flood Protection"
+A210-01,Implement monitoring and surveillance of water-borne disease incidence and other health risks due climate change,Adaptation,2 - Water Sufficiency; 1 - Sanitation
+A210-02,Expand the establishment of alternative micro-water purification systems especially to areas that cannot be reached by safe water supply,Adaptation,2 - Water Sufficiency; 1 - Sanitation
+A210-03,Conduct water quality of groundwater sources of drinking water,Adaptation,2 - Water Sufficiency; 1 - Sanitation
+A210-04,Incorporate changes in design of sanitation systems in response to extreme weather and flood events arising from CC&CV,Adaptation,2 - Water Sufficiency; 1 - Sanitation
+A220-01,Demand side management to respond to CC&CV by reducing water consumption or increasing water use efficiency,Adaptation,2 - Water Sufficiency; 2 - Water Supply
+A220-02,"Supply side management to respond to CC&CV by expanding supplies, reducing water losses, or improving cooperation on shared water resources",Adaptation,2 - Water Sufficiency; 2 - Water Supply
+A230-01,"Develop and implement guidelines for rain water collection, such small water impoundments, retarding basins, mini dams to address water shortage and flooding",Adaptation,2 - Water Sufficiency; 3 - Rainwater Collection
+A240-01,Retain or re-establish mangrove forests and wetlands as protection against floods,Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A240-02,"Construct or strengthen polders, dykes, and embankments to protect against added risks from CC&CV",Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A240-03,Incorporate CC&CV in design standards for drainage systems,Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A240-04,"Improve resilience of infrastructure (bridges, water supply, community infrastructure etc) to CC&CV related flood risks in infrastructure",Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A240-05,Promote regional cooperation on hazard and flood risk reduction,Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A240-06,Monitor impact of CC&CV as part of water resource management,Adaptation,2 - Water Sufficiency; 4 - Flood Protection
+A250-01,Treatment of wastewater conservation/re-use purposes to respond to declines in water availability due to CC&CV,Adaptation,2 - Water Sufficiency; 5 - Wastewater Collection and Disposal
+A250-02,Incorporate changes in design of wastewater treatment and disposal systems in response to extreme weather and flood events arising from CC&CV,Adaptation,2 - Water Sufficiency; 5 - Wastewater Collection and Disposal
+A250-03,Study and adopt centralized wastewater treatment systems to improve quality in highly urbanized and densely populated areas,Adaptation,2 - Water Sufficiency; 5 - Wastewater Collection and Disposal
+A260-01,Repair and rehabilitate national and communal irrigation systems (w/ climate change lens),Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A260-02,"Change watershed, wetland and irrigation management systems and practices to reduce vulnerability to CC&CV",Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A260-03,Integrated ecosystem management approaches for watersheds and wetlands to reduce vulnerability to CC&CV,Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A260-04,Construct dams and water storage systems to manage changes in the water cycle due to CC&CV,Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A260-05,Incorporate risks from CC&CV in irrigation/water management planning,Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A260-06,Monitoring climate change impact to irrigation,Adaptation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+A270-01,Rehabilitate water infrastructure with climate lens (use of climate projections and other relevant climate data),Adaptation,2 - Water Sufficiency; 7 - Infrastructure
+A270-02,Identify alternative water sources and demand management especially for urbanized areas that rely on reservoirs and are prone to recurrent and severe drought events,Adaptation,2 - Water Sufficiency; 7 - Infrastructure
+A270-03,Construct new and expand existing water supply infrastructures for waterless communities,Adaptation,2 - Water Sufficiency; 7 - Infrastructure
+A311-01,Develop and implement policy and technical guidance for a nationwide conduct of ecosystem vulnerability and risk assessment,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+A311-02,Design and implement payments for environmental services and other innovative conservation financing mechanisms to support ecosystem-based adaptation and mitigation,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+A311-03,"Develop policy for the implementation of PES for PA protection, poverty reduction and CCA measures in ecotowns; Design PES scheme and pilot test identified ecotowns",Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+A312-01,Identify and prioritize rehabilitate of degraded watersheds,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-02,Conserve and protect existing watershed and protected areas,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-03,Identify financing options for rehabilitation activities,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-04,Identify and delineate ecological management zones,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-05,"Delineate ""ridge-to-reef"" ecosystem-based management zones for the ecotowns through multi stakeholder process",Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-06,Restore or maintain environmental services,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-07,Maintain resilience of forest systems,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-08,Maintain productivity of forest system,Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A312-09,"Increased use of trees, woodlots, forests, wood and non-wood products in rural adaptation strategies",Adaptation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+A320-01,Update status of Protected Areas and Key Biodiversity Areas from results from the vulnerability and risk assessment,Adaptation,3 - Ecological and Environmental Stability; 2 - Biodiversity
+A320-02,Establish zoning guidelines for different ecosystems based on the vulnerability and risk assessment results,Adaptation,3 - Ecological and Environmental Stability; 2 - Biodiversity
+A330-01,Incorporate change in design of solid waste management systems in response to extreme weather and flood events arising from CC&CV,Adaptation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+A340-01,Review PEENRA policy and revise as necessary,Adaptation,3 - Ecological and Environmental Stability; 4 - Natural Resource Accounting
+A340-02,Implement greening of the national income accounts,Adaptation,3 - Ecological and Environmental Stability; 4 - Natural Resource Accounting
+A340-03,Develop and implement workplace training program on ENRA and uses of ENRA in policy development,Adaptation,3 - Ecological and Environmental Stability; 4 - Natural Resource Accounting
+A411-01,Develop guidelines on treatment of climate related health issues in newly exposed areas due to CC&CV,Adaptation,4 - Human Security; 1 - Health; 1 - Policy and Governance
+A411-02,Develop policy requiring integration of CC and DRR concepts and approaches in medical and allied health training courses,Adaptation,4 - Human Security; 1 - Health; 1 - Policy and Governance
+A411-03,Develop and implement Monitoring Health Infrastructure,Adaptation,4 - Human Security; 1 - Health; 1 - Policy and Governance
+A411-04,Damage and Rehabilitation Plan,Adaptation,4 - Human Security; 1 - Health; 1 - Policy and Governance
+A411-05,Develop and implement a Post Disaster Epidemic Outbreak Management and Disease Surveillance System,Adaptation,4 - Human Security; 1 - Health; 1 - Policy and Governance
+A412-01,Develop and introduce health surveillance and rapid response system that reduces the health impacts of CC&CV (e.g. heat-watch),Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A412-02,Training and education of health personnel on treatment of CC&CV related health issues,Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A412-03,Upgrade health systems to respond to changes in environmental health risks from CC&CV (e.g. malaria),Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A412-04,Conduct community trainings on the public health monitoring and surveillance system,Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A412-05,Training for health emergency preparedness and response,Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A412-06,Develop CC-sensitive curricula and instructional materials for the training of health personnel and health workers,Adaptation,4 - Human Security; 1 - Health; 2 - Capacity Building
+A413-01,"Assess changes in risk, exposure or sensitivity to CC&CV related diseases for vulnerable groups",Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-02,"Incorporate climate related health risks into clinical practice guidelines, and curricula for continuous medical education",Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-03,Take anticipatory and response measures to counteract increased exposure to climate related diseases,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-04,Strengthen health management information management,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-05,Develop and implement community-based public health monitoring and surveillance system,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-06,Develop reporting system for early warning and timely response,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-07,Implement program for community health emergency preparedness and response,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-08,Develop and implement a post-disaster epidemic outbreak management and disease surveillance system,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A413-09,Develop and implement post-disaster resettlement and counselling of displaced families and communities,Adaptation,4 - Human Security; 1 - Health; 3 - Public Administration
+A414-01,Include climate related diseases in basic benefits of insurance policies,Adaptation,4 - Human Security; 1 - Health; 4 - Compulsory Health Finance
+A421-01,Conduct a study on population carrying capacity of areas and CC adaptive capacity of various communities,Adaptation,4 - Human Security; 2 - Human Settlements; 1 - Research and Development
+A422-01,Develop and implement plan to secure and manage conflict-affected resettlements,Adaptation,4 - Human Security; 2 - Human Settlements; 2 - Capacity Building
+A422-02,Identify and implement gender-responsive sustainable livelihood and social protection programs for resettled and vulnerable poor families,Adaptation,4 - Human Security; 2 - Human Settlements; 2 - Capacity Building
+A430-01,"Identify, map and profile highly disaster prone areas and communities",Adaptation,4 - Human Security; 3 - Disaster Risk Reduction
+A430-02,"Develop and implement a settlement adaptation and resettlement plan in consultation with affected communities, private sector, and civil society organization",Adaptation,4 - Human Security; 3 - Disaster Risk Reduction
+A430-03,"Identify most CC vulnerable provinces, sectors and population",Adaptation,4 - Human Security; 3 - Disaster Risk Reduction
+A440-01,Assess impact of CC&CV on livelihoods and poverty with a focus on vulnerable groups,Adaptation,4 - Human Security; 4 - Other Social Services
+A440-02,"Development of proving and taxing policies supporting implementation of adaptation measures; delivery of social services, including social infrastructure specifically designed to respond to risks caused by CC&CV",Adaptation,4 - Human Security; 4 - Other Social Services
+A440-03,"Cooperation with CBOs, NGOs and local government in developing and implementing adaptation measures",Adaptation,4 - Human Security; 4 - Other Social Services
+A440-04,Development of social protection strategies to respond to CC&CV,Adaptation,4 - Human Security; 4 - Other Social Services
+A440-05,Inclusion of adaptation measures in public works programs,Adaptation,4 - Human Security; 4 - Other Social Services
+A440-06,Develop food safety/food security measures that take account of new conditions caused by climate change; development of market-based risk financing mechanisms,Adaptation,4 - Human Security; 4 - Other Social Services
+A440-07,Development of livelihood diversification strategies to reduce dependence of climate related income opportunities,Adaptation,4 - Human Security; 4 - Other Social Services
+A514-01,Activities with adaptation co-benefits listed under other subsectors of the Industry and Trade sector for projects that span more than five sectors.,Adaptation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 4 - General Industry and Trade
+A515-01,Marketing and trade support for changing agricultural product mix in response to CC&CV; support new income generating opportunities utilizing natural resource better adapted to CC&CV,Adaptation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 5 - Agro-Industry Marketing and Trade
+A516-01,Support industries that are better adapted to CC&CV,Adaptation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 6 - Other Industry
+A516-02,Retrofit assets and capital to protect against CC&CV,Adaptation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 6 - Other Industry
+A516-03,Incorporate new CC&CV resilient design standards,Adaptation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 6 - Other Industry
+A521-01,Conduct risk and vulnerability assessment of local infrastructure,Adaptation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 1 - Research and Development
+A522-01,Review National Building Code and integrate climate change adaptation in national guidelines,Adaptation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 2 - Policy and Public Administration
+A522-02,"Develop green building rating scheme, specifications and criteria",Adaptation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 2 - Policy and Public Administration
+A522-03,Introduce a system of green building certification and CC-adaptive community development certification for new settlements and retrofitted buildings,Adaptation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 2 - Policy and Public Administration
+A523-01,Incorporate new CC&CV resilient design standards in new buildings,Adaptation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 3 - Infrastructure
+A541-01,Review and implement the ASEAN Tourism Strategic Plan for 2011-2015,Adaptation,5 - Climate Smart Industries and Services; 4 - Tourism; 1 - Policy and Governance
+A541-02,Adopt the 2007 Davos Declaration (Climate Change and Tourism Responding to Global Challenges),Adaptation,5 - Climate Smart Industries and Services; 4 - Tourism; 1 - Policy and Governance
+A542-01,Establish the carrying capacity of tourism areas,Adaptation,5 - Climate Smart Industries and Services; 4 - Tourism; 2 - Research and Development
+A611-01,"Account for extreme weather events (wind, temperature) caused by CC&CV when planning for power system reliability",Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+A611-02,"Improvements in hydro-meteorological forecasting and information tailored to energy generation under current and future climate trends as well as extreme events that will influence water storage calculations and water use, in energy generation and transmission, or energy demand profiles, transmission and generation efficiency and infrastructure integrity",Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+A611-03,Change operational management practices at power generation facilities due to CC&CV,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+A611-04,Reform to reduce risk and vulnerability to CC&CV,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+A611-05,Capacity building or strengthening capacity for energy sector institutions to improve climate risk management in the energy sector,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+A612-01,Activities with adaptation co benefits listed under the other subsectors of the Energy sector for projects that span more than five sectors,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 2 - General Energy
+A613-01,Taking account of climate variability and change in planning and designing future energy supply mix,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+A613-02,"Design and application of new design criteria and technical standards in planning location, and construction of power generation facilities in order to respond to CC&CV",Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+A613-03,Reinforcement or establishment of new services for the energy and mining sectors to respond to increasing frequency in extreme climate events,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+A613-04,Climate adaptation-related advisory services,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+A617-01,Improve climate resilience of thermal generation plants,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 7 - Thermal Power Generation
+A618-01,Incorporate effects of extreme weather events caused by CC&CV in design standards of transmission and distribution lines,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 8 - Transmission and Distribution of Electricity
+A618-02,Incorporate impact of CC&CV on power system reliability assessments,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 8 - Transmission and Distribution of Electricity
+A618-03,Changes to power systems to cope with shifts in seasonal peak demand results from CC&CV,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 8 - Transmission and Distribution of Electricity
+A619-01,"Incorporate CC&CV related risk factors (changes in precipitation, run-off, temperature, evapotranspiration) in hydro-meteorological forecasts related to water demand for energy generation",Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+A619-02,Incorporate CC&CV risk factors in assessments of total and seasonal water availability for hydropower generation and water storage,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+A619-03,Water flow management throughout the hydrological cycle for hydroelectricity generation,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+A619-04,Flood protection or irrigation from construction of dams or water storage system that manage changes in the water cycle,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+A6110-01,Improve design of turbines to withstand higher wind speeds as a result of extreme weather events,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+A6110-02,Improve design of solar panels to withstand higher intensity storms resulting from CC&CV,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+A6110-03,Secure access to water for crops used as bioenergy source,Adaptation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+A621-01,"Incorporate risks from CC&CV in transportation system planning; assess economic, environmental or social impact of CC&CV on transportation",Adaptation,6 - Sustainable Energy; 2 - Transportation; 1 - Public Administration
+A623-01,Development and application of design criteria to take account of climate change impact on transport infrastructure,Adaptation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+A623-02,Investments specifically responding to new climate resilient criteria,Adaptation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+A623-03,Protection of transport infrastructure against extreme weather events (especially floods and storms) becoming more frequent and violent due to CC&CV,Adaptation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+A623-04,Establishment of emergency services designed to cope with CC&CV related emergencies in the transport sector,Adaptation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+A623-05,Activities with adaptation co-benefits listed under other subsectors of the Transportation sector for projects that span more than five sectors,Adaptation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+A624-01,Develop design standards that take account of CC&CV impacts,Adaptation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+A624-02,Construct new roads and highways to climate resilient design standards,Adaptation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+A624-03,Upgrade existing roads and highways to climate resilient design standards,Adaptation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+A624-04,Enhance road and highway maintenance to respond to CC&CV,Adaptation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+A625-01,Develop design standards to take account of CC&CV impacts,Adaptation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+A625-02,Construct new roads and highways to climate resilient design standards,Adaptation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+A625-03,Upgrade existing roads and highways to climate resilient design standards,Adaptation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+A625-04,Enhanced road and highway maintenance to respond to CC&CV,Adaptation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+A626-01,Develop design standards to take account of CC&CV impacts,Adaptation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+A626-02,Construct new ports to climate resilient design standards,Adaptation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+A626-03,Upgrade existing ports to climate resilient design standards,Adaptation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+A626-04,Enhanced port and waterway maintenance to respond to CC&CV,Adaptation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+A626-05,Setup new waterways or change existing waterways in response to CC&CV,Adaptation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+A627-01,"Develop design standards for airports, air traffic routes and other aviation infrastructure to take account of CC&CV",Adaptation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+A627-02,Construct new or upgrade existing airports and aviation infrastructure to climate resilient design standards,Adaptation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+A627-03,Enhance maintenance of airport/aviation infrastructure in response to CC&CV,Adaptation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+A628-01,Development and application of new design criteria to take account of climate change impact on rail infrastructure,Adaptation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+A628-02,Investments specifically responding to new climate resilient criteria,Adaptation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+A628-03,Protect railways against extreme weather events (especially floods and storms) becoming more frequent and violent due to CC&CV,Adaptation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+A711-01,Capacity building to address vulnerability to CC&CV,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 1 - Public Administration
+A711-02,"Review of curricula to take account of climate aspects in basic education, vocational training and other forms of follow-up training and education",Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 1 - Public Administration
+A711-03,"Review and revise, as necessary, current textbooks, modules and exemplars for pre-elementary, elementary, high school and alternative learning system for CC content and gender-sensitivity",Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 1 - Public Administration
+A712-01,Awareness raising programs on CC&CV,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 2 - Adult Literacy/Non-Formal Education
+A713-01,Development of Climate-adaptation focused curricula or programs,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 3 - Primary and Secondary Education
+A714-01,Development of Climate adaptation focused curricula or programs,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 4 - Tertiary Education
+A714-02,Develop climate change science college and graduate curricula and courses,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 4 - Tertiary Education
+A715-01,Train for new business opportunities created by CC&CV,Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 5 - Vocational Training
+A715-02,Train for adapting to and coping with climate change (e.g. ecosystem based adaptation),Adaptation,7 - Knowledge and Capacity Development; 1 - Education; 5 - Vocational Training
+A720-01,Development of emergency response systems for use during extreme weather events,Adaptation,7 - Knowledge and Capacity Development; 2 - Information Technology
+A731-01,Development of telecommunications infrastructure for use as part of an emergency response system during extreme weather events,Adaptation,7 - Knowledge and Capacity Development; 3 - Telecommunications; 1 - General Information and Communications
+A810-01,"Analysis of impact of CC&CV on long-term growth, and poverty",Adaptation,8 - Finance; 1 - General Finance
+A810-02,Activities with adaptation co-benefits listed under other subsectors of the Finance sector for projects that span more than five sectors,Adaptation,8 - Finance; 1 - General Finance
+A820-01,Fiscal policy and management measures in support of adaptation,Adaptation,8 - Finance; 2 - Public Administration
+A820-02,"Economic research, modelling and policy making for adaptation",Adaptation,8 - Finance; 2 - Public Administration
+A820-03,Economic analysis of financial needs for adaptation to CC&CV (cost of adaptation),Adaptation,8 - Finance; 2 - Public Administration
+A830-01,Introduce regulations and programs to support climate resilient investments,Adaptation,8 - Finance; 3 - Banking
+A840-01,Include climate related diseases under the basic benefit packages of health insurance policies,Adaptation,8 - Finance; 4 - Non-Compulsory Health Finance
+A840-02,Expand insurance eligibility to populations vulnerable to climate related diseases,Adaptation,8 - Finance; 4 - Non-Compulsory Health Finance
+A850-01,Incorporate vulnerability to CC&CV in housing design standards,Adaptation,8 - Finance; 5 - Housing Finance and Real Estate Markets
+A850-02,Regulate or provide incentives in housing finance to discourage settlements in areas vulnerable to CC&CV,Adaptation,8 - Finance; 5 - Housing Finance and Real Estate Markets
+A850-03,Regulate or provide incentives in housing finance to encourage upgrading of existing real estate that reduces vulnerability to CC&CV,Adaptation,8 - Finance; 5 - Housing Finance and Real Estate Markets
+A860-01,Develop and introduce weather or climate indexed insurance programs (e.g. crop insurance),Adaptation,"8 - Finance; 6 - Non-Compulsory Pensions, Insurance, and Contractual Savings"
+A870-01,Ease access to finance targeting adaptation to CC&CV by microfinance institutions,Adaptation,8 - Finance; 7 - SME Finance
+A880-01,Ease access to finance targeting adaptation to CC&CV by microfinance institutions,Adaptation,8 - Finance; 8 - Microfinance
+A890-01,Introduce green bonds or other securities specifically targeted at adaptation to CC&CV,Adaptation,8 - Finance; 9 - Capital Markets
+M111-01,Intensify or expand farm production using techniques that reduce GHG emissions or increase carbon sequestration,Mitigation,1 - Food Security; 1 - General Agriculture; 1 - Policy and Governance
+M112-01,"Develop, test and introduce practices or techniques that reduce GHG emissions in crop production systems, animal husbandry systems, forest management systems and aquaculture management systems",Mitigation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+M112-02,"Develop, test and introduce practices or techniques to sequester CO2 in agriculture, fishing and forestry",Mitigation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+M112-03,Sustainable land and water management that addresses land degradation and agroecological conditions,Mitigation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+M112-04,Sustainable grassland management,Mitigation,"1 - Food Security; 1 - General Agriculture; 2 - Research, Development and Extension"
+M115-01,Integrated organic and inorganic nutrient management,Mitigation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+M115-02,Switch to soil management techniques that reduce GHG emissions or increase carbon sequestration,Mitigation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+M115-03,Reduce CH4 and NOx emissions in rice cultivation; switch to less water intensive crops,Mitigation,1 - Food Security; 1 - General Agriculture; 5 - Crop Production
+M122-01,Increase sequestration capacity in fodder production and management,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M122-02,Reduce release of GHGs in fodder production and management,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M122-03,Manure management and methane capture in animal husbandry,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M122-04,Change forage systems to reduce ruminant methane emissions,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M122-05,Reduce fishing fleet,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M122-06,Improve energy efficiency in fishing fleets,Mitigation,1 - Food Security; 2 - Livestock; 2 - Animal Production
+M140-01,"Introduce rules and regulations to reduce the emissions of GHGs, or absorption of GHGs in the agricultural, fishing and/or forestry sectors",Mitigation,1 - Food Security; 4 - Public Administration
+M140-02,Public administration of sustainable land and water management that address land degradation and agroecological conditions,Mitigation,1 - Food Security; 4 - Public Administration
+M140-03,Monitor carbon sequestration,Mitigation,1 - Food Security; 4 - Public Administration
+M140-04,"Establish or strengthen institutions, information systems and capacity building on energy and water use efficiency in agriculture, fishing, forestry sector",Mitigation,1 - Food Security; 4 - Public Administration
+M140-05,"Sector studies, surveys, assessments on energy and water use efficiency in agriculture",Mitigation,1 - Food Security; 4 - Public Administration
+M205-01,Sector reform to improve water use efficiency (e.g. water pricing),Mitigation,2 - Water Sufficiency; 5 - Public Administration
+M205-02,"Administration, sector studies, surveys, assessments, information systems and capacity building for energy and water use efficiency in water, sanitation and flood protection, and solid waste management",Mitigation,2 - Water Sufficiency; 5 - Public Administration
+M210-01,Reduce or capture methane emission from ventilated improved pit latrines,Mitigation,2 - Water Sufficiency; 1 - Sanitation
+M220-01,Reduce energy intensity of existing water supply systems (e.g. replacing pumps),Mitigation,2 - Water Sufficiency; 2 - Water Supply
+M220-02,"Reduce per capita water consumption using demand-side interventions (e.g. household water, shower, toilet, and dishwasher)",Mitigation,2 - Water Sufficiency; 2 - Water Supply
+M220-03,Change production techniques to reduce water consumption per unit of output produced in industry or commerce,Mitigation,2 - Water Sufficiency; 2 - Water Supply
+M240-01,Re-establish mangroves and floodplains with carbon sequestration properties,Mitigation,2 - Water Sufficiency; 4 - Flood Protection
+M240-02,Rehabilitate land with carbon sequestration,Mitigation,2 - Water Sufficiency; 4 - Flood Protection
+M250-01,Reduce GHG emission (methane and nitrous oxide) from wastewater,Mitigation,2 - Water Sufficiency; 5 - Wastewater Collection and Disposal
+M250-02,Reduce energy consumption during wastewater treatment (e.g. from activated sludge to up flow anaerobic sludge),Mitigation,2 - Water Sufficiency; 5 - Wastewater Collection and Disposal
+M260-01,Introduce or expand water pumping for irrigation using renewable energy sources,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M260-02,Replace existing water pumps with more energy efficient pumps,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M260-03,Replace existing diesel pumps with electric pumps,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M260-04,Revise irrigation water pricing policies to increase water use efficiency,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M260-05,Restore natural drainage regime that sequesters carbon,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M260-06,Sustainable grassland management,Mitigation,2 - Water Sufficiency; 6 - Irrigation and Drainage
+M311-01,"Establish enabling policies on REDD+, integrating lessons-learned from previous legislation and aligning conflicting laws and policies among different sectors",Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+M311-02,"Establish a system of monitoring, reporting and verification of REDD+ related policies and processes",Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+M311-03,"Establish ""polluters pay principle"" for pollution management",Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 1 - Policy and Governance
+M312-01,Close solid waste management sites in environmentally critical areas,Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+M312-02,Re-forestation and afforestation that increases vegetative cover or sequesters carbon,Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+M312-03,Sustainable peat land/wetland/forest management and protection,Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+M312-04,Avoided deforestation,Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+M312-05,Prepare for carbon markets or implement carbon finance market transactions,Mitigation,3 - Ecological and Environmental Stability; 1 - Forestry; 2 - Reforestation
+M330-01,Rehabilitate abandoned mines,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M330-02,Identify and implement a moratorium of mining operations in protected areas pending vulnerability and risk assessment and economic valuation studies,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M330-03,Close solid waste management sites in environmental critical areas,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M330-04,Introduce or expand compost landfill techniques,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M330-05,Upgrade existing landfills to capture methane for energy generation or gas flaring for CO2 generation,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M330-06,Strengthen institution or policies to mobilize carbon finance,Mitigation,3 - Ecological and Environmental Stability; 3 - Mining and Solid Waste
+M511-01,"Introduce rules and regulations to reduce GHG emissions, or absorb of GHGs in industry and trade",Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 1 - Public Administration
+M511-02,Marketing/trade policies that reduce energy consumption per unit of product,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 1 - Public Administration
+M511-03,Introduce a system of incentives to encourage the use of climate-smart technologies and practices,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 1 - Public Administration
+M511-04,Integrate monitoring of existing and new-climate smart industries and services within existing business registration system,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 1 - Public Administration
+M512-01,Conduct baseline inventory of climate-smart industries and services and good practices in the country,Mitigation,"5 - Climate Smart Industries and Services; 1 - Trade and Industry; 2 - Research, Development and Extension"
+M512-02,Baseline data on GHG emissions from industry and other sources,Mitigation,"5 - Climate Smart Industries and Services; 1 - Trade and Industry; 2 - Research, Development and Extension"
+M512-03,"Forge partnerships with industry, academe, and research organizations on R&D of climate-smart technologies and products in the country",Mitigation,"5 - Climate Smart Industries and Services; 1 - Trade and Industry; 2 - Research, Development and Extension"
+M513-01,Trainings on environmental compliance monitoring,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 3 - Capacity Building
+M513-02,Develop training modules to capacitate industries to conduct GHG emissions inventory and carbon footprint,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 3 - Capacity Building
+M514-01,Activities with mitigation co-benefits listed under other subsectors of the Industry and Trade sector for projects that span more than five sectors.,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 4 - General Industry and Trade
+M515-01,Marketing and trade support for products that reduce GHG emissions per unit of output; marketing and trade support to substitute agricultural products that use inputs with lower GHG emission; marketing and trade support for agricultural products that use integrated organic and inorganic nutrient management,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 5 - Agro-Industry Marketing and Trade
+M516-01,Other GHG reducing measures,Mitigation,5 - Climate Smart Industries and Services; 1 - Trade and Industry; 6 - Other Industry
+M522-01,Install new heating and cooling systems using renewable energy.,Mitigation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 3 - Infrastructure
+M522-02,Retrofit heating and cooling systems in existing housing units using renewable energy.,Mitigation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 3 - Infrastructure
+M522-03,Promote energy efficient housing.,Mitigation,5 - Climate Smart Industries and Services; 2 - Housing and Settlements; 3 - Infrastructure
+M530-01,Undertake national needs assessment on the state of eco efficiency in SMEs; review and develop integrated toolkit packages and identify training providers/knowledge partners,Mitigation,"5 - Climate Smart Industries and Services; 3 - Small, Medium Enterprise"
+M551-01,"Develop a nationally acceptable operational definition of ""green jobs""",Mitigation,5 - Climate Smart Industries and Services; 5 - Labour and Employment; 1 - Policy and Governance
+M551-02,"Implement a system of collection, analysis and reporting of baseline and new data on green jobs and employment",Mitigation,5 - Climate Smart Industries and Services; 5 - Labour and Employment; 1 - Policy and Governance
+M611-01,"Capacity building related to energy efficiency improvements in the energy sector, and promotion of renewable energy, and efficient energy pricing",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+M611-02,"Administration, sector studies, surveys, assessments and information systems on energy efficiency, efficient energy pricing, and promotion of renewable energy",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+M611-03,"Sector reform and capacity building related to energy efficiency in the energy sector, promotion of renewable energy and efficient energy pricing",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+M611-04,Strengthen regulatory and institutional framework to support expansion of renewable power generation,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+M611-05,"Change operational procedures or techniques, or retrofit technologies to reduce GHG emissions in existing operations",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 1 - Public Administration
+M612-01,Change operational practices or technology to reduce net GHG or black carbon emissions,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 2 - General Energy
+M612-02,Activities with mitigation co benefits listed under other subsectors of the Energy sector for projects that span more than five sectors,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 2 - General Energy
+M612-03,Develop guidelines for climate-proofing of existing and new energy system,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 2 - General Energy
+M613-01,Rehabilitate existing power plants to decrease GHG emission intensity,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-02,Replace existing power plant with more efficient facility,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-03,"Improve energy efficiency in end-user - in buildings, agriculture, industry and municipal services, chillers",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-04,"Improve energy efficiency through norms, building codes, fuel efficiency standards, regulatory support, awareness and institutional strengthening",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-05,"Improve utility scale energy efficiency through efficient pricing, energy use and loss reduction",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-06,Efficient energy market operations,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-07,Strengthening capacity of institutions to plan for low-carbon growth and environmentally sustainable energy supply,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-08,Waste heat recovery,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-09,Reduce gas flaring,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-10,Dedicated finance directly or through intermediaries for promoting energy-efficiency,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-11,Pilot programs on above energy efficiency activities,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-12,Conduct a study on energy efficiency and conservation to determine the energy use reduction potential by sector and identify appropriate interventions and policies to encourage and sustain EE&C adoption,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M613-13,"Develop a system of incentives for voluntary adoption of energy efficiency labelling, green building rating, and ISO 50001 certification",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 3 - Energy Efficiency in Power
+M614-01,Substitute inputs to reduce GHG emission in existing coal mining operations,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 4 - Coal Mining
+M614-02,"Change operational procedures or techniques, or retrofit technologies to increase energy efficiency, conserve energy, or reduce GHG emissions in existing operations",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 4 - Coal Mining
+M614-03,Improve water use efficiency in existing coal mining operations,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 4 - Coal Mining
+M614-04,Coal bed methane capture for productive use,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 4 - Coal Mining
+M615-01,Substitute inputs to reduce GHG emission in existing operations,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 5 - Other Mining and Extractive Industries
+M615-02,"Change operational procedures or techniques, or retrofit technologies to increase energy efficiency, conserve energy, or reduce GHG emissions in existing operations",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 5 - Other Mining and Extractive Industries
+M615-03,Improve water use efficiency in existing mining and other extractive industries,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 5 - Other Mining and Extractive Industries
+M616-01,Substitute inputs to reduce GHG emission in existing drilling and refinery operations,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-02,"Change operational procedures or techniques, or retrofit technologies to increase energy efficiency, conserve energy, or reduce GHG emissions in existing operations",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-03,Use of associate gas that would otherwise be flared,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-04,Improve water use efficiency in existing oil and gas refineries,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-05,Review and integrate the National Biofuels Program,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-06,Conduct study on feasibility (performance and safety) of biofuels blends in other transport system (air and sea transport),Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M616-07,"Conduct studies on hybrid systems (fuel cells, electric vehicles)",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 6 - Oil and Gas
+M617-01,Install carbon capture and storage capacity in power plants,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 7 - Thermal Power Generation
+M617-02,Replacement with lower carbon emissions technologies (such as combined cycle gas turbines in the place of coal-fired power generation),Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 7 - Thermal Power Generation
+M617-03,DO NOT INCLUDE new thermal generation plants (including high efficiency plants),Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 7 - Thermal Power Generation
+M618-01,Rehabilitate transmission and distribution systems to reduce technical losses (DO NOT INCLUDE new or expansion of capacity in transmission and distribution systems),Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 8 - Transmission and Distribution of Electricity
+M618-02,"Transmission and distribution capacity (new, expansion or strengthening of existing) or any new system to facilitate the integration of renewable energy sources into the grid",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 8 - Transmission and Distribution of Electricity
+M619-01,Rehabilitate existing hydropower plant,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+M619-02,Construct new hydropower plant,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+M619-03,Strengthen regulatory and institutional framework to support expansion of hydropower generation,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 9 - Large Hydro
+M6110-01,Construct or rehabilitate energy generation capacity from renewable sources other than hydropower including demonstration and pilots,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-02,Strengthen regulatory and institutional framework to support expansion of renewable energy production and use,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-03,"Support renewable energy technology manufacturers or marketers through financing instruments, market analysis and other studies, awareness-raising, capacity building and pilot",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-04,Conduct Renewable Energy resource assessment,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-05,Develop RE project-based and service contracts-based portfolios to encourage potential investors in identified sites,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-06,Conduct survey of RE potential in off-grid areas,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-07,"Conduct capacity building of community-based RE organizations on RE system maintenance, EE&C organizational development, tariff setting and management systems",Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M6110-08,Design and implement system of incentives for RE host communities and LGUs that can be used for sustainable livelihood programs and CCA measures,Mitigation,6 - Sustainable Energy; 1 - Energy and Mining; 10 - Other Renewable Energy
+M621-01,Sector reform to improve energy efficiency in the transport sector,Mitigation,6 - Sustainable Energy; 2 - Transportation; 1 - Public Administration
+M621-02,Capacity building related to energy efficiency in the transport sector,Mitigation,6 - Sustainable Energy; 2 - Transportation; 1 - Public Administration
+M621-03,"Administration, sector studies, surveys, assessments and information systems on water and energy use efficiency and shift from higher carbon to lower carbon transport modes in the sector",Mitigation,6 - Sustainable Energy; 2 - Transportation; 1 - Public Administration
+M622-01,Conduct risk and vulnerability assessment of the transport system,Mitigation,6 - Sustainable Energy; 2 - Transportation; 2 - Research and Development
+M622-02,Conduct technical study on the development of standards on energy efficiency labelling for vehicles,Mitigation,6 - Sustainable Energy; 2 - Transportation; 2 - Research and Development
+M622-03,Review current standards for fuel quality to support clean fleet program and fuel efficiency labelling for vehicles,Mitigation,6 - Sustainable Energy; 2 - Transportation; 2 - Research and Development
+M622-04,R&D in low-carbon or non-fossil fuel transport technologies,Mitigation,6 - Sustainable Energy; 2 - Transportation; 2 - Research and Development
+M623-01,"Shift from high carbon to lower-carbon transport modes such as from airplanes to trains, from cars to busses, from busses to trains and from trains to bicycles and walking",Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-02,Improve traffic flow to reduce carbon emission per unit transported,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-03,Substitution of high carbon by lower carbon or non-fossil fuel thereby reducing carbon intensity per kilometre travelled,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-04,Improve vehicle emission standards,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-05,Improve fuel efficiency standards,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-06,Strengthen vehicle inspection systems on emissions and fuel efficiency,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M623-07,Activities with mitigation co-benefits listed under other subsectors of the Transportation sector for projects that span more than five sectors,Mitigation,6 - Sustainable Energy; 2 - Transportation; 3 - General Transportation
+M624-01,Investment in roads and highways to improve traffic flow and reduce GHG emissions per unit transported,Mitigation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+M624-02,Traffic management to reduce GHG emissions per unit transported,Mitigation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+M624-03,Shift to lower carbon modes of road and highway transport including research and development,Mitigation,6 - Sustainable Energy; 2 - Transportation; 4 - Rural and Inter-Urban Roads and Highways
+M625-01,Urban traffic management to reduce GHG emissions per unit transported,Mitigation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+M625-02,Shift from high carbon to lower-carbon modes of transport,Mitigation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+M625-03,Research and development of lower-carbon modes of urban transport,Mitigation,6 - Sustainable Energy; 2 - Transportation; 5 - Urban Transport
+M626-01,Transfer of bulk transport from roads and railways to ships as justified by reducing the carbon footprint per ton of cargo transported,Mitigation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+M626-02,Improved waterways and port facilities to reduce the carbon intensity per unit transported,Mitigation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+M626-03,Research & development to reduce the GHG intensity in sea and lake bound transport operations,Mitigation,"6 - Sustainable Energy; 2 - Transportation; 6 - Ports, Waterways and Shipping"
+M627-01,Reduce airport congestion before take-off and landing,Mitigation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+M627-02,Improvements in aviation facilities that reduces GHG emissions,Mitigation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+M627-03,Introduction of lower carbon aviation technologies,Mitigation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+M627-04,Shift from high carbon to lower-carbon transport modes; reduction of carbon-content in aviation infrastructure facilities,Mitigation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+M627-05,Reduction of carbon-content in aviation infrastructure facilities,Mitigation,6 - Sustainable Energy; 2 - Transportation; 7 - Aviation
+M628-01,New railway lines for electricity based railcars,Mitigation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+M628-02,Convert diesel or coal railcars to electric,Mitigation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+M628-03,Introduce lower carbon engine/vehicle technologies,Mitigation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+M628-04,"Improve and expand rail networks, locomotives and wagons to reduce GHG intensity per unit of transported (goods and people) e.g. introduction and expansion of high speed trains",Mitigation,6 - Sustainable Energy; 2 - Transportation; 8 - Railways
+M713-01,"Development of curricula or programs focused on reducing GHG emissions, energy consumption or water consumption",Mitigation,7 - Knowledge and Capacity Development; 1 - Education; 3 - Primary and Secondary Education
+M714-01,"Development of curricula or programs focused on reducing GHG emissions, energy consumption or water consumption",Mitigation,7 - Knowledge and Capacity Development; 1 - Education; 4 - Tertiary Education
+M714-02,Support research on mitigation,Mitigation,7 - Knowledge and Capacity Development; 1 - Education; 4 - Tertiary Education
+M715-01,Train workers in GHG emission reducing activities; train managers or workers to improve water or energy efficiency in business operations; train managers/workers in GHG reductions in business operations,Mitigation,7 - Knowledge and Capacity Development; 1 - Education; 5 - Vocational Training
+M720-01,Improve energy efficiency in information technology,Mitigation,7 - Knowledge and Capacity Development; 2 - Information Technology
+M731-01,Improve energy efficiency in telecommunications information technologies,Mitigation,7 - Knowledge and Capacity Development; 3 - Telecommunications; 1 - General Information and Communications
+M810-01,Activities with mitigation co-benefits listed under other subsectors of the Finance sector for projects that span more than five sectors,Mitigation,8 - Finance; 1 - General Finance
+M820-01,Fiscal policy and management measures in support of mitigation,Mitigation,8 - Finance; 2 - Public Administration
+M820-02,"Economic research, modelling and policy making for mitigation",Mitigation,8 - Finance; 2 - Public Administration
+M820-03,"Reduce fossil-fuel consumption through taxes, levies or fees on energy or transport services",Mitigation,8 - Finance; 2 - Public Administration
+M830-01,"Introduce regulations, programs or financial instruments to support GHG reducing activities",Mitigation,8 - Finance; 3 - Banking
+M840-01,"Introduce regulations, programs or financial instruments to support GHG reducing activities",Mitigation,8 - Finance; 4 - Non-Compulsory Health Finance
+M850-01,Regulate or provide incentives in housing finance to support energy saving designs and standards,Mitigation,8 - Finance; 5 - Housing Finance and Real Estate Markets
+M870-01,Provide lines of credit for investments in reduction of GHG emissions and/or absorption of GHGs; support SMEs to reduce GHG emissions and/or absorption of GHG; support to access carbon markets,Mitigation,8 - Finance; 7 - SME Finance
+M880-01,Credit lines for investments in reduction of GHG emissions and/or absorption of GHGs,Mitigation,8 - Finance; 8 - Microfinance
+M880-02,Support to SMEs to reduce GHG emissions and/or absorption of GHG,Mitigation,8 - Finance; 8 - Microfinance
+M880-03,Support to access carbon markets,Mitigation,8 - Finance; 8 - Microfinance
+M890-01,Introduce green bonds or other securities specifically targeted at reducing GHG emission or sequestering GHGs,Mitigation,8 - Finance; 9 - Capital Markets
