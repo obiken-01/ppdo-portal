@@ -42,7 +42,8 @@ import {
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
 import DivisionTable from "../../DivisionTable";
-import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
@@ -70,7 +71,7 @@ import type {
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
-const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+const YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
 
 /**
  * Whether an office that already HAS programs is offered "+ Add programs" (Ralph, 2026-09-16).
@@ -109,9 +110,15 @@ export default function AipEntryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedYear = Number(searchParams.get("fiscalYear"));
-  const [fiscalYear, setFiscalYear] = useState(
-    YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
+  // PPDO-145 — the URL's year wins; with none, the admin default when it is an entry year, else
+  // the break year. ⚠️ With no URL year nothing year-dependent loads until the default has
+  // settled (`yearSettled`), so the page never shows one year and then jumps to another.
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const [pickedYear, setPickedYear] = useState<number | null>(
+    YEARS.includes(requestedYear) ? requestedYear : null
   );
+  const yearSettled = pickedYear != null || defaultReady;
+  const fiscalYear = pickedYear ?? resolveEnteredFiscalYear(null, defaultFiscalYear);
 
   // ⚠️ **The selection lives in the URL** (spec decision 5) — a reload keeps the encoder's place,
   // the returned-work banner and the review search can deep-link to a node, and "Change activity"
@@ -240,12 +247,14 @@ export default function AipEntryPage() {
   // The selection mirrored back into the URL. `scroll: false` — a replace that jumped the page to
   // the top on every pick would undo the reason the panel is on screen.
   useEffect(() => {
+    // Not before the year is known — writing the fallback year into the URL would then pin it.
+    if (!yearSettled) return;
     const q = new URLSearchParams({ fiscalYear: String(fiscalYear) });
     if (ids.programId != null) q.set("programId", String(ids.programId));
     if (ids.projectId != null) q.set("projectId", String(ids.projectId));
     if (ids.activityId != null) q.set("activityId", String(ids.activityId));
     router.replace(`/budget-planning/aip/entry?${q.toString()}`, { scroll: false });
-  }, [router, fiscalYear, ids]);
+  }, [router, fiscalYear, ids, yearSettled]);
 
   const workflowStatus = readiness?.workflowStatus ?? AIP_WORKFLOW.draft;
   // ↩️ Was `=== "Draft"` until PPDO-70. The office keeps editing through department review and
@@ -314,7 +323,8 @@ export default function AipEntryPage() {
     }
   }, [fiscalYear, loadDivisions]);
 
-  useEffect(() => { void load(); }, [load]);
+  // The skeleton (`loading` starts true) covers the wait for the default year.
+  useEffect(() => { if (yearSettled) void load(); }, [load, yearSettled]);
 
   // Reference data, fetched once and off the critical path — the page renders without it.
   //
@@ -334,6 +344,7 @@ export default function AipEntryPage() {
   // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
   // PPDO finance sees every division of this office, anyone else sees only their own division row.
   useEffect(() => {
+    if (!yearSettled) return;
     if (officeId == null) { setDivisionRowsLoading(false); return; }
     setDivisionRowsLoading(true);
     const load = me?.isHostOffice
@@ -343,7 +354,7 @@ export default function AipEntryPage() {
       .then(({ rows, none }) => { setDivisionRows(rows); setNoDivisionRow(none); })
       .catch(() => { setDivisionRows([]); setNoDivisionRow(null); })
       .finally(() => setDivisionRowsLoading(false));
-  }, [officeId, fiscalYear, me?.isHostOffice]);
+  }, [officeId, fiscalYear, me?.isHostOffice, yearSettled]);
 
   async function refreshReadiness() {
     if (!record) return;
@@ -629,15 +640,19 @@ export default function AipEntryPage() {
             Fiscal year
           </label>
           <select
-            value={fiscalYear}
+            // Blank and disabled, not guessed, until the year is known — showing the fallback
+            // first is exactly the one-year-then-another jump the spec rules out.
+            value={yearSettled ? fiscalYear : ""}
+            disabled={!yearSettled}
             onChange={(e) => {
-              setFiscalYear(Number(e.target.value));
+              setPickedYear(Number(e.target.value));
               // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
               // across would name rows of the year just left and resolve to a stale-id notice on
               // arrival — a message about nothing the reader did.
               select(EMPTY_SELECTION_IDS);
             }}
             className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
+            {!yearSettled && <option value="">FY …</option>}
             {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
           </select>
         </div>

@@ -14,10 +14,11 @@
  *   DELETE /api/budget-planning/aip/{id}    (archive)
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { aipErrorMessage, archiveAip, finalizeAip, listAip } from "@/lib/aip";
 import { useMe } from "@/lib/me-cache";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { canOpenAipRecords, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -83,7 +84,17 @@ export default function AipListPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [fy, setFy] = useState<number>(CURRENT_YEAR);
+  // PPDO-145 — the admin default year when set, else the calendar year as before. The list waits for
+  // it (`yearSettled`) so it never loads the calendar year first and then jumps.
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const [pickedFy, setFy] = useState<number | null>(null);
+  const yearSettled = pickedFy != null || defaultReady;
+  const fy = pickedFy ?? defaultFiscalYear ?? CURRENT_YEAR;
+  // Decision 8 — the default is always offered, even when it is outside the rolling window.
+  const fyOptions = useMemo(
+    () => (FY_OPTIONS.includes(fy) ? FY_OPTIONS : [...FY_OPTIONS, fy].sort((a, b) => a - b)),
+    [fy]
+  );
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [sourceFilter, setSourceFilter] = useState<string>("");
 
@@ -111,8 +122,8 @@ export default function AipListPage() {
   }, [fy, statusFilter]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (yearSettled) load();
+  }, [load, yearSettled]);
 
   // ---------------------------------------------------------------------------
   // Client-side source filter
@@ -261,11 +272,13 @@ export default function AipListPage() {
       <div className="flex flex-wrap items-center gap-3">
         {/* Fiscal Year */}
         <select
-          value={fy}
+          value={yearSettled ? fy : ""}
+          disabled={!yearSettled}
           onChange={(e) => setFy(Number(e.target.value))}
           className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
         >
-          {FY_OPTIONS.map((y) => (
+          {!yearSettled && <option value="">FY …</option>}
+          {fyOptions.map((y) => (
             <option key={y} value={y}>
               FY {y}
             </option>
