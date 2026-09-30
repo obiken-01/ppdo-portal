@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import type {
   AipActivityDetail, AipCommentNodeType, AipDeleteResult, AipProjectDetail,
 } from "@/types";
@@ -232,6 +233,17 @@ function AipProjectDetails({
       setSaving(false);
     }
   }
+
+  // PPDO-166 — unsaved = the open form differs from the saved project.
+  useAipUnsavedChange(
+    editing && (
+      name !== project.name
+      || description !== (project.description ?? "")
+      || objective !== (project.objective ?? "")
+    ),
+    "the project details",
+    () => { setEditing(false); setError(null); },
+  );
 
   // ── Read view ───────────────────────────────────────────────────────────
   if (!editing) {

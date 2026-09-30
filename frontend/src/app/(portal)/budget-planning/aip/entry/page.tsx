@@ -42,6 +42,7 @@ import {
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
 import DivisionTable from "../../DivisionTable";
+import { AipUnsavedChangesProvider, useAipLeaveGuard } from "@/components/aip/entry/AipUnsavedChanges";
 import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
 import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
@@ -91,7 +92,16 @@ const YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
  */
 const SHOW_ADD_PROGRAMS_WHEN_POPULATED = false;
 
+/** PPDO-166 — the unsaved-changes guard wraps the whole page, so every exit below can ask it. */
 export default function AipEntryPage() {
+  return (
+    <AipUnsavedChangesProvider>
+      <AipEntryPageInner />
+    </AipUnsavedChangesProvider>
+  );
+}
+
+function AipEntryPageInner() {
   const me = useMe((m) => m.canAccessBudgetPlanning);
   // The department-head reviewer's grant. Office scoping is not in the flag — the server narrows
   // to the caller's own office — so this only decides whether the second submit is offered here.
@@ -408,6 +418,16 @@ export default function AipEntryPage() {
     setIds(next);
   }, []);
 
+  // PPDO-166 — what the READER asks for goes through the unsaved-changes guard: the picker, Done,
+  // Change activity/project, child rows, checklist and comment jumps, the year. `select` itself stays
+  // unguarded for the moves that FOLLOW a completed save (a new node becoming the selection, a
+  // deleted one handing it to its parent) — nothing is left unsaved to ask about there.
+  const leaveGuard = useAipLeaveGuard();
+  const requestSelect = useCallback(
+    (next: AipSelectionIds) => leaveGuard(() => select(next)),
+    [leaveGuard, select],
+  );
+
   /** Selects the node a checklist issue or a comment names, wherever it sits in the tree. */
   const selectNode = useCallback(
     (nodeType: AipCommentNodeType, nodeId: number) => {
@@ -418,9 +438,9 @@ export default function AipEntryPage() {
         setSelectionNotice("That row is not in the part of this AIP you can see.");
         return;
       }
-      select(found);
+      requestSelect(found);
     },
-    [myGroups, select]
+    [myGroups, requestSelect]
   );
 
   // "Change activity" clears the box and puts the cursor back in it — the encoder's next move is
@@ -440,8 +460,10 @@ export default function AipEntryPage() {
   }, [focusActivityLookup]);
 
   function changeActivity() {
-    select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
-    setFocusActivityLookup(true);
+    leaveGuard(() => {
+      select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
+      setFocusActivityLookup(true);
+    });
   }
 
   // ── Submit hops ─────────────────────────────────────────────────────────
@@ -677,11 +699,16 @@ export default function AipEntryPage() {
             value={yearSettled ? fiscalYear : ""}
             disabled={!yearSettled}
             onChange={(e) => {
-              setPickedYear(Number(e.target.value));
-              // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
-              // across would name rows of the year just left and resolve to a stale-id notice on
-              // arrival — a message about nothing the reader did.
-              select(EMPTY_SELECTION_IDS);
+              const year = Number(e.target.value);
+              // PPDO-166 — guarded. The select is controlled, so "Keep editing" leaves it on the
+              // year the reader is still working in.
+              leaveGuard(() => {
+                setPickedYear(year);
+                // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
+                // across would name rows of the year just left and resolve to a stale-id notice on
+                // arrival — a message about nothing the reader did.
+                select(EMPTY_SELECTION_IDS);
+              });
             }}
             className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
             {!yearSettled && <option value="">FY …</option>}
@@ -865,7 +892,7 @@ export default function AipEntryPage() {
                   ids={ids}
                   projects={selection?.program?.projects ?? []}
                   activities={selection?.project?.activities ?? []}
-                  onChange={select}
+                  onChange={requestSelect}
                   activityInputRef={activityInputRef}
                 />
 
@@ -884,7 +911,7 @@ export default function AipEntryPage() {
                   // a default of the full name would be retyped by every encoder (PPDO-80).
                   offices={offices}
                   proponentOfficeCode={me?.officeCode ?? null}
-                  onSelect={select}
+                  onSelect={requestSelect}
                   onChangeActivity={changeActivity}
                   onProjectAdded={onProjectAdded}
                   onActivityAdded={onActivityAdded}

@@ -33,6 +33,7 @@
  */
 
 import { useState } from "react";
+import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
@@ -133,6 +134,24 @@ export default function AipActivityFields({
       setSaving(false);
     }
   }
+
+  // PPDO-166 — unsaved = the open form differs from the saved activity (what `beginEdit` loaded).
+  // Compared field by field against the activity itself, so reverting a change is not "unsaved".
+  const changed =
+    name !== activity.name
+    || esreCode !== (activity.esreCode ?? "")
+    || joinCodes(implementingOffices)
+       !== joinCodes(withoutProponent(activity.implementingOffice, proponentOfficeCode))
+    || startDate !== (activity.startDate ?? "")
+    || endDate !== (activity.endDate ?? "")
+    || expectedOutputs !== (activity.expectedOutputs ?? "")
+    || ccTypologyCode !== (activity.ccTypologyCode ?? "")
+    || ccAdaptation !== activity.ccAdaptation
+    || ccMitigation !== activity.ccMitigation;
+  useAipUnsavedChange(editing && changed, "the activity details", () => {
+    setEditing(false);
+    setError(null);
+  });
 
   // ── Read view ───────────────────────────────────────────────────────────
   if (!editing) {
