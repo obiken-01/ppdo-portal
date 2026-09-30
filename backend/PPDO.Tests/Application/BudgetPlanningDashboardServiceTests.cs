@@ -1945,8 +1945,10 @@ public sealed class BudgetPlanningDashboardServiceTests
     [InlineData("Draft",            0, "NotStarted",   "Todo",        false)]
     [InlineData("Draft",            3, "InProgress",   "Todo",        false)]
     [InlineData("DepartmentReview", 3, "OfficeReview", "In progress", false)]
-    // Returned is Office Review with a badge, not a sixth column.
-    [InlineData("ReturnedByPpdo",   3, "OfficeReview", "In progress", true)]
+    // Returned is In Progress with a badge, not a sixth column (PPDO-169): a PPDO return reopens the
+    // office — every division back to Draft — so the work is with its encoders again.
+    [InlineData("ReturnedByPpdo",   3, "InProgress",   "In progress", true)]
+    [InlineData("ReturnedByPpdo",   0, "InProgress",   "In progress", true)]
     [InlineData("SubmittedToPpdo",  3, "PpdoReview",   "Review",      false)]
     [InlineData("Consolidated",     3, "Done",         "Done",        false)]
     // A submission state beats the activity count.
