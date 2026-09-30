@@ -41,6 +41,7 @@ import { fmtThousands } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
 import AipCodeSelect from "@/components/aip/AipCodeSelect";
+import AipCodeLookup from "@/components/aip/AipCodeLookup";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import MultiLookup, {
@@ -298,13 +299,11 @@ export default function AipActivityFields({
               AipCodeSelect still keeps an ALREADY-SAVED code selectable, so this cannot silently
               blank existing data. */}
           <Label>CC typology code</Label>
-          <AipCodeSelect
+          <AipCodeLookup
             value={ccTypologyCode}
             onChange={setCcTypologyCode}
             options={codeOptions.ccTypology}
             loaded={codeOptions.loaded}
-            className={selectCls}
-            ariaLabel="CC typology code"
           />
         </div>
       </div>

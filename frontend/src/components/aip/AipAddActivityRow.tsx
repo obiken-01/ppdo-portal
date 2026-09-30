@@ -12,6 +12,7 @@ import { fmtPesos } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
 import AipCodeSelect from "@/components/aip/AipCodeSelect";
+import AipCodeLookup from "@/components/aip/AipCodeLookup";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { AipActivityDetail, FundingSourceResponse } from "@/types";
@@ -145,14 +146,12 @@ export default function AddActivityRow({
       <td className="px-1 py-1.5"><AipMoneyInput value={ccAdaptation} onChange={setCcAdaptation} /></td>
       <td className="px-1 py-1.5"><AipMoneyInput value={ccMitigation} onChange={setCcMitigation} /></td>
       <td className="px-2 py-1.5">
-        <AipCodeSelect
-          value={ccTypologyCode}
-          onChange={setCcTypologyCode}
-          options={codeOptions.ccTypology}
-          loaded={codeOptions.loaded}
-          className={selectCls}
-          ariaLabel="CC typology"
-        />
+        <AipCodeLookup
+            value={ccTypologyCode}
+            onChange={setCcTypologyCode}
+            options={codeOptions.ccTypology}
+            loaded={codeOptions.loaded}
+          />
       </td>
       <td className="px-2 py-1.5 text-center whitespace-nowrap">
         <div className="flex flex-col items-center gap-1">
