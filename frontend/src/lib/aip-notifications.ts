@@ -12,19 +12,30 @@
  * person's count, and the logout paths are several; a stale key simply refetches.
  *
  * ⚠️ **No polling.** Fetched once per portal load and again, via `refreshAipNotifications`, after the
- * reader's own submit / return / accept / re-open. A hand-off by someone else appears on the next load.
+ * reader's own submit / return / accept / re-open.
+ *
+ * ↩️ **Plus on tab focus and on page change, at most every 30 s (PPDO-168).** A hand-off by someone
+ * ELSE — a department head returning a division, an encoder submitting one — used to appear only on
+ * a full reload, because this store outlives client-side navigation. The reader coming back to the
+ * tab, or moving to another page, is exactly when a stale badge would mislead them, and it costs one
+ * small request at a moment they are looking. Still no background timer.
  */
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import api from "./api";
 import type { ApiResponse, AipReviewNotifications, MeResponse } from "@/types";
 
 type Listener = (value: AipReviewNotifications | null) => void;
 
+/** PPDO-168 — a focus or page change refetches only when the last fetch is older than this. */
+const STALE_AFTER_MS = 30_000;
+
 let _userId: string | null = null;
 let _value: AipReviewNotifications | null = null;
 let _loaded = false;
 let _inflight: Promise<void> | null = null;
+let _fetchedAt = 0;
 const _listeners = new Set<Listener>();
 
 function publish() {
@@ -32,6 +43,7 @@ function publish() {
 }
 
 function load(userId: string): Promise<void> {
+  _fetchedAt = Date.now();
   const run = api
     .get<ApiResponse<AipReviewNotifications>>("/budget-planning/aip/review/notifications")
     .then(({ data }) => {
@@ -48,10 +60,14 @@ function load(userId: string): Promise<void> {
         publish();
       }
     });
-  _inflight = run.finally(() => {
-    if (_inflight === run) _inflight = null;
+  // ↩️ PPDO-168 — compared against `tracked`, the promise actually stored. It used to compare against
+  // `run`, which `_inflight` never holds, so the marker was never cleared after the first fetch — and
+  // every later "is one in flight?" check (the focus / page-change refresh) answered yes forever.
+  const tracked: Promise<void> = run.finally(() => {
+    if (_inflight === tracked) _inflight = null;
   });
-  return _inflight;
+  _inflight = tracked;
+  return tracked;
 }
 
 function ensure(userId: string) {
@@ -70,6 +86,17 @@ function ensure(userId: string) {
 export function refreshAipNotifications(): Promise<void> {
   if (!_userId) return Promise.resolve();
   return load(_userId);
+}
+
+/**
+ * PPDO-168 — refetch if the last read is older than {@link STALE_AFTER_MS} and none is in flight.
+ * Several components use the hook, so several listeners may call this at once; the age and the
+ * in-flight check make that one request.
+ */
+function refreshIfStale() {
+  if (!_userId || !_loaded || _inflight) return;
+  if (Date.now() - _fetchedAt < STALE_AFTER_MS) return;
+  void load(_userId);
 }
 
 /**
@@ -95,6 +122,26 @@ export function useAipNotifications(me: MeResponse | null): AipReviewNotificatio
       _listeners.delete(listener);
     };
   }, [userId]);
+
+  // PPDO-168 — back to the tab: pick up hand-offs made elsewhere while it was in the background.
+  useEffect(() => {
+    if (userId == null) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshIfStale();
+    };
+    window.addEventListener("focus", refreshIfStale);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refreshIfStale);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [userId]);
+
+  // PPDO-168 — and on every page change, which this store otherwise outlives.
+  const pathname = usePathname();
+  useEffect(() => {
+    if (userId != null) refreshIfStale();
+  }, [pathname, userId]);
 
   return userId != null ? value : null;
 }
