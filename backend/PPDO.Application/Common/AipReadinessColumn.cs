@@ -13,8 +13,11 @@ namespace PPDO.Application.Common;
 ///
 /// <para>
 /// ⚠️ <b>Five columns, not six.</b> <see cref="AipWorkflowStatus.ReturnedByPpdo"/> is not a column:
-/// returned work is editable by the office again, exactly as in department review, so it sits in
-/// <see cref="OfficeReview"/> and the row carries <c>IsReturned</c> for the badge.
+/// the row carries <c>IsReturned</c> for the badge.
+/// ↩️ <b>It sits in <see cref="InProgress"/> since PPDO-169</b> (Ralph, 2026-09-30), not
+/// <see cref="OfficeReview"/>. A PPDO return reopens the office — every division back to Draft
+/// (PPDO-149) — so the work is with its encoders again, which is what In Progress means. It moves to
+/// Office Review on its own once the office re-submits (the office state goes to DepartmentReview).
 /// </para>
 ///
 /// <para>
@@ -45,9 +48,11 @@ public static class AipReadinessColumn
     /// </summary>
     public static string For(string? workflowStatus, int activityCount) => workflowStatus switch
     {
-        AipWorkflowStatus.DepartmentReview or AipWorkflowStatus.ReturnedByPpdo => OfficeReview,
-        AipWorkflowStatus.SubmittedToPpdo => PpdoReview,
-        AipWorkflowStatus.Consolidated    => Done,
+        AipWorkflowStatus.DepartmentReview => OfficeReview,
+        // A returned office has submitted once, so it is never "not started", whatever it holds.
+        AipWorkflowStatus.ReturnedByPpdo   => InProgress,
+        AipWorkflowStatus.SubmittedToPpdo  => PpdoReview,
+        AipWorkflowStatus.Consolidated     => Done,
         _ => activityCount > 0 ? InProgress : NotStarted,
     };
 
