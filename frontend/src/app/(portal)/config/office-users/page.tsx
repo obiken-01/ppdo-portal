@@ -100,6 +100,11 @@ export default function OfficeUserDivisionsPage() {
     try {
       const { data } = await api.put<OfficeUserResponse>(`/office/users/${user.id}/division`, { divisionId });
       setUsers((rows) => rows.map((r) => (r.id === user.id ? data : r)));
+      // PPDO-170 — the select saves on change with no Save button, so say that it did.
+      const division = divisions.find((d) => d.id === divisionId);
+      toast.success(division
+        ? `${user.fullName} assigned to ${division.name}.`
+        : `${user.fullName} is now unassigned.`);
     } catch (err) {
       // Revert on failure — a silent partial success (UI says X, server kept Y) is worse than
       // visibly snapping back.
