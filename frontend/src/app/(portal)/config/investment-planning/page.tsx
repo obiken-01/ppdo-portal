@@ -21,12 +21,13 @@ import type { DefaultFiscalYearResponse } from "@/types";
 
 const MIN_FISCAL_YEAR = 2020;
 
+function manilaYear(): number {
+  return Number(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila", year: "numeric" }));
+}
+
 /** Current Manila calendar year + 3 — mirrors the server's upper bound. */
 function maxFiscalYear(): number {
-  const manilaYear = Number(
-    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila", year: "numeric" }),
-  );
-  return manilaYear + 3;
+  return manilaYear() + 3;
 }
 
 function formatManila(iso: string): string {
@@ -156,7 +157,7 @@ export default function InvestmentPlanningSettingsPage() {
                   type="number"
                   inputMode="numeric"
                   value={input}
-                  placeholder="e.g. 2028"
+                  placeholder={`e.g. ${manilaYear() + 2}`}
                   disabled={saving}
                   aria-invalid={validation ? true : undefined}
                   aria-describedby={validation ? "default-fiscal-year-error" : undefined}
