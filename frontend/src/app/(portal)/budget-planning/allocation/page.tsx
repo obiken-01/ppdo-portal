@@ -47,6 +47,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
 import { allocationLabels } from "@/lib/budget-planning-labels";
 import InfoTip from "@/components/ui/InfoTip";
@@ -560,6 +561,17 @@ function FundSection({
 // AllocationPageInner
 // ---------------------------------------------------------------------------
 
+/** The fiscal year input's range, which a URL year must also fall inside (PPDO-162). */
+const MIN_FISCAL_YEAR = 2020;
+const MAX_FISCAL_YEAR = 2050;
+
+/** A whole number from a query-string value inside [min, max], or null. */
+function parseUrlInt(raw: string | null, min: number, max: number): number | null {
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
 function AllocationPageInner() {
   const { toast } = useToast();
   const me = useMe(
@@ -577,11 +589,16 @@ function AllocationPageInner() {
    * before any office encodes, so ₱0 would be a false reassurance rather than a missing value.
    */
   const [ceilingUsage, setCeilingUsage] = useState<AipCeilingStatus | null>(null);
-  // PPDO-145 — the admin default year when one is set, else the calendar year + 1 as before. There
-  // is no URL year on this page (spec §7). ⚠️ Nothing loads until the default has settled
+  // PPDO-145 — the admin default year when one is set, else the calendar year + 1 as before.
+  // PPDO-162 — a year in the URL wins over both: the dashboard links here with the year it is
+  // showing, and opening a different one read as the wrong year's figures. It seeds the picked year,
+  // so it counts as settled at once. ⚠️ Otherwise nothing loads until the default has settled
   // (`yearSettled`), so the page never loads one year and then switches to another.
+  const searchParams = useSearchParams();
+  const urlFiscalYear = parseUrlInt(searchParams.get("fiscalYear"), MIN_FISCAL_YEAR, MAX_FISCAL_YEAR);
+  const urlOfficeId = parseUrlInt(searchParams.get("officeId"), 1, Number.MAX_SAFE_INTEGER);
   const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
-  const [pickedFiscalYear, setSelectedFiscalYear] = useState<number | null>(null);
+  const [pickedFiscalYear, setSelectedFiscalYear] = useState<number | null>(urlFiscalYear);
   const yearSettled = pickedFiscalYear != null || defaultReady;
   const selectedFiscalYear = pickedFiscalYear ?? defaultFiscalYear ?? new Date().getFullYear() + 1;
 
@@ -733,8 +750,19 @@ function AllocationPageInner() {
   useEffect(() => {
     if (!me) return;
     if (!canChooseOffice) {
+      // PPDO-162 — a URL office is ignored here on purpose: this caller sees their own office only,
+      // and the endpoints would refuse any other.
       setSelectedOfficeId(me.officeId);
       return;
+    }
+    // PPDO-162 — the office the link named (the dashboard's office and division rows), once the
+    // list has loaded and only if it is an office this picker offers.
+    if (urlOfficeId != null) {
+      if (officeList.length === 0) return;
+      if (officeList.some((o) => o.id === urlOfficeId)) {
+        setSelectedOfficeId(urlOfficeId);
+        return;
+      }
     }
     if (me.isHostOffice) {
       const ppdo = findHostOffice(officeList);
@@ -747,7 +775,7 @@ function AllocationPageInner() {
     // would be just as arbitrary, since PPDO has no more claim on their attention than any
     // other office and the page writes a real budget figure. The existing empty state already
     // covers this, so the cost of asking is one dropdown.
-  }, [me, canChooseOffice, officeList]);
+  }, [me, canChooseOffice, officeList, urlOfficeId]);
 
   // ── Load allocation data when office, FY, or the fund list changes ───────
   // Division allocations now have a bulk-across-funds endpoint too (RAL-166 follow-up),
@@ -1069,8 +1097,8 @@ function AllocationPageInner() {
               // Blank until the year is known rather than showing the fallback first.
               value={yearSettled ? selectedFiscalYear : ""}
               disabled={!yearSettled}
-              min={2020}
-              max={2050}
+              min={MIN_FISCAL_YEAR}
+              max={MAX_FISCAL_YEAR}
               onChange={(e) => setSelectedFiscalYear(Number(e.target.value))}
               className="border border-slate-300 bg-white text-sm px-2 py-1.5 w-24 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
             />

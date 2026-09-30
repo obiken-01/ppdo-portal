@@ -113,7 +113,7 @@ default is not set, every page behaves exactly as it does today.
 | Budget Planning dashboard / readiness board (`budget-planning/page.tsx`) | Newest AIP year, else UTC year + 1 (server) | **Server** — `ResolveFiscalYearsAsync` change; no page edit |
 | Office Ceilings (`office-ceilings/page.tsx`) | Same server resolver | **Server** — no page edit |
 | Report (`report/page.tsx`, incl. the `aip/consolidated` redirect) | URL, else server resolver | **Server** — no page edit |
-| Allocation (`allocation/page.tsx`) | Calendar year + 1 | Client — `defaultFiscalYear ?? year + 1` |
+| Allocation (`allocation/page.tsx`) | Calendar year + 1 | Client — `urlYear ?? defaultFiscalYear ?? year + 1` (URL year added by PPDO-162) |
 | AIP index (`aip/page.tsx`) | Calendar year; options = year −1 … +2 | Client — `defaultFiscalYear ?? year`; the default is added to `FY_OPTIONS` if missing |
 | AIP Entry (`aip/entry/page.tsx`) | URL, else `FIRST_ENTERED_FISCAL_YEAR` | Client — URL, else default **if in `YEARS`**, else break year |
 | AIP Review (`aip/review/page.tsx`) | Same as Entry | Same as Entry |
@@ -254,7 +254,10 @@ No new controls. The only visible change is which year is selected on arrival.
   window; AIP New is a create form where the year is a deliberate input; the main Dashboard is the
   events calendar, not Investment Planning.
 - **Does not add `?fiscalYear=` support to Allocation.** It reads no URL year today; this spec does
-  not change that.
+  not change that. ↩️ **Superseded by PPDO-162 (2026-09-30):** the dashboard's office and division
+  links already pass `?officeId=&fiscalYear=`, so the page opened on a different year from the one
+  the dashboard was showing. It now reads both — a valid URL year wins over the default, and the URL
+  office is honoured only for a user who can choose an office.
 - **No live push of a changed default** to users already on a page — next page load (decision 9).
 
 ---
