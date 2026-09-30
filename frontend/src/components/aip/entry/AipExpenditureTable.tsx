@@ -23,7 +23,8 @@
  * the cell it saves into legitimately show different numbers and nothing else on screen says so.
  */
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
@@ -268,6 +269,8 @@ export default function AipExpenditureTable({
   // Which saved lines have their procurement items expanded. Collapsed by default: an activity with
   // several itemised lines would otherwise open as a wall of item rows.
   const [expanded, setExpanded]   = useState<Set<number>>(new Set());
+  // PPDO-166 — the draft as the editor opened, so "unsaved" means "changed", not merely "open".
+  const openedDraft = useRef(JSON.stringify(EMPTY));
 
   const funds = useMemo(() => distinctFunds(lines), [lines]);
 
@@ -407,10 +410,16 @@ export default function AipExpenditureTable({
     }
   }
 
+  function beginAdd() {
+    setAdding(true);
+    setDraft(EMPTY);
+    openedDraft.current = JSON.stringify(EMPTY);
+  }
+
   function beginEdit(line: AipExpenditure) {
     setEditingId(line.id);
     setAdding(false);
-    setDraft({
+    const opened: Draft = {
       accountId: line.accountId != null ? String(line.accountId) : "",
       fundingSourceId: line.fundingSourceId != null ? String(line.fundingSourceId) : "",
       // Pesos in, pesos out — the draft holds exactly what the row stores.
@@ -428,7 +437,16 @@ export default function AipExpenditureTable({
         numberOfDays: i.numberOfDays,
         periodNo: i.periodNo,
       })),
-    });
+    };
+    setDraft(opened);
+    openedDraft.current = JSON.stringify(opened);
+  }
+
+  function closeEditor() {
+    setAdding(false);
+    setEditingId(null);
+    setDraft(EMPTY);
+    setError(null);
   }
 
   /**
@@ -447,6 +465,14 @@ export default function AipExpenditureTable({
 
   const editing = adding || editingId !== null;
 
+  // PPDO-166 — an open line whose draft differs from how it opened. A save clears it (the editor
+  // closes); a failed save does not, so leaving after a rejected save still asks.
+  useAipUnsavedChange(
+    editing && JSON.stringify(draft) !== openedDraft.current,
+    "an expenditure line",
+    closeEditor,
+  );
+
   return (
     <div className="border-l-2 border-slate-200 bg-slate-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -462,7 +488,7 @@ export default function AipExpenditureTable({
             row whose Save is blocked for a reason shown elsewhere. */}
         {canEdit && !editing && multiFund !== null && !legacyMulti
           && !(multiFund === false && !activityFund) && (
-          <button type="button" onClick={() => { setAdding(true); setDraft(EMPTY); }}
+          <button type="button" onClick={beginAdd}
             className="text-xs font-medium text-green-700 hover:underline">
             + Add Account
           </button>

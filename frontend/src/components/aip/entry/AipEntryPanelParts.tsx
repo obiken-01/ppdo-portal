@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import { fmtThousands } from "@/lib/aip-units";
 import { AipFigureStrip, AipUnitCaption, type AipRowAmounts } from "./AipRowFigures";
 import { aipRefSegment } from "./AipEntrySelection";
@@ -212,6 +213,11 @@ export function AipInlineAdd({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  // PPDO-166 — a typed-but-not-added name. Before the early returns: hooks cannot follow them.
+  useAipUnsavedChange(open && name.trim() !== "", `a new ${label.replace(/^\+\s*Add\s*/i, "").toLowerCase() || "item"}`, () => {
+    setName("");
+    setOpen(false);
+  });
 
   if (disabled) {
     return (
