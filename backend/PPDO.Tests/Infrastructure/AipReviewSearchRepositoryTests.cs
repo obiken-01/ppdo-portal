@@ -100,6 +100,17 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 is_synthetic INTEGER NOT NULL DEFAULT 0,
                 division_id INTEGER NULL
             );
+            CREATE TABLE aip_division_submissions (
+                id INTEGER PRIMARY KEY,
+                aip_record_id INTEGER NOT NULL,
+                office_id INTEGER NOT NULL,
+                division_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Draft',
+                submitted_at TEXT NULL,
+                submitted_by_user_id TEXT NULL,
+                returned_at TEXT NULL,
+                returned_by_user_id TEXT NULL
+            );
             """);
     }
 
@@ -166,8 +177,62 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
     private static AipProject Project(int id, int programId, string refCode, string name)
         => new() { Id = id, ProgramId = programId, RefCode = refCode, Name = name };
 
-    private static AipActivity Activity(int id, int projectId, string refCode, string name)
-        => new() { Id = id, ProjectId = projectId, RefCode = refCode, Name = name };
+    private static AipActivity Activity(int id, int projectId, string refCode, string name,
+        int? divisionId = null)
+        => new() { Id = id, ProjectId = projectId, RefCode = refCode, Name = name, DivisionId = divisionId };
+
+    // ── PPDO-167: a divisioned office part-way through its division submits ────
+
+    private const int Pto      = 3;
+    private const int AdminDiv = 13;
+    private const int CashDiv  = 14;
+
+    /// <summary>
+    /// The base fixture plus PTO, an office with two divisions, at <paramref name="officeStatus"/>.
+    /// Admin Division has submitted to the department head; Cash has not.
+    ///
+    /// <list type="bullet">
+    /// <item>Program 14 → project 24 (an Admin activity and an untagged one) and project 25 (one
+    /// Admin, one Cash): work that is not all submitted, two different ways.</item>
+    /// <item>Program 15 → project 26 (one Admin activity) and project 27 (no activities): a program
+    /// all of whose work is submitted, beside an empty project that must not count as submitted.</item>
+    /// </list>
+    /// ⚠️ Cash also holds a <c>Submitted</c> row in the OTHER record, which must never leak in.
+    /// </summary>
+    private async Task SeedDivisionedOfficeAsync(string officeStatus)
+    {
+        await SeedAsync();
+        await using AppDbContext ctx = new(_options);
+
+        ctx.Set<AipOffice>().Add(
+            Office(5, Record, "1000-000-1-01-003", "PTO", "GENERAL", Pto, officeStatus));
+        ctx.Set<AipProgram>().AddRange(
+            Program(14, 5, "1000-000-1-01-003-001", "Treasury Program"),
+            Program(15, 5, "1000-000-1-01-003-002", "Collection Program"));
+        ctx.Set<AipProject>().AddRange(
+            Project(24, 14, "1000-000-1-01-003-001-001", "Admin-only project"),
+            Project(25, 14, "1000-000-1-01-003-001-002", "Mixed project"),
+            Project(26, 15, "1000-000-1-01-003-002-001", "Collection project"),
+            Project(27, 15, "1000-000-1-01-003-002-002", "Empty project"));
+        ctx.Set<AipActivity>().AddRange(
+            Activity(34, 24, "1000-000-1-01-003-001-001-001", "Admin activity A", AdminDiv),
+            Activity(35, 25, "1000-000-1-01-003-001-002-001", "Admin activity B", AdminDiv),
+            Activity(36, 25, "1000-000-1-01-003-001-002-002", "Cash activity",    CashDiv),
+            Activity(37, 26, "1000-000-1-01-003-002-001-001", "Admin activity C", AdminDiv),
+            Activity(38, 24, "1000-000-1-01-003-001-001-002", "Untagged activity"));
+        ctx.Set<AipDivisionSubmission>().AddRange(
+            new AipDivisionSubmission { Id = 1, AipRecordId = Record,   OfficeId = Pto, DivisionId = AdminDiv, Status = AipDivisionStatus.Submitted },
+            new AipDivisionSubmission { Id = 2, AipRecordId = Record,   OfficeId = Pto, DivisionId = CashDiv,  Status = AipDivisionStatus.Draft },
+            new AipDivisionSubmission { Id = 3, AipRecordId = OtherRec, OfficeId = Pto, DivisionId = CashDiv,  Status = AipDivisionStatus.Submitted });
+
+        await ctx.SaveChangesAsync();
+    }
+
+    private async Task<Dictionary<string, string>> PtoStatusesAsync()
+    {
+        AipReviewSearchPage page = await Sut().SearchReviewNodesAsync(Query(officeIds: [Pto]));
+        return page.Items.ToDictionary(r => r.Name, r => r.WorkflowStatus);
+    }
 
     private AipRepository Sut() => new(new AppDbContext(_options));
 
@@ -411,6 +476,101 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
         Assert.Equal(3, page.TotalCount);                       // OPA only
         Assert.Equal(3, page.WorkflowStatusCounts[AipWorkflowStatus.Draft]);
         Assert.Equal(6, page.WorkflowStatusCounts[AipWorkflowStatus.SubmittedToPpdo]);
+    }
+
+    // ── PPDO-167: rows follow their division before the office submits ────────
+
+    [Fact]
+    public async Task Search_DraftOffice_ActivityOfASubmittedDivisionReadsAsDepartmentReview()
+    {
+        await SeedDivisionedOfficeAsync(AipWorkflowStatus.Draft);
+
+        Dictionary<string, string> status = await PtoStatusesAsync();
+
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Admin activity A"]);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Admin activity B"]);
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Cash activity"]);
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Untagged activity"]);
+    }
+
+    /// <summary>
+    /// A project or program is with the department head only when EVERY activity under it is —
+    /// one unsubmitted or untagged activity keeps it at the office's status, and so does having no
+    /// activities at all.
+    /// </summary>
+    [Fact]
+    public async Task Search_DraftOffice_ProjectAndProgramNeedEveryActivitySubmitted()
+    {
+        await SeedDivisionedOfficeAsync(AipWorkflowStatus.Draft);
+
+        Dictionary<string, string> status = await PtoStatusesAsync();
+
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Admin-only project"]);   // holds untagged 38
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Mixed project"]);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Collection project"]);
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Empty project"]);
+        Assert.Equal(AipWorkflowStatus.Draft,            status["Treasury Program"]);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Collection Program"]);
+    }
+
+    [Fact]
+    public async Task Search_ReturnedOffice_ResubmittedDivisionReadsAsDepartmentReviewTheRestStayReturned()
+    {
+        await SeedDivisionedOfficeAsync(AipWorkflowStatus.ReturnedByPpdo);
+
+        Dictionary<string, string> status = await PtoStatusesAsync();
+
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Admin activity A"]);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo,   status["Cash activity"]);
+        Assert.Equal(AipWorkflowStatus.DepartmentReview, status["Collection Program"]);
+        Assert.Equal(AipWorkflowStatus.ReturnedByPpdo,   status["Treasury Program"]);
+    }
+
+    /// <summary>
+    /// ⚠️ Division rows stay <c>Submitted</c> after the office goes to PPDO. Past the department
+    /// head the office's own state is the answer, or a submitted division would drag its rows back
+    /// from "With PPDO" to "Office review".
+    /// </summary>
+    [Theory]
+    [InlineData(AipWorkflowStatus.DepartmentReview)]
+    [InlineData(AipWorkflowStatus.SubmittedToPpdo)]
+    [InlineData(AipWorkflowStatus.Consolidated)]
+    public async Task Search_OfficePastTheDivisionStage_EveryRowKeepsTheOfficeStatus(string officeStatus)
+    {
+        await SeedDivisionedOfficeAsync(officeStatus);
+
+        Dictionary<string, string> status = await PtoStatusesAsync();
+
+        Assert.Equal(11, status.Count);
+        Assert.All(status.Values, s => Assert.Equal(officeStatus, s));
+    }
+
+    [Fact]
+    public async Task Search_OfficeReviewFilter_IncludesDivisionSubmittedRows()
+    {
+        await SeedDivisionedOfficeAsync(AipWorkflowStatus.Draft);
+
+        AipReviewSearchPage page = await Sut().SearchReviewNodesAsync(
+            Query(officeIds: [Pto], statuses: [AipWorkflowStatus.DepartmentReview]));
+
+        // Activities A, B, C + Collection project + Collection Program.
+        Assert.Equal(5, page.TotalCount);
+        Assert.All(page.Items, r => Assert.Equal(AipWorkflowStatus.DepartmentReview, r.WorkflowStatus));
+        // The facet counts the same rows the filter returns, and the other six under Draft.
+        Assert.Equal(5, page.WorkflowStatusCounts[AipWorkflowStatus.DepartmentReview]);
+        Assert.Equal(6, page.WorkflowStatusCounts[AipWorkflowStatus.Draft]);
+    }
+
+    [Fact]
+    public async Task Search_DraftFilter_ExcludesDivisionSubmittedRows()
+    {
+        await SeedDivisionedOfficeAsync(AipWorkflowStatus.Draft);
+
+        AipReviewSearchPage page = await Sut().SearchReviewNodesAsync(
+            Query(officeIds: [Pto], statuses: [AipWorkflowStatus.Draft]));
+
+        Assert.Equal(6, page.TotalCount);
+        Assert.DoesNotContain(page.Items, r => r.Name.StartsWith("Admin activity"));
     }
 
     // ── Nothing matches ──────────────────────────────────────────────────────
