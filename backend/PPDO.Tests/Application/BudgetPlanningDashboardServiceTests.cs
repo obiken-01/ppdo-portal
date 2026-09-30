@@ -1873,19 +1873,55 @@ public sealed class BudgetPlanningDashboardServiceTests
         return repo;
     }
 
-    private static async Task<OfficeSummaryDto> GsoDivisionRowAsync(
+    private static Task<OfficeSummaryDto> GsoDivisionRowAsync(
         Mock<IAipDivisionSubmissionRepository> divisions, int fiscalYear = 2028, params AipDivisionRollupDto[] tags)
+        => GsoDivisionRowAsync(divisions, "Draft", fiscalYear, tags);
+
+    private static async Task<OfficeSummaryDto> GsoDivisionRowAsync(
+        Mock<IAipDivisionSubmissionRepository> divisions, string officeStatus, int fiscalYear,
+        params AipDivisionRollupDto[] tags)
     {
         (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
             TwoOfficesWithRefCodes(), canReviewAllOffices: true,
             aips: [Aip(10, fiscalYear, "Draft")],
             aipRepoMock: AipMockWithOffices(10),
-            officeRollups: [GsoGroup(50, "Draft", activities: 5)],
+            officeRollups: [GsoGroup(50, officeStatus, activities: 5)],
             divisionRollups: [.. tags],
             divisionSubmissionRepoMock: divisions);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result = await sut.GetOfficesAsync(caller, fiscalYear);
         return result.Value!.Single(r => r.OfficeCode == "GSO");
+    }
+
+    /// <summary>
+    /// PPDO-169/171 — a PPDO return reopens every division of an office in the division flow, so the
+    /// work is back with its encoders: In Progress, with the Returned badge.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficesAsync_ReturnedOfficeWithDivisions_IsInProgress()
+    {
+        OfficeSummaryDto gso = await GsoDivisionRowAsync(
+            GsoDivisions(), AipWorkflowStatus.ReturnedByPpdo, 2028,
+            new AipDivisionRollupDto(21, 3, 0, 0m),
+            new AipDivisionRollupDto(22, 2, 0, 0m));
+
+        Assert.Equal(AipReadinessColumn.InProgress, gso.ReadinessColumn);
+        Assert.True(gso.IsReturned);
+    }
+
+    /// <summary>
+    /// FY2027 and earlier have no division flow (the entered-year break), so a returned office there
+    /// sits with its department head whatever divisions it has configured.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficesAsync_ReturnedOfficeWithDivisions_BeforeTheEnteredYears_IsOfficeReview()
+    {
+        OfficeSummaryDto gso = await GsoDivisionRowAsync(
+            GsoDivisions(), AipWorkflowStatus.ReturnedByPpdo, 2027,
+            new AipDivisionRollupDto(21, 3, 0, 0m));
+
+        Assert.Equal(AipReadinessColumn.OfficeReview, gso.ReadinessColumn);
+        Assert.True(gso.IsReturned);
     }
 
     [Fact]
@@ -1945,10 +1981,11 @@ public sealed class BudgetPlanningDashboardServiceTests
     [InlineData("Draft",            0, "NotStarted",   "Todo",        false)]
     [InlineData("Draft",            3, "InProgress",   "Todo",        false)]
     [InlineData("DepartmentReview", 3, "OfficeReview", "In progress", false)]
-    // Returned is In Progress with a badge, not a sixth column (PPDO-169): a PPDO return reopens the
-    // office — every division back to Draft — so the work is with its encoders again.
-    [InlineData("ReturnedByPpdo",   3, "InProgress",   "In progress", true)]
-    [InlineData("ReturnedByPpdo",   0, "InProgress",   "In progress", true)]
+    // Returned is a badge, not a sixth column. An office WITHOUT divisions (this fixture) stays in
+    // Office Review: a PPDO return lands with its department head, who re-sends it (PPDO-171). The
+    // divisioned case is In Progress — see GetOfficesAsync_ReturnedOfficeWithDivisions_IsInProgress.
+    [InlineData("ReturnedByPpdo",   3, "OfficeReview", "In progress", true)]
+    [InlineData("ReturnedByPpdo",   0, "OfficeReview", "In progress", true)]
     [InlineData("SubmittedToPpdo",  3, "PpdoReview",   "Review",      false)]
     [InlineData("Consolidated",     3, "Done",         "Done",        false)]
     // A submission state beats the activity count.

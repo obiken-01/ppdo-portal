@@ -274,7 +274,7 @@ function AipEntryPageInner() {
   // after a PPDO return; the lock falls when the work reaches PPDO. Mirrors the server's
   // AipWorkflowStatus.IsOfficeEditable — change both together.
   const canEdit = isOfficeEditable(workflowStatus);
-  const holder = describeAipHolder(workflowStatus);
+  const holder = describeAipHolder(workflowStatus, divisions?.hasDivisions === true);
 
   // PPDO-151 — the server's own department-head test (`IsDepartmentHeadAsync`): Admin/SuperAdmin or
   // the review grant. Only ever about the caller's own office, which is the only one edited here.

@@ -574,7 +574,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 PlanningStage.ForSubmission(figures.WorkflowStatus),
                 ceiling is decimal limit && costed > limit,
                 reviewerByOffice.GetValueOrDefault(office.Id),
-                AipReadinessColumn.For(figures.WorkflowStatus, figures.ActivityCount),
+                // PPDO-171 — an office has a divisionProgress entry exactly when it is in the division
+                // flow (an active division, entered year), which is what a PPDO return reopens.
+                AipReadinessColumn.For(
+                    figures.WorkflowStatus, figures.ActivityCount, divisionProgress.ContainsKey(office.Id)),
                 figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
                 figures.ProgramCount,
                 divisionProgress.TryGetValue(office.Id, out DivisionProgress p) ? p.Submitted : null,
