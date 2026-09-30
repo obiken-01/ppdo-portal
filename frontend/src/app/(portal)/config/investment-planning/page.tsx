@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMe } from "@/lib/me-cache";
 import { configErrorMessage, getDefaultFiscalYear, updateDefaultFiscalYear } from "@/lib/config";
+import { setCachedDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -77,6 +78,8 @@ export default function InvestmentPlanningSettingsPage() {
     setValidation(null);
     try {
       const saved = await updateDefaultFiscalYear({ defaultFiscalYear: year });
+      // PPDO-163 — without this, pages opened next in this tab kept the year cached before the save.
+      setCachedDefaultFiscalYear(saved.defaultFiscalYear ?? null);
       setSetting(saved);
       setInput(saved.defaultFiscalYear?.toString() ?? "");
       if (year === null) toast.success("Default cleared — pages use their own defaults.");

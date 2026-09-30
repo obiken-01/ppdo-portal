@@ -91,7 +91,10 @@ export async function getCeilingUsage(
     "/budget-planning/allocation/ceiling-usage",
     { params: { officeId, fiscalYear } }
   );
-  return unwrap(data);
+  // PPDO-163 — not `unwrap`: a null body is this endpoint's answer, not an empty response. Throwing
+  // on it failed Office Ceilings outright for any year without an AIP record yet. A real failure is
+  // a non-2xx, which axios has already thrown on.
+  return data.data ?? null;
 }
 
 export async function upsertCeiling(body: UpsertCeilingRequest): Promise<BudgetCeilingDto> {
