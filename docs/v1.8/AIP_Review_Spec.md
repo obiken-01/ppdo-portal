@@ -327,7 +327,7 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `sectors` | ✅ OR | `AipOffice.Sector IN (…)` |
 | `refCode` | ✅ OR, typed list or comma | **Prefix** match `LIKE 'x%'` per value — SARGable. ⚠️ Never `LIKE '%x%'` |
 | `title` | ❌ single | Free text over program / project / activity name. ⚠️ **Do not OR-split** — a title may legitimately contain the word "or" |
-| `workflowStatuses` | ✅ OR | Chip filter, mirrors the kanban columns |
+| `workflowStatuses` | ✅ OR | Chip filter, mirrors the kanban columns. ↩️ **Per row since PPDO-167:** while an office is `Draft`/`ReturnedByPpdo`, an activity whose division has submitted reads `DepartmentReview`, and so does a project/program all of whose activities are in submitted divisions; past that stage the office's own state wins |
 | `mine` | — | The "everything applicable to me" tag, scoped by the caller's own permissions |
 
 Fields AND together. **No boolean expressions** (decision 16).
