@@ -180,6 +180,9 @@ export default function AipEntryPage() {
   // PPDO-150 — the untagged "No division" row, from the same payload.
   const [noDivisionRow, setNoDivisionRow] = useState<DivisionSummary | null>(null);
   const [divisionRowsLoading, setDivisionRowsLoading] = useState(true);
+  // PPDO-165 — see the refetch effect below.
+  const [divisionPanelOpen, setDivisionPanelOpen] = useState(false);
+  const [divisionRowsStale, setDivisionRowsStale] = useState(false);
 
   // Only the caller's own office's groups.
   //
@@ -343,21 +346,50 @@ export default function AipEntryPage() {
 
   // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
   // PPDO finance sees every division of this office, anyone else sees only their own division row.
+  const fetchDivisionRows = useCallback(() => {
+    if (officeId == null) return Promise.reject(new Error("No office."));
+    return me?.isHostOffice
+      ? getDashboard(fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }))
+      : getOfficeDashboard(officeId, fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }));
+  }, [officeId, fiscalYear, me?.isHostOffice]);
+
   useEffect(() => {
     if (!yearSettled) return;
     if (officeId == null) { setDivisionRowsLoading(false); return; }
     setDivisionRowsLoading(true);
-    const load = me?.isHostOffice
-      ? getDashboard(fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }))
-      : getOfficeDashboard(officeId, fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }));
-    load
+    setDivisionRowsStale(false);
+    fetchDivisionRows()
       .then(({ rows, none }) => { setDivisionRows(rows); setNoDivisionRow(none); })
       .catch(() => { setDivisionRows([]); setNoDivisionRow(null); })
       .finally(() => setDivisionRowsLoading(false));
-  }, [officeId, fiscalYear, me?.isHostOffice, yearSettled]);
+  }, [officeId, yearSettled, fetchDivisionRows]);
+
+  // PPDO-165 — the panel's Costed / Remaining move with every edit, but its rows come from the
+  // dashboard payload, which is heavier than the readiness call and sits in a panel that is closed
+  // by default. So an edit only marks them stale, and they are refetched while the panel is open —
+  // now, or the next time it is opened. ⚠️ Not through `divisionRowsLoading`: that gate unmounts the
+  // <details>, which would snap an open panel shut under the encoder on every save.
+
+  // ⚠️ Ordered by a counter, not an effect-cleanup `cancelled` flag: clearing `divisionRowsStale`
+  // re-runs this effect, and a cleanup flag then discarded the very response it had just asked for.
+  // The counter drops only a response overtaken by a newer refresh (two quick saves).
+  const divisionRowsRequest = useRef(0);
+  useEffect(() => {
+    if (!divisionRowsStale || !divisionPanelOpen || divisionRowsLoading) return;
+    setDivisionRowsStale(false);
+    const request = ++divisionRowsRequest.current;
+    fetchDivisionRows()
+      .then(({ rows, none }) => {
+        if (request !== divisionRowsRequest.current) return;
+        setDivisionRows(rows);
+        setNoDivisionRow(none);
+      })
+      .catch(() => { /* keep the last figures — stale, not wrong */ });
+  }, [divisionRowsStale, divisionPanelOpen, divisionRowsLoading, fetchDivisionRows]);
 
   async function refreshReadiness() {
     if (!record) return;
+    setDivisionRowsStale(true);
     try { setReadiness(await getAipReadiness(record.id)); } catch { /* checklist stays stale, page works */ }
     // A division's activity count and blockers move with the same edits the checklist does.
     // ⚠️ Only once loaded — a refresh must not replace a Retry prompt with a silent second failure.
@@ -684,7 +716,11 @@ export default function AipEntryPage() {
       {/* PPDO-126, PPDO-127 — collapsed by default (PPDO-89's decluttering). A department head or
           PPDO finance sees every division here; anyone else sees only their own row. */}
       {!divisionRowsLoading && officeId != null && (
-        <details className="mb-4 border border-slate-200 bg-white">
+        <details
+          className="mb-4 border border-slate-200 bg-white"
+          open={divisionPanelOpen}
+          onToggle={(e) => setDivisionPanelOpen(e.currentTarget.open)}
+        >
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-slate-800">
             Division allocations — FY {fiscalYear}
           </summary>
