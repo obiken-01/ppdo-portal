@@ -171,6 +171,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // One flag for both, because CanManageOfficeSetup is deliberately one grant covering all four
   // office-scoped surfaces rather than four flags (D1) — splitting it here would suggest otherwise.
   const showOwnOfficeSetup = !showConfig && me?.canManageOfficeSetup === true;
+  // PPDO-162 — the same rule as the page itself (`config/investment-planning`) and its tile: a
+  // province-wide setting, so a PPDO config holder or a SuperAdmin in any office. Kept out of the
+  // showConfig block because that is gated on !isOfficeUser, which would hide it from a
+  // guest-office SuperAdmin the page lets in.
+  const showInvestmentPlanningSettings =
+    me != null && (me.role === "SuperAdmin" || (me.canManageConfig === true && me.isHostOffice === true));
   // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
   // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
   // GUEST office rather than from non-admins: PPDO planning staff work in it, but a guest office
@@ -507,7 +513,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
-        {(showConfig || showOwnOfficeSetup || showManageUsers || showAuditLog || showApiAccess) && (
+        {(showConfig || showOwnOfficeSetup || showInvestmentPlanningSettings || showManageUsers || showAuditLog || showApiAccess) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
@@ -583,6 +589,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       <span className="truncate">Staff Divisions</span>
                     </Link>
                   </>
+                )}
+                {showInvestmentPlanningSettings && (
+                  <Link href="/config/investment-planning" className={childLinkCls(isActive("/config/investment-planning"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Investment Planning Settings</span>
+                  </Link>
                 )}
                 {showManageUsers && (
                   <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>
