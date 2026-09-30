@@ -125,6 +125,20 @@ public sealed class AppDbContext : DbContext
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
     }
 
+    /// <summary>
+    /// One place that makes every <c>DateTime</c> / <c>DateTime?</c> come back from SQL as
+    /// <see cref="DateTimeKind.Utc"/> (PPDO-164), so it serializes with a "Z" and the browser
+    /// converts it to Manila time instead of reading it as local. A property that needs different
+    /// handling can still override this with its own <c>HasConversion</c>.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
+    }
+
     // ── Audit timestamp interception ──────────────────────────────────────────
 
     /// <summary>
