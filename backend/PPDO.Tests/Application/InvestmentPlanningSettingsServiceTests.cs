@@ -85,6 +85,33 @@ public sealed class InvestmentPlanningSettingsServiceTests
     }
 
     [Fact]
+    public async Task GetDefaultFiscalYearAsync_StoredStampHasNoKind_ReturnsItMarkedUtc()
+    {
+        // PPDO-163 — EF reads a SQL datetime2 back as DateTimeKind.Unspecified, which serializes with
+        // no "Z"; the browser then parsed the UTC stamp as Manila time and showed it 8 hours early.
+        InvestmentPlanningSettings row = Row(2028);
+        row.UpdatedAt = new DateTime(2026, 9, 30, 1, 54, 0, DateTimeKind.Unspecified);
+        (InvestmentPlanningSettingsService sut, _, _) = Build(row);
+
+        DefaultFiscalYearDto result = await sut.GetDefaultFiscalYearAsync();
+
+        Assert.Equal(DateTimeKind.Utc, result.UpdatedAt!.Value.Kind);
+        Assert.Equal(new DateTime(2026, 9, 30, 1, 54, 0, DateTimeKind.Utc), result.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task UpdateDefaultFiscalYearAsync_SameValue_ReturnsTheStoredStampMarkedUtc()
+    {
+        InvestmentPlanningSettings row = Row(2028);
+        row.UpdatedAt = new DateTime(2026, 9, 30, 1, 54, 0, DateTimeKind.Unspecified);
+        (InvestmentPlanningSettingsService sut, _, _) = Build(row);
+
+        ServiceResult<DefaultFiscalYearDto> result = await sut.UpdateDefaultFiscalYearAsync(2028, ActorId);
+
+        Assert.Equal(DateTimeKind.Utc, result.Value!.UpdatedAt!.Value.Kind);
+    }
+
+    [Fact]
     public async Task GetDefaultFiscalYearAsync_SeedRowMissing_ReturnsAllNullsRatherThanThrowing()
     {
         (InvestmentPlanningSettingsService sut, _, _) = Build(row: null);

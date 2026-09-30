@@ -40,6 +40,14 @@ export function fetchDefaultFiscalYear(): Promise<number | null> {
 }
 
 /**
+ * Replaces the cached setting after the config page saves it (PPDO-163), so the pages this tab opens
+ * next use the new year. Other tabs and other users still pick it up on their next full page load.
+ */
+export function setCachedDefaultFiscalYear(value: number | null): void {
+  _cache = { value };
+}
+
+/**
  * The AIP record the WFP pages preselect for the default year (spec §3.3), or null — no default, or
  * no record for it, which leaves each page's own behaviour in place.
  *
