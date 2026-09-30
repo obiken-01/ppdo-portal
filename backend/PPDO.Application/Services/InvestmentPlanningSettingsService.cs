@@ -53,7 +53,7 @@ public sealed class InvestmentPlanningSettingsService : IInvestmentPlanningSetti
         // stricter — see UpdateDefaultFiscalYearAsync.
         return row is null
             ? new DefaultFiscalYearDto(null, null, null)
-            : new DefaultFiscalYearDto(row.DefaultFiscalYear, AsUtc(row.UpdatedAt), row.UpdatedBy?.FullName);
+            : new DefaultFiscalYearDto(row.DefaultFiscalYear, row.UpdatedAt, row.UpdatedBy?.FullName);
     }
 
     /// <inheritdoc />
@@ -76,7 +76,7 @@ public sealed class InvestmentPlanningSettingsService : IInvestmentPlanningSetti
         // last-changed line keeps naming whoever actually changed it.
         if (row.DefaultFiscalYear == defaultFiscalYear)
             return ServiceResult<DefaultFiscalYearDto>.Ok(
-                new DefaultFiscalYearDto(row.DefaultFiscalYear, AsUtc(row.UpdatedAt), row.UpdatedBy?.FullName));
+                new DefaultFiscalYearDto(row.DefaultFiscalYear, row.UpdatedAt, row.UpdatedBy?.FullName));
 
         int? oldFiscalYear = row.DefaultFiscalYear;
         row.DefaultFiscalYear = defaultFiscalYear;
@@ -108,14 +108,6 @@ public sealed class InvestmentPlanningSettingsService : IInvestmentPlanningSetti
         User? actor = await _users.GetByIdAsync(actorId, cancellationToken);
 
         return ServiceResult<DefaultFiscalYearDto>.Ok(
-            new DefaultFiscalYearDto(row.DefaultFiscalYear, AsUtc(row.UpdatedAt), actor?.FullName));
+            new DefaultFiscalYearDto(row.DefaultFiscalYear, row.UpdatedAt, actor?.FullName));
     }
-
-    /// <summary>
-    /// The stamp marked as UTC, which it always is (it is written from <c>UtcDateTime</c>). EF reads a
-    /// SQL <c>datetime2</c> back as <see cref="DateTimeKind.Unspecified"/>, which serializes with no
-    /// "Z", and the browser then parsed it as local (Manila) time — 8 hours early (PPDO-163).
-    /// </summary>
-    private static DateTime? AsUtc(DateTime? value) =>
-        value is DateTime v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
 }
