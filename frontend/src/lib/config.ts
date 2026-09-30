@@ -21,6 +21,7 @@ import type {
   CreateApiKeyRequest,
   CreateApiKeyResult,
   CsvImportResult,
+  DefaultFiscalYearResponse,
   DivisionResponse,
   ClimateChangeTypologyResponse,
   EsreCodeResponse,
@@ -31,6 +32,7 @@ import type {
   PriceIndexPage,
   PriceIndexPickerItem,
   ProcurementPresetResponse,
+  UpdateDefaultFiscalYearRequest,
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertClimateChangeTypologyRequest,
@@ -796,5 +798,28 @@ export async function listApiKeyRequests(id: number, page = 1): Promise<ApiKeyRe
   const { data } = await api.get<ApiResponse<ApiKeyRequestPage>>(`/config/api-keys/${id}/requests`, {
     params: { page },
   });
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Investment Planning settings — /api/config/investment-planning (PPDO-136)
+// ---------------------------------------------------------------------------
+
+/** GET — host-office config managers only (SuperAdmin from anywhere); 403 otherwise. */
+export async function getDefaultFiscalYear(): Promise<DefaultFiscalYearResponse> {
+  const { data } = await api.get<ApiResponse<DefaultFiscalYearResponse>>(
+    "/config/investment-planning/default-fiscal-year",
+  );
+  return unwrap(data);
+}
+
+/** PUT — { defaultFiscalYear: null } clears it. A 400 carries the range message in `error`. */
+export async function updateDefaultFiscalYear(
+  body: UpdateDefaultFiscalYearRequest,
+): Promise<DefaultFiscalYearResponse> {
+  const { data } = await api.put<ApiResponse<DefaultFiscalYearResponse>>(
+    "/config/investment-planning/default-fiscal-year",
+    body,
+  );
   return unwrap(data);
 }

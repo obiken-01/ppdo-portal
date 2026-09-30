@@ -446,3 +446,20 @@ export interface ApiKeyRequestPage {
   items: ApiKeyRequestLogItem[];
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Investment Planning settings — default fiscal year (PPDO-136)
+// ---------------------------------------------------------------------------
+
+/** GET/PUT /api/config/investment-planning/default-fiscal-year. defaultFiscalYear null = unset. */
+export interface DefaultFiscalYearResponse {
+  defaultFiscalYear: number | null;
+  /** UTC; null until first set. */
+  updatedAt: string | null;
+  updatedByName: string | null;
+}
+
+/** null clears the default. */
+export interface UpdateDefaultFiscalYearRequest {
+  defaultFiscalYear: number | null;
+}
