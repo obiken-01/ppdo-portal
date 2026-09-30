@@ -44,15 +44,20 @@ export function isOfficeEditable(status: string): boolean {
  * ⚠️ Names a **holder**, never a bare "read-only". An encoder told only that the page is read-only
  * has no idea who has their work or how to get it back — and UI states are this project's largest
  * fix category to date.
+ *
+ * ↩️ **A PPDO return depends on the division flow (PPDO-171).** In an office with divisions it
+ * reopens every division, so the work is back with the encoders. Without divisions it lands with the
+ * department head, who re-sends it — "with you" told that office's encoder the opposite of the
+ * sentence printed right under it. `inDivisionFlow` is the server's `hasDivisions`.
  */
-export function describeAipHolder(status: string): string {
+export function describeAipHolder(status: string, inDivisionFlow = false): string {
   switch (status) {
     case AIP_WORKFLOW.departmentReview:
       return "your department head";
     case AIP_WORKFLOW.submittedToPpdo:
       return "PPDO";
     case AIP_WORKFLOW.returnedByPpdo:
-      return "you — returned by PPDO";
+      return inDivisionFlow ? "you — returned by PPDO" : "your department head — returned by PPDO";
     case AIP_WORKFLOW.consolidated:
       return "the consolidated AIP";
     default:
