@@ -5,7 +5,7 @@ using PPDO.Domain.Entities;
 
 namespace PPDO.Infrastructure.Data.Configurations;
 
-// snake_case mappings for the nine investment proposal child tables (PPDO-154, spec §5). The FK to
+// snake_case mappings for the eight investment proposal child tables (PPDO-154, spec §5). The FK to
 // investment_proposals and its cascade are configured once, on InvestmentProposalConfiguration.
 
 public sealed class InvestmentProposalBeneficiaryConfiguration : IEntityTypeConfiguration<InvestmentProposalBeneficiary>
@@ -33,7 +33,10 @@ public sealed class InvestmentProposalBenefitConfiguration : IEntityTypeConfigur
 {
     public void Configure(EntityTypeBuilder<InvestmentProposalBenefit> builder)
     {
-        builder.ToTable("investment_proposal_benefits");
+        // The template's five sectors, always all five (spec §4).
+        builder.ToTable("investment_proposal_benefits", t => t.HasCheckConstraint(
+            "CK_investment_proposal_benefits_sector",
+            InvestmentProposalSql.InList("sector", InvestmentProposalSector.All)));
 
         builder.HasKey(b => b.Id);
         builder.Property(b => b.Id).HasColumnName("id");
@@ -151,26 +154,10 @@ public sealed class InvestmentProposalTeamMemberConfiguration : IEntityTypeConfi
         builder.Property(m => m.Sex).HasColumnName("sex").IsRequired().HasMaxLength(1).IsFixedLength().IsUnicode(false);
         builder.Property(m => m.GadTrainings).HasColumnName("gad_trainings").HasMaxLength(1000);
         builder.Property(m => m.Expertise).HasColumnName("expertise").HasMaxLength(500);
+        builder.Property(m => m.RequiredTraining).HasColumnName("required_training").HasMaxLength(1000);
         builder.Property(m => m.SortOrder).HasColumnName("sort_order");
 
         builder.HasIndex(m => m.ProposalId).HasDatabaseName("IX_investment_proposal_team_members_proposal_id");
-    }
-}
-
-public sealed class InvestmentProposalCapacityTrainingConfiguration : IEntityTypeConfiguration<InvestmentProposalCapacityTraining>
-{
-    public void Configure(EntityTypeBuilder<InvestmentProposalCapacityTraining> builder)
-    {
-        builder.ToTable("investment_proposal_capacity_trainings");
-
-        builder.HasKey(c => c.Id);
-        builder.Property(c => c.Id).HasColumnName("id");
-        builder.Property(c => c.ProposalId).HasColumnName("proposal_id");
-        builder.Property(c => c.MemberName).HasColumnName("member_name").IsRequired().HasMaxLength(200);
-        builder.Property(c => c.Training).HasColumnName("training").HasMaxLength(1000);
-        builder.Property(c => c.SortOrder).HasColumnName("sort_order");
-
-        builder.HasIndex(c => c.ProposalId).HasDatabaseName("IX_investment_proposal_capacity_trainings_proposal_id");
     }
 }
 

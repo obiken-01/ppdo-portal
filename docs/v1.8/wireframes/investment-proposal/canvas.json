@@ -29,6 +29,34 @@
       "w": 1120,
       "x": 2560,
       "y": 1300
+    },
+    "Picker.dc.html": {
+      "h": 1520,
+      "title": "5 · Project picker — Fiscal year, Office, Program, Project",
+      "w": 1440,
+      "x": 0,
+      "y": 2700
+    },
+    "SectionG.dc.html": {
+      "h": 1900,
+      "title": "6 · Section G — Work Plan states",
+      "w": 1280,
+      "x": 1520,
+      "y": 2700
+    },
+    "SectionH.dc.html": {
+      "h": 1600,
+      "title": "7 · Section H — Annex H-1 cost preview",
+      "w": 1280,
+      "x": 2880,
+      "y": 2700
+    },
+    "SectionI.dc.html": {
+      "h": 1620,
+      "title": "8 · Section I — Implementing Team",
+      "w": 1280,
+      "x": 4240,
+      "y": 2700
     }
   },
   "createdOnFiles": {
@@ -47,13 +75,25 @@
       "w": 240,
       "x": 0,
       "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 5520,
+      "text": "Picker and sections G · H-1 · I",
+      "w": 240,
+      "x": 0,
+      "y": 2400
     }
   },
   "order": [
     "Main.dc.html",
     "FocusMode.dc.html",
     "SectionStates.dc.html",
-    "AipEntryProject.dc.html"
+    "AipEntryProject.dc.html",
+    "Picker.dc.html",
+    "SectionG.dc.html",
+    "SectionH.dc.html",
+    "SectionI.dc.html"
   ],
   "pages": [],
   "title": "Investment Proposal Editor"

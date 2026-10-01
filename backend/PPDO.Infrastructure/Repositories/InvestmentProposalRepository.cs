@@ -15,7 +15,7 @@ public sealed class InvestmentProposalRepository : IInvestmentProposalRepository
 
     /// <inheritdoc />
     public async Task<InvestmentProposal?> GetByIdAsync(int id, CancellationToken ct = default)
-        // Split query: nine collections in one JOIN would multiply every child row by every other.
+        // Split query: eight collections in one JOIN would multiply every child row by every other.
         // Include depth is 1 throughout.
         => await _context.InvestmentProposals
             .Include(p => p.Beneficiaries)
@@ -24,7 +24,6 @@ public sealed class InvestmentProposalRepository : IInvestmentProposalRepository
             .Include(p => p.Groups)
             .Include(p => p.WorkPlanRows)
             .Include(p => p.TeamMembers)
-            .Include(p => p.CapacityTrainings)
             .Include(p => p.Monitoring)
             .Include(p => p.Risks)
             .AsSplitQuery()

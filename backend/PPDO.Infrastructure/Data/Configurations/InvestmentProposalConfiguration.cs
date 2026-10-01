@@ -59,6 +59,9 @@ public sealed class InvestmentProposalConfiguration : IEntityTypeConfiguration<I
         builder.Property(p => p.Signatory3Label).HasColumnName("signatory3_label").HasMaxLength(100);
         builder.Property(p => p.Signatory3Name).HasColumnName("signatory3_name").HasMaxLength(200);
         builder.Property(p => p.Signatory3Position).HasColumnName("signatory3_position").HasMaxLength(200);
+        builder.Property(p => p.Signatory4Label).HasColumnName("signatory4_label").HasMaxLength(100);
+        builder.Property(p => p.Signatory4Name).HasColumnName("signatory4_name").HasMaxLength(200);
+        builder.Property(p => p.Signatory4Position).HasColumnName("signatory4_position").HasMaxLength(200);
 
         builder.Property(p => p.SnapshotJson).HasColumnName("snapshot_json");
         builder.Property(p => p.FinalizedAt).HasColumnName("finalized_at");
@@ -126,9 +129,6 @@ public sealed class InvestmentProposalConfiguration : IEntityTypeConfiguration<I
             .OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(p => p.TeamMembers).WithOne().HasForeignKey(c => c.ProposalId)
             .HasConstraintName("FK_investment_proposal_team_members_investment_proposals_proposal_id")
-            .OnDelete(DeleteBehavior.Cascade);
-        builder.HasMany(p => p.CapacityTrainings).WithOne().HasForeignKey(c => c.ProposalId)
-            .HasConstraintName("FK_investment_proposal_capacity_trainings_investment_proposals_proposal_id")
             .OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(p => p.Monitoring).WithOne().HasForeignKey(c => c.ProposalId)
             .HasConstraintName("FK_investment_proposal_monitoring_investment_proposals_proposal_id")
