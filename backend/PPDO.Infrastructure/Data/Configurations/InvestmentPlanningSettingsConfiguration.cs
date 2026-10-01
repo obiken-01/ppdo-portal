@@ -28,6 +28,12 @@ namespace PPDO.Infrastructure.Data.Configurations
             builder.Property(s => s.DefaultFiscalYear)
                 .HasColumnName("default_fiscal_year");   // int, nullable — null = unset
 
+            // Investment proposal signatory defaults (PPDO-154). Nullable, no backfill.
+            builder.Property(s => s.PpdcName).HasColumnName("ppdc_name").HasMaxLength(200);
+            builder.Property(s => s.PpdcPosition).HasColumnName("ppdc_position").HasMaxLength(200);
+            builder.Property(s => s.LceName).HasColumnName("lce_name").HasMaxLength(200);
+            builder.Property(s => s.LcePosition).HasColumnName("lce_position").HasMaxLength(200);
+
             builder.Property(s => s.UpdatedAt)
                 .HasColumnName("updated_at");            // datetime2, nullable — null until first set
 

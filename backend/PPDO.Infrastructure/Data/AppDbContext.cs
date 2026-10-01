@@ -108,6 +108,18 @@ public sealed class AppDbContext : DbContext
     // ── v1.8.0 — Division submit to the department head (PPDO-130) ─────────────
     public DbSet<AipDivisionSubmission> AipDivisionSubmissions { get; set; } = null!;
 
+    // ── v1.8.0 Demo 2.15 — Investment proposals (PPDO-154) ───────────────────
+    public DbSet<InvestmentProposal> InvestmentProposals { get; set; } = null!;
+    public DbSet<InvestmentProposalBeneficiary> InvestmentProposalBeneficiaries { get; set; } = null!;
+    public DbSet<InvestmentProposalBenefit> InvestmentProposalBenefits { get; set; } = null!;
+    public DbSet<InvestmentProposalLogframe> InvestmentProposalLogframe { get; set; } = null!;
+    public DbSet<InvestmentProposalGroup> InvestmentProposalGroups { get; set; } = null!;
+    public DbSet<InvestmentProposalWorkPlanRow> InvestmentProposalWorkPlanRows { get; set; } = null!;
+    public DbSet<InvestmentProposalTeamMember> InvestmentProposalTeamMembers { get; set; } = null!;
+    public DbSet<InvestmentProposalCapacityTraining> InvestmentProposalCapacityTrainings { get; set; } = null!;
+    public DbSet<InvestmentProposalMonitoring> InvestmentProposalMonitoring { get; set; } = null!;
+    public DbSet<InvestmentProposalRisk> InvestmentProposalRisks { get; set; } = null!;
+
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 
     public DbSet<PartnerApiKey> PartnerApiKeys { get; set; } = null!;

@@ -25,6 +25,22 @@ namespace PPDO.Domain.Entities
         /// </summary>
         public int? DefaultFiscalYear { get; set; }
 
+        // Investment proposal signatory defaults (PPDO-154, Investment_Proposal_Spec.md decision
+        // 25). Copied into slots 2 and 3 when a proposal is created; null = the slot is created
+        // with its label only. Later edits here never change an existing proposal.
+
+        /// <summary>Slot 2 "Submitted by" default name (the PPDC).</summary>
+        public string? PpdcName { get; set; }
+
+        /// <summary>Slot 2 default position.</summary>
+        public string? PpdcPosition { get; set; }
+
+        /// <summary>Slot 3 "Noted by" default name (the Local Chief Executive).</summary>
+        public string? LceName { get; set; }
+
+        /// <summary>Slot 3 default position.</summary>
+        public string? LcePosition { get; set; }
+
         /// <summary>UTC time of the last change. Null until the setting is first saved.</summary>
         public DateTime? UpdatedAt { get; set; }
 

@@ -11,8 +11,8 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **27 as of 2026-09-29** (PPDO-137,
-PPDO-143, PPDO-147 and PPDO-139 each added one after the release was called complete). The count has drifted six times now (13 → 15 → 23 → 24 → 25 → 26 → 27), so **recheck it rather than trusting any
+v1.8.0 carries migrations that production has never seen — **28 as of 2026-10-01** (PPDO-137,
+PPDO-143, PPDO-147, PPDO-139 and PPDO-154 each added one after the release was called complete). The count has drifted seven times now (13 → 15 → 23 → 24 → 25 → 26 → 27 → 28), so **recheck it rather than trusting any
 number written here**:
 
 ```bash
@@ -32,6 +32,7 @@ All of them are additive (new tables, columns, permission flags) except one:
 | 25 | `20260927060651_AddInvestmentPlanningSettings` (PPDO-143) | Schema, additive — new single-row `investment_planning_settings` table, seeded **unset**. ⚠️ **Must run before the code deploys**: `GET /budget-planning/fiscal-years` reads it, and the dashboard, Office Ceilings and Report load their year through that endpoint |
 | 26 | `20260928024451_AddAipDivisionSubmit` (PPDO-147, PPDO-130 T1) | Schema, additive — new nullable `aip_activities.division_id` and new `aip_division_submissions` table — **plus a backfill**: FY2028+ activities whose program has exactly one active division of their own office in `program_divisions` get that division; everything else stays NULL. No existing value changes. Down drops both, so the tags are lost. ⚠️ **Must run before the code deploys**: every AIP tree read maps `division_id` |
 | 27 | `20260929000622_SeedClimateChangeTypologies` (PPDO-139) | Data — seeds the **LGU typology, JMC 2015-01 (DBM-CCC-DILG) Annex A** from `docs/v1.8/seed/cc_typologies_seed.csv` (286 codes, 282 active). ⚠️ Not JMC 2013-01 — it reuses the same code numbers with different meanings. One `MERGE` on `code`: overwrites name/category/description/is_active of matched codes (**config-page edits are lost** — the CSV is the source of truth) and inserts the rest. A code **outside** the list is **deleted** if no `aip_activities` / `ldip_programs` row carries it, otherwise kept **inactive with its name reset to the code**. Writes only `climate_change_typologies`. Down is a no-op. Verify after: `SELECT COUNT(*), SUM(CAST(is_active AS int)) FROM climate_change_typologies` → 286 / 282, plus any production-only code an activity still carries (inactive, name = code) |
+| 28 | `20261001002343_AddInvestmentProposals` (PPDO-154, Demo 2.15 T1) | Schema, additive — ten new empty `investment_proposal*` tables and four nullable signatory-default columns on `investment_planning_settings` (`ppdc_name`, `ppdc_position`, `lce_name`, `lce_position`). No backfill, and no existing AIP table is altered: `investment_proposal_work_plan_rows` only gains an FK **into** `aip_activities` (cascade), and `investment_proposals.aip_project_id` is `NO ACTION`, so from then on an AIP project with a proposal cannot be deleted. Down drops the tables, empty on first deploy but holding real proposals after that, so take a backup before any later Down. ⚠️ **Run before the code deploys**: the settings read maps the new columns |
 
 ↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
 reversed the office-owned record shape and **dropped** the migration rather than reversing it,
