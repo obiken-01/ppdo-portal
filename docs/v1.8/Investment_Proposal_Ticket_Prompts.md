@@ -178,13 +178,21 @@ AipServiceTests and ReviewerWriteGuardCoverageTests, then implement.
    AipProjectId: {AipProjectId}, UserId: {UserId}" at Information; never log content.
    Sequential awaits only — no Task.WhenAll on the shared DbContext.
    Verify: dotnet test --filter InvestmentProposalServiceTests (spec §11 list, every bullet)
+3b. (Added 2026-10-01, spec decision 29 + §4) ListProjectOptionsAsync(fiscalYear, officeId) for
+   GET /proposals/projects: ONE office, unpaged, ProposalProjectOptionDto[] ordered by program then
+   project ref code. Guest callers pinned to their own office; multi-office callers without an
+   officeId → BadRequest("Choose an office."). One projection query (AIP projects left-joined to
+   investment_proposals on aip_project_id) in the repository — no per-project round trips.
+   Same read scope as the list (division axis included). Red-test the office pin.
+   Verify: dotnet test --filter InvestmentProposalServiceTests
 4. AipService.DeleteProjectAsync → Conflict("This project has an investment proposal. Delete the
    proposal first.") when IInvestmentProposalRepository.ExistsForProjectAsync is true.
    Verify: dotnet test --filter AipServiceTests
 5. Signatory defaults: extend InvestmentPlanningSettingsService with get/update of the four
    columns (audited only on change, as the fiscal-year setting is).
    Verify: dotnet test --filter InvestmentPlanningSettingsServiceTests
-6. Functions: InvestmentProposalFunctions.cs with the §4 routes (all AuthorizationLevel.Anonymous
+6. Functions: InvestmentProposalFunctions.cs with the §4 routes, GET /proposals/projects included
+   (declare it BEFORE GET /proposals/{id} so "projects" never binds as an id; all AuthorizationLevel.Anonymous
    + _jwt.ValidateAsync + CanAccessBudgetPlanningAsync; every write via
    ConfigHttp.AuthorizeWriteAsync; reopen also CanReopenInvestmentProposalAsync). Add the
    signatory-defaults GET/PUT to ConfigInvestmentPlanningFunctions.cs (PUT gated on
@@ -417,8 +425,17 @@ release/1.8.0 (NOT main).
    Verify: npm run dev; walk each §6.1 state (throttle the network for the skeleton).
 3. Sidebar entry "Investment Proposals" after AIP (emoji icon, per DESIGN_SYSTEM.md).
    Verify: a Staff user without Budget Planning access doesn't see it.
+4. (Added 2026-10-01, spec §6.4 + decision 29) AIP Entry's project panel (AipProjectPanel):
+   the "Investment proposal" strip between the project details and its activities. Data: ONE
+   getProposalProjects(fiscalYear, officeId) call (GET /proposals/projects) for the page's office
+   and year, mapped by aipProjectId — never one call per project. States per §6.4: None → Create
+   proposal (create, then open the editor), Draft/Final → status + Open proposal →, cross-office
+   reviewer → View proposal → only, FY 2027 → no strip, loading/error → strip left out silently.
+   Wireframe: docs/v1.8/wireframes/investment-proposal/ artboard 4 (AipEntryProject).
+   Verify: spec §10 "AIP Entry strip" lines, one by one.
 
-Risks and rollback: frontend only; revert is safe.
+Risks and rollback: frontend only; revert is safe. Step 4 touches aip/entry — keep the change to
+the project panel and one fetch on the page.
 
 Do NOT: fetch /auth/me in the page (read the shared user context); use text-slate-700 or
 rounded-lg; build the editor (T7).
@@ -461,9 +478,27 @@ against release/1.8.0 (NOT main).
 1. Extract components/ui/RichTextEditor.tsx from the Announcements toolbar, restricted to bold,
    italic, bullet and ordered lists; switch Announcements to it without changing its toolbar.
    Verify: the Announcements editor still works exactly as before (create + edit an announcement).
-2. Editor shell: sticky header (Save, Export Word, Finalize/Reopen, Delete), A–M rail with
-   unsaved/error dots, section-shaped skeletons, beforeunload + in-app leave confirm, Ctrl+S.
-   Verify: load with network throttled — no layout shift between skeleton and content.
+2. Editor shell — ⚠️ REVISED 2026-10-01, follow spec §6.2 and decisions 24/28/29, and the
+   wireframes in docs/v1.8/wireframes/investment-proposal/ (artboard 1 is the default view):
+   - sticky header: "{n} sections unsaved" chip, Save all (n), Export Word, Finalize (disabled
+     while anything is unsaved) / Reopen, overflow Delete;
+   - selector row: Fiscal year · Office (multi-office callers only) · Program Lookup · Project
+     Lookup (status per option) · Open in AIP Entry ↗ · "One section at a time" switch (ON by
+     default). Data: GET /proposals/projects. ?projectId= with no proposal → Create panel;
+   - left rail A–M + Signatories with status dots (saved / unsaved / from AIP / not started) and
+     the legend;
+   - one section at a time with ← previous / next →; switch off → collapsible cards with one-line
+     summaries, Expand all / Collapse all;
+   - per-section Save section + Discard; a folded dirty card keeps a Save in its header; H and M
+     have no Save. Save section PUTs that section's edits + every other section's LAST-SAVED
+     values (one PUT, one row version — the API does not change);
+   - leaving a dirty section → Save and continue · Discard · Keep editing. Reuse
+     components/aip/entry/AipUnsavedChanges (PPDO-166) — generalise it into components/ui and
+     add the third button rather than copying it; beforeunload for reload/close; Ctrl+S saves the
+     section in view;
+   - section-shaped skeletons.
+   Verify: load with network throttled — no layout shift between skeleton and content; spec §10
+   "Editor layout and saving" lines.
 3. Sections A–F, I–M, signatories (spec §6.2 "Section specifics"): computed totals, live GAD
    budget, "Same as Section A" toggle with confirm, D's cost column label.
    Verify: spec §10 "Content rules" lines, one by one.
@@ -471,7 +506,8 @@ against release/1.8.0 (NOT main).
    "Proposal only" tag, AIP rows tagged "From AIP" with read-only name/timeline/OPR.
    H-1 preview (AnnexH1Preview) rendered from the same grouping.
    Verify: spec §10 "Work plan and cost annex" lines.
-5. States: 409 stale → MessageDialog with Reload / Keep editing (input kept); Final and
+5. States: 409 stale → the section footer turns amber with the §3.1 message, Reload / Keep
+   editing (input kept); Final and
    cross-office-reviewer read-only rendering (text, not disabled inputs; actions hidden);
    activities-without-lines banner; "AIP has changed since finalized" notice.
    Verify: two browser tabs, save in both — the second shows the conflict dialog and keeps text.
@@ -479,9 +515,11 @@ against release/1.8.0 (NOT main).
 Risks and rollback:
 - The RichTextEditor extraction touches components/ui → blast radius includes Announcements;
   step 1's check covers it. Frontend only; revert is safe.
+- Generalising AipUnsavedChanges into components/ui touches AIP Entry → re-run PPDO-166's checks
+  (Done / Change activity / sidebar link / reload) after the move.
 
-Stop and get my sign-off before: merging the components/ui/RichTextEditor extraction (shared
-component).
+Stop and get my sign-off before: merging the components/ui/RichTextEditor extraction or the
+generalised unsaved-changes guard (shared components).
 
 Do NOT: autosave; allow tables/links/colours in rich text; edit AIP-sourced fields; call APIs
 from Server Components.

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investment Proposal — editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.side a { display: block; padding: 8px 16px 8px 32px; color: #D8EBDF; font-size: 14px; text-decoration: none; }
+.side a.on { background: #175C34; color: #FFFFFF; font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; color: #1F7A45; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-draft { background: #FFF3D6; color: #8A5A00; }
+.p-unsaved { background: #FFF3D6; color: #8A5A00; }
+.p-saved { background: #E6F4EC; color: #1F6B3F; }
+.p-auto { background: #E7F0FB; color: #1D4E89; }
+.tag { display: inline-block; padding: 1px 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; background: #E7F0FB; color: #1D4E89; }
+.rail a { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 13px; color: #343A40; text-decoration: none; border-left: 3px solid transparent; }
+.rail a.cur { border-left-color: #1F7A45; background: #FFFFFF; font-weight: 600; }
+.rail .l { width: 18px; font-weight: 700; color: #5A636B; }
+.dot { width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; }
+.d-saved { background: #2F9E5F; }
+.d-unsaved { background: #D98E04; }
+.d-auto { background: #8AB4E8; }
+.d-empty { background: #FFFFFF; border: 1px solid #ADB5BD; }
+.sec { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.sh { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.sh .letter { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #F1F3F5; font-weight: 700; font-size: 14px; color: #343A40; }
+.sh .title { font-size: 15px; font-weight: 600; color: #343A40; }
+.sh .sum { font-size: 13px; color: #5A636B; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 0; background: transparent; cursor: pointer; color: #5A636B; }
+.sb { border-top: 1px solid #E9ECEF; padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+.sf { border-top: 1px solid #E9ECEF; padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: #FAFBFC; }
+.lbl { font-size: 12px; font-weight: 600; color: #5A636B; margin-bottom: 4px; display: block; }
+.help { font-size: 12px; color: #7D858C; margin-top: 4px; font-style: italic; }
+.ro { font-size: 14px; color: #343A40; padding: 7px 0; }
+.inp { width: 100%; height: 36px; border: 1px solid #CED4DA; padding: 0 10px; font-size: 14px; font-family: inherit; color: #343A40; background: #FFFFFF; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 8px 10px; background: #F8F9FA; border-bottom: 1px solid #DEE2E6; }
+table.t td { padding: 8px 10px; border-bottom: 1px solid #F1F3F5; }
+table.t td.r, table.t th.r { text-align: right; }
+.rte { border: 1px solid #CED4DA; }
+.rte .tb { display: flex; gap: 2px; padding: 4px; border-bottom: 1px solid #E9ECEF; background: #F8F9FA; }
+.rte .tb button { width: 30px; height: 28px; border: 0; background: transparent; font-family: inherit; font-size: 13px; color: #343A40; cursor: pointer; }
+.rte .body { padding: 12px 14px; font-size: 14px; line-height: 21px; color: #343A40; min-height: 150px; }
+</style>
+</helmet>
+<div style="width: 1440px; height: 1760px; display: flex;">
+
+  <!-- Portal sidebar -->
+  <nav class="side" style="width: 240px; flex-shrink: 0; background: #1E6B3E; display: flex; flex-direction: column; padding-top: 16px;" aria-label="Portal">
+    <div style="padding: 8px 20px 20px; color: #FFFFFF;">
+      <div style="font-size: 16px; font-weight: 700;">PPDO Portal</div>
+      <div style="font-size: 12px; color: #BFE0CC;">Occ. Mindoro · v1.8.0</div>
+    </div>
+    <div style="padding: 10px 20px; color: #FFFFFF; font-size: 14px; font-weight: 600; background: #175C34;">Investment Planning</div>
+    <a href="#">Dashboard</a>
+    <a href="#">AIP Entry</a>
+    <a class="on" href="#">Investment Proposals</a>
+    <a href="#">Office Ceilings</a>
+  </nav>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <!-- Top bar -->
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #DEE2E6; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; flex-shrink: 0;">
+      <div style="font-size: 14px; color: #5A636B;"><a href="#">Investment Planning</a> › <a href="#">Investment Proposals</a> › <span style="color: #343A40;">001 — Rice Seed Support</span></div>
+      <div style="font-size: 14px; color: #5A636B;">Agriculturist User <span style="font-size: 12px;">(Staff)</span></div>
+    </div>
+
+    <!-- Sticky proposal header -->
+    <div style="background: #FFFFFF; border-bottom: 1px solid #DEE2E6; padding: 16px 28px; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h1 style="margin: 0; font-size: 22px; font-weight: 600; color: #343A40;">PGOM Investment Proposal</h1>
+            <span class="pill p-draft">Draft</span>
+            <span class="pill p-unsaved"><span class="dot d-unsaved"></span>2 sections unsaved</span>
+          </div>
+          <div style="font-size: 14px; color: #5A636B;">FY 2028 · <span style="font-family: Consolas, monospace; font-size: 13px;">1000-000-1-01-015-001-001</span> · Rice Seed Support · Office of the Provincial Agriculturist</div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <button class="btn pri" type="button">Save all (2)</button>
+          <button class="btn" type="button">Export Word</button>
+          <button class="btn" type="button" disabled="" style="color: #ADB5BD;" title="Save every section first">Finalize</button>
+          <button class="btn" type="button" aria-label="More actions">⋯</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; font-size: 13px;">
+        <button class="btn ghost sm" type="button" style="padding: 0;">Expand all</button>
+        <span style="color: #CED4DA;">|</span>
+        <button class="btn ghost sm" type="button" style="padding: 0;">Collapse all</button>
+        <span style="color: #CED4DA;">|</span>
+        <label style="display: inline-flex; align-items: center; gap: 8px; color: #343A40;">
+          <input type="checkbox" style="width: 16px; height: 16px; accent-color: #1F7A45;">
+          Show one section at a time
+        </label>
+        <span style="flex-grow: 1;"></span>
+        <span style="color: #7D858C;">Ctrl+S saves the section you are in</span>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px; min-height: 0;">
+      <!-- Section rail -->
+      <nav class="rail" aria-label="Sections" style="width: 232px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;">
+        <div class="cap" style="padding: 0 12px 8px;">Sections</div>
+        <a href="#"><span class="l">A</span><span style="flex-grow: 1;">Project Summary</span><span class="dot d-saved" title="Saved"></span></a>
+        <a href="#"><span class="l">B</span><span style="flex-grow: 1;">Project Description</span><span class="dot d-saved" title="Saved"></span></a>
+        <a class="cur" href="#"><span class="l">C</span><span style="flex-grow: 1;">Rationale</span><span class="dot d-unsaved" title="Unsaved changes"></span></a>
+        <a href="#"><span class="l">D</span><span style="flex-grow: 1;">Benefits and Costs</span><span class="dot d-saved" title="Saved"></span></a>
+        <a href="#"><span class="l">E</span><span style="flex-grow: 1;">Logical Framework</span><span class="dot d-unsaved" title="Unsaved changes"></span></a>
+        <a href="#"><span class="l">F</span><span style="flex-grow: 1;">Target Beneficiaries</span><span class="dot d-saved" title="Saved"></span></a>
+        <a href="#"><span class="l">G</span><span style="flex-grow: 1;">Work Plan</span><span class="dot d-saved" title="Saved"></span></a>
+        <a href="#"><span class="l">H</span><span style="flex-grow: 1;">Annex H-1 Cost</span><span class="dot d-auto" title="From the AIP"></span></a>
+        <a href="#"><span class="l">I</span><span style="flex-grow: 1;">Implementing Team</span><span class="dot d-empty" title="Not started"></span></a>
+        <a href="#"><span class="l">J</span><span style="flex-grow: 1;">Partnership</span><span class="dot d-empty" title="Not started"></span></a>
+        <a href="#"><span class="l">K</span><span style="flex-grow: 1;">Monitoring &amp; Eval.</span><span class="dot d-empty" title="Not started"></span></a>
+        <a href="#"><span class="l">L</span><span style="flex-grow: 1;">Risk Management</span><span class="dot d-empty" title="Not started"></span></a>
+        <a href="#"><span class="l">M</span><span style="flex-grow: 1;">CC Typology</span><span class="dot d-auto" title="From the AIP"></span></a>
+        <a href="#"><span class="l">✎</span><span style="flex-grow: 1;">Signatories</span><span class="dot d-saved" title="Saved"></span></a>
+        <div style="margin-top: 14px; padding: 12px; border-top: 1px solid #DEE2E6; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #5A636B;">
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="dot d-saved"></span>Saved</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="dot d-unsaved"></span>Unsaved changes</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="dot d-auto"></span>Filled from the AIP</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="dot d-empty"></span>Not started</div>
+        </div>
+      </nav>
+
+      <!-- Sections -->
+      <main style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+        <div style="background: #FFF8E6; border: 1px solid #F2D58A; padding: 10px 14px; font-size: 13px; color: #6B4A00;">
+          <strong>1 activity has no expenditure detail.</strong> Its total is printed in Annex H-1 without a breakdown: <span style="font-family: Consolas, monospace;">…-001-003</span> Field monitoring.
+        </div>
+
+        <!-- A: expanded, saved -->
+        <section class="sec">
+          <div class="sh">
+            <span class="letter">A</span>
+            <span class="title">Project Summary</span>
+            <span class="pill p-saved">Saved 2:14 PM</span>
+            <span style="flex-grow: 1;"></span>
+            <button class="chev" type="button" aria-label="Collapse section A" aria-expanded="true">▾</button>
+          </div>
+          <div class="sb">
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 24px;">
+              <div><span class="lbl">Program title <span class="tag">FROM AIP</span></span><div class="ro">Agricultural Productivity Program</div></div>
+              <div><span class="lbl">Project title <span class="tag">FROM AIP</span></span><div class="ro">Rice Seed Support</div></div>
+              <div><span class="lbl">Proponent <span class="tag">FROM AIP</span></span><div class="ro">Office of the Provincial Agriculturist</div></div>
+              <div><span class="lbl">Schedule <span class="tag">FROM AIP</span></span><div class="ro">January 2028 – December 2028</div></div>
+              <div><span class="lbl">Project cost <span class="tag">FROM AIP</span></span><div class="ro num">PhP 1,250,000.00</div><div class="help" style="font-style: normal;">Full value as encoded. Differs from the rounded figure on the Consolidated AIP.</div></div>
+              <div><span class="lbl">Funding source <span class="tag">FROM AIP</span></span><div class="ro">General Fund</div></div>
+              <div><label class="lbl" for="loc">Project location</label><input id="loc" class="inp" value="Province-wide (11 municipalities)"></div>
+              <div><label class="lbl" for="chk">HGDG checklist used</label><input id="chk" class="inp" value="Box 16 — Agriculture"></div>
+              <div style="display: flex; gap: 12px;">
+                <div style="width: 110px;"><label class="lbl" for="sc">HGDG score</label><input id="sc" class="inp num" value="8.5"></div>
+                <div style="flex-grow: 1;"><span class="lbl">Attributed GAD budget</span><div class="ro num">PhP 625,000.00 <span style="color: #7D858C; font-size: 12px;">(50%)</span></div></div>
+              </div>
+            </div>
+            <div>
+              <span class="lbl">Beneficiaries (disaggregated)</span>
+              <table class="t">
+                <thead><tr><th>Indicator</th><th class="r" style="width: 110px;">Male</th><th class="r" style="width: 110px;">Female</th><th class="r" style="width: 110px;">Total</th></tr></thead>
+                <tbody>
+                  <tr><td>Rice farmers (registered, RSBSA)</td><td class="r num">1,240</td><td class="r num">860</td><td class="r num" style="color: #5A636B;">2,100</td></tr>
+                  <tr><td>Farmer associations</td><td class="r num">—</td><td class="r num">—</td><td class="r num" style="color: #5A636B;">—</td></tr>
+                  <tr><td style="font-weight: 600;">TOTAL</td><td class="r num" style="font-weight: 600;">1,240</td><td class="r num" style="font-weight: 600;">860</td><td class="r num" style="font-weight: 600;">2,100</td></tr>
+                </tbody>
+              </table>
+              <button class="btn ghost sm" type="button" style="padding: 0; margin-top: 6px;">+ Add row</button>
+            </div>
+          </div>
+          <div class="sf">
+            <span style="font-size: 13px; color: #7D858C;">No unsaved changes in this section</span>
+            <span style="flex-grow: 1;"></span>
+            <button class="btn sm" type="button" disabled="" style="color: #ADB5BD;">Save section</button>
+          </div>
+        </section>
+
+        <!-- B: collapsed, saved -->
+        <section class="sec">
+          <div class="sh">
+            <span class="letter">B</span>
+            <span class="title">Project Description</span>
+            <span class="sum">2 paragraphs · started from the AIP project description</span>
+            <span class="pill p-saved">Saved</span>
+            <button class="chev" type="button" aria-label="Expand section B" aria-expanded="false">▸</button>
+          </div>
+        </section>
+
+        <!-- C: expanded, editing (unsaved) -->
+        <section class="sec" style="border-color: #E8B93F;">
+          <div class="sh">
+            <span class="letter">C</span>
+            <span class="title">Rationale / Background</span>
+            <span class="pill p-unsaved"><span class="dot d-unsaved"></span>Unsaved changes</span>
+            <span style="flex-grow: 1;"></span>
+            <button class="chev" type="button" aria-label="Collapse section C" aria-expanded="true">▾</button>
+          </div>
+          <div class="sb">
+            <div>
+              <span class="lbl">Rationale</span>
+              <div class="rte">
+                <div class="tb"><button type="button" style="font-weight: 700;" aria-label="Bold">B</button><button type="button" style="font-style: italic;" aria-label="Italic">I</button><button type="button" aria-label="Bulleted list">•≡</button><button type="button" aria-label="Numbered list">1≡</button></div>
+                <div class="body">
+                  <p style="margin: 0 0 10px;">Rice remains the main crop of 2,100 registered farmers in the province, yet average yield stays below the regional figure because most farms replant saved seed.</p>
+                  <p style="margin: 0;">Distributing certified inbred seed to farmer associations before the wet-season planting lifts yield without new equipment…<span style="border-left: 2px solid #1F7A45; margin-left: 1px;"></span></p>
+                </div>
+              </div>
+              <div class="help">Why the project is needed: the problem, its causes and who is affected. Link it to the SDG and PDP goals it supports.</div>
+            </div>
+          </div>
+          <div class="sf">
+            <span style="font-size: 13px; color: #8A5A00;">Edited just now</span>
+            <span style="flex-grow: 1;"></span>
+            <button class="btn sm" type="button">Discard</button>
+            <button class="btn sm pri" type="button">Save section</button>
+          </div>
+        </section>
+
+        <!-- D–M collapsed -->
+        <section class="sec"><div class="sh"><span class="letter">D</span><span class="title">Project Benefits and Costs</span><span class="sum">3 of 5 sectors filled</span><span class="pill p-saved">Saved</span><button class="chev" type="button" aria-label="Expand section D" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">E</span><span class="title">Logical Framework</span><span class="sum">Goal started from the AIP project objective · 2 of 4 levels filled</span><span class="pill p-unsaved"><span class="dot d-unsaved"></span>Unsaved changes</span><button class="chev" type="button" aria-label="Expand section E" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">F</span><span class="title">Target Beneficiaries</span><span class="sum">Direct: same as Section A · Indirect: 2 rows</span><span class="pill p-saved">Saved</span><button class="chev" type="button" aria-label="Expand section F" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">G</span><span class="title">Implementation Schedule / Work Plan</span><span class="sum">6 activities from the AIP · 2 groups · 2 proposal-only steps</span><span class="pill p-saved">Saved</span><button class="chev" type="button" aria-label="Expand section G" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">H</span><span class="title">Estimated Cost — Annex H-1</span><span class="sum num">PhP 1,250,000.00 · matches Section A</span><span class="pill p-auto">From AIP · nothing to save</span><button class="chev" type="button" aria-label="Expand section H" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">I</span><span class="title">Implementing Team</span><span class="sum">Not started</span><button class="chev" type="button" aria-label="Expand section I" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">J</span><span class="title">Partnership and Sustainability</span><span class="sum">Not started</span><button class="chev" type="button" aria-label="Expand section J" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">K</span><span class="title">Monitoring and Evaluation</span><span class="sum">Not started</span><button class="chev" type="button" aria-label="Expand section K" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">L</span><span class="title">Risk Management</span><span class="sum">Not started</span><button class="chev" type="button" aria-label="Expand section L" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">M</span><span class="title">Climate Change Expenditure Typology</span><span class="sum">A113-01 — Awareness raising of risks from climate change…</span><span class="pill p-auto">From AIP · nothing to save</span><button class="chev" type="button" aria-label="Expand section M" aria-expanded="false">▸</button></div></section>
+        <section class="sec"><div class="sh"><span class="letter">✎</span><span class="title">Signatories</span><span class="sum">Prepared by Agriculturist User · Submitted by [PPDC] · Noted by [Governor]</span><span class="pill p-saved">Saved</span><button class="chev" type="button" aria-label="Expand signatories" aria-expanded="false">▸</button></div></section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
