@@ -116,6 +116,68 @@ public sealed class InvestmentPlanningSettingsService : IInvestmentPlanningSetti
     /// SQL <c>datetime2</c> back as <see cref="DateTimeKind.Unspecified"/>, which serializes with no
     /// "Z", and the browser then parsed it as local (Manila) time — 8 hours early (PPDO-163).
     /// </summary>
+    /// <summary>Longest signatory default, matching the nvarchar(200) columns.</summary>
+    internal const int MaxSignatoryLength = 200;
+
+    public async Task<SignatoryDefaultsDto> GetSignatoryDefaultsAsync(CancellationToken cancellationToken = default)
+    {
+        InvestmentPlanningSettings? row = await _repo.GetAsync(cancellationToken);
+        return row is null
+            ? new SignatoryDefaultsDto(null, null, null, null)
+            : new SignatoryDefaultsDto(row.PpdcName, row.PpdcPosition, row.LceName, row.LcePosition);
+    }
+
+    public async Task<ServiceResult<SignatoryDefaultsDto>> UpdateSignatoryDefaultsAsync(
+        UpdateSignatoryDefaultsDto dto, Guid actorId, CancellationToken cancellationToken = default)
+    {
+        string? ppdcName     = Clean(dto.PpdcName);
+        string? ppdcPosition = Clean(dto.PpdcPosition);
+        string? lceName      = Clean(dto.LceName);
+        string? lcePosition  = Clean(dto.LcePosition);
+
+        if (new[] { ppdcName, ppdcPosition, lceName, lcePosition }.Any(v => v?.Length > MaxSignatoryLength))
+            return ServiceResult<SignatoryDefaultsDto>.BadRequest(
+                $"Each name and position must be {MaxSignatoryLength} characters or fewer.");
+
+        // Same rule as the fiscal year: the row is the migration's to create.
+        InvestmentPlanningSettings row = await _repo.GetAsync(cancellationToken)
+            ?? throw new InvalidOperationException(
+                "investment_planning_settings has no row — has the AddInvestmentPlanningSettings migration run?");
+
+        SignatoryDefaultsDto before = new(row.PpdcName, row.PpdcPosition, row.LceName, row.LcePosition);
+        SignatoryDefaultsDto after  = new(ppdcName, ppdcPosition, lceName, lcePosition);
+        if (before == after)
+            return ServiceResult<SignatoryDefaultsDto>.Ok(before);
+
+        row.PpdcName     = ppdcName;
+        row.PpdcPosition = ppdcPosition;
+        row.LceName      = lceName;
+        row.LcePosition  = lcePosition;
+        row.UpdatedAt    = _clock.GetUtcNow().UtcDateTime;
+        row.UpdatedById  = actorId;
+
+        try
+        {
+            await _repo.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Saving the signatory defaults failed. UserId: {UserId}", actorId);
+            throw;
+        }
+
+        // Names and positions only: they are official titles, not personal contact data.
+        _logger.LogInformation("Investment proposal signatory defaults changed. UserId: {UserId}", actorId);
+        await _audit.LogAsync(
+            "investment_planning_settings", InvestmentPlanningSettings.SingletonId, AuditAction.Update,
+            oldValues: before, newValues: after, cancellationToken);
+
+        return ServiceResult<SignatoryDefaultsDto>.Ok(after);
+    }
+
+    private static string? Clean(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private static DateTime? AsUtc(DateTime? value) =>
         value is DateTime v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
 }

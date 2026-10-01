@@ -273,4 +273,55 @@ public sealed class InvestmentPlanningSettingsServiceTests
 
         audit.VerifyNoOtherCalls();
     }
+
+    // ── Signatory defaults (PPDO-155) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task UpdateSignatoryDefaultsAsync_TrimsSavesAndAudits()
+    {
+        InvestmentPlanningSettings row = Row();
+        (InvestmentPlanningSettingsService sut, Mock<IInvestmentPlanningSettingsRepository> repo, Mock<IAuditService> audit) = Build(row);
+
+        ServiceResult<SignatoryDefaultsDto> result = await sut.UpdateSignatoryDefaultsAsync(
+            new UpdateSignatoryDefaultsDto("  PPDC Name ", "PPDC", " ", "Provincial Governor"), ActorId);
+
+        Assert.Equal(new SignatoryDefaultsDto("PPDC Name", "PPDC", null, "Provincial Governor"), result.Value);
+        Assert.Equal(("PPDC Name", (string?)null), (row.PpdcName, row.LceName));
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+        audit.Verify(a => a.LogAsync("investment_planning_settings", InvestmentPlanningSettings.SingletonId,
+            AuditAction.Update, It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateSignatoryDefaultsAsync_Unchanged_WritesNothing()
+    {
+        InvestmentPlanningSettings row = Row();
+        row.PpdcName = "PPDC Name";
+        (InvestmentPlanningSettingsService sut, Mock<IInvestmentPlanningSettingsRepository> repo, Mock<IAuditService> audit) = Build(row);
+
+        await sut.UpdateSignatoryDefaultsAsync(new UpdateSignatoryDefaultsDto("PPDC Name", null, null, null), ActorId);
+
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+        audit.Verify(a => a.LogAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateSignatoryDefaultsAsync_TooLong_Returns400()
+    {
+        (InvestmentPlanningSettingsService sut, Mock<IInvestmentPlanningSettingsRepository> repo, _) = Build(Row());
+
+        ServiceResult<SignatoryDefaultsDto> result = await sut.UpdateSignatoryDefaultsAsync(
+            new UpdateSignatoryDefaultsDto(new string('x', 201), null, null, null), ActorId);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetSignatoryDefaultsAsync_NoRow_ReturnsAllNulls()
+    {
+        (InvestmentPlanningSettingsService sut, _, _) = Build(null);
+        Assert.Equal(new SignatoryDefaultsDto(null, null, null, null), await sut.GetSignatoryDefaultsAsync());
+    }
 }

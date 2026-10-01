@@ -46,6 +46,7 @@ public sealed class ReviewerWriteGuardCoverageTests
         typeof(AipSubmitFunctions),
         typeof(AipReviewCommentFunctions),
         typeof(AipReviewFunctions),
+        typeof(InvestmentProposalFunctions),   // PPDO-155
     ];
 
     private static readonly string[] WriteVerbs = ["post", "put", "delete", "patch"];

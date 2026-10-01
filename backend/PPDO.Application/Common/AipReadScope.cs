@@ -147,20 +147,33 @@ public sealed class AipReadScope
 
         if (ownAipOfficeIds.Count == 0) return programs;
 
-        // A host Staff member with no division (DivisionId null but DivisionNarrows still true,
-        // since _isHostOfficeCaller carried it) narrows the host's own programs to none. A guest
-        // caller only reaches this branch with a real DivisionId — see DivisionNarrows.
-        HashSet<string> allowed = _division.DivisionId is int divisionId
-            ? ownAssignments
-                .Where(a => a.DivisionId == divisionId)
-                .Select(a => a.ProgramRefCode)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : [];
+        IReadOnlySet<string> allowed = AllowedProgramRefCodes(ownAssignments);
 
         return programs
             .Where(p => !ownAipOfficeIds.Contains(p.OfficeId) || allowed.Contains(p.RefCode))
             .ToList();
     }
+
+    /// <summary>
+    /// The ref codes of the caller's own office's programs that the division axis lets through:
+    /// those assigned to the caller's division. Only meaningful when <see cref="DivisionNarrows"/>.
+    /// <para>
+    /// Exposed so a query that filters in SQL (the investment proposal list, PPDO-155) applies the
+    /// same rule as <see cref="FilterPrograms"/> rather than a copy of it.
+    /// </para>
+    /// <para>
+    /// A host Staff member with no division (DivisionId null but DivisionNarrows still true,
+    /// since _isHostOfficeCaller carried it) is allowed none of the host's own programs. A guest
+    /// caller only narrows with a real DivisionId — see DivisionNarrows.
+    /// </para>
+    /// </summary>
+    public IReadOnlySet<string> AllowedProgramRefCodes(IReadOnlyList<ProgramDivision> ownAssignments)
+        => _division.DivisionId is int divisionId
+            ? ownAssignments
+                .Where(a => a.DivisionId == divisionId)
+                .Select(a => a.ProgramRefCode)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The config office id whose <see cref="ProgramDivision"/> rows

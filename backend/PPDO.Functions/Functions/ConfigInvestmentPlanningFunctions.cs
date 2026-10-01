@@ -36,6 +36,12 @@ namespace PPDO.Functions.Functions
 
         private Task<bool> CanManageSettings(User u) => _permissions.CanManageInvestmentPlanningSettingsAsync(u);
 
+        // Creating a proposal reads the signatory defaults, so any Budget Planning user may read
+        // them (PPDO-155, spec §4). Only the settings manager may change them.
+        private async Task<bool> CanReadSignatoryDefaults(User u)
+            => await _permissions.CanManageInvestmentPlanningSettingsAsync(u)
+            || await _permissions.CanAccessBudgetPlanningAsync(u);
+
         // ── GET /api/config/investment-planning/default-fiscal-year ──
         [Function("InvestmentPlanningDefaultFiscalYearGet")]
         public async Task<HttpResponseData> GetDefaultFiscalYear(
@@ -72,6 +78,42 @@ namespace PPDO.Functions.Functions
 
             return await ConfigHttp.FromResultAsync(req,
                 await _settings.UpdateDefaultFiscalYearAsync(body.DefaultFiscalYear, caller!.Id, ct), ct);
+        }
+
+        // ── GET /api/config/investment-planning/signatory-defaults (PPDO-155) ──
+        [Function("InvestmentPlanningSignatoryDefaultsGet")]
+        public async Task<HttpResponseData> GetSignatoryDefaults(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/investment-planning/signatory-defaults")]
+            HttpRequestData req,
+            CancellationToken ct)
+        {
+            (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanReadSignatoryDefaults, ct);
+            if (denied is not null) return denied;
+
+            SignatoryDefaultsDto data = await _settings.GetSignatoryDefaultsAsync(ct);
+            return await ConfigHttp.EnvelopeAsync(
+                req, HttpStatusCode.OK, ApiResponse<SignatoryDefaultsDto>.Ok(data), ct);
+        }
+
+        // ── PUT /api/config/investment-planning/signatory-defaults (PPDO-155) ──
+        // Body: { ppdcName, ppdcPosition, lceName, lcePosition } — blank clears a value.
+        [Function("InvestmentPlanningSignatoryDefaultsUpdate")]
+        public async Task<HttpResponseData> UpdateSignatoryDefaults(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "config/investment-planning/signatory-defaults")]
+            HttpRequestData req,
+            CancellationToken ct)
+        {
+            (User? caller, HttpResponseData? denied) =
+                await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManageSettings, ct);
+            if (denied is not null) return denied;
+
+            UpdateSignatoryDefaultsDto? body = await ConfigHttp.ReadBodyAsync<UpdateSignatoryDefaultsDto>(req, ct);
+            if (body is null)
+                return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                    ApiResponse<SignatoryDefaultsDto>.Fail("Request body is missing or malformed."), ct);
+
+            return await ConfigHttp.FromResultAsync(req,
+                await _settings.UpdateSignatoryDefaultsAsync(body, caller!.Id, ct), ct);
         }
     }
 }

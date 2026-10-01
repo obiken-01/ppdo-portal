@@ -169,4 +169,19 @@ public interface IPermissionService
     /// not copy that shape here.
     /// </summary>
     Task<bool> CanManageInvestmentPlanningSettingsAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may reopen a Final investment proposal of the config office
+    /// <paramref name="officeId"/> back to Draft (v1.8.0 Demo 2.15 — PPDO-155, spec decision 5).
+    ///
+    /// SuperAdmin: always. Admin: only in the host office. Otherwise the department head
+    /// (<see cref="CanReviewBudgetPlanningAsync"/>) of THAT office only. Encoders can finalize but
+    /// not reopen, so "Final" means something.
+    ///
+    /// ⚠️ <b>"That office" is <c>users.office_id == officeId</c>, never <c>OfficeScope.Resolve</c></b>
+    /// (Permission_Matrix.md §4a). A host-office department head resolves to SeeAll and would
+    /// otherwise gain reopen over every office in the province. Pinned by
+    /// <c>PermissionMatrixTests.HostOfficeDeptHead_CannotReopenAnotherOffice</c>.
+    /// </summary>
+    Task<bool> CanReopenInvestmentProposalAsync(User user, int officeId, CancellationToken cancellationToken = default);
 }
