@@ -90,6 +90,16 @@ public sealed class InvestmentProposalDocumentBuilderTests
     }
 
     [Fact]
+    public void FileName_IsAtMost120Characters()
+    {
+        ProposalDto dto = Proposal([]);
+        dto = dto with { Header = dto.Header with { ProjectTitle = new string('x', 300) } };
+        string name = Build(dto).FileName;
+        Assert.Equal(120, name.Length);
+        Assert.EndsWith(".docx", name);
+    }
+
+    [Fact]
     public void SectionA_ProjectTypeIsBlank_AndChecklistPrintsItsName()
     {
         ProposalDto dto = Proposal([Activity(1, "A", Line("TEV", mooe: 100m))],

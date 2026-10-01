@@ -208,3 +208,8 @@ public sealed record ProposalExistsDto(int ProposalId);
 
 /// <summary>The data of a validation 400: messages keyed by field path, e.g. <c>teamMembers[2].sex</c>.</summary>
 public sealed record ProposalValidationErrorsDto(IReadOnlyDictionary<string, IReadOnlyList<string>> Errors);
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+/// <summary>The Word file of <c>GET /proposals/{id}/export</c> (PPDO-158).</summary>
+public sealed record ProposalExportFileDto(string FileName, byte[] Content);
