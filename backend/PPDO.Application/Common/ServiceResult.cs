@@ -19,11 +19,19 @@ public sealed class ServiceResult<T>
     /// <summary>Machine-readable error category for HTTP status mapping.</summary>
     public ServiceErrorCode Code { get; }
 
-    private ServiceResult(T? value, string? error, ServiceErrorCode code)
+    /// <summary>
+    /// Optional data that goes with an error, sent as the envelope's <c>data</c> (PPDO-155): the
+    /// stale-version 409's <c>{ currentRowVersion, updatedByName, updatedAt }</c>, or a 400's
+    /// field errors. Null for every error that has none, which is every error before PPDO-155.
+    /// </summary>
+    public object? ErrorDetails { get; }
+
+    private ServiceResult(T? value, string? error, ServiceErrorCode code, object? errorDetails = null)
     {
-        Value = value;
-        Error = error;
-        Code  = code;
+        Value        = value;
+        Error        = error;
+        Code         = code;
+        ErrorDetails = errorDetails;
     }
 
     // ── Factory methods ────────────────────────────────────────────────────────
@@ -37,11 +45,11 @@ public sealed class ServiceResult<T>
     public static ServiceResult<T> Forbidden(string error)
         => new(default, error, ServiceErrorCode.Forbidden);
 
-    public static ServiceResult<T> Conflict(string error)
-        => new(default, error, ServiceErrorCode.Conflict);
+    public static ServiceResult<T> Conflict(string error, object? details = null)
+        => new(default, error, ServiceErrorCode.Conflict, details);
 
-    public static ServiceResult<T> BadRequest(string error)
-        => new(default, error, ServiceErrorCode.BadRequest);
+    public static ServiceResult<T> BadRequest(string error, object? details = null)
+        => new(default, error, ServiceErrorCode.BadRequest, details);
 
     /// <summary>
     /// Propagates an error from a <see cref="ServiceResult{TSource}"/> of a different type.
@@ -50,7 +58,7 @@ public sealed class ServiceResult<T>
     /// Only valid when <paramref name="source"/> is not successful.
     /// </summary>
     public static ServiceResult<T> FromError<TSource>(ServiceResult<TSource> source)
-        => new(default, source.Error, source.Code);
+        => new(default, source.Error, source.Code, source.ErrorDetails);
 }
 
 /// <summary>Machine-readable error categories for HTTP status mapping.</summary>

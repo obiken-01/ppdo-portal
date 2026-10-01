@@ -191,6 +191,21 @@ public sealed class PermissionService : IPermissionService
     }
 
     /// <summary>SuperAdmin and Admin get all standard feature flags by default.</summary>
+    /// <inheritdoc />
+    public async Task<bool> CanReopenInvestmentProposalAsync(
+        User user, int officeId, CancellationToken cancellationToken = default)
+    {
+        if (user.Role is UserRole.SuperAdmin) return true;
+        // A host-office Admin reopens any office's proposal; a guest-office Admin falls through to
+        // the department-head rule below, like anyone else.
+        if (user.Role is UserRole.Admin && OfficeScope.IsHostOfficeUser(user)) return true;
+
+        // ⚠️ The caller's own office, compared directly — NOT OfficeScope.Resolve, which answers
+        // SeeAll for any host-office user (Permission_Matrix.md §4a).
+        return user.OfficeId == officeId
+               && await CanReviewBudgetPlanningAsync(user, cancellationToken);
+    }
+
     private static bool IsAdminOrAbove(User user)
         => user.Role is UserRole.SuperAdmin or UserRole.Admin;
 }

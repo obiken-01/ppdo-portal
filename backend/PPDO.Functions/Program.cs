@@ -168,6 +168,7 @@ var host = new HostBuilder()
         // registered explicitly so the service never relies on its optional-parameter fallback.
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IInvestmentPlanningSettingsService, InvestmentPlanningSettingsService>();
+        services.AddScoped<IInvestmentProposalService, InvestmentProposalService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();

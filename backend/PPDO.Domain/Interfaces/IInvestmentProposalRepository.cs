@@ -6,14 +6,32 @@ namespace PPDO.Domain.Interfaces;
 /// Repository for <see cref="InvestmentProposal"/> and its child rows (PPDO-154,
 /// <c>docs/v1.8/Investment_Proposal_Spec.md</c> §5 "Repository").
 ///
-/// <para>
-/// The list and project-picker projections (<c>GET /proposals</c>, <c>GET /proposals/projects</c>)
-/// are added with the service in PPDO-155: they take the caller's read scope and return its DTOs,
-/// and both are designed there.
-/// </para>
 /// </summary>
 public interface IInvestmentProposalRepository
 {
+    /// <summary>
+    /// AIP projects with their proposal status, for the list page and the project picker
+    /// (PPDO-155, spec §4). One projection query: projects joined to their program and AIP
+    /// office, left-joined to <c>investment_proposals</c> on the unique project id. Ordered by
+    /// office, program and project ref code.
+    /// <para>
+    /// ⚠️ The query applies only the scope it is given. The service resolves the caller's office
+    /// and division scope into <paramref name="query"/>; this method never reads a user.
+    /// </para>
+    /// </summary>
+    Task<ProposalProjectPage> ListProjectsAsync(ProposalProjectQuery query, CancellationToken ct = default);
+
+    /// <summary>Whether any of these projects has a proposal: the delete guard for programs and offices.</summary>
+    Task<bool> ExistsForAnyProjectAsync(IReadOnlyList<int> aipProjectIds, CancellationToken ct = default);
+
+    /// <summary>Funding-source names for fund codes (Source of Fund, decision 17). Codes with no row are left out.</summary>
+    Task<IReadOnlyDictionary<string, string>> GetFundNamesByCodesAsync(
+        IReadOnlyList<string> codes, CancellationToken ct = default);
+
+    /// <summary>Climate change typology names for codes (Section M, decision 13). Codes with no row are left out.</summary>
+    Task<IReadOnlyDictionary<string, string>> GetTypologyNamesByCodesAsync(
+        IReadOnlyList<string> codes, CancellationToken ct = default);
+
     /// <summary>
     /// One proposal with every child collection, <b>tracked</b> so an update or delete can work on
     /// it in place. Null when there is none. Scope is the caller's job: check the project's office
@@ -56,3 +74,41 @@ public interface IInvestmentProposalRepository
     /// </summary>
     Task SaveChangesAsync(CancellationToken ct = default);
 }
+
+/// <summary>
+/// An already-scoped filter for <see cref="IInvestmentProposalRepository.ListProjectsAsync"/>.
+/// <para>
+/// ⚠️ <b>Every value here is the caller's scope, resolved by the service.</b>
+/// <see cref="AipOfficeIds"/> null means every AIP office of the record (a caller who sees all
+/// offices). The division axis is the pair below: a program of an office in
+/// <see cref="NarrowedAipOfficeIds"/> is listed only when its ref code is in
+/// <see cref="AllowedProgramRefCodes"/>, the same rule as <c>AipReadScope.FilterPrograms</c>.
+/// </para>
+/// </summary>
+public sealed record ProposalProjectQuery(
+    int                   AipRecordId,
+    IReadOnlyList<int>?   AipOfficeIds,
+    IReadOnlyList<int>    NarrowedAipOfficeIds,
+    IReadOnlyList<string> AllowedProgramRefCodes,
+    string?               Search,
+    int                   Skip,
+    int?                  Take);
+
+/// <summary>One AIP project and its proposal, if any (spec §4, both list shapes).</summary>
+public sealed record ProposalProjectRow(
+    int       AipProjectId,
+    string    ProjectRefCode,
+    string    ProjectName,
+    int       ProgramId,
+    string    ProgramRefCode,
+    string    ProgramName,
+    int       AipOfficeId,
+    string    OfficeName,
+    decimal   ProjectCost,
+    int?      ProposalId,
+    string?   ProposalStatus,
+    DateTime? UpdatedAt,
+    string?   UpdatedByName);
+
+/// <summary>A page of <see cref="ProposalProjectRow"/>. <see cref="TotalCount"/> counts the whole match.</summary>
+public sealed record ProposalProjectPage(IReadOnlyList<ProposalProjectRow> Items, int TotalCount);

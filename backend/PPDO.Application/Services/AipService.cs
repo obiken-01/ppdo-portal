@@ -49,6 +49,10 @@ public sealed class AipService : IAipService
     private readonly IAipDivisionLock               _divisionLock;
     // PPDO-150 — a re-tag moves the activity's ceiling reservation to its new division.
     private readonly IAipCeilingService             _ceiling;
+    // PPDO-155 — a project, program or office holding an investment proposal is not deleted
+    // (proposal decision 26). The proposal FK is NO ACTION, so without this check the delete
+    // would fail at the database as a 500.
+    private readonly IInvestmentProposalRepository  _proposals;
     private readonly ILogger<AipService>            _logger;
 
     public AipService(
@@ -71,8 +75,10 @@ public sealed class AipService : IAipService
         IAipReviewCommentRepository commentRepo,
         IAipDivisionLock divisionLock,
         IAipCeilingService ceiling,
+        IInvestmentProposalRepository proposals,
         ILogger<AipService> logger)
     {
+        _proposals    = proposals;
         _ceiling      = ceiling;
         _divisionLock = divisionLock;
         _ledgerRepo  = ledgerRepo;
@@ -1580,6 +1586,9 @@ public sealed class AipService : IAipService
         // PPDO-148 — the cascade reaches every division's work, so the container rule applies.
         if (div.RefuseContainerDelete(officeActivities.Select(a => a.DivisionId), "office") is string heldOffice)
             return ServiceResult<bool>.BadRequest(heldOffice);
+        if (await _proposals.ExistsForAnyProjectAsync(officeProjects.Select(j => j.Id).ToList(), ct))
+            return ServiceResult<bool>.Conflict(
+                "This office has a project with an investment proposal. Delete the proposal first.");
         List<int> officeActivityIds = officeActivities.Select(a => a.Id).ToList();
 
         await _activityRepo.ExecuteInTransactionAsync(async () =>
@@ -1615,6 +1624,9 @@ public sealed class AipService : IAipService
             await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(j => j.Id).ToList(), ct);
         if (div.RefuseContainerDelete(activities.Select(a => a.DivisionId), "program") is string heldProgram)
             return ServiceResult<AipDeleteResultDto>.BadRequest(heldProgram);
+        if (await _proposals.ExistsForAnyProjectAsync(projects.Select(j => j.Id).ToList(), ct))
+            return ServiceResult<AipDeleteResultDto>.Conflict(
+                "This program has a project with an investment proposal. Delete the proposal first.");
 
         // Programs never renumber — their codes are the LDIP's.
         return await DeleteNodeAsync(
@@ -1623,6 +1635,10 @@ public sealed class AipService : IAipService
             async () => { await _programRepo.DeleteAsync(program, ct); await _programRepo.SaveChangesAsync(ct); },
             renumber: null, ct);
     }
+
+    /// <summary>Investment proposal decision 26, word for word.</summary>
+    public const string DeleteProjectHasProposalMessage =
+        "This project has an investment proposal. Delete the proposal first.";
 
     public async Task<ServiceResult<AipDeleteResultDto>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
     {
@@ -1644,6 +1660,8 @@ public sealed class AipService : IAipService
         IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync([project.Id], ct);
         if (div.RefuseContainerDelete(activities.Select(a => a.DivisionId), "project") is string heldProject)
             return ServiceResult<AipDeleteResultDto>.BadRequest(heldProject);
+        if (await _proposals.ExistsForAnyProjectAsync([project.Id], ct))
+            return ServiceResult<AipDeleteResultDto>.Conflict(DeleteProjectHasProposalMessage);
         bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
         return await DeleteNodeAsync(

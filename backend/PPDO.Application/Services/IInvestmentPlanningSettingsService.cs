@@ -19,4 +19,15 @@ public interface IInvestmentPlanningSettingsService
     /// </summary>
     Task<ServiceResult<DefaultFiscalYearDto>> UpdateDefaultFiscalYearAsync(
         int? defaultFiscalYear, Guid actorId, CancellationToken cancellationToken = default);
+
+    /// <summary>The investment proposal signatory defaults (PPDO-155, decision 25). All null when unset.</summary>
+    Task<SignatoryDefaultsDto> GetSignatoryDefaultsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the four signatory defaults. Values are trimmed; a blank one clears it. Rejects any
+    /// value over 200 characters. As with the fiscal year, an unchanged save writes nothing and
+    /// logs no audit row.
+    /// </summary>
+    Task<ServiceResult<SignatoryDefaultsDto>> UpdateSignatoryDefaultsAsync(
+        UpdateSignatoryDefaultsDto dto, Guid actorId, CancellationToken cancellationToken = default);
 }

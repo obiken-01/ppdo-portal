@@ -107,7 +107,8 @@ public sealed partial class AipServiceTests
             Mock<IAipAllocationLedgerRepository>? ledgerRepo = null,
             AipDivisionLockFixture? divisions = null,
             List<ProgramDivision>? programDivisionSeed = null,
-            Mock<IAipCeilingService>? ceiling = null)
+            Mock<IAipCeilingService>? ceiling = null,
+            Mock<IInvestmentProposalRepository>? proposals = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IRepository<FundingSource>> fsRepo   = new();
@@ -321,6 +322,7 @@ public sealed partial class AipServiceTests
             // PPDO-148 — the real lock; no divisions unless the test seeds some.
             (divisions ?? new AipDivisionLockFixture()).Build(aipRepo.Object, new PermissionService()),
             ceiling?.Object ?? new Mock<IAipCeilingService>().Object,
+            proposals?.Object ?? new Mock<IInvestmentProposalRepository>().Object,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,

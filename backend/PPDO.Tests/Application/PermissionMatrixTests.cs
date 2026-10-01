@@ -50,6 +50,9 @@ public sealed class PermissionMatrixTests
         ["CanManageApiKeys"]        = (s, u) => s.CanManageApiKeysAsync(u),
         ["CanManageOfficeSetup"]    = (s, u) => s.CanManageOfficeSetupAsync(u),
         ["CanManageInvestmentPlanningSettings"] = (s, u) => s.CanManageInvestmentPlanningSettingsAsync(u),
+        // Per office: the grid asks about the caller's OWN office. The other-office rows, which are
+        // the point of this flag, are CanReopenInvestmentProposal_AnotherOffice below.
+        ["CanReopenInvestmentProposal"] = (s, u) => s.CanReopenInvestmentProposalAsync(u, u.OfficeId ?? 0),
     };
 
     /// <summary>The five flags that follow the plain role-bypass / override / division chain.</summary>
@@ -147,6 +150,20 @@ public sealed class PermissionMatrixTests
         rows.Add(ips, UserRole.Staff,      false, true,  true,  false);
         rows.Add(ips, UserRole.Staff,      true,  true,  false, false);  // guest office: never, however set
 
+        // ── CanReopenInvestmentProposal, own office (PPDO-155) ────────────────
+        // SuperAdmin; host-office Admin; otherwise the office's own department head. The override
+        // input is CanReviewBudgetPlanning's. The division flag plays no part.
+        const string reopen = "CanReopenInvestmentProposal";
+        rows.Add(reopen, UserRole.SuperAdmin, null,  false, true,  true);
+        rows.Add(reopen, UserRole.SuperAdmin, null,  false, false, true);
+        rows.Add(reopen, UserRole.Admin,      null,  false, true,  true);
+        rows.Add(reopen, UserRole.Admin,      null,  false, false, false);  // guest-office Admin: not by role
+        rows.Add(reopen, UserRole.Admin,      true,  false, false, true);   // ...but as their office's dept head
+        rows.Add(reopen, UserRole.Staff,      null,  true,  true,  false);  // encoders finalize, never reopen
+        rows.Add(reopen, UserRole.Staff,      true,  false, true,  true);
+        rows.Add(reopen, UserRole.Staff,      true,  false, false, true);
+        rows.Add(reopen, UserRole.Staff,      false, false, false, false);
+
         return rows;
     }
 
@@ -210,6 +227,33 @@ public sealed class PermissionMatrixTests
         user.Office   = null;
 
         Assert.Equal(expected, await _sut.CanManageInvestmentPlanningSettingsAsync(user));
+    }
+
+    /// <summary>
+    /// Reopen is per office, and the office is the caller's own, compared directly — never
+    /// <c>OfficeScope.Resolve</c>, which answers SeeAll for a host-office user (Permission_Matrix.md
+    /// §4a). Without that, a PPDO department head would reopen every office's proposals.
+    /// </summary>
+    [Fact]
+    public async Task HostOfficeDeptHead_CannotReopenAnotherOffice()
+    {
+        User head = MakeUser("CanReopenInvestmentProposal", UserRole.Staff, true, false, isHostOffice: true);
+
+        Assert.True(await _sut.CanReopenInvestmentProposalAsync(head, HostOfficeId));
+        Assert.False(await _sut.CanReopenInvestmentProposalAsync(head, GuestOfficeId));
+    }
+
+    [Theory]
+    [InlineData(UserRole.SuperAdmin, true,  true)]    // support access, any office
+    [InlineData(UserRole.Admin,      true,  true)]    // host-office Admin: any office
+    [InlineData(UserRole.Admin,      false, false)]   // guest-office Admin: not another office
+    [InlineData(UserRole.Staff,      false, false)]   // guest dept head: own office only
+    public async Task CanReopenInvestmentProposal_AnotherOffice(UserRole role, bool isHostOffice, bool expected)
+    {
+        User user = MakeUser("CanReopenInvestmentProposal", role, true, false, isHostOffice);
+        int otherOffice = isHostOffice ? GuestOfficeId : HostOfficeId;
+
+        Assert.Equal(expected, await _sut.CanReopenInvestmentProposalAsync(user, otherOffice));
     }
 
     // ── §3.2 The AIP division lock (PPDO-148) ─────────────────────────────────
@@ -322,6 +366,7 @@ public sealed class PermissionMatrixTests
             case "CanManageOfficeCeilings":
                 user.OverrideCanManageOfficeCeilings = overrideValue; break;
             case "CanReviewBudgetPlanning":
+            case "CanReopenInvestmentProposal":   // reads the department-head grant
                 user.OverrideCanReviewBudgetPlanning = overrideValue; break;
             case "CanReviewAllOffices":
                 user.OverrideCanReviewAllOffices = overrideValue; break;

@@ -375,8 +375,10 @@ missing/out of scope · 409 "This project already has a proposal." with `data.pr
 
 ```
 {
-  id, status, rowVersion (base64), finalizedAt?, finalizedByName?, aipChangedSinceFinal (bool),
-  header: { fiscalYear, programTitle, projectTitle, proponent, scheduleStart, scheduleEnd,
+  id, status, rowVersion (base64), finalizedAt?, finalizedByName?, updatedAt, updatedByName?,
+  aipChangedSinceFinal (bool), canEdit (bool), canReopen (bool),   // PPDO-155: what the caller may do now
+  header: { aipProjectId, programId, aipOfficeId, officeId?,   // PPDO-155: for the picker and Open in AIP Entry
+            fiscalYear, programTitle, projectRefCode, projectTitle, proponent, scheduleStart, scheduleEnd,
             projectCost, fundingSources: string[], climateTypology, attributedGadBudget? },
   warnings: { activitiesWithoutLines: [{ activityId, refCode, name }] },
   content: {                                   // everything the user edits (PUT body)
@@ -414,7 +416,9 @@ missing/out of scope · 409 "This project already has a proposal." with `data.pr
 Request `{ rowVersion, content }`, where `content` has the shape above. Child collections are
 **replaced** (rows missing from the body are deleted). 200 → `ProposalDto`.
 
-Validation (400, `{ error: "Validation failed", errors: { "<path>": ["<message>"] } }`):
+Validation (400, `{ error: "Validation failed", data: { errors: { "<path>": ["<message>"] } } }`, the
+same `data` slot the stale-version 409 uses; ↩️ PPDO-155 moved `errors` under `data` so one envelope
+shape carries both). A completely blank table row is skipped, not reported, and dropped on save:
 
 | Field | Rule | Message |
 |---|---|---|
@@ -491,7 +495,7 @@ Migration: **`AddInvestmentProposals`** — ⚠️ MIGRATION. All new tables are
 | `signatory{1,2,3,4}_label` | nvarchar(100) | yes | twelve signatory columns in all, flat. Always exactly four slots (decision 19). Slot 4 added by `AlignInvestmentProposalsWithTemplate` |
 | `signatory{1,2,3,4}_name` | nvarchar(200) | yes | |
 | `signatory{1,2,3,4}_position` | nvarchar(200) | yes | |
-| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4, serialized with `"schemaVersion": 1`. Readers must accept every version ever written. Null while Draft |
+| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4 and the typed `workPlan` rows, serialized with `"schemaVersion": 2`. Readers must accept every version ever written (version 1 has no `workPlan`; the stored rows are used then). Null while Draft. ↩️ PPDO-155: `workPlan` added so an activity deleted after Finalize keeps its Section G text in the Final document |
 | `finalized_at` | datetime2 | yes | UTC |
 | `finalized_by_id` | uniqueidentifier | yes | FK → Users, `SET NULL` |
 | `created_at` / `updated_at` | datetime2 | no | UTC |

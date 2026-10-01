@@ -113,6 +113,27 @@ moves every office's Investment Planning pages — so it is PPDO's to set, not a
 > role — is refused. Only SuperAdmin skips the office check. Pinned by the matrix rows and by
 > `CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin`.
 
+### 2.3b `CanReopenInvestmentProposal` — per office (PPDO-155)
+
+Reopens a Final investment proposal back to Draft (`Investment_Proposal_Spec.md` decision 5). Like
+2.3a it has **no override column of its own**: the override input below is
+`CanReviewBudgetPlanning`'s, the department-head grant. Unlike every other flag, it takes the
+**office** of the proposal as an argument.
+
+| Role | Caller's office | Proposal's office | Override (`CanReviewBudgetPlanning`) | Result |
+|---|---|---|---|---|
+| SuperAdmin | any | any | — | ✅ support access |
+| Admin | host | any | — | ✅ |
+| Admin | guest | its own | `true` | ✅ as that office's department head |
+| Admin | guest | any | `null` | ❌ not by role |
+| Staff | any | its own | `true` | ✅ the office's department head |
+| Staff | **host** | **another office** | `true` | ❌ **the §4a trap: compared to `users.office_id`, not `OfficeScope`** |
+| Staff | any | any | `null` / `false` | ❌ encoders finalize but never reopen |
+
+Pinned by the matrix rows (own office), `HostOfficeDeptHead_CannotReopenAnotherOffice` and
+`CanReopenInvestmentProposal_AnotherOffice`. The cross-office reviewer never reaches it: reopen is
+a write, so `ReviewerWriteGuard` refuses them first (§5).
+
 ### 2.4 Per-user grants
 
 `CanManagePpdoAllocation` · `CanManageOfficeCeilings` · `CanReviewBudgetPlanning` · `CanReviewAllOffices` ·
