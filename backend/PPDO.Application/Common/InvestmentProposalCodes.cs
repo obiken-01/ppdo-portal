@@ -5,11 +5,6 @@ namespace PPDO.Application.Common;
 /// PPDO-154, <c>docs/v1.8/Investment_Proposal_Spec.md</c> §5). Each column's CHECK constraint is
 /// built from the matching <c>All</c> list, so the database and these constants cannot drift.
 ///
-/// <para>
-/// The Section D sector names are not here: the spec fixes five of them but does not name them
-/// yet, so <c>investment_proposal_benefits.sector</c> has no CHECK. The service (PPDO-155)
-/// validates them.
-/// </para>
 /// </summary>
 public static class InvestmentProposalStatus
 {
@@ -20,6 +15,20 @@ public static class InvestmentProposalStatus
     public const string Final = "Final";
 
     public static readonly IReadOnlyList<string> All = [Draft, Final];
+}
+
+/// <summary>
+/// Section D sectors, in print order — the template's five rows, word for word (PPDO-173).
+/// </summary>
+public static class InvestmentProposalSector
+{
+    public const string Social         = "Social";
+    public const string Economic       = "Economic";
+    public const string Environmental  = "Environmental";
+    public const string Institutional  = "Institutional";
+    public const string Infrastructure = "Infrastructure/Land Use";
+
+    public static readonly IReadOnlyList<string> All = [Social, Economic, Environmental, Institutional, Infrastructure];
 }
 
 /// <summary>Which table a beneficiary row belongs to (decision 10).</summary>

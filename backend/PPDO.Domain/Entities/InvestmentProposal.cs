@@ -65,7 +65,7 @@ public sealed class InvestmentProposal
     /// </summary>
     public bool DirectSameAsSummary { get; set; } = true;
 
-    // ── Signatories: always exactly three slots, stored flat (decision 19) ───
+    // ── Signatories: four slots, stored flat (decision 19). A slot with no name is not printed ──
 
     public string? Signatory1Label { get; set; }
     public string? Signatory1Name { get; set; }
@@ -76,6 +76,9 @@ public sealed class InvestmentProposal
     public string? Signatory3Label { get; set; }
     public string? Signatory3Name { get; set; }
     public string? Signatory3Position { get; set; }
+    public string? Signatory4Label { get; set; }
+    public string? Signatory4Name { get; set; }
+    public string? Signatory4Position { get; set; }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -120,7 +123,6 @@ public sealed class InvestmentProposal
     public ICollection<InvestmentProposalGroup> Groups { get; set; } = new List<InvestmentProposalGroup>();
     public ICollection<InvestmentProposalWorkPlanRow> WorkPlanRows { get; set; } = new List<InvestmentProposalWorkPlanRow>();
     public ICollection<InvestmentProposalTeamMember> TeamMembers { get; set; } = new List<InvestmentProposalTeamMember>();
-    public ICollection<InvestmentProposalCapacityTraining> CapacityTrainings { get; set; } = new List<InvestmentProposalCapacityTraining>();
     public ICollection<InvestmentProposalMonitoring> Monitoring { get; set; } = new List<InvestmentProposalMonitoring>();
     public ICollection<InvestmentProposalRisk> Risks { get; set; } = new List<InvestmentProposalRisk>();
 }

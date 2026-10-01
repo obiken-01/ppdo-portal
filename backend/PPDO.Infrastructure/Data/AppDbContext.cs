@@ -116,7 +116,6 @@ public sealed class AppDbContext : DbContext
     public DbSet<InvestmentProposalGroup> InvestmentProposalGroups { get; set; } = null!;
     public DbSet<InvestmentProposalWorkPlanRow> InvestmentProposalWorkPlanRows { get; set; } = null!;
     public DbSet<InvestmentProposalTeamMember> InvestmentProposalTeamMembers { get; set; } = null!;
-    public DbSet<InvestmentProposalCapacityTraining> InvestmentProposalCapacityTrainings { get; set; } = null!;
     public DbSet<InvestmentProposalMonitoring> InvestmentProposalMonitoring { get; set; } = null!;
     public DbSet<InvestmentProposalRisk> InvestmentProposalRisks { get; set; } = null!;
 

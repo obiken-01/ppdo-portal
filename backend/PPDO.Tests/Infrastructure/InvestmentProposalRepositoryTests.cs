@@ -49,6 +49,7 @@ public sealed class InvestmentProposalRepositoryTests : IDisposable
                 signatory1_label TEXT NULL, signatory1_name TEXT NULL, signatory1_position TEXT NULL,
                 signatory2_label TEXT NULL, signatory2_name TEXT NULL, signatory2_position TEXT NULL,
                 signatory3_label TEXT NULL, signatory3_name TEXT NULL, signatory3_position TEXT NULL,
+                signatory4_label TEXT NULL, signatory4_name TEXT NULL, signatory4_position TEXT NULL,
                 snapshot_json TEXT NULL, finalized_at TEXT NULL, finalized_by_user_id TEXT NULL,
                 created_at TEXT NOT NULL, created_by_user_id TEXT NULL,
                 updated_at TEXT NOT NULL, updated_by_user_id TEXT NULL,
@@ -91,12 +92,8 @@ public sealed class InvestmentProposalRepositoryTests : IDisposable
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 proposal_id INTEGER NOT NULL REFERENCES investment_proposals(id) ON DELETE CASCADE,
                 name TEXT NOT NULL, sex TEXT NOT NULL, gad_trainings TEXT NULL, expertise TEXT NULL,
+                required_training TEXT NULL,
                 sort_order INTEGER NOT NULL
-            );
-            CREATE TABLE investment_proposal_capacity_trainings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                proposal_id INTEGER NOT NULL REFERENCES investment_proposals(id) ON DELETE CASCADE,
-                member_name TEXT NOT NULL, training TEXT NULL, sort_order INTEGER NOT NULL
             );
             CREATE TABLE investment_proposal_monitoring (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,11 +117,10 @@ public sealed class InvestmentProposalRepositoryTests : IDisposable
         "investment_proposal_beneficiaries", "investment_proposal_benefits",
         "investment_proposal_logframe", "investment_proposal_groups",
         "investment_proposal_work_plan_rows", "investment_proposal_team_members",
-        "investment_proposal_capacity_trainings", "investment_proposal_monitoring",
-        "investment_proposal_risks",
+        "investment_proposal_monitoring", "investment_proposal_risks",
     ];
 
-    /// <summary>A proposal with one row in every child table, the work-plan row inside the group.</summary>
+    /// <summary>A proposal with one row in every child table (eight), the work-plan row inside the group.</summary>
     private static InvestmentProposal FullProposal()
     {
         InvestmentProposalGroup group = new() { Label = "Preparatory", SortOrder = 0 };
@@ -137,15 +133,15 @@ public sealed class InvestmentProposalRepositoryTests : IDisposable
             Description          = "<p>Seed support</p>",
             DirectSameAsSummary  = true,
             Signatory1Label      = "Prepared by",
+            Signatory4Label      = "Approved by",
             CreatedAt            = DateTime.UtcNow,
             UpdatedAt            = DateTime.UtcNow,
             Beneficiaries        = [new() { Section = InvestmentProposalBeneficiarySection.Summary, Label = "Farmers", Male = 10, Female = 12 }],
-            Benefits             = [new() { Sector = "Economic", Benefit = "Higher yield" }],
+            Benefits             = [new() { Sector = InvestmentProposalSector.Economic, Benefit = "Higher yield" }],
             Logframe             = [new() { Level = InvestmentProposalLogframeLevel.Impact, Target = "Yield +10%" }],
             Groups               = [group],
             WorkPlanRows         = [new() { Name = "Preparation of Travel Order", Group = group, SortOrder = 0 }],
-            TeamMembers          = [new() { Name = "Juan", Sex = InvestmentProposalSex.Male }],
-            CapacityTrainings    = [new() { MemberName = "Juan", Training = "GAD 101" }],
+            TeamMembers          = [new() { Name = "Juan", Sex = InvestmentProposalSex.Male, RequiredTraining = "GAD 101" }],
             Monitoring           = [new() { Phase = InvestmentProposalMonitoringPhase.Pre, Activity = "Baseline survey" }],
             Risks                = [new() { Risk = "Typhoon", Prevention = "Reschedule" }],
         };
@@ -185,8 +181,8 @@ public sealed class InvestmentProposalRepositoryTests : IDisposable
             Assert.Single(loaded.Logframe);
             Assert.Single(loaded.Groups);
             Assert.Equal(loaded.Groups.Single().Id, Assert.Single(loaded.WorkPlanRows).GroupId);
-            Assert.Single(loaded.TeamMembers);
-            Assert.Single(loaded.CapacityTrainings);
+            Assert.Equal("GAD 101", Assert.Single(loaded.TeamMembers).RequiredTraining);
+            Assert.Equal("Approved by", loaded.Signatory4Label);
             Assert.Single(loaded.Monitoring);
             Assert.Single(loaded.Risks);
 

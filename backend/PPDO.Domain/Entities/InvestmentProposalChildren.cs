@@ -1,6 +1,6 @@
 namespace PPDO.Domain.Entities;
 
-// The nine child tables of an investment proposal (PPDO-154, spec §5 "Child tables"). They are
+// The eight child tables of an investment proposal (PPDO-154, spec §5 "Child tables"). They are
 // small, belong to one proposal each, cascade from it, and are replaced whole on every save, so
 // they share one file rather than nine near-empty ones.
 
@@ -88,7 +88,11 @@ public sealed class InvestmentProposalWorkPlanRow
     public InvestmentProposalGroup? Group { get; set; }
 }
 
-/// <summary>Section I team member.</summary>
+/// <summary>
+/// Section I team member. <see cref="RequiredTraining"/> is the member's row in the template's
+/// "Required Capacity Development Training" table, which lists every member. The export merges
+/// identical neighbouring cells, as the province's samples do.
+/// </summary>
 public sealed class InvestmentProposalTeamMember
 {
     public int Id { get; set; }
@@ -99,16 +103,7 @@ public sealed class InvestmentProposalTeamMember
     public string Sex { get; set; } = string.Empty;
     public string? GadTrainings { get; set; }
     public string? Expertise { get; set; }
-    public int SortOrder { get; set; }
-}
-
-/// <summary>Section I capacity training row.</summary>
-public sealed class InvestmentProposalCapacityTraining
-{
-    public int Id { get; set; }
-    public int ProposalId { get; set; }
-    public string MemberName { get; set; } = string.Empty;
-    public string? Training { get; set; }
+    public string? RequiredTraining { get; set; }
     public int SortOrder { get; set; }
 }
 
