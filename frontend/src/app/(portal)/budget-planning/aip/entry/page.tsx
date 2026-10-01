@@ -57,6 +57,9 @@ import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
 import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
 import { buildDivisionView, isUnassignedEncoder } from "@/components/aip/entry/AipDivisionParts";
 import AipDivisionsPanel from "@/components/aip/entry/AipDivisionsPanel";
+import ProposalStrip from "@/components/proposals/ProposalStrip";
+import { getProposalProjects } from "@/lib/investment-proposals";
+import { isCommentOnlyReviewer } from "@/lib/budget-planning-access";
 import {
   addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity, patchProject,
 } from "@/components/aip/entry/AipEntryTree";
@@ -65,6 +68,7 @@ import {
   type AipSelectionIds,
 } from "@/components/aip/entry/AipEntrySelection";
 import type {
+  ProposalProjectOption,
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail,
   AipDeleteResult, AipCommentNodeType,
   AccountResponse, FundingSourceResponse, OfficeResponse, AipReadiness, PriceIndexPickerItem,
@@ -287,6 +291,27 @@ function AipEntryPageInner() {
   // ⚠️ The office-level gate every panel receives. An activity narrows it further by its own
   // server-computed `canEdit` (AipSelectedPanel), so this only ever takes editability away.
   const officeCanEdit = canEdit && divisionsKnown && !isUnassignedEncoder(divisionView);
+
+  // ── Demo 2.15 (PPDO-159) — the Investment proposal strip in the project panel (spec §6.4) ──
+  //
+  // ⚠️ ONE call for the office and year, mapped by project, never one per project. Re-read when a
+  // project panel is opened (the selected project changes), not after every edit: a proposal created
+  // from the strip navigates away, and one created elsewhere shows on the next open.
+  //
+  // ⚠️ Fails silently: on an error the map stays null and the strip is left out. The panel works
+  // without it, and the Investment Proposals list is the way in.
+  const [proposalOptions, setProposalOptions] = useState<Map<number, ProposalProjectOption> | null>(null);
+  const openProjectId = ids.projectId;
+  useEffect(() => {
+    if (officeId == null || openProjectId == null || !yearSettled) return;
+    let live = true;
+    getProposalProjects(fiscalYear, officeId)
+      .then((list) => { if (live) setProposalOptions(new Map(list.map((o) => [o.aipProjectId, o]))); })
+      .catch(() => { if (live) setProposalOptions(null); });
+    return () => { live = false; };
+  }, [officeId, fiscalYear, openProjectId, yearSettled]);
+  // Create is the server's to refuse; these two would only ever get a 403, so they never see it.
+  const proposalReadOnly = (me != null && isCommentOnlyReviewer(me)) || isUnassignedEncoder(divisionView);
 
   // Mirrors AipReadScope.DivisionNarrows (PPDO-134): any office's Staff member with a division
   // assigned is narrowed to it, host or guest alike. A guest office's Staff member with NO
@@ -900,6 +925,9 @@ function AipEntryPageInner() {
                   selection={selection}
                   canEdit={officeCanEdit}
                   divisionView={divisionView}
+                  renderProposalSlot={(projectId) => (
+                    <ProposalStrip option={proposalOptions?.get(projectId)} readOnly={proposalReadOnly} />
+                  )}
                   holder={holder}
                   accounts={accounts}
                   funds={funds}

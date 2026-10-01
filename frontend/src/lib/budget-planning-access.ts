@@ -152,6 +152,35 @@ export function canOpenBudgetPlanningReport(me: MeResponse): boolean {
 }
 
 /**
+ * The **Investment Proposals** pages — `/budget-planning/proposals` and its editor (Demo 2.15 —
+ * PPDO-159, `Investment_Proposal_Spec.md` §6). Anyone with Budget Planning.
+ *
+ * ⚠️ **Every office, unlike the LDIP above.** A proposal is written by the office whose project it
+ * is, so a guest office is its main author. The server scopes the list to what AIP Entry shows the
+ * reader (office, then division) and answers 404 outside it; this rule only decides the nav item.
+ *
+ * Not restated in `(portal)/layout.tsx`: its guest-office gate admits every `/budget-planning/*`
+ * path that is not named PPDO-only, and this one is not.
+ */
+export function canOpenInvestmentProposals(me: MeResponse): boolean {
+  return me.canAccessBudgetPlanning;
+}
+
+/**
+ * The **comment-only reviewer** — the PPDO cross-office grant, minus SuperAdmin. Mirrors the
+ * server's `ReviewerWriteGuard.DeniesWriteAsync`, which refuses them every budget-planning content
+ * write; pages use it to leave out the buttons that would only answer 403.
+ *
+ * ⚠️ **SuperAdmin is exempt, as on the server.** Every flag resolves true for SuperAdmin, so asking
+ * "holds `canReviewAllOffices`?" alone would hide every write control from the support account.
+ *
+ * ⚠️ Courtesy, as this file's header says. The guard runs on the server whatever this returns.
+ */
+export function isCommentOnlyReviewer(me: MeResponse): boolean {
+  return me.canReviewAllOffices && me.role !== "SuperAdmin";
+}
+
+/**
  * Where to send somebody who reached one of the above without the grant.
  *
  * The Budget Planning hub, which anyone holding `canAccessBudgetPlanning` can open — it names the

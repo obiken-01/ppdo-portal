@@ -27,8 +27,8 @@ import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
 import {
-  canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenLdip,
-  canOpenOfficeCeilings,
+  canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenInvestmentProposals,
+  canOpenLdip, canOpenOfficeCeilings,
 } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
@@ -196,6 +196,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // something to read there while having no WFP at all. `canOpenBudgetPlanningReport` is the union,
   // derived from the two rules rather than restated, so the nav and the page cannot disagree.
   const showReport         = me != null && canOpenBudgetPlanningReport(me);
+  // Demo 2.15 (PPDO-159) — every office writes its own proposals, so the rule is Budget Planning
+  // access alone. Same file as the rest, so the nav and the page guard read one rule.
+  const showProposals      = me != null && canOpenInvestmentProposals(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -482,6 +485,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       </Link>
                     )}
                   </div>
+                )}
+                {showProposals && (
+                  <Link href="/budget-planning/proposals" className={childLinkCls(isActive("/budget-planning/proposals"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Investment Proposals</span>
+                  </Link>
                 )}
                 {showOfficeCeilings && (
                   <Link href="/budget-planning/office-ceilings" className={childLinkCls(isActive("/budget-planning/office-ceilings"))}>

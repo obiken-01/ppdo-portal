@@ -11,3 +11,4 @@ export type * from "./inventory";
 export type * from "./config";
 export type * from "./budget-planning";
 export type * from "./announcements";
+export type * from "./investment-proposals";
