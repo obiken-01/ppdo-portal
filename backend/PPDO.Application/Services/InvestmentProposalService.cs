@@ -689,7 +689,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             rows.Sum(r => r.Total),
             rows.SelectMany(r => r.FundNames).Distinct().ToList(),
             typology,
-            AttributedGadBudget: null);   // PPDO-156 (T3) wires the calculator
+            AttributedGadBudget: null);   // set in BuildDtoAsync: it needs the proposal's score
 
         return new AipView(header, rows);
     }
@@ -767,7 +767,9 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             aipChanged,
             canEdit,
             canReopen,
-            shown.Header,
+            // Decision 9: Project Cost × the HGDG band. Computed on read from the typed score, so
+            // a Final proposal applies it to its frozen cost.
+            shown.Header with { AttributedGadBudget = HgdgAttribution.AttributedBudget(p.HgdgScore, shown.Header.ProjectCost) },
             new ProposalWarningsDto(shown.Rows.Where(r => r.Expenditures.Count == 0)
                 .Select(r => new ProposalActivityRefDto(r.ActivityId, r.RefCode, r.Name)).ToList()),
             frozenWorkPlan is null ? ContentOf(p, shown.Rows) : ContentOf(p, shown.Rows) with { WorkPlan = frozenWorkPlan },

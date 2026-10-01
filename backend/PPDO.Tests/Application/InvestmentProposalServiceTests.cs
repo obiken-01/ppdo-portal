@@ -353,6 +353,18 @@ public sealed class InvestmentProposalServiceTests
         Assert.Equal(InvestmentProposalService.FinalMessage, result.Error);
     }
 
+    [Fact]
+    public async Task Put_HgdgScore_SetsTheAttributedGadBudget()
+    {
+        int id = await CreateAsync();
+        Assert.Null((await _sut.GetAsync(id, _encoder)).Value!.Header.AttributedGadBudget);   // no score, blank
+
+        ProposalDto after = await SaveAsync(id, c => c with { HgdgScore = 8m });
+
+        // Score 8.0 → 50% of the project cost (6,110,200.00).
+        Assert.Equal(3_055_100.00m, after.Header.AttributedGadBudget);
+    }
+
     // ── Finalize, reopen, delete ──────────────────────────────────────────────
 
     [Fact]
