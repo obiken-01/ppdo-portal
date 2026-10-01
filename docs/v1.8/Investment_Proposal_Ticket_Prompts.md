@@ -307,8 +307,8 @@ TDD: InvestmentProposalDocumentBuilderTests first — every builder bullet in sp
    proposal-only rows blank in H-1; computation line
    "{Name}  {UnitPrice:N2} x {Qty} {Unit}[ x {NumberOfDays} days] = {LineTotal:N2}" (days part only
    when NumberOfDays ≠ 1); expenditure with no items → heading + amount; activity with no lines →
-   one totals row; amounts in the PS/MOOE/CO column; fund = FundingSourceSnapshot code; grand
-   total; Section M "N/A" when empty; F-Direct = A's rows while directSameAsSummary.
+   one totals row; amounts in the PS/MOOE/CO column; fund = the fund NAMES (decision 17, revised
+   by PPDO-173 — not the FundingSourceSnapshot code); grand total; Section M "N/A" when empty; F-Direct = A's rows while directSameAsSummary.
    Verify: dotnet test --filter InvestmentProposalDocumentBuilderTests
 3. Invariant test: for a seeded proposal, H-1 grand total == header.projectCost (to the centavo).
    Verify: same filter.
