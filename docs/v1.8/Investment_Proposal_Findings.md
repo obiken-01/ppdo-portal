@@ -489,6 +489,35 @@ probably 15,000 and mistyped. Either way, a generated document cannot disagree w
 
 ---
 
+### 8.5 Images and attachments (study, 2026-10-01 — Demo 2.10 parked)
+
+Asked by Ralph when parking Demo 2.10 (PPDO-132): *if* proposals get attachments, which section do
+images belong to? Every body image in the nine samples and the template was listed with the section
+heading above it (page-header logos excluded).
+
+| File | Body images | Where |
+|---|---|---|
+| PAGES | **5** | A **"PHOTO DOCUMENTATION"** heading **after the signature block**, then five JPEGs, each the full printable area (17.3 × 22.8 cm, 96–445 KB). Not inside any lettered section |
+| The other eight samples | 0 | — |
+| The template | 0 | Section B's guidance says *"Maps can be used to describe the location of the project (geotagged)"*, but no sample does it |
+
+What this suggests, for when the item is picked up:
+
+- **Images are an annex, not a section field.** The one real case is photo documentation appended
+  after the signatures. That fits a proposal-level **"Annexes / Photo documentation"** list (caption +
+  image, printed one per page after the signatures) better than images inside rich-text sections,
+  which decision 20 deliberately excludes.
+- **Section B's map** is the only in-section place the template names, and nobody uses it yet.
+  Treat it as the same annex ("Location map") rather than an image inside B, unless the PDC asks.
+- **A scanned signed copy** is a different thing: the whole printed proposal after wet signatures.
+  It is a file *about* the proposal (one per proposal, PDF), not content printed *in* it.
+- **Size drives the design**, as PPDO-132 already says: the five PAGES photos alone are ~1 MB, and
+  the DB is Azure SQL Basic (2 GB). Images go to Blob Storage (Southeast Asia), never the database,
+  and the Word export would embed downsized copies (the seal lesson: a 2.1 MB PNG became 123 KB).
+
+Open for the PDC when this resumes: is photo documentation expected for every proposal or only some
+types; who uploads; is a scanned signed copy wanted at all now that the portal produces the document.
+
 ## 9. Suggested next steps
 
 1. ~~Review the sample `.docx` files~~ Done, see §8.
