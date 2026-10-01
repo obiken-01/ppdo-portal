@@ -30,7 +30,7 @@ import {
 
 export default function AipProjectPanel({
   project, canEdit, lockedReason, isLastSibling, proponentOfficeCode, unresolvedCount,
-  onSelectActivity, onActivityAdded, onDeleted, onUpdated, divisionView = null,
+  onSelectActivity, onActivityAdded, onDeleted, onUpdated, divisionView = null, proposalSlot = null,
 }: {
   project: AipProjectDetail;
   canEdit: boolean;
@@ -48,6 +48,11 @@ export default function AipProjectPanel({
   onUpdated: (patch: Pick<AipProjectDetail, "id" | "name" | "description" | "objective">) => void;
   /** PPDO-151 — the caller's place in the division flow; null outside it (no visual change). */
   divisionView?: AipDivisionView | null;
+  /**
+   * Demo 2.15 (PPDO-159) — the Investment proposal strip, rendered by the page from its one
+   * office-wide call. Null where there is none (AIP Review, FY 2027, or while it loads).
+   */
+  proposalSlot?: React.ReactNode;
 }) {
   // ⚠️ Checked BEFORE the office lock below, but only ever narrows: an office that cannot be
   // edited already disables the control through `canEdit`.
@@ -101,6 +106,8 @@ export default function AipProjectPanel({
         lockedReason={lockedReason}
         onSaved={onUpdated}
       />
+
+      {proposalSlot}
 
       <AipChildList
         title="Activities"

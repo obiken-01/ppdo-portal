@@ -36,6 +36,7 @@ export default function AipSelectedPanel({
   selection, canEdit, holder, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   offices, proponentOfficeCode, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
   onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails, divisionView = null,
+  renderProposalSlot,
 }: {
   selection: AipResolvedSelection | null;
   /**
@@ -46,6 +47,11 @@ export default function AipSelectedPanel({
   canEdit: boolean;
   /** PPDO-151 — the caller's place in the division flow; null outside it. */
   divisionView?: AipDivisionView | null;
+  /**
+   * Demo 2.15 (PPDO-159) — the Investment proposal strip for a project, shown in its panel. AIP
+   * Entry passes it; AIP Review does not, so the review screen has no strip.
+   */
+  renderProposalSlot?: (projectId: number) => React.ReactNode;
   /** Passed straight through as each panel's `lockedReason`. Null on AIP Review (PPDO-94) — there is
    * no holder to name, so the add/delete controls are omitted rather than disabled with a reason. */
   holder: string | null;
@@ -129,6 +135,7 @@ export default function AipSelectedPanel({
         canEdit={canEdit}
         lockedReason={holder}
         divisionView={divisionView}
+        proposalSlot={renderProposalSlot?.(project.id) ?? null}
         isLastSibling={isLastProject}
         proponentOfficeCode={proponentOfficeCode}
         unresolvedCount={unresolvedCount}
