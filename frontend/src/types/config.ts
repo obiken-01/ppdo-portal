@@ -463,3 +463,14 @@ export interface DefaultFiscalYearResponse {
 export interface UpdateDefaultFiscalYearRequest {
   defaultFiscalYear: number | null;
 }
+
+/**
+ * GET/PUT /api/config/investment-planning/signatory-defaults (PPDO-155/161). Copied into a new
+ * investment proposal's slots 2 (PPDC) and 3 (LCE) at creation only. Null = unset.
+ */
+export interface SignatoryDefaults {
+  ppdcName: string | null;
+  ppdcPosition: string | null;
+  lceName: string | null;
+  lcePosition: string | null;
+}

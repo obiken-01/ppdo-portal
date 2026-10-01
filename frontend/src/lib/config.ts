@@ -22,6 +22,7 @@ import type {
   CreateApiKeyResult,
   CsvImportResult,
   DefaultFiscalYearResponse,
+  SignatoryDefaults,
   DivisionResponse,
   ClimateChangeTypologyResponse,
   EsreCodeResponse,
@@ -821,5 +822,17 @@ export async function updateDefaultFiscalYear(
     "/config/investment-planning/default-fiscal-year",
     body,
   );
+  return unwrap(data);
+}
+
+/** GET — readable with Budget Planning access (create needs it); edited by config managers. */
+export async function getSignatoryDefaults(): Promise<SignatoryDefaults> {
+  const { data } = await api.get<ApiResponse<SignatoryDefaults>>("/config/investment-planning/signatory-defaults");
+  return unwrap(data);
+}
+
+/** PUT — blank clears a value. A 400 carries the length message in `error`. */
+export async function updateSignatoryDefaults(body: SignatoryDefaults): Promise<SignatoryDefaults> {
+  const { data } = await api.put<ApiResponse<SignatoryDefaults>>("/config/investment-planning/signatory-defaults", body);
   return unwrap(data);
 }
