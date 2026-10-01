@@ -8,7 +8,8 @@
 
 import api from "./api";
 import type {
-  ApiResponse, ProposalCreated, ProposalListPage, ProposalProjectOption,
+  ApiResponse, Proposal, ProposalConflict, ProposalContent, ProposalCreated, ProposalListPage,
+  ProposalProjectOption,
 } from "@/types";
 
 function unwrap<T>(body: ApiResponse<T>): T {
@@ -127,4 +128,69 @@ export async function exportProposal(proposalId: number, fileName: string): Prom
 /** The editor's route for a proposal (PPDO-160). Query-string id: the app is a static export. */
 export function proposalEditorHref(proposalId: number): string {
   return `/budget-planning/proposals/edit?id=${proposalId}`;
+}
+
+// ── The editor (PPDO-160) ────────────────────────────────────────────────────────────────────────
+
+export async function getProposal(id: number): Promise<Proposal> {
+  const { data } = await api.get<ApiResponse<Proposal>>(`/budget-planning/proposals/${id}`);
+  return unwrap(data);
+}
+
+/**
+ * A write's outcome. The two refusals the editor shows in place are typed; anything else (403, 404,
+ * network) is `failed` with the server's sentence.
+ *
+ * - `stale` — someone saved since this tab loaded (409 with `data.currentRowVersion`). The message is
+ *   the server's "{Name} saved this proposal at {time}. Reload to see their changes."
+ * - `invalid` — field errors keyed by the client's own paths, e.g. `teamMembers[2].sex` (400).
+ */
+export type ProposalWriteOutcome =
+  | { kind: "ok"; proposal: Proposal }
+  | { kind: "stale"; message: string; conflict: ProposalConflict }
+  | { kind: "invalid"; message: string; errors: Record<string, string[]> }
+  | { kind: "failed"; message: string; status: number | null };
+
+async function write(run: () => Promise<{ data: ApiResponse<Proposal> }>, fallback: string): Promise<ProposalWriteOutcome> {
+  try {
+    const { data } = await run();
+    return { kind: "ok", proposal: unwrap(data) };
+  } catch (err) {
+    const res = (err as { response?: { status?: number; data?: ApiResponse<unknown> } })?.response;
+    const body = res?.data;
+    const message = body?.error ?? body?.message ?? fallback;
+    const payload = body?.data as Partial<ProposalConflict> & { errors?: Record<string, string[]> } | null | undefined;
+    if (res?.status === 409 && payload?.currentRowVersion)
+      return { kind: "stale", message, conflict: payload as ProposalConflict };
+    if (res?.status === 400 && payload?.errors)
+      return { kind: "invalid", message, errors: payload.errors };
+    return { kind: "failed", message, status: res?.status ?? null };
+  }
+}
+
+/** PUT — the whole editable document, with the version this tab loaded. */
+export function updateProposal(id: number, rowVersion: string, content: ProposalContent): Promise<ProposalWriteOutcome> {
+  return write(
+    () => api.put<ApiResponse<Proposal>>(`/budget-planning/proposals/${id}`, { rowVersion, content }),
+    "Couldn't save. Your changes are still here.");
+}
+
+export function finalizeProposal(id: number, rowVersion: string): Promise<ProposalWriteOutcome> {
+  return write(() => api.post<ApiResponse<Proposal>>(`/budget-planning/proposals/${id}/finalize`, { rowVersion }),
+    "Couldn't finalize the proposal.");
+}
+
+export function reopenProposal(id: number, rowVersion: string): Promise<ProposalWriteOutcome> {
+  return write(() => api.post<ApiResponse<Proposal>>(`/budget-planning/proposals/${id}/reopen`, { rowVersion }),
+    "Couldn't reopen the proposal.");
+}
+
+/** DELETE. Resolves null on success, else the refusal's sentence. */
+export async function deleteProposal(id: number, rowVersion: string): Promise<string | null> {
+  try {
+    await api.delete(`/budget-planning/proposals/${id}`, { params: { rowVersion } });
+    return null;
+  } catch (err) {
+    return proposalErrorMessage(err, "Couldn't delete the proposal.");
+  }
 }

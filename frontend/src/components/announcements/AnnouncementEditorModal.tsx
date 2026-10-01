@@ -9,7 +9,7 @@ import FontFamily from "@tiptap/extension-font-family";
 import Underline from "@tiptap/extension-underline";
 import { Indent } from "./IndentExtension";
 import Modal from "@/components/ui/Modal";
-import RichTextToolbar from "./RichTextToolbar";
+import { RichTextToolbar } from "@/components/ui/RichTextEditor";
 import { useToast } from "@/components/ui/Toast";
 import {
   createAnnouncement,

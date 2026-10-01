@@ -43,6 +43,16 @@ export interface ConfirmDialogProps {
   variant?:      ConfirmDialogVariant;
   onConfirm:    () => void;
   onClose:      () => void;
+  /**
+   * An optional action before the confirm button, in the primary (green) style — e.g. the
+   * unsaved-changes guard's "Save and continue" (PPDO-160). Omitted, the dialog is the usual two
+   * buttons. Unlike confirm, it does NOT close the dialog itself: the caller closes it when its
+   * (usually async) work succeeds, and leaves it open when it fails.
+   */
+  secondaryLabel?: string;
+  onSecondary?:    () => void;
+  /** Disables every button while the secondary action runs. */
+  busy?:           boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,9 +89,13 @@ export default function ConfirmDialog({
   variant      = "primary",
   onConfirm,
   onClose,
+  secondaryLabel,
+  onSecondary,
+  busy = false,
 }: ConfirmDialogProps) {
-  const cancelRef  = useRef<HTMLButtonElement>(null);
-  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef    = useRef<HTMLButtonElement>(null);
+  const confirmRef   = useRef<HTMLButtonElement>(null);
+  const secondaryRef = useRef<HTMLButtonElement>(null);
 
   // Focus cancel button on open (safe default — prevents accidental confirm)
   useEffect(() => {
@@ -101,7 +115,7 @@ export default function ConfirmDialog({
   useEffect(() => {
     function onTab(e: KeyboardEvent) {
       if (e.key !== "Tab") return;
-      const els = [cancelRef.current, confirmRef.current].filter(Boolean) as HTMLButtonElement[];
+      const els = [secondaryRef.current, confirmRef.current, cancelRef.current].filter(Boolean) as HTMLButtonElement[];
       if (els.length < 2) return;
       const first = els[0];
       const last  = els[els.length - 1];
@@ -163,10 +177,21 @@ export default function ConfirmDialog({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex flex-wrap justify-end gap-2 pt-1">
+            {secondaryLabel && onSecondary && (
+              <button
+                ref={secondaryRef}
+                onClick={onSecondary}
+                disabled={busy}
+                className={`px-4 py-2 text-sm border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-green-400 disabled:opacity-50 ${CONFIRM_BTN.primary}`}
+              >
+                {secondaryLabel}
+              </button>
+            )}
             <button
               ref={confirmRef}
               onClick={handleConfirm}
+              disabled={busy}
               className={`px-4 py-2 text-sm border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${CONFIRM_BTN[variant]} ${
                 variant === "primary" ? "focus:ring-green-400" :
                 variant === "warning" ? "focus:ring-amber-400" :
@@ -178,6 +203,7 @@ export default function ConfirmDialog({
             <button
               ref={cancelRef}
               onClick={onClose}
+              disabled={busy}
               className="px-4 py-2 text-sm border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 transition-colors font-medium focus:outline-none focus:ring-2 focus:ring-slate-300"
             >
               {cancelLabel}
