@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Section G — Work Plan states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.why { font-size: 13px; color: #5A636B; line-height: 19px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; color: #1F7A45; }
+.btn.xs { height: 26px; width: 26px; padding: 0; justify-content: center; font-size: 12px; }
+.btn.danger { color: #C92A2A; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-unsaved { background: #FFF3D6; color: #8A5A00; }
+.p-saved, .p-final { background: #E6F4EC; color: #1F6B3F; }
+.p-err { background: #FDECEC; color: #A61E1E; }
+.tag { display: inline-block; padding: 1px 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; }
+.t-aip { background: #E7F0FB; color: #1D4E89; }
+.t-own { background: #F3E8FB; color: #6A2C91; }
+.t-new { background: #E6F4EC; color: #1F6B3F; }
+.sec { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.sec.dirty { border-color: #E8B93F; }
+.sec.bad { border-color: #E03131; }
+.sh { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.letter { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #F1F3F5; font-weight: 700; font-size: 14px; }
+.sb { border-top: 1px solid #E9ECEF; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.sf { border-top: 1px solid #E9ECEF; padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: #FAFBFC; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table.t th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 8px; background: #F8F9FA; border-bottom: 1px solid #DEE2E6; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid #F1F3F5; vertical-align: top; }
+tr.grp td { background: #F4F8F5; font-weight: 600; color: #1F6B3F; border-bottom: 1px solid #DEE2E6; }
+.cell { width: 100%; min-height: 32px; border: 1px solid #CED4DA; padding: 6px 8px; font-size: 13px; font-family: inherit; color: #343A40; background: #FFFFFF; line-height: 18px; }
+.cell.ro { border-color: transparent; background: transparent; color: #5A636B; padding-left: 0; }
+.cell.txt { border-color: transparent; background: transparent; padding-left: 0; }
+.cell.e { border-color: #E03131; }
+.err { font-size: 12px; color: #C92A2A; margin-top: 4px; }
+.sel { width: 100%; height: 32px; border: 1px solid #CED4DA; padding: 0 6px; font-size: 13px; font-family: inherit; background: #FFFFFF; color: #343A40; }
+.mv { display: flex; gap: 2px; }
+.note { background: #EEF4FB; border: 1px solid #C9DCF2; padding: 10px 14px; font-size: 13px; color: #1D4E89; }
+.confirm { border: 1px solid #ADB5BD; background: #FFFFFF; padding: 12px 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+</style>
+</helmet>
+<div style="width: 1280px; height: 1900px; padding: 40px; display: flex; flex-direction: column; gap: 28px;">
+  <div>
+    <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 600;">Section G — Work Plan, beyond the default view</h1>
+    <div class="why">Artboard 1 shows G being edited. These are the other states: managing groups, validation, a project with no activities, AIP changes since the last save, and the read-only (Final / reviewer) rendering.</div>
+  </div>
+
+  <!-- 1 Groups -->
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div class="cap">1 · Managing groups</div>
+    <section class="sec dirty">
+      <div class="sh"><span class="letter">G</span><span style="font-size: 15px; font-weight: 600;">Implementation Schedule / Work Plan</span><span class="pill p-unsaved">Unsaved changes</span></div>
+      <div class="sb">
+        <table class="t">
+          <thead><tr><th style="width: 84px;">No.</th><th style="width: 28%;">Inputs/ Activities/ Project Components</th><th>Performance Target and/or Indicator</th><th>Gender Issues to be addressed</th><th style="width: 140px;">Timeline/ Duration</th><th style="width: 80px;">OPR</th><th style="width: 170px;">Group</th><th style="width: 40px;"><span style="position: absolute; left: -9999px;">Actions</span></th></tr></thead>
+          <tbody>
+            <tr class="grp">
+              <td><div class="mv"><button class="btn xs" type="button" aria-label="Move group up">↑</button><button class="btn xs" type="button" aria-label="Move group down">↓</button></div></td>
+              <td colspan="6"><div style="display: flex; align-items: center; gap: 8px;"><label class="cap" for="g1" style="color: #1F6B3F;">Group</label><input id="g1" class="cell" style="max-width: 360px; font-weight: 600;" value="Pre-implementation activities"><span style="font-weight: 400; font-size: 12px; color: #5A636B;">2 rows</span></div></td>
+              <td><button class="btn ghost xs danger" type="button" aria-label="Remove group Pre-implementation activities">✕</button></td>
+            </tr>
+            <tr><td><div class="mv" style="align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">1.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td><td><div style="padding-top: 6px;">Preparation of Travel Order</div><span class="tag t-own">PROPOSAL ONLY</span></td><td><div class="cell">TO approved 5 days before release</div></td><td><div class="cell">—</div></td><td><input class="cell" value="January 2028" aria-label="Timeline"></td><td><input class="cell" value="OPA" aria-label="OPR"></td><td><select class="sel" aria-label="Group"><option>Pre-implementation activities</option></select></td><td></td></tr>
+            <tr><td><div class="mv" style="align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">2.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td><td><div style="padding-top: 6px;">Validation of farmer beneficiaries</div><span class="tag t-aip">FROM AIP</span></td><td><div class="cell">2,100 farmers validated</div></td><td><div class="cell">Validate with the MAO women's desk</div></td><td><div class="cell ro">January–February 2028</div></td><td><div class="cell ro">OPA</div></td><td><select class="sel" aria-label="Group"><option>Pre-implementation activities</option></select></td><td></td></tr>
+            <tr class="grp">
+              <td><div class="mv"><button class="btn xs" type="button" aria-label="Move group up">↑</button><button class="btn xs" type="button" aria-label="Move group down">↓</button></div></td>
+              <td colspan="7" style="padding: 0;">
+                <div class="confirm" style="border-width: 0 0 0 3px; border-color: #C92A2A;">
+                  <span style="flex-grow: 1; font-weight: 400; color: #343A40;">Remove the group <strong>Distribution</strong>? Its 2 rows move to <strong>Not in a group</strong>; nothing else is deleted.</span>
+                  <button class="btn sm" type="button">Cancel</button>
+                  <button class="btn sm danger" type="button">Remove group</button>
+                </div>
+              </td>
+            </tr>
+            <tr><td><div class="mv" style="align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">3.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td><td><div style="padding-top: 6px;">Procurement of certified inbred seed</div><span class="tag t-aip">FROM AIP</span></td><td><div class="cell">4,200 bags delivered</div></td><td><div class="cell">—</div></td><td><div class="cell ro">February–April 2028</div></td><td><div class="cell ro">OPA/GSO</div></td><td><select class="sel" aria-label="Group"><option>Distribution</option></select></td><td></td></tr>
+          </tbody>
+        </table>
+        <div style="display: flex; gap: 16px;"><button class="btn ghost sm" type="button" style="padding: 0;">+ Add group</button><button class="btn ghost sm" type="button" style="padding: 0;">+ Add step (proposal only)</button></div>
+        <div class="why" style="font-size: 12px;">Group names are edited in place. Groups move with ↑/↓ like rows, and a row's group is chosen on the row. Removing a group never deletes its rows. A group with no rows is kept while editing but is not printed.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 2 Validation -->
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div class="cap">2 · Validation after Save section</div>
+    <section class="sec bad">
+      <div class="sh"><span class="letter">G</span><span style="font-size: 15px; font-weight: 600;">Implementation Schedule / Work Plan</span><span class="pill p-err">2 errors — not saved</span></div>
+      <div class="sb">
+        <table class="t">
+          <thead><tr><th style="width: 84px;">No.</th><th style="width: 28%;">Inputs/ Activities/ Project Components</th><th>Performance Target and/or Indicator</th><th>Gender Issues to be addressed</th><th style="width: 140px;">Timeline/ Duration</th><th style="width: 80px;">OPR</th><th style="width: 170px;">Group</th><th style="width: 40px;"><span style="position: absolute; left: -9999px;">Actions</span></th></tr></thead>
+          <tbody>
+            <tr class="grp"><td></td><td colspan="6"><input class="cell e" style="max-width: 360px;" value="" aria-label="Group name" aria-invalid="true"><div class="err" style="font-weight: 400;">Enter a group name.</div></td><td><button class="btn ghost xs danger" type="button" aria-label="Remove group">✕</button></td></tr>
+            <tr><td><div class="mv" style="align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">1.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td><td><input class="cell e" value="" aria-label="Step name" aria-invalid="true"><div class="err">Enter the step's name.</div><span class="tag t-own">PROPOSAL ONLY</span></td><td><div class="cell">Liquidated within 30 days</div></td><td><div class="cell">—</div></td><td><input class="cell" value="December 2028" aria-label="Timeline"></td><td><input class="cell" value="OPA" aria-label="OPR"></td><td><select class="sel" aria-label="Group"><option>(new group)</option></select></td><td><button class="btn ghost xs" type="button" aria-label="Delete step">✕</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sf"><span style="font-size: 13px; color: #C92A2A;">Fix 2 errors to save this section. Nothing was saved.</span><span style="flex-grow: 1;"></span><button class="btn sm" type="button">Discard</button><button class="btn sm pri" type="button">Save section</button></div>
+    </section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px;">
+    <!-- 3 No activities / AIP changed -->
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="cap">3 · AIP changed, or no activities yet</div>
+      <section class="sec">
+        <div class="sh"><span class="letter">G</span><span style="font-size: 15px; font-weight: 600;">Work Plan</span><span class="pill p-saved">Saved</span></div>
+        <div class="sb">
+          <div class="note">1 activity was added in the AIP since this section was last saved. It is listed under <strong>Not in a group</strong>; choose its group and save.</div>
+          <table class="t">
+            <tbody>
+              <tr class="grp"><td colspan="3" style="color: #5A636B; background: #F8F9FA;">Not in a group</td></tr>
+              <tr><td style="width: 46%;"><div>Post-harvest training</div><span class="tag t-aip">FROM AIP</span> <span class="tag t-new">NEW IN AIP</span></td><td><div class="cell" style="color: #ADB5BD;">Performance target</div></td><td style="width: 120px;"><select class="sel" aria-label="Group"><option>— none —</option></select></td></tr>
+            </tbody>
+          </table>
+          <div style="border-top: 1px dashed #DEE2E6; padding-top: 12px;" class="why"><strong style="color: #343A40;">A project with no activities:</strong> "This project has no AIP activities yet. Add proposal-only steps here, or <a href="#">add activities in AIP Entry ↗</a>." The table starts with one blank proposal-only row.</div>
+          <div class="why" style="font-size: 12px;">An activity deleted in the AIP disappears from G with the text typed on it. The section does not warn, because the AIP edit already happened elsewhere.</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 4 Read-only -->
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="cap">4 · Final, or a cross-office reviewer</div>
+      <section class="sec">
+        <div class="sh"><span class="letter">G</span><span style="font-size: 15px; font-weight: 600;">Work Plan</span><span class="pill p-final">Final</span></div>
+        <div class="sb">
+          <table class="t" style="font-size: 12px;">
+            <thead><tr><th style="width: 30%;">Inputs/ Activities/ Project Components</th><th>Performance Target and/or Indicator</th><th>Gender Issues to be addressed</th><th style="width: 88px;">Timeline/ Duration</th><th style="width: 56px;">OPR</th></tr></thead>
+            <tbody>
+              <tr class="grp"><td colspan="5">Pre-implementation activities</td></tr>
+              <tr><td><strong>1.</strong> Preparation of Travel Order</td><td>TO approved 5 days before release</td><td>—</td><td>January 2028</td><td>OPA</td></tr>
+              <tr><td><strong>2.</strong> Validation of farmer beneficiaries</td><td>2,100 farmers validated</td><td>Validate with the MAO women's desk</td><td>January–February 2028</td><td>OPA</td></tr>
+              <tr class="grp"><td colspan="5">Distribution</td></tr>
+              <tr><td><strong>3.</strong> Procurement of certified inbred seed</td><td>4,200 bags delivered</td><td>—</td><td>February–April 2028</td><td>OPA/GSO</td></tr>
+            </tbody>
+          </table>
+          <div class="why" style="font-size: 12px;">Rendered as text, the same five columns and headings as the printed form: no inputs, no ↑/↓, no tags, no Add buttons, no footer. Rows are numbered 1, 2, 3… straight through, as in the province's sample.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -14,6 +14,7 @@ into its Linear ticket's description. The authoritative spec is
 | Ticket | Scope | Blocked by |
 |---|---|---|
 | **PPDO-154** T1 | Data model + migration | — |
+| **PPDO-173** T1b | Template alignment: 4th signatory, training on the member, sector CHECK + spec | PPDO-154 |
 | **PPDO-155** T2 | Service + API | PPDO-154 |
 | **PPDO-156** T3 | HGDG calculator (hand-code candidate) | PPDO-155 |
 | **PPDO-157** T4 | Document model builder | PPDO-155 |
@@ -64,7 +65,7 @@ TDD: n/a for the migration itself (CLAUDE.md: never TDD migrations). Step 4 adds
 round-trip test.
 
 1. Domain: entities InvestmentProposal, InvestmentProposalBeneficiary, …Benefit, …Logframe,
-   …Group, …WorkPlanRow, …TeamMember, …CapacityTraining, …Monitoring, …Risk, with the columns in
+   …Group, …WorkPlanRow, …TeamMember, …CapacityTraining (dropped later by PPDO-173), …Monitoring, …Risk, with the columns in
    spec §5. InvestmentProposal.RowVersion is byte[]. Add PpdcName, PpdcPosition, LceName,
    LcePosition (string?) to InvestmentPlanningSettings.
    Verify: dotnet build backend/PPDO.slnx
@@ -363,8 +364,11 @@ OpenXmlValidator errors, contains the title and the expected H-1 rows).
    logo, footer "Page {PAGE} of {NUMPAGES}", empty body. Compress the seal image to < 200 KB first.
    Verify: open the template in Word; the file is < 400 KB.
 3. InvestmentProposalWordService: render the model into the body — title, sections A–M in template
-   order, tables with the template's column headings, H-1 with PS | MOOE | CO | Total | Source of
-   Fund, rich-text runs as paragraphs/lists, signature block (3 slots). No guidance text.
+   order, headings and labels word for word from the template (spec decision 30), G numbered
+   straight through, H-1 with MOOE | PS | CO | Total | Source of Fund and one row per activity
+   (decision 17), Section I's capacity column with identical neighbouring cells merged (decision
+   31), rich-text runs as paragraphs/lists, signature block (up to 4 slots, two per row, empty
+   slots skipped). No guidance text.
    Verify: dotnet test --filter InvestmentProposalWordServiceTests
 4. Endpoint: GET /api/budget-planning/proposals/{id}/export — same JWT/permission/scope/404 as
    GET; read-only (no write guard). Filename per spec §3.1, sanitized, ≤ 120 chars, RFC 5987

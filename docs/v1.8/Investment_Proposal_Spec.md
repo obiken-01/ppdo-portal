@@ -1,8 +1,9 @@
 ---
 status: accepted — 2026-09-29
 version: v1.8.0 (Demo 2.15)
-tickets: PPDO-153 (parent), PPDO-154 … PPDO-161
+tickets: PPDO-153 (parent), PPDO-154 … PPDO-161, PPDO-173
 revised: 2026-10-01 — per-section save, one-section-at-a-time editor, selector, AIP Entry strip (decisions 24, 28, 29; §4, §6.2, §6.4)
+revised: 2026-10-01 — aligned with the province template and nine FY2027 samples, PPDO-173 (decisions 3, 6, 14, 16, 17, 19, 30, 31; §4, §5, §6.2, §10)
 supersedes: —
 ---
 
@@ -46,7 +47,9 @@ and therefore always agree with it.
 2. **FY2028 onward only. (R)** Proposals exist only for projects where
    `AipFiscalYears.IsEntered(fiscalYear)` is true. FY2027 AIPs have no expenditure lines or
    procurement items, so H-1 could not be generated.
-3. **Title "PGOM INVESTMENT PROPOSAL". (R)**
+3. **Title "PGOM INVESTMENT PROPOSAL". (R)** The template and every sample say "PGOM PROJECT
+   PROPOSAL". The new title is a PPDC change, confirmed 2026-10-01, and one of the two exceptions
+   to decision 30.
 4. **Draft → Final. (R)** Editable while Draft; exportable in either state. Finalize locks the
    proposal and **snapshots** every AIP-sourced value, so a Final proposal prints the same
    document even after the AIP changes. While Draft, AIP values are read **live** on every open
@@ -62,7 +65,11 @@ and therefore always agree with it.
    Title = `AipProject.Name`; Proponent = the owning office's name; Schedule = earliest
    `StartDate` / latest `EndDate` across the project's activities, printed "January 2028";
    Project Cost = Σ `AipActivity.Total`; Funding Source = distinct fund **names** across the
-   project's activities. **Project Type prints blank (R)** and is not stored. Project Location is
+   project's activities. **Project Type prints blank (R)** and is not stored. Five of the nine samples fill it
+   ("Environmental & Natural Resources Development", "Institutional Development Project"), but the
+   PDC has no list of values yet and asked for it blank (2026-10-01). The **Program Title** row is
+   not on the template: it is a PPDC addition for reference (confirmed 2026-10-01), the other
+   exception to decision 30. Project Location is
    typed.
 7. **Amounts are Full value (₱), not the Annex B form figure. (P)** The proposal is a cost
    estimate whose computation lines must add up to the centavo, so it uses the amounts exactly
@@ -111,38 +118,50 @@ and therefore always agree with it.
     order drives both G and H-1.** With no groups, rows print flat in activity ref-code order.
     Ungrouped rows print after grouped ones. Empty groups are not printed. Group headers carry no
     amounts in G. In H-1 they are header rows with **no sub-total (P)**, matching the samples.
+    **G's rows are numbered 1, 2, 3… straight through, ignoring groups (R, 2026-10-01)**, in the
+    editor and in the export, proposal-only steps included. Group headers take no number.
 15. **Proposal-only rows. (R)** The user may add rows that are not AIP activities ("Preparation
     of Travel Order", "Liquidation"). They carry a name and the four G text columns, all typed,
     and they **never carry money**. In H-1 their amount and fund columns print blank.
 16. **AIP rows follow the AIP.** An activity added to the project later appears ungrouped at the
     end. An activity deleted from the AIP disappears from the proposal, along with its typed G
-    text. For AIP rows, Timeline (`StartDate`–`EndDate` + fiscal year) and OPR
+    text. For AIP rows, Timeline (`StartDate`–`EndDate` + fiscal year, printed with full month names as
+    the samples do: "January–December 2028", or "March 2028" when both are the same month) and OPR
     (`ImplementingOffice`) are automatic. Performance Target and Gender Issues are typed per row.
-17. **H-1 columns are PS | MOOE | CO | Total | Source of Fund. (R)** Under each activity row, one
-    block per `AipExpenditure`:
-    - heading: `AccountTitleSnapshot` (account code in parentheses);
+17. **H-1 columns are MOOE | PS | CO | Total | Source of Fund**, in the template's order (↩️ revised
+    2026-10-01, PPDO-173: this first said PS | MOOE | CO, which no sample uses). Headings word for
+    word: *Input/Activities/Project Components* · *Budgetary Requirements and Other Inputs*
+    (over MOOE, PS, CO) · *Total* · *Source of Fund*. **One row per activity**, as every sample
+    prints it. Each money cell holds that activity's expenditures of that class, one block each:
+    - heading: `AccountTitleSnapshot` followed by a colon (the samples' "TEV:", "Office Supplies:");
     - one computation line per `AipProcurementItem`:
       `{Name}  {UnitPrice:N2} x {Qty} {Unit}[ x {NumberOfDays} days] = {LineTotal:N2}`
       (the `x … days` part only when `NumberOfDays` ≠ 1);
-    - an expenditure with no procurement items prints the heading and its amount only;
-    - amounts sit in the column matching the line's `Ps`/`Mooe`/`Co`; Source of Fund =
-      `FundingSourceSnapshot` (the code).
+    - an expenditure with no procurement items prints its heading and amount only;
+    - the cell ends with its class total.
 
-    Snapshot columns only, never live config joins, so a renamed account doesn't rewrite history.
+    Total = the activity's total. Source of Fund prints the fund **name** ("General Fund"), as every
+    sample does, not the code: the distinct names of the activity's expenditure funds, resolved from
+    `FundingSourceSnapshot` through the funding-source list while Draft and frozen in the snapshot
+    on Finalize. A TOTAL row closes the table. Account titles come from the snapshot columns, never
+    a live config join, so a renamed account doesn't rewrite history.
 18. **Activity with no expenditure lines. (R)** Prints one row with the activity's own
     PS/MOOE/CO/Total and fund. The editor shows a **warning banner** listing such activities, and
     the export dialog repeats it. Export is not blocked.
 
 ### Everything else
 
-19. **Signatories. (R)** Three slots, each with an editable label, name and position. Defaults on
-    creation:
+19. **Signatories. (R)** **Four slots** (↩️ revised 2026-10-01, PPDO-173: the samples use two to four,
+    labelled Prepared / Reviewed / Submitted / Noted / Approved by), each with an editable label,
+    name and position. **A slot with no name is not printed.** The export lays them out two per row,
+    as the template does. Defaults on creation:
 
     | Slot | Label | Name / position |
     |---|---|---|
     | 1 | Prepared by | the creating user's name and position |
     | 2 | Submitted by | from settings (PPDC) |
     | 3 | Noted by | from settings (Local Chief Executive) |
+    | 4 | (blank) | (blank), so not printed until someone fills it |
 
     The defaults live in `investment_planning_settings` (decision 25).
 20. **Rich text (R):** bold, italic, bulleted and numbered lists. Applies to B, C, J, the General
@@ -194,11 +213,29 @@ and therefore always agree with it.
     Both read `GET /proposals/projects` (§4). The Office picker appears only for callers who can
     see more than one office.
 
+30. **Headings and labels follow the template word for word. (R, 2026-10-01)** Section titles,
+    column headings and fixed row labels are the template's, in the editor and the export. They
+    include E's "Project Structure" column and its "Input/Activities" row; D's five sectors
+    (Social, Economic, Environmental, Institutional, Infrastructure/Land Use) with "PROJECT
+    BENEFIT" and "PROJECT COST"; F's "Direct Beneficiaries" and "Indirect Beneficiaries" rows;
+    K's PRE-IMPLEMENTATION, DURING IMPLEMENTATION and POST-IMPLEMENTATION rows; and L's "Strategies to
+    avoid/minimize negative impact on women's status and welfare" box. The stored codes (`Input`,
+    `Pre`, …) are not what prints. **Two exceptions, both PPDC's:** the title (decision 3) and the
+    Program Title row (decision 6).
+31. **Section I's capacity training is one cell per team member. (R, 2026-10-01)** The template's
+    "Required Capacity Development Training of the Implementation Team" table lists every member of
+    the team table, and the samples often give them all the same training in one merged cell. So
+    the training is stored on the member (`required_training`), the editor lists the members
+    automatically, and the export **merges identical neighbouring cells** vertically. A member with
+    no training prints an empty cell. The template's Section I head rows are "Overall Project
+    Supervisor:", "Project Manager" and one blank row, which prints blank.
+
 ### Open follow-ups (not blocking)
 
 - **HGDG scale and checklist list**: confirm against the PCW HGDG manual (decision 9). Blocks
   merging PPDO-156 (T3), not starting it.
-- **Project Type**: deferred (decision 6). Candidates if revived: `AipOffice.Sector`, ESRE code.
+- **Project Type**: deferred (decision 6). The PDC will supply the list. The samples' values look
+  like development-sector names ("Environmental & Natural Resources Development").
 - **Map/photo upload in B**: revisit if an office asks.
 - **PDF export**: not requested; Word is the deliverable.
 
@@ -346,7 +383,7 @@ missing/out of scope · 409 "This project already has a proposal." with `data.pr
     projectLocation, hgdgChecklist?, hgdgScore?,
     beneficiariesSummary: [{ id?, indicator, male?, female? }],
     description, rationale,                    // sanitized HTML
-    benefits: [{ sector, benefit, cost }],     // always the 5 sectors, fixed order
+    benefits: [{ sector, benefit, cost }],     // always the 5 template sectors, fixed order (decision 30)
     generalObjective,
     logframe: [{ level: "Impact"|"Outcome"|"Output"|"Input", target, verification }],
     directSameAsSummary: bool,
@@ -356,15 +393,14 @@ missing/out of scope · 409 "This project already has a proposal." with `data.pr
                  timeline?, opr? }],           // order = array order; name/timeline/opr only
                                                // for proposal-only rows (aipActivityId null)
     projectSupervisor, projectManager,
-    teamMembers: [{ id?, name, sex: "M"|"F", gadTrainings, expertise }],
-    capacityTraining: [{ id?, memberName, training }],
+    teamMembers: [{ id?, name, sex: "M"|"F", gadTrainings, expertise, requiredTraining }],  // decision 31
     partnershipSustainability,
     monitoring: [{ id?, phase: "Pre"|"During"|"Post", activity, schedule, tools }],
     risks: [{ id?, risk, prevention, monitoring }],
     womensImpactStrategy,
-    signatories: [{ slot: 1|2|3, label, name, position }]
+    signatories: [{ slot: 1|2|3|4, label, name, position }]
   },
-  aipRows: [{ activityId, refCode, name, timeline, opr, ps, mooe, co, total, fundCode,
+  aipRows: [{ activityId, refCode, name, timeline, opr, ps, mooe, co, total, fundNames: string[],
               expenditures: [{ accountCode, accountTitle, ps, mooe, co, total, fundCode,
                                items: [{ name, unitPrice, qty, unit, numberOfDays, lineTotal }] }] }]
 }
@@ -389,8 +425,9 @@ Validation (400, `{ error: "Validation failed", errors: { "<path>": ["<message>"
 | `workPlan[].aipActivityId` | belongs to this proposal's project; each at most once | "This activity is not part of the project." |
 | proposal-only row `name` | required, ≤ 500 | "Enter the step's name." |
 | `groups[].label` | required, ≤ 300; `groupKey` must reference a group in the body | "Enter a group name." |
-| `benefits` | exactly the 5 sectors | (400, programming error) |
-| `signatories` | exactly slots 1–3; label ≤ 100, name ≤ 200, position ≤ 200 | "Too long." |
+| `benefits` | exactly the 5 sectors of decision 30 | (400, programming error) |
+| `teamMembers[].requiredTraining` | ≤ 1,000 | "Too long." |
+| `signatories` | exactly slots 1–4; label ≤ 100, name ≤ 200, position ≤ 200 | "Too long." |
 | rich-text fields | ≤ 100,000 chars after sanitizing | "This section is too long." |
 | plain text cells | ≤ 4,000 chars | "Too long." |
 
@@ -451,9 +488,9 @@ Migration: **`AddInvestmentProposals`** — ⚠️ MIGRATION. All new tables are
 | `project_supervisor` | nvarchar(200) | yes | |
 | `project_manager` | nvarchar(200) | yes | |
 | `direct_same_as_summary` | bit | no | default 1 (decision 10) |
-| `signatory{1,2,3}_label` | nvarchar(100) | yes | nine signatory columns in all, flat. Always exactly three slots |
-| `signatory{1,2,3}_name` | nvarchar(200) | yes | |
-| `signatory{1,2,3}_position` | nvarchar(200) | yes | |
+| `signatory{1,2,3,4}_label` | nvarchar(100) | yes | twelve signatory columns in all, flat. Always exactly four slots (decision 19). Slot 4 added by `AlignInvestmentProposalsWithTemplate` |
+| `signatory{1,2,3,4}_name` | nvarchar(200) | yes | |
+| `signatory{1,2,3,4}_position` | nvarchar(200) | yes | |
 | `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4, serialized with `"schemaVersion": 1`. Readers must accept every version ever written. Null while Draft |
 | `finalized_at` | datetime2 | yes | UTC |
 | `finalized_by_id` | uniqueidentifier | yes | FK → Users, `SET NULL` |
@@ -470,12 +507,11 @@ printout would double the schema for no query benefit.
 | Table | Columns (all also have `id` PK and `proposal_id` FK cascade) |
 |---|---|
 | `investment_proposal_beneficiaries` | `section` nvarchar(10) (`Summary` / `Direct` / `Indirect`), `label` nvarchar(1000), `male` int null, `female` int null, `sort_order` int |
-| `investment_proposal_benefits` | `sector` nvarchar(30), `benefit` nvarchar(4000) null, `cost` nvarchar(4000) null. Unique (`proposal_id`, `sector`) |
+| `investment_proposal_benefits` | `sector` nvarchar(30) CHECK in the five sectors of decision 30, `benefit` nvarchar(4000) null, `cost` nvarchar(4000) null. Unique (`proposal_id`, `sector`) |
 | `investment_proposal_logframe` | `level` nvarchar(10), `target` nvarchar(4000) null, `verification` nvarchar(4000) null. Unique (`proposal_id`, `level`) |
 | `investment_proposal_groups` | `label` nvarchar(300), `sort_order` int |
 | `investment_proposal_work_plan_rows` | `aip_activity_id` int null FK → AIP activities **`ON DELETE CASCADE`** (decision 16), `group_id` int null FK → groups `NO ACTION` (see note), `name` nvarchar(500) null, `performance_target` nvarchar(4000) null, `gender_issues` nvarchar(4000) null, `timeline` nvarchar(200) null, `opr` nvarchar(300) null, `sort_order` int. Filtered unique (`proposal_id`, `aip_activity_id`) where not null. Check: `aip_activity_id IS NOT NULL OR name IS NOT NULL` |
-| `investment_proposal_team_members` | `name` nvarchar(200), `sex` char(1), `gad_trainings` nvarchar(1000) null, `expertise` nvarchar(500) null, `sort_order` int |
-| `investment_proposal_capacity_trainings` | `member_name` nvarchar(200), `training` nvarchar(1000) null, `sort_order` int |
+| `investment_proposal_team_members` | `name` nvarchar(200), `sex` char(1), `gad_trainings` nvarchar(1000) null, `expertise` nvarchar(500) null, `required_training` nvarchar(1000) null (decision 31), `sort_order` int |
 | `investment_proposal_monitoring` | `phase` nvarchar(10), `activity` nvarchar(1000), `schedule` nvarchar(500) null, `tools` nvarchar(1000) null, `sort_order` int |
 | `investment_proposal_risks` | `risk` nvarchar(1000), `prevention` nvarchar(2000) null, `monitoring` nvarchar(2000) null, `sort_order` int |
 
@@ -487,6 +523,10 @@ work_plan_rows` is the only cascading path, because `investment_proposals.aip_pr
 `NO ACTION` (decision 26). **Verify the generated migration SQL applies cleanly on a copy of the
 database before merging**; EF reports this conflict only at `database update`, not at
 `migrations add`.
+
+↩️ **`investment_proposal_capacity_trainings` was dropped** by `AlignInvestmentProposalsWithTemplate`
+(PPDO-173) in favour of `team_members.required_training` (decision 31). It never held data: no
+code wrote to it before the drop.
 
 Indexes: unique `aip_project_id`; `(proposal_id)` on every child table (FK indexes); the list query
 joins AIP projects → proposals by `aip_project_id`, already covered by the unique index.
@@ -586,9 +626,15 @@ Section specifics:
 - **G:** drag-free ordering with ↑/↓ buttons (consistent with the rest of the portal). Group
   headers are editable rows with "Remove group" (their rows fall back to ungrouped). "+ Add group",
   "+ Add step (proposal only)". A row's group is chosen from a select on the row.
-- **H-1:** read-only preview rendered the same as the export, grouped like G, PS | MOOE | CO.
+- **H-1:** read-only preview rendered the same as the export, grouped like G, MOOE | PS | CO, one
+  row per activity (decision 17).
 - **I, K, L:** repeating tables with "+ Add row" and row delete via `RowActions`.
-- **Signatories:** three slot cards with label/name/position inputs.
+- **I:** Supervisor and Manager inputs; the member table (Name · Sex M/F · GAD-related Trainings
+  Attended · Expertise); then the capacity table, which lists the members automatically with one
+  training input each and a **Same for all members** action that copies the first filled training
+  into every empty cell. Blank member rows are dropped on save.
+- **Signatories:** four slot cards with label/name/position inputs. An empty slot shows "Not
+  printed".
 
 Components: reused `DataTable`, `TableSkeleton`, `RowActions`, `StatusPill`, `OfficeSelect`,
 `Lookup`, `Modal`, `ConfirmDialog`, `MessageDialog`, `useToast`, `MoneyInput` (display only), the
@@ -663,6 +709,7 @@ Parent **PPDO-153** (child of the Demo 2 epic PPDO-122). Prompts:
 | Ticket | Scope | Blocked by |
 |---|---|---|
 | **PPDO-154** T1 Data model | Entities, configurations, `AddInvestmentProposals` migration, settings columns, repository. ⚠️ MIGRATION | — |
+| **PPDO-173** T1b Template alignment | Fourth signatory slot, `team_members.required_training` (drops `capacity_trainings`), sector CHECK; `AlignInvestmentProposalsWithTemplate`. ⚠️ MIGRATION | PPDO-154 |
 | **PPDO-155** T2 Service + API | `InvestmentProposalService` (create with pre-fill, get with live/snapshot merge, PUT replace + sanitize, finalize/reopen/delete, concurrency), `CanReopenInvestmentProposalAsync` + matrix row, `InvestmentProposalFunctions`, list endpoint, **`GET /proposals/projects` (added 2026-10-01)**, AIP project-delete 409, signatory-defaults endpoints. Ships `attributedGadBudget = null` | PPDO-154 |
 | **PPDO-156** T3 HGDG calculator | Pure `HgdgAttribution` + tests + the one-line wiring into T2. Merge needs the PCW scale confirmed | PPDO-155 |
 | **PPDO-157** T4 Document builder | Pure `InvestmentProposalDocumentBuilder` (Application): header, grouped G rows, H-1 blocks with computation strings, totals, rich-text model. No Open XML | PPDO-155 |
@@ -708,7 +755,10 @@ Work plan and cost annex
 - [ ] Creating group "Capability Building" and moving two activities into it shows them under that header in both G and the H-1 preview, in the same order
 - [ ] Adding a proposal-only step "Reporting" shows it in G with typed Timeline/OPR, and in H-1 with blank amounts
 - [ ] An activity added in AIP Entry after the proposal was created appears ungrouped at the end
-- [ ] H-1 columns read PS | MOOE | CO | Total | Source of Fund
+- [ ] H-1 columns read MOOE | PS | CO | Total | Source of Fund, one row per activity, Source of Fund showing fund names
+- [ ] G's rows are numbered 1, 2, 3… straight through, groups included
+- [ ] Every heading and fixed label matches the template word for word, except the title and the Program Title row
+- [ ] Section I's capacity table lists every team member; identical neighbouring trainings print as one merged cell
 - [ ] A procurement item Lunch ₱394.00 × 30 pax × 3 days prints "Lunch  394.00 x 30 pax x 3 days = 35,460.00"
 - [ ] The H-1 grand total equals the Section A Project Cost
 - [ ] An activity with no expenditure lines triggers the amber banner and prints as a single totals row
@@ -718,7 +768,7 @@ Export
 - [ ] The document is A4, Verdana, with the provincial letterhead in the header and "Page X of Y" in the footer, and is titled "PGOM INVESTMENT PROPOSAL"
 - [ ] No template guidance text (italic instructions) appears in the export
 - [ ] Section M prints the AIP typology codes, or "N/A" when there are none
-- [ ] Signatures print the three slots with the labels, names and positions entered
+- [ ] Signatures print the filled slots (up to four), two per row, with the labels, names and positions entered; an empty slot does not print
 
 Roles and scope
 - [ ] A guest-office Staff user sees only their office's projects and cannot open another office's proposal by editing the URL id (sees "Proposal not found")

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investment Proposal — project picker</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.why { font-size: 13px; color: #5A636B; line-height: 19px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-none { background: #F1F3F5; color: #5A636B; }
+.p-draft { background: #FFF3D6; color: #8A5A00; }
+.p-final { background: #E6F4EC; color: #1F6B3F; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.panel { display: flex; flex-direction: column; gap: 12px; }
+.frame { background: #FFFFFF; border: 1px solid #DEE2E6; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: flex-end; gap: 10px; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.in { height: 36px; border: 1px solid #CED4DA; padding: 0 10px; font-size: 13px; font-family: inherit; color: #343A40; background: #FFFFFF; display: flex; align-items: center; gap: 8px; width: 100%; }
+.in.focus { border-color: #1F7A45; box-shadow: 0 0 0 2px #CFE7D8; }
+.in.off { background: #F8F9FA; color: #ADB5BD; }
+.menu { border: 1px solid #CED4DA; background: #FFFFFF; margin-top: -8px; }
+.menu .grp { padding: 8px 12px 4px; }
+.opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-bottom: 1px solid #F1F3F5; background: #FFFFFF; font-family: inherit; font-size: 13px; color: #343A40; text-align: left; cursor: pointer; }
+.opt.cur { background: #F4F8F5; }
+.opt.hi { background: #EEF4FB; }
+.code { font-family: Consolas, monospace; font-size: 12px; color: #5A636B; width: 34px; flex-shrink: 0; }
+.meta { font-size: 12px; color: #7D858C; }
+.dlg { width: 480px; background: #FFFFFF; border: 1px solid #ADB5BD; }
+.dlg .b { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.dlg .f { padding: 12px 20px; border-top: 1px solid #E9ECEF; display: flex; justify-content: flex-end; gap: 8px; background: #FAFBFC; }
+mark { background: #FFF3D6; color: inherit; padding: 0; }
+</style>
+</helmet>
+<div style="width: 1440px; height: 1520px; padding: 40px; display: flex; flex-direction: column; gap: 28px;">
+  <div>
+    <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 600;">Project picker — the editor's selector row</h1>
+    <div class="why">Fiscal year → (Office) → Program → Project. Both pickers are searchable lookups fed by one call, <code>GET /proposals/projects</code>, for the chosen office and year. Every project shows its proposal status.</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 40px;">
+
+    <!-- 1 Project lookup open -->
+    <div class="panel">
+      <div><div class="cap">1 · Project lookup, open</div><div class="why">Lists only the chosen program's projects, in ref-code order. The current one is ticked. Choosing another moves straight to its proposal.</div></div>
+      <div class="frame">
+        <div class="row">
+          <div class="fld" style="width: 96px;"><label class="cap" for="p1fy">Fiscal year</label><select id="p1fy" class="in"><option>FY 2028</option></select></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p1pg">Program</label><input id="p1pg" class="in" value="001 — Agricultural Productivity Program"></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p1pj">Project</label><input id="p1pj" class="in focus" value="001 — Rice Seed Support"></div>
+        </div>
+        <div class="menu" style="margin-left: auto; width: 296px;" role="listbox" aria-label="Projects">
+          <button class="opt cur" type="button"><span class="code">001</span><span style="flex-grow: 1;">Rice Seed Support<div class="meta">Saved 2:14 PM · Agriculturist User</div></span><span class="pill p-draft">Draft</span></button>
+          <button class="opt hi" type="button"><span class="code">002</span><span style="flex-grow: 1;">Corn Productivity Enhancement<div class="meta">Finalized 12 Oct 2028</div></span><span class="pill p-final">Final</span></button>
+          <button class="opt" type="button"><span class="code">003</span><span style="flex-grow: 1;">High-Value Crops Nursery<div class="meta">No proposal yet</div></span><span class="pill p-none">None</span></button>
+          <button class="opt" type="button"><span class="code">004</span><span style="flex-grow: 1;">Organic Farming Training<div class="meta">No proposal yet</div></span><span class="pill p-none">None</span></button>
+        </div>
+        <div class="why" style="font-size: 12px;">Type to filter by code or name. ↑/↓ and Enter work as in every portal Lookup.</div>
+      </div>
+    </div>
+
+    <!-- 2 Program lookup searching -->
+    <div class="panel">
+      <div><div class="cap">2 · Program lookup, searching</div><div class="why">Each program shows how far along its proposals are. Changing program clears the project until one is picked.</div></div>
+      <div class="frame">
+        <div class="row">
+          <div class="fld" style="width: 96px;"><label class="cap" for="p2fy">Fiscal year</label><select id="p2fy" class="in"><option>FY 2028</option></select></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p2pg">Program</label><input id="p2pg" class="in focus" value="prod"></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p2pj">Project</label><input id="p2pj" class="in off" value="Choose a program first" disabled=""></div>
+        </div>
+        <div class="menu" style="width: 296px; margin-left: 106px;" role="listbox" aria-label="Programs">
+          <button class="opt cur" type="button"><span class="code">001</span><span style="flex-grow: 1;">Agricultural <mark>Prod</mark>uctivity Program<div class="meta">4 projects · 1 Draft · 1 Final</div></span></button>
+          <button class="opt hi" type="button"><span class="code">004</span><span style="flex-grow: 1;">Livestock <mark>Prod</mark>uction Support<div class="meta">2 projects · none started</div></span></button>
+          <button class="opt" type="button"><span class="code">007</span><span style="flex-grow: 1;">Fisheries <mark>Prod</mark>uction and Marketing<div class="meta">3 projects · 3 Final</div></span></button>
+        </div>
+        <div class="why" style="font-size: 12px;">Fiscal year lists FY 2028 onward only; proposals do not exist for FY 2027.</div>
+      </div>
+    </div>
+
+    <!-- 3 Multi-office caller -->
+    <div class="panel">
+      <div><div class="cap">3 · PPDO caller who sees several offices</div><div class="why">An Office picker appears first. Program and Project wait for it, because the list is one office at a time. Guest-office users never see this picker; they are pinned to their own office.</div></div>
+      <div class="frame">
+        <div class="row">
+          <div class="fld" style="width: 96px;"><label class="cap" for="p3fy">Fiscal year</label><select id="p3fy" class="in"><option>FY 2028</option></select></div>
+          <div class="fld" style="width: 230px;"><label class="cap" for="p3of">Office</label><select id="p3of" class="in focus"><option>Choose an office</option></select></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p3pg">Program</label><input id="p3pg" class="in off" value="Choose an office first" disabled=""></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p3pj">Project</label><input id="p3pj" class="in off" value="" disabled=""></div>
+        </div>
+        <div class="menu" style="width: 230px; margin-left: 106px;" role="listbox" aria-label="Offices">
+          <button class="opt" type="button"><span style="flex-grow: 1;">Provincial Agriculture Office<div class="meta">11 projects · 3 Draft · 1 Final</div></span></button>
+          <button class="opt hi" type="button"><span style="flex-grow: 1;">Provincial Treasurer's Office<div class="meta">4 projects · none started</div></span></button>
+          <button class="opt" type="button"><span style="flex-grow: 1;">Provincial Health Office<div class="meta">9 projects · 2 Draft</div></span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 No proposal yet -->
+    <div class="panel">
+      <div><div class="cap">4 · A project with no proposal</div><div class="why">The sections are replaced by a Create panel. The left rail stays hidden until there is a proposal to move through.</div></div>
+      <div class="frame">
+        <div class="row">
+          <div class="fld" style="width: 96px;"><label class="cap" for="p4fy">Fiscal year</label><select id="p4fy" class="in"><option>FY 2028</option></select></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p4pg">Program</label><input id="p4pg" class="in" value="001 — Agricultural Productivity Program"></div>
+          <div class="fld" style="flex-grow: 1;"><label class="cap" for="p4pj">Project</label><input id="p4pj" class="in" value="003 — High-Value Crops Nursery · None"></div>
+        </div>
+        <div style="border: 1px dashed #ADB5BD; background: #FAFBFC; padding: 28px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;">
+          <div style="font-size: 15px; font-weight: 600;">This project has no investment proposal yet.</div>
+          <div class="why" style="max-width: 420px;">Creating one fills in the description, the general objective and the activity names from the AIP, and the signatories from the province's defaults.</div>
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button class="btn pri" type="button">Create proposal</button>
+            <a class="btn" href="#">Open in AIP Entry ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5 Switching with unsaved work -->
+    <div class="panel">
+      <div><div class="cap">5 · Switching project with unsaved sections</div><div class="why">The same three-button guard as leaving a section. It applies to Fiscal year, Office and Program changes too, because each one leaves the current proposal.</div></div>
+      <div class="frame" style="background: #E9ECEF; align-items: center; padding: 28px;">
+        <div class="dlg" role="dialog" aria-labelledby="p5t">
+          <div class="b">
+            <div id="p5t" style="font-size: 16px; font-weight: 600;">Save your changes first?</div>
+            <div class="why">Two sections have unsaved changes: <strong>G · Work Plan</strong> and <strong>I · Implementing Team</strong>. Opening <strong>002 — Corn Productivity Enhancement</strong> leaves this proposal.</div>
+          </div>
+          <div class="f">
+            <button class="btn sm" type="button">Keep editing</button>
+            <button class="btn sm" type="button">Discard and open</button>
+            <button class="btn sm pri" type="button">Save and open</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6 Edge states -->
+    <div class="panel">
+      <div><div class="cap">6 · Edge states</div><div class="why">What the pickers show when there is nothing, or nothing you may create.</div></div>
+      <div class="frame" style="gap: 10px;">
+        <div class="card" style="padding: 12px 14px;">
+          <div style="font-size: 13px; font-weight: 600;">No projects for this office and year</div>
+          <div class="why">Project lookup empty state: "No FY 2028 projects in this office yet." with <a href="#">Add them in AIP Entry ↗</a>.</div>
+        </div>
+        <div class="card" style="padding: 12px 14px;">
+          <div style="font-size: 13px; font-weight: 600;">Cross-office reviewer</div>
+          <div class="why">Same pickers and statuses. A None project shows "No proposal yet. Only the office can create one." with no Create button; Draft and Final open read-only.</div>
+        </div>
+        <div class="card" style="padding: 12px 14px;">
+          <div style="font-size: 13px; font-weight: 600;">Loading and errors</div>
+          <div class="why">While the list loads, the lookups show a skeleton option list and stay usable once it lands. On error the picker shows "Couldn't load the projects." with Retry. The open proposal is not affected.</div>
+        </div>
+        <div class="card" style="padding: 12px 14px;">
+          <div style="font-size: 13px; font-weight: 600;">Opened from a link</div>
+          <div class="why"><code>?projectId=</code> preselects the program and project: Create panel if None, else the proposal. <code>?id=</code> opens the proposal and fills the pickers from it.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1520}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
