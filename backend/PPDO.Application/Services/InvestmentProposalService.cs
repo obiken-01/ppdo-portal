@@ -29,7 +29,8 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     public const int MaxPageSize = 100;
 
     private const string AuditTable    = "investment_proposals";
-    private const int    SchemaVersion = 1;
+    // 2: adds WorkPlan (the typed Section G rows). Version 1 has none; readers accept both.
+    private const int    SchemaVersion = 2;
     private static readonly TimeSpan ManilaOffset = TimeSpan.FromHours(8);
 
     private static readonly JsonSerializerOptions SnapshotJson = new()
@@ -303,7 +304,11 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
         DateTime now = Now();
         _proposals.SetExpectedRowVersion(proposal, version);
         proposal.Status        = InvestmentProposalStatus.Final;
-        proposal.SnapshotJson  = JsonSerializer.Serialize(new ProposalSnapshot(SchemaVersion, live.Header, live.Rows), SnapshotJson);
+        // The typed Section G rows are frozen too. An activity deleted from the AIP after Finalize
+        // cascades its stored row away; without this the Final document would lose that row's text.
+        IReadOnlyList<ProposalWorkPlanRowDto> workPlan = ContentOf(proposal, live.Rows).WorkPlan;
+        proposal.SnapshotJson  = JsonSerializer.Serialize(
+            new ProposalSnapshot(SchemaVersion, live.Header, live.Rows, workPlan), SnapshotJson);
         proposal.FinalizedAt   = now;
         proposal.FinalizedById = caller.Id;
         proposal.UpdatedAt     = now;
@@ -619,7 +624,12 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     private sealed record AipView(ProposalHeaderDto Header, IReadOnlyList<ProposalAipRowDto> Rows);
 
     /// <summary>What is frozen on Finalize. Readers must accept every schema version ever written.</summary>
-    private sealed record ProposalSnapshot(int SchemaVersion, ProposalHeaderDto Header, IReadOnlyList<ProposalAipRowDto> AipRows);
+    /// <remarks>
+    /// <see cref="WorkPlan"/> is null in a version-1 snapshot; the stored rows are used then.
+    /// </remarks>
+    private sealed record ProposalSnapshot(
+        int SchemaVersion, ProposalHeaderDto Header, IReadOnlyList<ProposalAipRowDto> AipRows,
+        IReadOnlyList<ProposalWorkPlanRowDto>? WorkPlan = null);
 
     private async Task<IReadOnlyList<AipActivity>> ActivitiesOfAsync(int projectId, CancellationToken ct)
         => (await _aip.GetActivitiesByProjectIdsAsync([projectId], ct))
@@ -729,11 +739,13 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
         AipView live = await LoadAipViewAsync(ctx, ct);
         AipView shown = live;
         bool aipChanged = false;
+        IReadOnlyList<ProposalWorkPlanRowDto>? frozenWorkPlan = null;
 
         if (p.Status == InvestmentProposalStatus.Final && p.SnapshotJson is not null
             && JsonSerializer.Deserialize<ProposalSnapshot>(p.SnapshotJson, SnapshotJson) is { } snap)
         {
             shown = new AipView(snap.Header, snap.AipRows);
+            frozenWorkPlan = snap.WorkPlan;
             // Cheap on purpose (§3.1): cost and activity count, not a deep compare.
             aipChanged = live.Header.ProjectCost != snap.Header.ProjectCost || live.Rows.Count != snap.AipRows.Count;
         }
@@ -758,7 +770,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             shown.Header,
             new ProposalWarningsDto(shown.Rows.Where(r => r.Expenditures.Count == 0)
                 .Select(r => new ProposalActivityRefDto(r.ActivityId, r.RefCode, r.Name)).ToList()),
-            ContentOf(p, shown.Rows),
+            frozenWorkPlan is null ? ContentOf(p, shown.Rows) : ContentOf(p, shown.Rows) with { WorkPlan = frozenWorkPlan },
             shown.Rows);
     }
 

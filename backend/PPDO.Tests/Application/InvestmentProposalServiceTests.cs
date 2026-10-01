@@ -372,6 +372,43 @@ public sealed class InvestmentProposalServiceTests
     }
 
     [Fact]
+    public async Task Finalize_FreezesTheTypedWorkPlanRows_WhenAnActivityIsLaterDeleted()
+    {
+        int id = await CreateAsync();
+        await SaveAsync(id, c => c with
+        {
+            WorkPlan = [new(null, ActValidation, null, null, "2,100 farmers validated", "Women under-listed", null, null)],
+        });
+        await _sut.FinalizeAsync(id, Version(id), _encoder);
+
+        // The activity is deleted from the AIP: its stored row cascades away with it.
+        _activities.RemoveAll(a => a.Id == ActValidation);
+        InvestmentProposal stored = _store.Proposals[id];
+        foreach (InvestmentProposalWorkPlanRow row in stored.WorkPlanRows.Where(r => r.AipActivityId == ActValidation).ToList())
+            stored.WorkPlanRows.Remove(row);
+
+        ProposalDto later = (await _sut.GetAsync(id, _encoder)).Value!;
+
+        ProposalWorkPlanRowDto kept = later.Content.WorkPlan.Single(r => r.AipActivityId == ActValidation);
+        Assert.Equal(("2,100 farmers validated", "Women under-listed"), (kept.PerformanceTarget, kept.GenderIssues));
+        Assert.Contains(later.AipRows, r => r.ActivityId == ActValidation);   // and its H-1 row
+        Assert.True(later.AipChangedSinceFinal);
+    }
+
+    [Fact]
+    public async Task Reopen_ThenTheDeletedActivitysRowIsGone()
+    {
+        // Reopening discards the snapshot: a Draft follows the AIP again (decision 16).
+        int id = await CreateAsync();
+        await _sut.FinalizeAsync(id, Version(id), _encoder);
+        _activities.RemoveAll(a => a.Id == ActValidation);
+
+        ProposalDto draft = (await _sut.ReopenAsync(id, Version(id), _deptHead)).Value!;
+
+        Assert.DoesNotContain(draft.Content.WorkPlan, r => r.AipActivityId == ActValidation);
+    }
+
+    [Fact]
     public async Task Reopen_ByTheOfficesDepartmentHead_ClearsTheSnapshot()
     {
         int id = await CreateAsync();

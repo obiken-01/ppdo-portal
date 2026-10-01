@@ -495,7 +495,7 @@ Migration: **`AddInvestmentProposals`** — ⚠️ MIGRATION. All new tables are
 | `signatory{1,2,3,4}_label` | nvarchar(100) | yes | twelve signatory columns in all, flat. Always exactly four slots (decision 19). Slot 4 added by `AlignInvestmentProposalsWithTemplate` |
 | `signatory{1,2,3,4}_name` | nvarchar(200) | yes | |
 | `signatory{1,2,3,4}_position` | nvarchar(200) | yes | |
-| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4, serialized with `"schemaVersion": 1`. Readers must accept every version ever written. Null while Draft |
+| `snapshot_json` | nvarchar(max) | yes | set on Finalize: the `header` + `aipRows` blocks of §4 and the typed `workPlan` rows, serialized with `"schemaVersion": 2`. Readers must accept every version ever written (version 1 has no `workPlan`; the stored rows are used then). Null while Draft. ↩️ PPDO-155: `workPlan` added so an activity deleted after Finalize keeps its Section G text in the Final document |
 | `finalized_at` | datetime2 | yes | UTC |
 | `finalized_by_id` | uniqueidentifier | yes | FK → Users, `SET NULL` |
 | `created_at` / `updated_at` | datetime2 | no | UTC |
