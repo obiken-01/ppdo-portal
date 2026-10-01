@@ -34,6 +34,7 @@ public sealed class InvestmentProposalServiceTests
     private readonly Mock<IInvestmentPlanningSettingsRepository> _settings = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly List<AipActivity> _activities;
+    private readonly AipRecord _record2028 = new() { Id = Record2028, FiscalYear = 2028 };
     private readonly InvestmentProposalService _sut;
 
     private readonly User _encoder   = MakeUser("Office Encoder", UserRole.Staff, GuestOffice);
@@ -45,7 +46,7 @@ public sealed class InvestmentProposalServiceTests
 
     public InvestmentProposalServiceTests()
     {
-        AipRecord r28 = new() { Id = Record2028, FiscalYear = 2028 };
+        AipRecord r28 = _record2028;
         AipRecord r27 = new() { Id = Record2027, FiscalYear = 2027 };
         AipOffice office = new() { Id = AipOfficeId, AipRecordId = Record2028, OfficeId = GuestOffice, Name = "Provincial Agriculture Office", RefCode = "1000" };
         AipOffice other = new() { Id = OtherAipOfficeId, AipRecordId = Record2028, OfficeId = OtherOffice, Name = "Other Office", RefCode = "2000" };
@@ -144,6 +145,27 @@ public sealed class InvestmentProposalServiceTests
         ServiceResult<ProposalDto> result = await _sut.CreateAsync(Project2027, _encoder);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Equal(InvestmentProposalService.FirstYearMessage, result.Error);
+    }
+
+    [Fact]
+    public async Task Create_ProjectInAnArchivedRecord_Returns409_AndCreatesNothing()
+    {
+        // PPDO-174: an archived record is superseded; a proposal on it would print figures nobody approves.
+        _record2028.Status = PlanningStatus.Archived;
+
+        ServiceResult<ProposalDto> result = await _sut.CreateAsync(Project, _encoder);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Equal(InvestmentProposalService.ArchivedRecordMessage(2028), result.Error);
+        Assert.False(await _store.ExistsForProjectAsync(Project));
+    }
+
+    [Fact]
+    public async Task Create_ProjectInAnArchivedRecord_OutOfScope_IsStill404()
+    {
+        // Scope first: an id the caller cannot see must not reveal that its record is archived.
+        _record2028.Status = PlanningStatus.Archived;
+        Assert.Equal(ServiceErrorCode.NotFound, (await _sut.CreateAsync(Project, _stranger)).Code);
     }
 
     [Fact]

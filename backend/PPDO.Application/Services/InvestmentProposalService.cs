@@ -22,6 +22,10 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     public const string RowVersionMessage      = "The proposal's version is missing. Reload and try again.";
     public const string ValidationMessage      = "Validation failed";
 
+    /// <summary>PPDO-174: create is refused for a project whose AIP record is archived (superseded).</summary>
+    public static string ArchivedRecordMessage(int fiscalYear)
+        => $"This project is in an archived AIP. Create the proposal from the current FY {fiscalYear} AIP.";
+
     /// <summary>"Investment proposals start with FY 2028." The year comes from <see cref="AipFiscalYears"/>, never a literal.</summary>
     public static string FirstYearMessage
         => $"Investment proposals start with FY {AipFiscalYears.FirstEnteredFiscalYear}.";
@@ -171,6 +175,12 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             return ServiceResult<ProposalDto>.NotFound(ProjectNotFoundMessage);
         if (!AipFiscalYears.IsEntered(ctx.Record.FiscalYear))
             return ServiceResult<ProposalDto>.BadRequest(FirstYearMessage);
+        // PPDO-174 (Ralph, 2026-10-01): an archived record is superseded, so a proposal on it would print
+        // figures nobody will approve. The list and the picker never offer these (they read the record
+        // GetLatestByFiscalYearAsync returns); this closes the direct-id route. Checked after scope, so an
+        // id outside the caller's scope still answers 404. Existing proposals are untouched.
+        if (ctx.Record.Status == PlanningStatus.Archived)
+            return ServiceResult<ProposalDto>.Conflict(ArchivedRecordMessage(ctx.Record.FiscalYear));
         if (await RefuseWriteAsync(ctx, caller, ct) is string refusal)
             return ServiceResult<ProposalDto>.Forbidden(refusal);
 

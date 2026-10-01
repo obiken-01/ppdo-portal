@@ -237,6 +237,11 @@ and therefore always agree with it.
 - **Project Type**: deferred (decision 6). The PDC will supply the list. The samples' values look
   like development-sector names ("Environmental & Natural Resources Development").
 - **Map/photo upload in B**: revisit if an office asks.
+- **Attachments (photos, scanned signed copy) — PARKED (Ralph, 2026-10-01).** Demo 2.10 (PPDO-132,
+  a file per project) is parked: if attachments come, they will be part of this proposal, not a
+  separate upload. Study in [Investment_Proposal_Findings.md](Investment_Proposal_Findings.md) §8.5:
+  one sample in nine has photos, as a **"PHOTO DOCUMENTATION" annex after the signatures**, not inside
+  a section.
 - **PDF export**: not requested; Word is the deliverable.
 
 ---
@@ -255,6 +260,7 @@ and therefore always agree with it.
 | Delete | Draft | Caller confirms Delete | 204. Proposal and all child rows removed. The project shows "No proposal" again |
 | Edge: duplicate create | Proposal already exists | Create (e.g. two tabs) | 409 "This project already has a proposal." UI navigates to the existing one |
 | Edge: FY2027 project | Project in an FY ≤ 2027 AIP | Create | 400 "Investment proposals start with FY 2028." The list never offers Create for these |
+| Edge: archived AIP record (R, 2026-10-01, PPDO-174) | Project in an **Archived** (superseded) AIP record, reached by its id | Create | 409 "This project is in an archived AIP. Create the proposal from the current FY {year} AIP." Checked after scope, so an out-of-scope id still answers 404. The list and the picker never offer these. A proposal already on a record that is later archived is untouched |
 | Edge: project with no activities | Project exists, zero activities | Open / export | Allowed. A cost 0.00, G shows only proposal-only rows, H-1 prints header + TOTAL 0.00 |
 | Edge: activity without lines | ≥1 activity has no expenditure lines | Open / export | Banner "{n} activities have no expenditure detail. Their totals are printed without a breakdown." H-1 per decision 18 |
 | Edge: AIP changes while Draft | Encoder edits an activity amount | Proposal re-opened / exported | New figures appear. Nothing stored in the proposal changes |
@@ -367,7 +373,9 @@ One query, a projection over AIP projects left-joined to `investment_proposals` 
 ### `POST /api/budget-planning/proposals` — write
 
 Request `{ aipProjectId: int }`. 201 → `ProposalDto` (below). 400 FY2027 · 404 project
-missing/out of scope · 409 "This project already has a proposal." with `data.proposalId`.
+missing/out of scope · 409 "This project already has a proposal." with `data.proposalId` ·
+409 "This project is in an archived AIP. Create the proposal from the current FY {year} AIP."
+(PPDO-174).
 
 ### `GET /api/budget-planning/proposals/{id}`
 
