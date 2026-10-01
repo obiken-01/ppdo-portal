@@ -2,6 +2,7 @@
 status: accepted — 2026-09-29
 version: v1.8.0 (Demo 2.15)
 tickets: PPDO-153 (parent), PPDO-154 … PPDO-161
+revised: 2026-10-01 — per-section save, one-section-at-a-time editor, selector, AIP Entry strip (decisions 24, 28, 29; §4, §6.2, §6.4)
 supersedes: —
 ---
 
@@ -160,8 +161,15 @@ and therefore always agree with it.
     [AIP_Concurrent_Edit_Spec.md](AIP_Concurrent_Edit_Spec.md) (🅐, 🅒), applied from
     the first release rather than retrofitted.
 24. **One PUT saves the whole editable document. (P)** Content is a few KB; per-section endpoints
-    would multiply the concurrency surface for no gain. The editor saves explicitly (Save button
-    + Ctrl+S) and warns on navigation with unsaved changes. No autosave in v1.
+    would multiply the concurrency surface for no gain. No autosave in v1.
+    ↩️ **The editor saves per section (R, 2026-10-01, PDC request).** Each section has its own
+    **Save section**. It sends that section's edits **plus every other section's last-saved
+    values** in the same single PUT, so unsaved work elsewhere is never saved by accident and the
+    API is unchanged. The header adds **Save all (n)** for every section with unsaved edits, and
+    Ctrl+S saves the section in view. One `row_version` still covers the whole proposal (decision
+    23), so two people saving *different* sections at once still get the 409. That is accepted,
+    because a proposal usually has one author. **Finalize is disabled while any section has unsaved
+    edits.** Wireframes: [wireframes/investment-proposal/](wireframes/investment-proposal/README.md).
 25. **Signatory defaults in the existing settings row. (P)** Four nullable columns on
     `investment_planning_settings`: `ppdc_name`, `ppdc_position`, `lce_name`, `lce_position`.
     They use the same gate as the default fiscal year (`CanManageInvestmentPlanningSettings`,
@@ -176,6 +184,15 @@ and therefore always agree with it.
     10 pt, 1.78 cm margins, as measured from the samples). Code fills the body. The SDK is
     already resolved transitively through ClosedXML; the Infrastructure project adds an
     **explicit** `PackageReference` pinned to the same version. **No new download.**
+28. **Sections that read another section show what is on screen. (R, 2026-10-01: "the less
+    complicated one")** F-Direct's "Same as Section A" lists A's rows as currently entered, saved
+    or not, and the H-1 preview follows G's current grouping and order. Neither marks unsaved
+    values. The **export always uses saved data**.
+29. **Two ways in besides the list. (R, 2026-10-01)** AIP Entry's project panel gets an
+    **Investment proposal** strip (§6.4). The editor has its own **Fiscal year → (Office) → Program
+    → Project** selector, each project showing its proposal status, plus **Open in AIP Entry ↗**.
+    Both read `GET /proposals/projects` (§4). The Office picker appears only for callers who can
+    see more than one office.
 
 ### Open follow-ups (not blocking)
 
@@ -284,6 +301,31 @@ a project to start from. Server-side paginated; `pageSize` ≤ 100.
 400 when `fiscalYear` < first entered year: "Investment proposals start with FY 2028."
 `officeId` outside scope is **clamped** to the caller's scope, not refused (same as the other
 budget-planning lists).
+
+### `GET /api/budget-planning/proposals/projects?fiscalYear={int}&officeId={int?}`
+
+**Added 2026-10-01 (decision 29).** The editor's Program → Project selector and AIP Entry's
+proposal strip. **One office, unpaged:** an office holds tens of projects, and both callers need
+the whole set at once. Same scope rules as the list: guest callers are pinned to their own office
+(`officeId` ignored), and callers who see more than one office must pass `officeId`, else
+**400** "Choose an office." FY < 2028 → 400 as above. Ordered by program ref code, then project
+ref code.
+
+200 → `ProposalProjectOptionDto[]`:
+
+| Field | Type |
+|---|---|
+| `aipProjectId` | int |
+| `projectRefCode`, `projectName` | string |
+| `programId` | int |
+| `programRefCode`, `programName` | string |
+| `proposalId` | int? |
+| `status` | `"None" \| "Draft" \| "Final"` |
+| `updatedAt` | datetime? |
+| `updatedByName` | string? |
+
+One query, a projection over AIP projects left-joined to `investment_proposals` on the unique
+`aip_project_id`. No per-project round trips.
 
 ### `POST /api/budget-planning/proposals` — write
 
@@ -491,24 +533,50 @@ users only), search (ref code or name, debounced 300 ms).
 
 ### 6.2 Editor — `/budget-planning/proposals/edit?id=`
 
-Layout: sticky header (title, status pill, **Save**, **Export Word**, **Finalize** / **Reopen**,
-overflow **Delete**), a left rail of section letters A–M (anchors, with a dot on sections that
-have unsaved edits), and one long page of sections. Each section is a flat card with its template
-heading and the template's guidance as muted helper text. Auto fields render as read-only text
-with a small "From AIP" tag; proposal-only work-plan rows get a "Proposal only" tag.
+Routes: `?id={proposalId}` opens a proposal; `?projectId={aipProjectId}` opens the selector on a
+project (the Create panel when it has none, else it redirects to `?id=`). **Open in AIP Entry ↗**
+goes to `/budget-planning/aip/entry?fiscalYear=&programId=&projectId=`.
+
+↩️ **Layout revised 2026-10-01 (decisions 24, 28, 29; PDC request).** Wireframes:
+[wireframes/investment-proposal/](wireframes/investment-proposal/README.md), artboard 1 is the
+default view.
+
+- **Sticky header:** title, status pill, an "{n} sections unsaved" chip, **Save all (n)**, **Export
+  Word**, **Finalize** (disabled while anything is unsaved) / **Reopen**, overflow **Delete**.
+  Under it, the **selector row**: Fiscal year · Office (only for callers who see more than one) ·
+  Program `Lookup` · Project `Lookup` (each option shows its status None/Draft/Final) · **Open in
+  AIP Entry ↗**, plus the **One section at a time** switch. Picking a project with no proposal
+  shows a **Create proposal** panel in place of the sections.
+- **Left rail:** the sections A–M and Signatories, each with a status dot: saved · unsaved · filled
+  from the AIP · not started (a legend sits under the rail). The rail is how you move between
+  sections.
+- **One section at a time (the default):** only the current section's card shows, with **← previous**
+  and **next →** in its footer. Switching it off shows **every section as a collapsible card**
+  (Expand all / Collapse all), each folded card showing a one-line summary ("3 of 5 sectors
+  filled", "Direct: same as Section A").
+- **Each section card:** template heading and guidance (muted helper text), its status pill, and a
+  footer with **Discard** and **Save section** (decision 24). A folded card with unsaved edits keeps
+  a **Save** in its header. Collapsing never discards. **H and M** are filled from the AIP and have
+  no Save. Auto fields render as read-only text with a "From AIP" tag; proposal-only work-plan rows
+  get a "Proposal only" tag.
+- **Leaving a section with unsaved edits** (rail, previous/next, project selector, any other
+  navigation) asks **Save and continue · Discard · Keep editing**. Reload/close gets the browser's
+  own prompt. Reuse the unsaved-changes guard from AIP Entry (`AipUnsavedChanges`, PPDO-166) and
+  add the third button.
 
 | State | Content |
 |---|---|
 | Loading | Header and left rail render; each section card shows a skeleton of its own shape (summary table rows, 3 text lines, table rows). No full-page spinner |
 | Empty | Not reachable: a proposal always has content after create. Empty tables show one blank row and "+ Add row" |
 | Error (load) | "Couldn't load this proposal." + Retry. 404 → "Proposal not found. It may have been deleted or is outside your office." + Back to list |
-| Error (save) | Toast "Couldn't save. Your changes are still here." Input kept. 409 stale → `MessageDialog` with the §3.1 message and **Reload** (discards local edits after a second confirm) / **Keep editing** |
-| Success | Toast "Proposal saved"; Finalize → toast "Proposal finalized" and the page turns read-only |
+| Error (save) | Toast "Couldn't save. Your changes are still here." Input kept. 409 stale → the section footer turns amber with the §3.1 message and **Reload** (discards local edits after a second confirm) / **Keep editing** |
+| Success | Toast "Section C saved" (or "{n} sections saved" from Save all); the section's pill turns **Saved** and its rail dot green. Finalize → toast "Proposal finalized" and the page turns read-only |
 | Warning | Amber banner under the header when `activitiesWithoutLines` is non-empty (decision 18), listing ref codes |
 | Final | All inputs read-only (rendered as text, not disabled inputs); banner "Final — {date} by {name}"; Reopen shown only to permitted callers; "The AIP has changed since this proposal was finalized" notice when flagged |
 | Read-only / forbidden | Cross-office reviewer: same read-only rendering as Final, no Save/Finalize/Delete (**hidden**, not disabled). Export stays |
-| Validation | Messages under each field in `text-red-600`; the rail marks sections with errors; Save scrolls to the first error |
-| Unsaved changes | Browser `beforeunload` prompt and in-app navigation `ConfirmDialog` "Leave without saving?" |
+| Validation | Messages under each field in `text-red-600`; the section pill reads "{n} error(s) — not saved" and the rail marks it; Save section scrolls to the first error in that section |
+| Unsaved changes | Leaving a section: **Save and continue · Discard · Keep editing**. Leaving the page: the same dialog for in-app navigation, the browser's prompt for reload/close |
+| No proposal yet | Selector on a project with status None: a panel "This project has no investment proposal yet." + **Create proposal** (hidden for cross-office reviewers) |
 
 Section specifics:
 - **A:** auto rows as text. Location input. HGDG checklist `Lookup`, score number input. The
@@ -534,6 +602,22 @@ restricted to bold/italic/lists). New: `ProposalSectionCard`, `ProposalWorkPlanE
 A card on the existing `/config/investment-planning` page: four inputs, Save. Same
 loading/error/success states as the default-fiscal-year card beside it. Hidden (not disabled) for
 anyone without `CanManageInvestmentPlanningSettings`.
+
+### 6.4 AIP Entry — the Investment proposal strip (added 2026-10-01, decision 29)
+
+In AIP Entry's project panel (`AipProjectPanel`), between the project details and its activities.
+FY 2028+ projects only. Data: one `GET /proposals/projects` call for the page's office and year,
+mapped by `aipProjectId`, and refreshed when the panel is opened, not after every edit. Wireframe
+artboard 4.
+
+| State | Content |
+|---|---|
+| None | "Investment proposal" · `StatusPill` None · "Creates it with the description, objective and activity names already filled in." · **Create proposal** (creates, then opens the editor) |
+| Draft | Pill Draft · "Last saved {time} by {name}" · **Open proposal →** |
+| Final | Pill Final · "Finalized {date}" · **Open proposal →** |
+| Read-only caller | Cross-office reviewer: **View proposal →**, never Create. A project outside the caller's division lock shows the strip like the rest of the panel, read-only |
+| FY 2027 | No strip |
+| Loading / error | The strip is left out until the call settles; on error it is left out silently (the panel still works, and the list page is the fallback) |
 
 ---
 
@@ -579,12 +663,12 @@ Parent **PPDO-153** (child of the Demo 2 epic PPDO-122). Prompts:
 | Ticket | Scope | Blocked by |
 |---|---|---|
 | **PPDO-154** T1 Data model | Entities, configurations, `AddInvestmentProposals` migration, settings columns, repository. ⚠️ MIGRATION | — |
-| **PPDO-155** T2 Service + API | `InvestmentProposalService` (create with pre-fill, get with live/snapshot merge, PUT replace + sanitize, finalize/reopen/delete, concurrency), `CanReopenInvestmentProposalAsync` + matrix row, `InvestmentProposalFunctions`, list endpoint, AIP project-delete 409, signatory-defaults endpoints. Ships `attributedGadBudget = null` | PPDO-154 |
+| **PPDO-155** T2 Service + API | `InvestmentProposalService` (create with pre-fill, get with live/snapshot merge, PUT replace + sanitize, finalize/reopen/delete, concurrency), `CanReopenInvestmentProposalAsync` + matrix row, `InvestmentProposalFunctions`, list endpoint, **`GET /proposals/projects` (added 2026-10-01)**, AIP project-delete 409, signatory-defaults endpoints. Ships `attributedGadBudget = null` | PPDO-154 |
 | **PPDO-156** T3 HGDG calculator | Pure `HgdgAttribution` + tests + the one-line wiring into T2. Merge needs the PCW scale confirmed | PPDO-155 |
 | **PPDO-157** T4 Document builder | Pure `InvestmentProposalDocumentBuilder` (Application): header, grouped G rows, H-1 blocks with computation strings, totals, rich-text model. No Open XML | PPDO-155 |
 | **PPDO-158** T5 Word export | `IInvestmentProposalWordService` / `InvestmentProposalWordService`, template asset, export endpoint | PPDO-157 |
-| **PPDO-159** T6 List page | §6.1, sidebar entry via `lib/budget-planning-access` | PPDO-155, PPDO-145 |
-| **PPDO-160** T7 Editor page | §6.2, `RichTextEditor` extraction, H-1 preview | PPDO-155, PPDO-157 |
+| **PPDO-159** T6 List page + ways in | §6.1, sidebar entry via `lib/budget-planning-access`, **§6.4 AIP Entry strip (added 2026-10-01)** | PPDO-155, PPDO-145 |
+| **PPDO-160** T7 Editor page | §6.2 (revised 2026-10-01: one section at a time, per-section Save, selector, leave dialog), `RichTextEditor` extraction, H-1 preview | PPDO-155, PPDO-157 |
 | **PPDO-161** T8 Signatory defaults card | §6.3 | PPDO-155, PPDO-144 |
 
 T3 deliberately follows T2 instead of blocking it, so the hand-coding ticket is never on the
@@ -646,7 +730,23 @@ Roles and scope
 UI states
 - [ ] The list shows an 8-row skeleton on first load, not a spinner
 - [ ] The editor shows section-shaped skeletons while loading
-- [ ] Navigating away with unsaved edits asks "Leave without saving?"
+- [ ] Navigating away with unsaved edits asks **Save and continue · Discard · Keep editing**
+
+Editor layout and saving (added 2026-10-01)
+- [ ] The editor opens one section at a time; switching the toggle off shows every section as a collapsible card with a one-line summary
+- [ ] Editing Section C and clicking its **Save section** saves C only: unsaved edits in E stay unsaved (rail dot stays amber) and are not in the saved document
+- [ ] Folding a section with unsaved edits keeps them, and its header shows a **Save**
+- [ ] With two sections unsaved, the header shows **Save all (2)**, and **Finalize** is disabled until both are saved
+- [ ] Sections H and M show "From AIP" and have no Save
+- [ ] Ticking "Same as Section A" in F lists A's rows including an unsaved row just typed in A; exporting before saving A prints A's saved rows
+- [ ] The Program → Project selector lists the office's FY 2028 projects with their proposal status, and picking a project without a proposal offers **Create proposal**
+- [ ] **Open in AIP Entry ↗** opens AIP Entry on the same project
+
+AIP Entry strip (added 2026-10-01)
+- [ ] An FY 2028 project with no proposal shows **Create proposal**; clicking it opens the new proposal with B and the objective filled in
+- [ ] A project with a Draft proposal shows "Last saved {time} by {name}" and **Open proposal →**
+- [ ] A cross-office reviewer sees **View proposal →** and never **Create proposal**
+- [ ] FY 2027 projects show no strip
 
 ---
 

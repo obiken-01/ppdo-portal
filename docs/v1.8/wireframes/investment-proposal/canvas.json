@@ -1,0 +1,60 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "FocusMode.dc.html": {
+      "h": 1180,
+      "title": "1 · Editor (opens like this) — one section at a time, with project selector",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 1760,
+      "title": "2 · Alternative view — all sections, folded",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "SectionStates.dc.html": {
+      "h": 1080,
+      "title": "3 · Section header states",
+      "w": 960,
+      "x": 1520,
+      "y": 1300
+    },
+    "AipEntryProject.dc.html": {
+      "h": 1040,
+      "title": "4 · AIP Entry project panel — link to the proposal",
+      "w": 1120,
+      "x": 2560,
+      "y": 1300
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-30T10:20:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 3680,
+      "text": "PGOM Investment Proposal — editor layout (Demo 2.15, PPDO-153)",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "FocusMode.dc.html",
+    "SectionStates.dc.html",
+    "AipEntryProject.dc.html"
+  ],
+  "pages": [],
+  "title": "Investment Proposal Editor"
+}
