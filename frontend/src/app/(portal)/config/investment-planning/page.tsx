@@ -4,11 +4,12 @@
  * Configuration → Investment Planning Settings (v1.8.0 — PPDO-144, spec
  * docs/v1.8/Default_Fiscal_Year_Spec.md §3.1 / §6.1).
  *
- * One setting today: the province-wide default fiscal year every Investment Planning page opens
- * on. Host-office config managers only (SuperAdmin from anywhere) — the server enforces it
+ * The province-wide default fiscal year every Investment Planning page opens on, and (PPDO-161)
+ * the investment proposal signatory defaults (`SignatoryDefaultsCard`). Host-office config managers only (SuperAdmin from anywhere) — the server enforces it
  * (`CanManageInvestmentPlanningSettingsAsync`); the redirect and the hidden tile are courtesy.
  *
  *   GET / PUT /api/config/investment-planning/default-fiscal-year
+ *   GET / PUT /api/config/investment-planning/signatory-defaults   (SignatoryDefaultsCard)
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,6 +20,8 @@ import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import type { DefaultFiscalYearResponse } from "@/types";
+import SignatoryDefaultsCard from "./SignatoryDefaultsCard";
+import { isCommentOnlyReviewer } from "@/lib/budget-planning-access";
 
 const MIN_FISCAL_YEAR = 2020;
 
@@ -208,6 +211,8 @@ export default function InvestmentPlanningSettingsPage() {
             </div>
           )}
         </section>
+
+        <SignatoryDefaultsCard readOnly={isCommentOnlyReviewer(me)} />
       </div>
 
       {confirmClear && (
