@@ -108,9 +108,9 @@ public static class InvestmentProposalDocumentBuilder
     // ── File name ─────────────────────────────────────────────────────────────
 
     private static readonly Regex Unsafe = new(@"[\\/:*?""<>|\x00-\x1F]", RegexOptions.Compiled);
-    private const int MaxFileNameLength = 150;
+    private const int MaxFileNameLength = 115;   // + ".docx" = 120, the export's cap
 
-    /// <summary>"Investment Proposal - {RefCode} - {Name}.docx" (spec §10), safe for every OS.</summary>
+    /// <summary>"Investment Proposal - {RefCode} - {Name}.docx" (spec §10), safe for every OS, at most 120 characters.</summary>
     public static string FileName(ProposalHeaderDto header)
     {
         string stem = $"Investment Proposal - {header.ProjectRefCode} - {header.ProjectTitle}";

@@ -29,14 +29,17 @@ namespace PPDO.Functions.Functions;
 /// </summary>
 public sealed class InvestmentProposalFunctions
 {
-    private readonly IInvestmentProposalService _proposals;
-    private readonly IJwtValidator              _jwt;
-    private readonly IPermissionService         _permissions;
+    private readonly IInvestmentProposalService       _proposals;
+    private readonly IInvestmentProposalExportService _export;
+    private readonly IJwtValidator                    _jwt;
+    private readonly IPermissionService               _permissions;
 
     public InvestmentProposalFunctions(
-        IInvestmentProposalService proposals, IJwtValidator jwt, IPermissionService permissions)
+        IInvestmentProposalService proposals, IInvestmentProposalExportService export,
+        IJwtValidator jwt, IPermissionService permissions)
     {
         _proposals   = proposals;
+        _export      = export;
         _jwt         = jwt;
         _permissions = permissions;
     }
@@ -186,5 +189,40 @@ public sealed class InvestmentProposalFunctions
         return result.IsSuccess
             ? req.CreateResponse(HttpStatusCode.NoContent)
             : await ConfigHttp.FromResultAsync(req, result, ct);
+    }
+
+    // ── GET /api/budget-planning/proposals/{id}/export — the Word document (PPDO-158) ──
+    //
+    // Read-only, so no write guard: a cross-office reviewer may export what they may read. Scope and
+    // the 404 are the read's (the export service reads through GetAsync).
+    [Function("InvestmentProposalExport")]
+    public async Task<HttpResponseData> Export(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/proposals/{id:int}/export")] HttpRequestData req,
+        int id,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        ServiceResult<ProposalExportFileDto> result = await _export.ExportAsync(id, caller!, ct);
+        // A refusal is an envelope the page can read, never a file.
+        if (!result.IsSuccess) return await ConfigHttp.FromResultAsync(req, result, ct);
+
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.Headers.Add("Content-Disposition", ContentDisposition(result.Value!.FileName));
+        await response.WriteBytesAsync(result.Value.Content, ct);
+        return response;
+    }
+
+    /// <summary>
+    /// <c>attachment; filename="ascii"; filename*=UTF-8''encoded</c> (RFC 6266 / 5987): project names
+    /// carry "ñ" and en dashes, which a bare <c>filename=</c> cannot.
+    /// </summary>
+    internal static string ContentDisposition(string fileName)
+    {
+        string ascii = new(fileName.Select(c => c is >= ' ' and <= '~' && c != '"' && c != '\\' ? c : '_').ToArray());
+        return $"attachment; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(fileName)}";
     }
 }
