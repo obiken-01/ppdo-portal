@@ -287,7 +287,7 @@ What *did* change underneath, and how it touches the contract:
 |---|---|
 | `aip_activities.division_id` + `aip_division_submissions` (PPDO-147, division submit) | None. Divisions are internal (decision 9). Release is still gated on every group being `Consolidated` |
 | Investment proposals (PPDO-174 and others) | None. Proposals feed the AIP but are not part of the released document |
-| `aip_procurement_items.period_no` (quarter Q1–Q4, added 2026-09-14) | **Not exposed.** By design it is input-only and must not reach any total. **Ask GSO (open question 13)** whether they want the quarter for PPMP timing; adding `periodNo` to `procurementItem` would be an additive 1.2.0 |
+| `aip_procurement_items.period_no` (quarter Q1–Q4, added 2026-09-14) | **Not exposed — decided 2026-10-02.** The quarter is input-only and must not reach any total; GSO needs the total per account, which `expenditures[].amounts` already gives. Add `periodNo` (an additive 1.2.0) only if GSO explicitly asks for it |
 | Climate-change typologies seeded as a config table | None yet. `typologyCodes` is still split from the activity's single code column (§6) |
 
 **Schema limits that are tighter than the database.** The schema's `maxLength` values were
@@ -307,9 +307,6 @@ the free-text names (or cap them in the entry service instead), as schema **1.1.
 so no consumer breaks. It means bumping `ExternalAipConstants.SchemaVersion`, the schema `const`, and
 the three samples together, then running `ExternalAipSchemaContractTests`.
 
-Open question added for the meeting:
-
-| # | Question | Proposed default |
-|---|---|---|
-| 13 | Does GSO want the **quarter** a procurement item is planned in (`periodNo`, 1–4)? | Not in 1.x unless asked — it is planning input, not part of the signed AIP |
-
+**Decided (2026-10-02):** no per-quarter breakdown. Procurement items stay as they are and the
+per-account totals on each expenditure line are the figure GSO uses. Revisit only on an explicit
+request from GSO.
