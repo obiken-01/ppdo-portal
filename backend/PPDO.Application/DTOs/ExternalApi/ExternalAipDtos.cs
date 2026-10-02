@@ -2,7 +2,7 @@ namespace PPDO.Application.DTOs.ExternalApi;
 
 /// <summary>
 /// The payload shapes for <c>GET /api/external/v1/aip</c> (v1.8.0 — PPDO-14), matching
-/// <c>docs/external-api/aip-response.schema.json</c> (draft 1.0.0) field for field. Every money
+/// <c>docs/external-api/aip-response.schema.json</c> field for field. Every money
 /// value is a decimal string, never a JSON number — see <see cref="ExternalMoneyAmountsDto"/>.
 /// </summary>
 
@@ -113,7 +113,7 @@ public sealed record ExternalAipDto(
 /// <summary>Fixed values the schema pins — kept in one place so nothing hand-types them twice.</summary>
 public static class ExternalAipConstants
 {
-    public const string SchemaVersion = "1.1.0";
+    public const string SchemaVersion = "1.1.1";
     public const string Currency = "PHP";
 
     public const string FormatLegacy = "Legacy";

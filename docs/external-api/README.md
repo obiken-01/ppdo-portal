@@ -1,12 +1,12 @@
 ---
 status: built
-version: 1.1.0
-built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102
+version: 1.1.1
+built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102; 1.1.1 — schema limits match the columns (PR #420)
 spec: ../v1.8/External_AIP_API_Spec.md
 supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 ---
 
-# External AIP API — response schema & samples (1.1.0)
+# External AIP API — response schema & samples (1.1.1)
 
 > ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331, #332, #352). ⚠️ **Not live yet:** it
 > reaches production when v1.8.0 merges to `main`. Partner keys are issued from Configuration → API
@@ -40,6 +40,7 @@ supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 | Read service producing this schema | PPDO-14 | ✅ Merged (#330) |
 | Endpoints + schema contract test (`ExternalAipSchemaContractTests`) | PPDO-12 | ✅ Merged (#331) |
 | **1.1.0** — `totals` and `printedTotals` on every program and project | PPDO-102 | ✅ Merged (#352) |
+| **1.1.1** — string limits no tighter than the database columns | — | ✅ PR #420 |
 | Configuration → API Access page, to issue and revoke keys | PPDO-86 | ✅ Merged (#332) |
 | Production | — | ⏳ Ships with v1.8.0 → `main`; run the migration by hand (CI does not) |
 
@@ -49,6 +50,7 @@ supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 
 | Version | Change |
 |---|---|
+| **1.1.1** | Loosening only — every response valid under 1.1.0 is still valid. `activity.esreCode` `maxLength` 10 → **20** (the `esre_codes.code` column and config page allow 20). `maxLength` **removed** from `activity.name` (was 1000), `activity.implementingOffice` (200) and `program` / `project` / `group` `name` (500): those columns are `nvarchar(max)` and nothing caps the input, so 1.1.0 could reject a response the database had stored. Found in the §8 re-check |
 | **1.1.0** | Adds `totals` and `printedTotals` to every `program` and `project`, the same shape the `group` already carries. A consumer no longer has to add up activities to show a program or project figure. `printedTotals` is the sum of the activities' printed figures — **never a rounding of `totals`**, because the form rounds each line up. Null for legacy AIPs. Additive only. |
 | 1.0.0 | First built shape (PPDO-12, PPDO-14). |
 
@@ -302,10 +304,11 @@ test only checks the values its own fixtures use):
 | `activity.implementingOffice` | 200 | nvarchar(max) | Free text |
 | `program.name`, `project.name`, `group.name` | 500 | nvarchar(max) | Long imported names |
 
-**Proposed fix (not applied — needs a decision):** raise `esreCode` to 20 and drop `maxLength` on
-the free-text names (or cap them in the entry service instead), as schema **1.1.1** — loosening only,
-so no consumer breaks. It means bumping `ExternalAipConstants.SchemaVersion`, the schema `const`, and
-the three samples together, then running `ExternalAipSchemaContractTests`.
+**✅ Fixed as schema 1.1.1 (2026-10-02):** `esreCode` raised to 20 and `maxLength` dropped on the
+free-text names — loosening only, so no consumer breaks. `ExternalAipConstants.SchemaVersion`, the
+schema `const` and the three samples moved together, and
+`ExternalAipSchemaContractTests.Fy2028Response_WithValuesAtColumnWidth_ValidatesAgainstSchema` now
+feeds column-width values through the real read service so this cannot drift back.
 
 **Decided (2026-10-02):** no per-quarter breakdown. Procurement items stay as they are and the
 per-account totals on each expenditure line are the figure GSO uses. Revisit only on an explicit
