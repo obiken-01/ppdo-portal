@@ -299,9 +299,40 @@ public sealed class InvestmentProposalWordServiceTests
         Assert.Contains("Prepared by:", sig.InnerText);
         Assert.Contains("Noted by:", sig.InnerText);
         Assert.Contains("Local Chief Executive", sig.InnerText);
-        // 3 named slots: [1 | 2], spacer, [3 | empty]
-        Assert.Equal(3, sig.Elements<TableRow>().Count());
-        Assert.Equal(2, sig.Elements<TableRow>().First().Elements<TableCell>().Count());
+        // 3 named slots: [1 | 2], spacer, [3 across both columns]
+        List<TableRow> rows = sig.Elements<TableRow>().ToList();
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(2, rows[0].Elements<TableCell>().Count());
+        TableCell last = Assert.Single(rows[2].Elements<TableCell>());
+        Assert.Equal(2, last.TableCellProperties!.GridSpan!.Val!.Value);
+        Assert.Contains("Noted by:", last.InnerText);
+    }
+
+    [Fact]
+    public void Export_Signatures_EveryLineIsCentred()
+    {
+        using WordprocessingDocument doc = Open(_sut.Export(Full()));
+        Table sig = doc.MainDocumentPart!.Document.Body!.Elements<Table>().Last();
+
+        List<Paragraph> lines = sig.Descendants<Paragraph>().Where(p => p.InnerText.Length > 0).ToList();
+        Assert.Equal(9, lines.Count);   // label, name, position × 3 slots
+        Assert.All(lines, p => Assert.Equal(JustificationValues.Center, p.ParagraphProperties?.Justification?.Val?.Value));
+    }
+
+    [Fact]
+    public void Export_Logframe_GeneralGoalsIsItsOwnTable()
+    {
+        using WordprocessingDocument doc = Open(_sut.Export(Full()));
+        List<Table> tables = doc.MainDocumentPart!.Document.Body!.Elements<Table>().ToList();
+
+        Table goals = tables.Single(t => t.InnerText.Contains("General Goals/Objectives"));
+        Assert.Single(goals.Elements<TableRow>());
+        Assert.DoesNotContain("Project Structure", goals.InnerText);
+
+        Table structure = tables.Single(t => t.InnerText.Contains("Project Structure"));
+        Assert.DoesNotContain("General Goals/Objectives", structure.InnerText);
+        // Adjacent tables merge in Word; a paragraph must sit between them.
+        Assert.IsType<Paragraph>(goals.NextSibling());
     }
 
     [Fact]

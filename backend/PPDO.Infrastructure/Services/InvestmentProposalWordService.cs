@@ -89,12 +89,13 @@ public sealed class InvestmentProposalWordService : IInvestmentProposalWordServi
 
         // E
         yield return Heading("E. LOGICAL FRAMEWORK");
+        // The goals are their own table, apart from the project structure (Ralph, 2026-10-03, after the
+        // samples). Two tables with nothing between them merge in Word, hence the spacer.
+        yield return Grid([2600, 7288], [],
+            [Row(Cell(2600, [P("General Goals/Objectives", bold: true)], shade: HeaderShade), Cell(7288, Rich(d.GeneralObjective)))]);
+        yield return Spacer();
         yield return Grid([2600, 3644, 3644],
-            [
-                Row(Cell(2600, [P("General Goals/Objectives", bold: true)], shade: HeaderShade),
-                    Cell(7288, Rich(d.GeneralObjective), span: 2)),
-                HeaderRow(["Project Structure", "Performance Target and/or Indicator", "Means of Verification"], [2600, 3644, 3644]),
-            ],
+            [HeaderRow(["Project Structure", "Performance Target and/or Indicator", "Means of Verification"], [2600, 3644, 3644])],
             d.Logframe.Select(l => Row(Cell(2600, P(l.Label, bold: true)), Cell(3644, P(l.Target)), Cell(3644, P(l.Verification)))));
 
         // F
@@ -281,6 +282,8 @@ public sealed class InvestmentProposalWordService : IInvestmentProposalWordServi
     }
 
     // ── Signatures: two per row, no borders (decision 19) ─────────────────────
+    // Every block is centred in its column, and an odd last block is centred across the page, as in the
+    // template and the samples (Ralph, 2026-10-03).
 
     private static Table Signatures(IReadOnlyList<DocSignatory> slots)
     {
@@ -288,18 +291,22 @@ public sealed class InvestmentProposalWordService : IInvestmentProposalWordServi
         IEnumerable<OpenXmlElement> Block(DocSignatory s)
         {
             string label = s.Label.Length == 0 || s.Label.EndsWith(':') ? s.Label : s.Label + ":";
-            yield return P(label);
+            yield return P(label, align: JustificationValues.Center);
             yield return P(null);
             yield return P(null);
-            yield return P(s.Name, bold: true);
-            yield return P(s.Position);
+            yield return P(s.Name, bold: true, align: JustificationValues.Center);
+            yield return P(s.Position, align: JustificationValues.Center);
         }
 
         List<TableRow> rows = [];
         for (int i = 0; i < slots.Count; i += 2)
         {
-            TableCell right = i + 1 < slots.Count ? Cell(half, Block(slots[i + 1])) : Cell(half, P(null));
-            rows.Add(Row(Cell(half, Block(slots[i])), right));
+            if (i + 1 == slots.Count)
+            {
+                rows.Add(Row(Cell(ContentWidth, Block(slots[i]), span: 2)));
+                break;
+            }
+            rows.Add(Row(Cell(half, Block(slots[i])), Cell(half, Block(slots[i + 1]))));
             if (i + 2 < slots.Count) rows.Add(Row(Cell(half, P(null)), Cell(half, P(null))));
         }
 
