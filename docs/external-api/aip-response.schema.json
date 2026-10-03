@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ppdo-portal.local/schemas/external/v1/aip-response.schema.json",
   "title": "PPDO Portal - External AIP API response (GET /api/external/v1/aip)",
-  "description": "1.1.0 for discussion with GSO and MIS. The released Annual Investment Program for one fiscal year - for every office (?fiscalYear=) or for one office (?fiscalYear=&officeCode=). Both calls return this same shape. Money is Philippine pesos, serialized as decimal strings with exactly two decimals. See README.md beside this file for the design decisions and open questions.",
+  "description": "1.1.1 for discussion with GSO and MIS. The released Annual Investment Program for one fiscal year - for every office (?fiscalYear=) or for one office (?fiscalYear=&officeCode=). Both calls return this same shape. Money is Philippine pesos, serialized as decimal strings with exactly two decimals. See README.md beside this file for the design decisions and open questions.",
   "type": "object",
   "required": ["data", "error", "message"],
   "additionalProperties": false,
@@ -194,7 +194,7 @@
       "additionalProperties": false,
       "properties": {
         "refCode": { "$ref": "#/$defs/refCode" },
-        "name": { "type": "string", "maxLength": 1000 },
+        "name": { "type": "string", "description": "No length limit (1.1.1) - the column is nvarchar(max)." },
         "isSynthetic": {
           "description": "Legacy (uploaded) AIPs only - always false from FY2028, when AIPs are entered rather than uploaded. True when the uploaded workbook put money directly on a program or project row; the importer then created this stand-in activity to hold it, because money only ever lives on activities. It reuses that row's refCode and name, so it is not a separate activity in the province's document and does not print as its own line.",
           "type": "boolean"
@@ -202,10 +202,10 @@
         "esreCode": {
           "description": "eSRE classification code from PPDO's configured list.",
           "type": ["string", "null"],
-          "maxLength": 10,
+          "maxLength": 20,
           "examples": ["SS", "ES", "ID", "EN"]
         },
-        "implementingOffice": { "type": ["string", "null"], "maxLength": 200 },
+        "implementingOffice": { "type": ["string", "null"], "description": "Free text, no length limit (1.1.1)." },
         "schedule": {
           "type": "object",
           "required": ["start", "end"],
@@ -240,7 +240,7 @@
       "additionalProperties": false,
       "properties": {
         "refCode": { "$ref": "#/$defs/refCode" },
-        "name": { "type": "string", "maxLength": 500 },
+        "name": { "type": "string", "description": "No length limit (1.1.1) - the column is nvarchar(max)." },
         "isSynthetic": {
           "description": "Legacy (uploaded) AIPs only - always false from FY2028. True when the uploaded workbook put money directly on a program row: the importer created this stand-in project (and a synthetic activity inside it) with the program's own refCode and name. It is not printed on the AIP form.",
           "type": "boolean"
@@ -257,7 +257,7 @@
       "additionalProperties": false,
       "properties": {
         "refCode": { "$ref": "#/$defs/refCode" },
-        "name": { "type": "string", "maxLength": 500 },
+        "name": { "type": "string", "description": "No length limit (1.1.1) - the column is nvarchar(max)." },
         "functionBand": {
           "description": "The band this program falls under on the WFP report. Null only for a legacy program nobody has classified.",
           "type": ["string", "null"],
@@ -277,7 +277,7 @@
       "properties": {
         "sector": { "$ref": "#/$defs/sector" },
         "refCode": { "$ref": "#/$defs/refCode" },
-        "name": { "type": "string", "maxLength": 500 },
+        "name": { "type": "string", "description": "No length limit (1.1.1) - the column is nvarchar(max)." },
         "totals": { "$ref": "#/$defs/amounts", "description": "Sum of this group's activity amounts." },
         "printedTotals": { "$ref": "#/$defs/printedAmounts", "description": "Sum of this group's activity printedAmounts. Null for legacy." },
         "programs": { "type": "array", "items": { "$ref": "#/$defs/program" } }
@@ -324,7 +324,7 @@
           "description": "Semantic version of this payload shape. Minor bumps only add fields; consumers must ignore fields they do not recognise.",
           "type": "string",
           "pattern": "^\\d+\\.\\d+\\.\\d+$",
-          "const": "1.1.0"
+          "const": "1.1.1"
         },
         "generatedAt": {
           "description": "When this response was produced. ISO 8601 with the Manila offset (+08:00).",

@@ -55,6 +55,39 @@ public sealed class ExternalAipSchemaContractTests
     [Fact]
     public async Task Fy2028Response_WithFullTree_ValidatesAgainstSchema()
     {
+        ExternalAipDto? result = await BuildFy2028ResponseAsync();
+        Assert.NotNull(result);
+
+        AssertValidatesAgainstSchema(ApiResponse<ExternalAipDto?>.Ok(result));
+    }
+
+    /// <summary>
+    /// Schema 1.1.1: the schema's string limits must be no tighter than the columns behind them.
+    /// <c>aip_activities.esre_code</c> and <c>esre_codes.code</c> are nvarchar(20); the AIP names and
+    /// <c>implementing_office</c> are nvarchar(max) with no validator capping them. 1.1.0 capped these
+    /// at 10 / 200 / 500 / 1000 and rejected a response the database had happily stored.
+    /// </summary>
+    [Fact]
+    public async Task Fy2028Response_WithValuesAtColumnWidth_ValidatesAgainstSchema()
+    {
+        string longText = new('x', 4000);
+        ExternalAipDto? result = await BuildFy2028ResponseAsync((group, program, project, activity) =>
+        {
+            group.Name = longText;
+            program.Name = longText;
+            project.Name = longText;
+            activity.Name = longText;
+            activity.ImplementingOffice = longText;
+            activity.EsreCode = new string('E', 20);
+        });
+        Assert.NotNull(result);
+
+        AssertValidatesAgainstSchema(ApiResponse<ExternalAipDto?>.Ok(result));
+    }
+
+    private static async Task<ExternalAipDto?> BuildFy2028ResponseAsync(
+        Action<AipOffice, AipProgram, AipProject, AipActivity>? customize = null)
+    {
         Mock<IAipRepository> aip = new();
         Mock<IAipExpenditureRepository> expenditures = new();
         Mock<IAuditRepository> audit = new();
@@ -111,13 +144,12 @@ public sealed class ExternalAipSchemaContractTests
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ConfigOffice(1, "PPDO", "PPDO Office")]);
         fundingSources.Setup(f => f.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
+        customize?.Invoke(group, program, project, activity);
+
         ExternalAipReadService sut = new(
             aip.Object, expenditures.Object, audit.Object, offices.Object, fundingSources.Object, priceIndexItems.Object);
 
-        ExternalAipDto? result = await sut.GetAsync(2028, null);
-        Assert.NotNull(result);
-
-        AssertValidatesAgainstSchema(ApiResponse<ExternalAipDto?>.Ok(result));
+        return await sut.GetAsync(2028, null);
     }
 
     [Fact]
