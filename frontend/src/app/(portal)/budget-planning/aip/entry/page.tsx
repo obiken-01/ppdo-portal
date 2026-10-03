@@ -43,7 +43,7 @@ import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker 
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
 import DivisionTable from "../../DivisionTable";
 import { AipUnsavedChangesProvider, useAipLeaveGuard } from "@/components/aip/entry/AipUnsavedChanges";
-import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
+import { ENTERED_FISCAL_YEAR_OPTIONS, FIRST_ENTERED_FISCAL_YEAR, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
 import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
@@ -872,6 +872,9 @@ function AipEntryPageInner() {
                 submitting={submitting}
                 history={{ aipRecordId: record.id, officeId }}
                 onSelectActivity={(activityId) => selectNode("Activity", activityId)}
+                proposalCheck={
+                  fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? { fiscalYear, officeId } : undefined
+                }
               />
             )}
 

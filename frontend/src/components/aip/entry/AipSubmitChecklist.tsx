@@ -23,6 +23,8 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useUnresolvedCounts } from "./AipComments";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import { fmtDivisionStamp } from "./AipDivisionParts";
+import { getProposalProjects } from "@/lib/investment-proposals";
+import type { ProposalProjectOption } from "@/types";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -133,6 +135,7 @@ export default function AipSubmitChecklist({
   submitting,
   history,
   onSelectActivity,
+  proposalCheck,
 }: {
   readiness: AipReadiness;
   stage: AipSubmitStage;
@@ -152,6 +155,11 @@ export default function AipSubmitChecklist({
    * of scrolling will reach.
    */
   onSelectActivity?: (activityId: number) => void;
+  /**
+   * The office and year whose investment proposals to check before a submit (Ralph, 2026-10-03).
+   * Omitted before FY 2028, where there are no proposals.
+   */
+  proposalCheck?: { fiscalYear: number; officeId: number };
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -244,7 +252,40 @@ export default function AipSubmitChecklist({
     stage.kind === "encoder" || stage.kind === "division" || (stage.kind === "toPpdo" && stage.resubmit);
   const needsUnresolvedWarning = warnsOnThisHop && (unresolved?.total ?? 0) > 0;
 
-  function onActionClick() {
+  // ── The investment proposal warning (Ralph, 2026-10-03) ────────────────────
+  //
+  // ⚠️ **Soft, like the comment warning.** A proposal is not AIP content and is reviewed on paper
+  // (proposal spec decision 4), and it stays editable after any submit, so an office may send the AIP
+  // now and finish proposals later. This only stops a send by someone who forgot them.
+  //
+  // ⚠️ **Read fresh at the click**, not from the page's strip data: a proposal finalized in another
+  // tab a minute ago must not be reported missing. The list is the caller's own scope, so a
+  // division's encoder sees their division's projects, as AIP Entry shows them.
+  //
+  // ⚠️ **A failed read never holds the submit.** It skips the warning and carries on.
+  const [proposalGaps, setProposalGaps] = useState<ProposalProjectOption[] | null>(null);
+  const [checkingProposals, setCheckingProposals] = useState(false);
+
+  async function onActionClick() {
+    if (proposalCheck) {
+      setCheckingProposals(true);
+      try {
+        const projects = await getProposalProjects(proposalCheck.fiscalYear, proposalCheck.officeId);
+        const gaps = projects.filter((p) => p.status !== "Final");
+        if (gaps.length > 0) {
+          setProposalGaps(gaps);
+          return;
+        }
+      } catch {
+        // Skip the warning; see above.
+      } finally {
+        setCheckingProposals(false);
+      }
+    }
+    continueSubmit();
+  }
+
+  function continueSubmit() {
     // A division submit ALWAYS confirms (spec §6.1): it locks the encoder out of their own rows,
     // and the ceiling warning, when there is one, rides in the same dialog.
     if (stage.kind === "division") setConfirmingDivision(true);
@@ -294,12 +335,13 @@ export default function AipSubmitChecklist({
             (stage.kind === "division" && !divisionSubmitted) ? (
             <button
               type="button"
-              onClick={onActionClick}
-              disabled={!canSubmit || submitting}
+              onClick={() => void onActionClick()}
+              disabled={!canSubmit || submitting || checkingProposals}
               className="bg-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {submitting
                 ? copy.busy
+                : checkingProposals ? "Checking proposals…"
                 : stage.kind === "division" ? `Submit ${stage.division.name}` : copy.button}
             </button>
           ) : stage.kind === "division" ? (
@@ -464,6 +506,18 @@ export default function AipSubmitChecklist({
         </div>
       )}
 
+      {proposalGaps && (
+        <ConfirmDialog
+          title="Some projects have no final investment proposal"
+          message={proposalWarning(proposalGaps, stage.kind === "toPpdo" ? "PPDO" : "your department head")}
+          confirmLabel="Submit anyway"
+          cancelLabel="Go back"
+          variant="warning"
+          onConfirm={() => { setProposalGaps(null); continueSubmit(); }}
+          onClose={() => setProposalGaps(null)}
+        />
+      )}
+
       {confirmingCeiling && stage.kind === "encoder" && ceilingWarning && (
         <ConfirmDialog
           title="Submit over the ceiling?"
@@ -529,6 +583,30 @@ export default function AipSubmitChecklist({
         />
       )}
     </div>
+  );
+}
+
+/** How many proposals to name before "and N more"; the dialog is a sentence, not a list. */
+const PROPOSAL_NAMES_SHOWN = 5;
+
+/**
+ * The proposal warning: how many projects, split into "no proposal" and "still a draft" because
+ * the fix differs (create one, or finish and finalize it), then the first few by name.
+ */
+function proposalWarning(gaps: ProposalProjectOption[], recipient: "PPDO" | "your department head"): string {
+  const none = gaps.filter((g) => g.status === "None").length;
+  const draft = gaps.length - none;
+  const counts: string[] = [];
+  if (none > 0) counts.push(`${none} ${none === 1 ? "has" : "have"} no proposal`);
+  if (draft > 0) counts.push(`${draft} ${draft === 1 ? "is" : "are"} still a draft`);
+
+  const names = gaps.slice(0, PROPOSAL_NAMES_SHOWN).map((g) => g.projectName).join("; ");
+  const more = gaps.length > PROPOSAL_NAMES_SHOWN ? `; and ${gaps.length - PROPOSAL_NAMES_SHOWN} more` : "";
+
+  return (
+    `Of your projects, ${counts.join(" and ")}: ${names}${more}. ` +
+    `You can still send the AIP to ${recipient}; proposals stay editable after it goes, ` +
+    "and you can finish them on the Investment Proposals page."
   );
 }
 
