@@ -1,0 +1,79 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "HostFinance.dc.html": {
+      "expand": "fill",
+      "h": 1460,
+      "title": "3 · PPDO finance, host office (proposed)",
+      "w": 1440,
+      "x": 0,
+      "y": 2240
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1480,
+      "title": "1 · Department head, guest office (proposed)",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Mobile.dc.html": {
+      "h": 1500,
+      "title": "4 · Encoder on a phone (proposed)",
+      "w": 390,
+      "x": 1520,
+      "y": 2240
+    },
+    "Reviewer.dc.html": {
+      "expand": "fill",
+      "h": 2000,
+      "title": "2 · PPDO cross-office reviewer (proposed)",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "States.dc.html": {
+      "h": 1500,
+      "title": "5 · Status band, activity and table states",
+      "w": 1180,
+      "x": 1990,
+      "y": 2240
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-04T03:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "row1": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Investment Planning dashboard: proposed, by role",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "row2": {
+      "kind": "title1",
+      "maxW": 3170,
+      "text": "Host office, phone, and the states",
+      "w": 240,
+      "x": 0,
+      "y": 1940
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Reviewer.dc.html",
+    "HostFinance.dc.html",
+    "Mobile.dc.html",
+    "States.dc.html"
+  ],
+  "pages": [],
+  "title": "Investment Planning Dashboard — design pass"
+}

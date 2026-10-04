@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard: PPDO reviewer</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.side a { display: block; padding: 9px 16px 9px 28px; color: #D4EDDE; font-size: 14px; text-decoration: none; }
+.side a.on { background: #13512D; color: #FFFFFF; font-weight: 600; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 600; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; text-decoration: none; cursor: pointer; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.col { flex: 1 1 200px; min-width: 0; background: #F8F9FA; border: 1px solid #E9ECEF; display: flex; flex-direction: column; }
+.colh { padding: 10px 12px; display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; color: #343A40; border-bottom: 1px solid #E9ECEF; }
+.oc { margin: 8px 8px 0; background: #FFFFFF; border: 1px solid #DEE2E6; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #5A636B; text-decoration: none; }
+.oc strong { font-size: 13px; color: #343A40; }
+.feed p { margin: 0; }
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 2000px; align-items: stretch;">
+
+  <nav class="side" aria-label="Main" style="flex: 1 1 232px; max-width: 232px; background: #1F7A45; padding: 20px 0; display: flex; flex-direction: column; gap: 2px;">
+    <div style="padding: 0 20px 18px; color: #FFFFFF; font-size: 16px; font-weight: 700;">PPDO Portal</div>
+    <div style="padding: 6px 20px; color: #FFFFFF; font-size: 14px; font-weight: 600;">Investment Planning</div>
+    <a class="on" href="#">Dashboard</a>
+    <a href="#">AIP Records</a>
+    <a href="#">AIP Entry</a>
+    <a href="#">AIP Review</a>
+    <a href="#">Investment Proposals</a>
+    <a href="#">Office Ceilings</a>
+    <a href="#">Report</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 24px 24px 48px;">
+    <div style="max-width: 1152px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;">
+        <div>
+          <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Investment Planning</h1>
+          <p style="margin: 4px 0 0; font-size: 14px; color: #5A636B;">Reviewing every office · PPDO</p>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5A636B;">Fiscal year
+          <select style="height: 36px; padding: 0 10px; font-size: 14px; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40;">
+            <option>FY 2028</option><option>FY 2027</option>
+          </select>
+        </label>
+      </header>
+
+      <section class="card" aria-labelledby="where" style="padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px;">
+          <div style="flex: 1 1 520px; min-width: 0;">
+            <p style="margin: 0 0 6px; font-size: 14px; color: #5A636B;">FY 2028 AIP · 26 offices</p>
+            <h2 id="where" style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 600;">4 offices are waiting for PPDO review.</h2>
+            <p style="margin: 8px 0 0; font-size: 14px; line-height: 21px; color: #5A636B;">PTO has waited longest, 3 days. 13 offices that have not started also have no reviewer, so they cannot submit yet.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <a class="btn" href="#">Offices without a reviewer</a>
+            <a class="btn pri" href="#">Open the review queue</a>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div role="img" aria-label="Offices by stage: 15 not started, 4 in progress, 2 in office review, 4 in PPDO review, 1 done" style="display: flex; height: 12px; gap: 2px;">
+            <div style="flex: 15; background: #CED4DA;"></div>
+            <div style="flex: 4; background: #8AB4E8;"></div>
+            <div style="flex: 2; background: #EF9F27;"></div>
+            <div style="flex: 4; background: #1F7A45; box-shadow: 0 0 0 2px #A8DABC;"></div>
+            <div style="flex: 1; background: #13512D;"></div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #5A636B;">
+            <span><strong class="num" style="color: #343A40;">15</strong> not started</span>
+            <span><strong class="num" style="color: #343A40;">4</strong> in progress</span>
+            <span><strong class="num" style="color: #343A40;">2</strong> office review</span>
+            <span><strong class="num" style="color: #1F7A45;">4</strong> <strong style="color: #1F7A45;">PPDO review</strong></span>
+            <span><strong class="num" style="color: #343A40;">1</strong> accepted</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="offices">
+        <div style="padding: 14px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid #E9ECEF;">
+          <div>
+            <h2 id="offices" style="margin: 0; font-size: 14px; font-weight: 600;">Offices</h2>
+            <p style="margin: 2px 0 0; font-size: 12px; color: #5A636B;">Select an office to open it in AIP Review</p>
+          </div>
+          <div role="group" aria-label="Offices view" style="display: inline-flex; border: 1px solid #DEE2E6;">
+            <button type="button" aria-pressed="true" style="padding: 6px 12px; font-size: 12px; font-weight: 600; font-family: inherit; border: 0; background: #196638; color: #FFFFFF;">Board</button>
+            <button type="button" aria-pressed="false" style="padding: 6px 12px; font-size: 12px; font-weight: 600; font-family: inherit; border: 0; border-left: 1px solid #DEE2E6; background: #FFFFFF; color: #5A636B;">Table</button>
+          </div>
+        </div>
+        <div style="padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;">
+          <div class="col" style="flex-grow: 1.2;">
+            <div class="colh"><span>Not started</span><span class="num">15</span></div>
+            <div style="padding: 10px 12px; font-size: 12px; line-height: 20px; color: #5A636B;">ENRO, GSO, HRMO, OPAd, OPV, PACCO, PASSO, PBO, PDRRMO, PEO, PEPO, PGO, PHO, PLO, PSWDO</div>
+            <div style="margin: 0 12px 12px; padding: 8px 10px; background: #FDECEA; color: #A1302F; font-size: 12px; line-height: 17px;">13 have no reviewer. <a href="#" style="color: #A1302F; font-weight: 600;">Assign reviewers</a></div>
+          </div>
+          <div class="col">
+            <div class="colh"><span>In progress</span><span class="num">4</span></div>
+            <a class="oc" href="#"><strong>OPA</strong>31 activities · ₱38.4M of ₱50M</a>
+            <a class="oc" href="#"><strong>PEO</strong>12 activities · ₱8.1M of ₱20M</a>
+            <a class="oc" href="#"><strong>SPO</strong>2 activities · ₱0.3M of ₱25M</a>
+            <a class="oc" href="#" style="margin-bottom: 8px;"><strong>PHO</strong>9 activities · ₱4.0M of ₱15M</a>
+          </div>
+          <div class="col">
+            <div class="colh"><span>Office review</span><span class="num">2</span></div>
+            <a class="oc" href="#"><strong>PPDO <span class="pill" style="background: #FEF3CD; color: #8A5A00; margin-left: 4px;">Returned</span></strong>0 of 2 divisions submitted</a>
+            <a class="oc" href="#" style="margin-bottom: 8px;"><strong>PLO</strong>With the department head since Oct 1</a>
+          </div>
+          <div class="col" style="background: #F0FAF4; border-color: #A8DABC;">
+            <div class="colh" style="color: #1F7A45; border-color: #D4EDDE;"><span>PPDO review</span><span class="num">4</span></div>
+            <a class="oc" href="#"><strong>PTO</strong>Waiting 3 days · ₱9.4M of ₱10M</a>
+            <a class="oc" href="#"><strong>PSWDO</strong>Waiting 2 days · ₱22.0M of ₱30M</a>
+            <a class="oc" href="#"><strong>PAGRO</strong>Waiting 1 day · ₱5.5M of ₱8M</a>
+            <a class="oc" href="#" style="margin-bottom: 8px;"><strong>PVO</strong>Waiting since today</a>
+          </div>
+          <div class="col">
+            <div class="colh"><span>Accepted</span><span class="num">1</span></div>
+            <a class="oc" href="#" style="margin-bottom: 8px;"><strong>PIO</strong>Accepted Oct 3</a>
+          </div>
+        </div>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <section class="card" aria-labelledby="own" style="flex: 5 1 380px; min-width: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+            <h2 id="own" style="margin: 0; font-size: 14px; font-weight: 600;">Your office: PPDO</h2>
+            <span class="pill" style="background: #FEF3CD; color: #8A5A00;">Returned</span>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 19px; color: #5A636B;">Returned to the divisions on Oct 2. 0 of 2 divisions have submitted again. ₱427,000.00 costed of the ₱30,000,000.00 ceiling.</p>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;"><a class="btn sm" href="#">Open AIP Entry</a><a class="btn sm" href="#">Division allocation</a></div>
+        </section>
+
+        <section class="card" aria-labelledby="props" style="flex: 7 1 480px; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="props" style="margin: 0; font-size: 14px; font-weight: 600;">Investment proposals, all offices</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Open Investment Proposals</a>
+          </div>
+          <div style="padding: 14px 20px; display: flex; flex-direction: column; gap: 10px;">
+            <div role="img" aria-label="38 final, 21 draft, 54 with no proposal, of 113 projects" style="display: flex; height: 10px; gap: 2px;">
+              <div style="flex: 38; background: #1F7A45;"></div>
+              <div style="flex: 21; background: #EF9F27;"></div>
+              <div style="flex: 54; background: #CED4DA;"></div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #5A636B;">
+              <span><strong class="num" style="color: #343A40;">38</strong> final</span>
+              <span><strong class="num" style="color: #343A40;">21</strong> draft</span>
+              <span><strong class="num" style="color: #343A40;">54</strong> no proposal</span>
+              <span>of 113 projects</span>
+            </div>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <caption style="text-align: left; padding: 0 20px 8px; font-size: 12px; color: #5A636B;">Offices in PPDO review, fewest final first</caption>
+            <tbody>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PTO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">0 of 6 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PVO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">1 of 4 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PSWDO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">5 of 9 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+            </tbody>
+          </table>
+          <p style="margin: 0; padding: 10px 20px 14px; font-size: 12px; color: #5A636B; border-top: 1px solid #E9ECEF;">Read and export only. Proposals are reviewed on paper; this card shows which offices are sending theirs incomplete.</p>
+        </section>
+
+        <section class="card feed" aria-labelledby="recent" style="flex: 1 1 100%; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="recent" style="margin: 0; font-size: 14px; font-weight: 600;">Recent activity, all offices</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Audit log</a>
+          </div>
+          <div style="padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 19px; color: #5A636B;">
+            <p><strong style="color: #343A40;">PVO</strong> sent its AIP to PPDO. <span>Today, 9:02 AM</span></p>
+            <p><strong style="color: #343A40;">Jose Santos</strong> accepted PIO's AIP. <span>Oct 3, 4:10 PM</span></p>
+            <p><strong style="color: #343A40;">Jose Santos</strong> returned PPDO's AIP to the divisions with 3 comments. <span>Oct 2, 2:30 PM</span></p>
+            <p><strong style="color: #343A40;">System Administrator</strong> updated PTO's FY 2028 ceiling to ₱10,000,000.00. <span>Sep 30, 5:19 PM</span></p>
+          </div>
+        </section>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #5A636B;">Sample offices and figures, not real data. The PPDO money tiles, fund bars and division table move to the finance view (board 3); the reviewer sees their own office as one summary card. The same top applies to anyone holding the cross-office review grant, a PPDO finance user included.</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2000}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

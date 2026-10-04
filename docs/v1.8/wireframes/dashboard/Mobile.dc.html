@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard: encoder on a phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.btn { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; font-size: 15px; font-weight: 600; font-family: inherit; border: 1px solid #1F7A45; background: #1F7A45; color: #FFFFFF; text-decoration: none; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.trk li { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 14px; }
+.dot { width: 10px; height: 10px; border-radius: 9999px; flex-shrink: 0; }
+.feed p { margin: 0; }
+</style>
+</helmet>
+<div style="width: 390px; min-height: 1500px; box-sizing: border-box; background: #F1F3F5;">
+  <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #DEE2E6; display: flex; align-items: center; gap: 8px; padding: 0 8px;">
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 0; background: transparent; display: flex; align-items: center; justify-content: center;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#343A40" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <span style="font-size: 16px; font-weight: 600;">Investment Planning</span>
+  </div>
+
+  <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+      <span style="font-size: 14px; color: #5A636B;">OPA</span>
+      <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #5A636B;">Fiscal year
+        <select style="height: 40px; padding: 0 8px; font-size: 14px; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40;"><option>FY 2028</option></select>
+      </label>
+    </div>
+
+    <section class="card" aria-labelledby="where" style="padding: 18px 16px; display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <p style="margin: 0 0 4px; font-size: 13px; color: #5A636B;">FY 2028 AIP</p>
+        <h1 id="where" style="margin: 0; font-size: 20px; line-height: 27px; font-weight: 600;">4 activities still have no cost.</h1>
+        <p style="margin: 6px 0 0; font-size: 14px; line-height: 20px; color: #5A636B;">Cost them, then submit to your department head.</p>
+      </div>
+      <a class="btn" href="#">Open AIP Entry</a>
+      <ol class="trk" aria-label="AIP progress" style="list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid #E9ECEF;">
+        <li><span class="dot" style="background: #3BAD6A;"></span><span style="flex: 1;">Ceiling</span><span style="font-size: 12px; color: #5A636B;">Published</span></li>
+        <li aria-current="step"><span class="dot" style="background: #1F7A45; box-shadow: 0 0 0 3px #A8DABC;"></span><span style="flex: 1; font-weight: 700; color: #1F7A45;">Encoding</span><span style="font-size: 12px; color: #343A40;">You</span></li>
+        <li><span class="dot" style="background: #FFFFFF; border: 1px solid #ADB5BD;"></span><span style="flex: 1; color: #5A636B;">Department review</span><span style="font-size: 12px; color: #5A636B;">Dept head</span></li>
+        <li><span class="dot" style="background: #FFFFFF; border: 1px solid #ADB5BD;"></span><span style="flex: 1; color: #5A636B;">PPDO review</span><span style="font-size: 12px; color: #5A636B;">PPDO</span></li>
+        <li><span class="dot" style="background: #FFFFFF; border: 1px solid #ADB5BD;"></span><span style="flex: 1; color: #5A636B;">Accepted</span><span></span></li>
+      </ol>
+    </section>
+
+    <section class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+      <span class="label">Against the ceiling</span>
+      <div class="num" style="font-size: 18px; font-weight: 700;">₱38,420,000.00 <span style="font-size: 13px; font-weight: 400; color: #5A636B;">of ₱50M</span></div>
+      <div role="img" aria-label="77 percent of the ceiling costed" style="height: 8px; background: #E9ECEF; display: flex;"><div style="width: 76.8%; background: #3BAD6A;"></div></div>
+      <span class="num" style="font-size: 13px; color: #1F7A45; font-weight: 600;">₱11,580,000.00 left</span>
+    </section>
+
+    <section class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline;"><span style="font-size: 14px; font-weight: 600;">Investment proposals</span><a href="#" style="font-size: 13px; font-weight: 600;">Open</a></div>
+      <div role="img" aria-label="5 final, 4 draft, 3 none" style="display: flex; height: 8px; gap: 2px;"><div style="flex: 5; background: #1F7A45;"></div><div style="flex: 4; background: #EF9F27;"></div><div style="flex: 3; background: #CED4DA;"></div></div>
+      <span style="font-size: 13px; color: #5A636B;">5 final, 4 draft, 3 no proposal</span>
+    </section>
+
+    <section class="card feed" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 19px; color: #5A636B;">
+      <span style="font-size: 14px; font-weight: 600; color: #343A40;">Recent activity</span>
+      <p><strong style="color: #343A40;">You</strong> costed 3 activities in Rice Project 1. <span>Today</span></p>
+      <p><strong style="color: #343A40;">PBO</strong> published the FY 2028 ceiling. <span>Sep 30</span></p>
+    </section>
+
+    <p style="margin: 0; font-size: 12px; color: #5A636B;">Sample figures. The step track becomes a list, so the first screen holds the status, the action and the progress.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
