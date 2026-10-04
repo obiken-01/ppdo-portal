@@ -303,6 +303,12 @@ return doesn't touch them. The proposal's own Draft → Final is its only lock. 
 activities span two divisions is editable by encoders of **either** division (the scope is the
 program, as in AIP Entry's read scope), and optimistic concurrency (decision 23) covers the overlap.
 
+**Submit warns about proposals, and never blocks** (Ralph, 2026-10-03). Every AIP submit (encoder to
+department head, division to department head, department head to PPDO, first time or again) first
+reads the caller's projects for the year, fresh. If any has no proposal or only a Draft, a dialog names
+them, split into "no proposal" and "still a draft", with **Submit anyway** and **Go back**. If that read
+fails, the submit goes ahead without the warning. FY2027 and earlier are not checked.
+
 ⚠️ **The department-head reopen check is an office comparison against `users.office_id`, not
 `OfficeScope.Resolve`.** A host-office department head resolves to `SeeAll` and must not gain
 reopen over every office. This is the same trap as [Permission_Matrix.md](Permission_Matrix.md)

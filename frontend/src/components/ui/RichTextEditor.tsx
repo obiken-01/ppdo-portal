@@ -19,7 +19,7 @@
  */
 
 import { useEffect } from "react";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 
 const FONT_FAMILIES = [
@@ -48,6 +48,20 @@ interface RichTextToolbarProps {
 }
 
 export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarProps) {
+  // TipTap 3 does not re-render on every transaction. Toggling bold on an empty selection only
+  // changes the stored marks, not the document, so without subscribing here the button would not
+  // light up until the next keystroke.
+  const active = useEditorState({
+    editor,
+    selector: ({ editor: e }) => ({
+      bold: e.isActive("bold"),
+      italic: e.isActive("italic"),
+      underline: e.isActive("underline"),
+      bulletList: e.isActive("bulletList"),
+      orderedList: e.isActive("orderedList"),
+    }),
+  });
+
   function btnCls(active: boolean) {
     return `px-2 py-1 text-xs font-medium border transition-colors ${
       active
@@ -65,7 +79,7 @@ export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarPro
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBold().run()}
-        className={btnCls(editor.isActive("bold"))}
+        className={btnCls(active.bold)}
         title="Bold (Ctrl+B)"
       >
         <strong>B</strong>
@@ -73,7 +87,7 @@ export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarPro
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleItalic().run()}
-        className={btnCls(editor.isActive("italic"))}
+        className={btnCls(active.italic)}
         title="Italic (Ctrl+I)"
       >
         <em>I</em>
@@ -82,7 +96,7 @@ export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarPro
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleUnderline().run()}
-          className={btnCls(editor.isActive("underline"))}
+          className={btnCls(active.underline)}
           title="Underline (Ctrl+U)"
         >
           <span className="underline">U</span>
@@ -95,7 +109,7 @@ export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarPro
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        className={btnCls(editor.isActive("bulletList"))}
+        className={btnCls(active.bulletList)}
         title="Bullet list"
       >
         • List
@@ -103,7 +117,7 @@ export function RichTextToolbar({ editor, variant = "full" }: RichTextToolbarPro
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        className={btnCls(editor.isActive("orderedList"))}
+        className={btnCls(active.orderedList)}
         title="Ordered list"
       >
         1. List
