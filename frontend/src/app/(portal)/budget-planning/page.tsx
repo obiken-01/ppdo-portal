@@ -51,6 +51,7 @@ import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import { submissionCard, submissionStage as describeSubmissionStage } from "@/lib/aip-submission-status";
+import { useAipNotifications } from "@/lib/aip-notifications";
 import type {
   OfficeDashboard,
   OfficeSummary,
@@ -180,6 +181,15 @@ export default function BudgetPlanningPage() {
   // grant gets the table and no switch. Holding both grants gets the switch. A stored "board" is
   // ignored for a caller who cannot see it.
   const canSeeBoard = canReviewAllOffices || isSuperAdmin;
+
+  // PPDO-176 — a cross-office reviewer's real work is the other offices, not PPDO's own encoding.
+  // The review grant, or SuperAdmin (which resolves it true server-side). Cross-office review is a
+  // grant, not a role (Ralph, 2026-10-04): a PPDO finance user given it gets this top too, with the
+  // finance bands following below.
+  const isCrossOfficeReviewer = canReviewAllOffices || isSuperAdmin;
+  // The same response the sidebar badge reads: one shared fetch for the whole portal, so the
+  // reviewer card adds no request.
+  const notifications = useAipNotifications(isCrossOfficeReviewer ? user ?? null : null);
   const [chosenView, setChosenView] = useState<OfficesView | null>(null);
   // Read during render, not in an effect: the band is not drawn until /auth/me has landed, which
   // only happens in the browser, so there is no server render for this to mismatch — and no flash
@@ -516,6 +526,42 @@ export default function BudgetPlanningPage() {
   // The single next thing this person can do. Ordered by what actually blocks what.
 
   const actionCard = useMemo(() => {
+    // PPDO-176 — the reviewer's next step is the review queue, whatever PPDO's own AIP is doing.
+    // PPDO's own status still shows on its pipeline rail further down.
+    if (isCrossOfficeReviewer) {
+      const waiting = notifications?.pendingForPpdo ?? null;
+      const year = notifications?.ppdoFiscalYear ?? null;
+      if (waiting == null) {
+        // Loading, or the count failed to load: still send them to the queue rather than guess.
+        return (
+          <ActionCard
+            title="Review offices' AIPs"
+            description="Offices that have sent their AIP to PPDO are listed in the review queue."
+            actionLabel="Open the review queue"
+            href="/budget-planning/aip/review/search?mine=true"
+          />
+        );
+      }
+      if (waiting > 0) {
+        const earliest = year != null && year !== fiscalYear ? `The earliest is for FY ${year}. ` : "";
+        return (
+          <ActionCard
+            title={`${waiting} ${waiting === 1 ? "office is" : "offices are"} waiting for PPDO review`}
+            description={`${earliest}Review each office's AIP, then accept it or return it with comments.`}
+            actionLabel="Open the review queue"
+            href={`/budget-planning/aip/review/search?mine=true${year != null ? `&fiscalYear=${year}` : ""}`}
+          />
+        );
+      }
+      return (
+        <ActionCard
+          tone="waiting"
+          title="No office is waiting for review"
+          description="Offices appear here when their department head sends the AIP to PPDO. The Offices board below shows where each one stands."
+        />
+      );
+    }
+
     if (!hasCeiling) {
       if (canManageOfficeCeilings) {
         return (
@@ -562,7 +608,10 @@ export default function BudgetPlanningPage() {
         href={aipEntryHref}
       />
     );
-  }, [hasCeiling, hasAip, canManageOfficeCeilings, fiscalYear, officeLabel, allocationHref, aipEntryHref, submission]);
+  }, [
+    isCrossOfficeReviewer, notifications, hasCeiling, hasAip, canManageOfficeCeilings, fiscalYear,
+    officeLabel, allocationHref, aipEntryHref, submission,
+  ]);
 
   // ── Fund bars ───────────────────────────────────────────────────────────
   // Funds with neither a ceiling nor an allocation are hidden — an all-zero bar is noise.
@@ -575,6 +624,74 @@ export default function BudgetPlanningPage() {
   const priorFiscalYear = fiscalYear != null ? fiscalYear - 1 : null;
 
   // ── Render ──────────────────────────────────────────────────────────────
+
+  // ── Offices band ────────────────────────────────────────────────────────
+  // Cross-office scope only. PPDO-176: a cross-office reviewer sees it right under the action card,
+  // above PPDO's own rail, tiles and tables; everyone else (a ceiling-only budget officer) keeps it
+  // where it was, after the division table. The band carries its own skeleton, so moving it keeps
+  // the loading layout in the loaded order.
+  const officesBand = hasCrossOfficeScope ? (
+    <Band
+      title={`Offices — FY ${fiscalYear ?? "…"}`}
+      description={
+        officesView === "board"
+          ? "Where every office stands · click an office to open it in AIP Review"
+          : canManageOfficeCeilings
+          ? "Ceilings you publish for every office"
+          : "Read-only across every office"
+      }
+      actions={
+        (canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null) ||
+        canSeeBoard ? (
+          <>
+            {canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null && (
+              <button
+                type="button"
+                onClick={() => setBulkOpen(true)}
+                className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
+              >
+                Bulk set from FY {priorFiscalYear}
+              </button>
+            )}
+            {canSeeBoard && (
+              <ViewSwitch value={officesView} onChange={chooseOfficesView} />
+            )}
+          </>
+        ) : undefined
+      }
+      loading={officesLoading}
+      error={officesError}
+      onRetry={loadOffices}
+      skeleton={
+        officesView === "board" ? <OfficeBoardSkeleton /> : <TableBandSkeleton columns={7} />
+      }
+    >
+      {bulkNotice && <p className="px-5 pt-3 text-sm text-green-700">{bulkNotice}</p>}
+      {offices == null || offices.length === 0 ? (
+        <BandEmpty
+          message={`No offices have a FY ${fiscalYear ?? "—"} ceiling yet.`}
+          action={
+            canManageOfficeCeilings ? (
+              <Link
+                href={allocationHref}
+                className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
+              >
+                Set ceilings
+              </Link>
+            ) : undefined
+          }
+        />
+      ) : officesView === "board" ? (
+        <OfficeBoard offices={offices} fiscalYear={fiscalYear} />
+      ) : (
+        <OfficeTable
+          offices={offices}
+          fiscalYear={fiscalYear}
+          canSetCeiling={canManageOfficeCeilings}
+        />
+      )}
+    </Band>
+  ) : null;
 
   return (
     <div className="min-h-full bg-slate-100 font-sans">
@@ -613,6 +730,9 @@ export default function BudgetPlanningPage() {
         />
 
         {actionCard}
+
+        {/* PPDO-176 — the reviewer's main work first; PPDO's own office follows below. */}
+        {isCrossOfficeReviewer && officesBand}
 
         {/* The rail's own error state. It is fed by the office-readiness fetch, so a failure there
             must not blank the tiles or the tables below — errors are per band, not per page. */}
@@ -688,69 +808,7 @@ export default function BudgetPlanningPage() {
           )}
         </Band>
 
-        {/* ── Office table — cross-office scope only ──────────────────────── */}
-        {hasCrossOfficeScope && (
-          <Band
-            title={`Offices — FY ${fiscalYear ?? "…"}`}
-            description={
-              officesView === "board"
-                ? "Where every office stands · click an office to open it in AIP Review"
-                : canManageOfficeCeilings
-                ? "Ceilings you publish for every office"
-                : "Read-only across every office"
-            }
-            actions={
-              (canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null) ||
-              canSeeBoard ? (
-                <>
-                  {canManageOfficeCeilings && officesWithoutCeiling.length > 0 && priorFiscalYear != null && (
-                    <button
-                      type="button"
-                      onClick={() => setBulkOpen(true)}
-                      className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-sm font-medium transition-colors"
-                    >
-                      Bulk set from FY {priorFiscalYear}
-                    </button>
-                  )}
-                  {canSeeBoard && (
-                    <ViewSwitch value={officesView} onChange={chooseOfficesView} />
-                  )}
-                </>
-              ) : undefined
-            }
-            loading={officesLoading}
-            error={officesError}
-            onRetry={loadOffices}
-            skeleton={
-              officesView === "board" ? <OfficeBoardSkeleton /> : <TableBandSkeleton columns={7} />
-            }
-          >
-            {bulkNotice && <p className="px-5 pt-3 text-sm text-green-700">{bulkNotice}</p>}
-            {offices == null || offices.length === 0 ? (
-              <BandEmpty
-                message={`No offices have a FY ${fiscalYear ?? "—"} ceiling yet.`}
-                action={
-                  canManageOfficeCeilings ? (
-                    <Link
-                      href={allocationHref}
-                      className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium transition-colors"
-                    >
-                      Set ceilings
-                    </Link>
-                  ) : undefined
-                }
-              />
-            ) : officesView === "board" ? (
-              <OfficeBoard offices={offices} fiscalYear={fiscalYear} />
-            ) : (
-              <OfficeTable
-                offices={offices}
-                fiscalYear={fiscalYear}
-                canSetCeiling={canManageOfficeCeilings}
-              />
-            )}
-          </Band>
-        )}
+        {!isCrossOfficeReviewer && officesBand}
 
         {/* ── Recent activity ────────────────────────────────────────────── */}
         <Band
