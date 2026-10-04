@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
@@ -574,6 +574,65 @@ public sealed partial class AipServiceTests
 
         ServiceResult<AipRecordDetailDto> result =
             await sut.GetByIdAsync(31, HostCaller(), CancellationToken.None);
+
+        Assert.Equal(2, result.Value!.Offices.Count);
+    }
+
+    // ── PPDO-184: ?officeId= narrows, never widens ───────────────────────────
+
+    [Fact]
+    public async Task GetById_HostCallerWithOnlyOfficeId_ReturnsJustThatOffice()
+    {
+        AipRecord rec = Rec(33);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(33));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(33, HostCaller(), onlyOfficeId: 1, CancellationToken.None);
+
+        Assert.Equal("PPDO", Assert.Single(result.Value!.Offices).Name);
+        // The other office's programs are never read, not merely dropped from the DTO.
+        aipRepo.Verify(r => r.GetProgramsByOfficeIdsAsync(
+            It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 1 })), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetById_GuestCallerAskingForAnotherOffice_GetsNothingExtra()
+    {
+        // The narrowing runs after the scope filter, so it can only remove offices.
+        AipRecord rec = Rec(34);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(34));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(34, GuestCaller(officeId: 2), onlyOfficeId: 1, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value!.Offices);
+    }
+
+    [Fact]
+    public async Task GetById_GuestCallerAskingForOwnOffice_SeesItsOffice()
+    {
+        AipRecord rec = Rec(35);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(35));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(35, GuestCaller(officeId: 2), onlyOfficeId: 2, CancellationToken.None);
+
+        Assert.Equal("GSO", Assert.Single(result.Value!.Offices).Name);
+    }
+
+    [Fact]
+    public async Task GetById_NullOnlyOfficeId_MatchesTheOverloadWithoutIt()
+    {
+        AipRecord rec = Rec(36);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: TwoOfficesOneEach(36));
+
+        ServiceResult<AipRecordDetailDto> result =
+            await sut.GetByIdAsync(36, HostCaller(), onlyOfficeId: null, CancellationToken.None);
 
         Assert.Equal(2, result.Value!.Offices.Count);
     }

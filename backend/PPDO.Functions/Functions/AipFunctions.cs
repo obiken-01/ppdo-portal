@@ -53,7 +53,7 @@ public sealed class AipFunctions
             ApiResponse<IReadOnlyList<AipRecordDto>>.Ok(data), ct);
     }
 
-    // ── GET /api/budget-planning/aip/{id} ────────────────────────────────────
+    // ── GET /api/budget-planning/aip/{id}?officeId= ──────────────────────────
     [Function("AipGet")]
     public async Task<HttpResponseData> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/aip/{id:int}")] HttpRequestData req,
@@ -62,7 +62,9 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, caller!, ct), ct);
+        // PPDO-184: ?officeId= narrows to one office (AIP Entry). It never widens the caller's scope.
+        int? officeId = int.TryParse(req.Query["officeId"], out int oid) ? oid : null;
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, caller!, officeId, ct), ct);
     }
 
     // ── GET /api/budget-planning/aip/{id}/summary ─────────────────────────────

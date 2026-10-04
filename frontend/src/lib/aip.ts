@@ -215,9 +215,15 @@ export async function updateAipProject(projectId: number, body: UpdateAipProject
 // AIP detail — GET /api/budget-planning/aip/{id}
 // ---------------------------------------------------------------------------
 
-export async function getAipById(id: number): Promise<AipRecordDetail> {
+/**
+ * `officeId` (PPDO-184) narrows the tree to one office. It never widens the caller's scope — the
+ * server applies it after its own office filter. AIP Entry passes the encoder's office; the detail
+ * page passes nothing and gets everything the caller may see.
+ */
+export async function getAipById(id: number, officeId?: number | null): Promise<AipRecordDetail> {
   const { data } = await api.get<ApiResponse<AipRecordDetail>>(
-    `/budget-planning/aip/${id}`
+    `/budget-planning/aip/${id}`,
+    officeId != null ? { params: { officeId } } : undefined
   );
   return unwrap(data);
 }
