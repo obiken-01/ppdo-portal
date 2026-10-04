@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker.Http;
 using Moq;
 using PPDO.Application.Common;
@@ -192,12 +192,13 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
     /// <summary>
     /// The clamp must not swallow the pre-existing parameter validation — a missing or malformed
-    /// officeId is still a 400, not a silent fallback to the caller's own office.
+    /// officeId is still a 400, not a silent fallback to the caller's own office. A malformed
+    /// fiscalYear is still a 400 too; only an ABSENT one falls back to the default (PPDO-177).
     /// </summary>
     [Theory]
     [InlineData("fiscalYear=2027")]
     [InlineData("officeId=abc&fiscalYear=2027")]
-    [InlineData("officeId=3")]
+    [InlineData("officeId=3&fiscalYear=next-year")]
     public async Task GetOfficeDashboard_WithMissingOrMalformedQuery_StillReturnsBadRequest(string query)
     {
         User caller = MakeUser(OwnOffice);
@@ -438,17 +439,65 @@ public sealed class BudgetPlanningDashboardFunctionsTests
             It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ── PPDO-177: an absent fiscalYear resolves to the configured default ──────
+
+    private const int DefaultFiscalYear = 2029;
+
+    private void SetupDefaultFiscalYear() => _service
+        .Setup(s => s.GetFiscalYearsAsync(null, It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new FiscalYearsDto(DefaultFiscalYear, [DefaultFiscalYear, 2028], DefaultFiscalYear));
+
     [Fact]
-    public async Task GetDashboardOffices_MissingFiscalYear_ReturnsBadRequestAndNeverCallsService()
+    public async Task GetDashboardOffices_MissingFiscalYear_UsesTheResolvedDefault()
     {
-        Authenticate(MakeUser(OwnOffice));
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+        SetupDefaultFiscalYear();
+        _service.Setup(s => s.GetOfficesAsync(caller, DefaultFiscalYear, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok([]));
 
         HttpResponseData response = await Sut.GetDashboardOffices(
             OfficesRequest(string.Empty), CancellationToken.None);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        _service.Verify(s => s.GetOfficesAsync(
-            It.IsAny<User>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _service.Verify(s => s.GetOfficesAsync(caller, DefaultFiscalYear, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboard_MissingFiscalYear_UsesTheResolvedDefault()
+    {
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+        SetupDefaultFiscalYear();
+        int? requestedYear = null;
+        _service.Setup(s => s.GetOfficeDashboardAsync(
+                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int fy, bool _, int? _, CancellationToken _) => requestedYear = fy)
+            .ReturnsAsync(MakeOfficeDashboard(OwnOffice));
+
+        HttpResponseData response = await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(DefaultFiscalYear, requestedYear);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboard_ExplicitFiscalYear_WinsAndNeverResolvesTheDefault()
+    {
+        // The strict mock throws if GetFiscalYearsAsync is called: a year in the URL always wins.
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+        int? requestedYear = null;
+        _service.Setup(s => s.GetOfficeDashboardAsync(
+                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int fy, bool _, int? _, CancellationToken _) => requestedYear = fy)
+            .ReturnsAsync(MakeOfficeDashboard(OwnOffice));
+
+        await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(FiscalYear, requestedYear);
     }
 
     [Fact]

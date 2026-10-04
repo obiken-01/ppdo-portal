@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -10,6 +10,19 @@ namespace PPDO.Infrastructure.Repositories;
 public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPriceIndexItemRepository
 {
     public PriceIndexItemRepository(AppDbContext context) : base(context) { }
+
+    /// <inheritdoc />
+    public async Task<PriceIndexItem?> GetByIntIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<PriceIndexItem>().FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    /// <inheritdoc />
+    public async Task<bool> NameAndUnitExistsAsync(
+        string name, string unit, int? excludeId, CancellationToken ct = default)
+        // Plain == on purpose: the collation is case-insensitive, and LOWER() would make the
+        // predicate non-SARGable (RAL-204).
+        => await _context.Set<PriceIndexItem>()
+            .AnyAsync(p => p.Name == name && p.Unit == unit
+                        && (excludeId == null || p.Id != excludeId.Value), ct);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<PriceIndexItem>> GetByIdsAsync(
@@ -39,6 +52,17 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
             .OrderBy(p => p.Name)
             .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<(int Count, DateTime? LastUpdatedAt)> GetVersionStampAsync(CancellationToken ct = default)
+    {
+        // One SELECT COUNT(*), MAX(updated_at) — never loads a row.
+        var stamp = await _context.Set<PriceIndexItem>()
+            .GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Last = g.Max(p => (DateTime?)p.UpdatedAt) })
+            .FirstOrDefaultAsync(ct);
+        return stamp is null ? (0, null) : (stamp.Count, stamp.Last);
+    }
 
     /// <inheritdoc />
     public async Task<(IReadOnlyList<PriceIndexItem> Items, int TotalCount)> GetPagedAsync(

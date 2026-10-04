@@ -53,7 +53,7 @@ public sealed class AipFunctions
             ApiResponse<IReadOnlyList<AipRecordDto>>.Ok(data), ct);
     }
 
-    // ── GET /api/budget-planning/aip/{id} ────────────────────────────────────
+    // ── GET /api/budget-planning/aip/{id}?officeId= ──────────────────────────
     [Function("AipGet")]
     public async Task<HttpResponseData> Get(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/aip/{id:int}")] HttpRequestData req,
@@ -62,7 +62,11 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, caller!, ct), ct);
+        // PPDO-184: ?officeId= narrows to one office (AIP Entry). It never widens the caller's scope.
+        int? officeId = int.TryParse(req.Query["officeId"], out int oid) ? oid : null;
+        // PPDO-185: nulls are left out of this tree; lib/aip.ts puts them back for the readers.
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetByIdAsync(id, caller!, officeId, ct), ct,
+            options: ConfigHttp.JsonOmitNulls);
     }
 
     // ── GET /api/budget-planning/aip/{id}/summary ─────────────────────────────
@@ -74,7 +78,9 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.GetSummaryByIdAsync(id, caller!, ct), ct);
+        // PPDO-185: as above.
+        return await ConfigHttp.FromResultAsync(req, await _aip.GetSummaryByIdAsync(id, caller!, ct), ct,
+            options: ConfigHttp.JsonOmitNulls);
     }
 
     // ── POST /api/budget-planning/aip/upload?fiscalYear= ─────────────────────

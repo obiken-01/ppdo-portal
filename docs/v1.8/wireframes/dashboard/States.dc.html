@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 10px 14px; border-bottom: 1px solid #E9ECEF; background: #F8F9FA; }
+td { padding: 11px 14px; font-size: 13px; line-height: 19px; color: #5A636B; border-bottom: 1px solid #F1F3F5; vertical-align: top; }
+td.h { color: #343A40; font-weight: 600; }
+.sk { background: #E9ECEF; }
+</style>
+</helmet>
+<div style="width: 1180px; min-height: 1500px; box-sizing: border-box; padding: 32px; display: flex; flex-direction: column; gap: 24px;">
+
+  <section class="card">
+    <div style="padding: 16px 20px; border-bottom: 1px solid #E9ECEF;">
+      <h1 style="margin: 0; font-size: 16px; font-weight: 600;">Status band: one sentence per state</h1>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #5A636B;">The headline says where the AIP is and who has it. The button is the one next step for this reader, or nothing when there is nothing to do.</p>
+    </div>
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead><tr><th style="width: 210px;">State · reader</th><th>Headline</th><th style="width: 190px;">Button</th><th style="width: 90px;">Tone</th></tr></thead>
+      <tbody>
+        <tr><td>No ceiling · anyone</td><td class="h">Waiting on PBO for the FY 2028 ceiling. You can start encoding now.</td><td>Open AIP Entry</td><td><span class="pill" style="background: #F1F3F5; color: #5A636B;">Waiting</span></td></tr>
+        <tr><td>No ceiling · PBO</td><td class="h">Publish the FY 2028 ceilings. 26 offices are waiting on them.</td><td>Set ceilings</td><td><span class="pill" style="background: #FDECEA; color: #A1302F;">Blocking</span></td></tr>
+        <tr><td>Nothing encoded · encoder</td><td class="h">Start the FY 2028 AIP. Nothing is encoded yet.</td><td>Open AIP Entry</td><td><span class="pill" style="background: #E3F2FD; color: #1D4E89;">To do</span></td></tr>
+        <tr><td>Encoding · encoder</td><td class="h">4 activities still have no cost.</td><td>Open AIP Entry</td><td><span class="pill" style="background: #E3F2FD; color: #1D4E89;">To do</span></td></tr>
+        <tr><td>Encoding · division office</td><td class="h">1 of 2 divisions has submitted. Waiting on Admin.</td><td>Open AIP Entry</td><td><span class="pill" style="background: #F1F3F5; color: #5A636B;">Waiting</span></td></tr>
+        <tr><td>Department review · head</td><td class="h">Your encoders are done. The AIP is ready for you to send to PPDO.</td><td>Review and send to PPDO</td><td><span class="pill" style="background: #E3F2FD; color: #1D4E89;">To do</span></td></tr>
+        <tr><td>Department review · encoder</td><td class="h">With your department head since Oct 2.</td><td>View the AIP</td><td><span class="pill" style="background: #F1F3F5; color: #5A636B;">Waiting</span></td></tr>
+        <tr><td>Over ceiling · head</td><td class="h">₱1,200,000.00 over the ceiling. It cannot go to PPDO until it fits.</td><td>Open AIP Entry</td><td><span class="pill" style="background: #FDECEA; color: #A1302F;">Blocking</span></td></tr>
+        <tr><td>PPDO review · office</td><td class="h">With PPDO since Oct 3. Nothing to do until they respond.</td><td>View the AIP</td><td><span class="pill" style="background: #F1F3F5; color: #5A636B;">Waiting</span></td></tr>
+        <tr><td>Returned · office</td><td class="h">PPDO returned the AIP with 3 comments to resolve.</td><td>Open the comments</td><td><span class="pill" style="background: #FEF3CD; color: #8A5A00;">Returned</span></td></tr>
+        <tr><td>Accepted · office</td><td class="h">PPDO accepted the AIP on Oct 5. It is part of the provincial AIP.</td><td>Open Report</td><td><span class="pill" style="background: #F0FAF4; color: #1F6B3F;">Done</span></td></tr>
+        <tr><td>Reviewer · PPDO</td><td class="h">4 offices are waiting for PPDO review.</td><td>Open the review queue</td><td><span class="pill" style="background: #E3F2FD; color: #1D4E89;">To do</span></td></tr>
+        <tr><td>FY 2027 · anyone</td><td class="h">FY 2027 uses the uploaded AIP. Review and submission start with FY 2028.</td><td>AIP Records</td><td><span class="pill" style="background: #F1F3F5; color: #5A636B;">Info</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div style="display: flex; gap: 24px; align-items: flex-start;">
+    <section class="card" style="flex: 1 1 0; min-width: 0;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid #E9ECEF;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">Recent activity: today and proposed</h2>
+      </div>
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead><tr><th>Today</th><th>Proposed</th></tr></thead>
+        <tbody>
+          <tr><td style="font-family: Consolas, monospace; font-size: 12px;">Jose Santos — retag_div on aip_activities #18501</td><td class="h" style="font-weight: 400; color: #343A40;">Jose Santos moved an activity in Planning to the Admin division.</td></tr>
+          <tr><td style="font-family: Consolas, monospace; font-size: 12px;">System Administrator — update on budget_ceilings #13</td><td style="color: #343A40;">System Administrator updated PTO's FY 2028 ceiling to ₱10,000,000.00.</td></tr>
+          <tr><td style="font-family: Consolas, monospace; font-size: 12px;">Agriculturist User — update on aip_activities #18496</td><td style="color: #343A40;">Agriculturist User edited an activity in Rice Project 1.</td></tr>
+          <tr><td style="font-family: Consolas, monospace; font-size: 12px;">9/30/2026, 5:19:31 PM</td><td style="color: #343A40;">Grouped by day; time without seconds (5:19 PM)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" style="flex: 1 1 0; min-width: 0;">
+      <div style="padding: 16px 20px; border-bottom: 1px solid #E9ECEF;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">Division rows with nothing in them</h2>
+      </div>
+      <div style="padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: #5A636B;">
+        <span style="font-size: 12px; font-weight: 600;">Today: four rows like this</span>
+        <div style="display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid #E9ECEF;">
+          <strong style="color: #343A40;">ICT</strong><span class="pill" style="background: #F1F3F5; color: #5A636B;">Todo</span><span>0 / 0</span><span>₱0.00</span><span>₱0.00</span><span>₱0.00</span><span style="color: #1F7A45;">Allocation<br>→</span>
+        </div>
+        <span style="font-size: 12px; font-weight: 600; margin-top: 6px;">Proposed: one folded row</span>
+        <div style="padding: 10px; background: #F8F9FA; border: 1px solid #E9ECEF;">4 divisions have no allocation or activities yet: FPIP, ICT, OG-CSO, RMES. <a href="#" style="font-weight: 600;">Show them</a></div>
+        <span style="font-size: 12px;">Amounts that are zero print as a dash; the Allocation link stays on one line.</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div style="padding: 16px 20px; border-bottom: 1px solid #E9ECEF;">
+      <h2 style="margin: 0; font-size: 16px; font-weight: 600;">Loading: the status band keeps its size</h2>
+      <p style="margin: 4px 0 0; font-size: 13px; color: #5A636B;">Same height as the loaded band, so nothing below it moves when the data arrives.</p>
+    </div>
+    <div style="padding: 24px; display: flex; flex-direction: column; gap: 14px;" aria-hidden="true">
+      <div class="sk" style="width: 180px; height: 14px;"></div>
+      <div class="sk" style="width: 62%; height: 26px;"></div>
+      <div class="sk" style="width: 48%; height: 14px;"></div>
+      <div style="display: flex; gap: 8px; margin-top: 6px;">
+        <div class="sk" style="flex: 1; height: 6px;"></div><div class="sk" style="flex: 1; height: 6px;"></div><div class="sk" style="flex: 1; height: 6px;"></div><div class="sk" style="flex: 1; height: 6px;"></div><div class="sk" style="flex: 1; height: 6px;"></div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

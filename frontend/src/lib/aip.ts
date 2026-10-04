@@ -30,6 +30,8 @@ import type {
   AipProgramDetail,
   AipProjectDetail,
   AipActivityDetail,
+  AipActivitySummary,
+  AipProgramSummary,
   ApiResponse,
   AipExpenditure,
   SaveAipExpenditureRequest,
@@ -215,11 +217,17 @@ export async function updateAipProject(projectId: number, body: UpdateAipProject
 // AIP detail — GET /api/budget-planning/aip/{id}
 // ---------------------------------------------------------------------------
 
-export async function getAipById(id: number): Promise<AipRecordDetail> {
+/**
+ * `officeId` (PPDO-184) narrows the tree to one office. It never widens the caller's scope — the
+ * server applies it after its own office filter. AIP Entry passes the encoder's office; the detail
+ * page passes nothing and gets everything the caller may see.
+ */
+export async function getAipById(id: number, officeId?: number | null): Promise<AipRecordDetail> {
   const { data } = await api.get<ApiResponse<AipRecordDetail>>(
-    `/budget-planning/aip/${id}`
+    `/budget-planning/aip/${id}`,
+    officeId != null ? { params: { officeId } } : undefined
   );
-  return unwrap(data);
+  return restoreDetailNulls(unwrap(data));
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +239,73 @@ export async function getAipSummary(id: number): Promise<AipRecordSummary> {
   const { data } = await api.get<ApiResponse<AipRecordSummary>>(
     `/budget-planning/aip/${id}/summary`
   );
-  return unwrap(data);
+  return restoreSummaryNulls(unwrap(data));
+}
+
+// ---------------------------------------------------------------------------
+// PPDO-185 — the detail and summary reads leave null fields out of the JSON
+// (`ConfigHttp.JsonOmitNulls`); most activities carry no division, CC figures or typology, and
+// those nulls were a fifth of a 1.5 MB body. They are put back here, once, so every reader still
+// sees `null` and not `undefined`.
+//
+// ⚠️ Why here and not in each reader: several pages and components read this tree, and some of
+// them pass a field straight into form state (`setCcAdaptation(activity.ccAdaptation)`) or test
+// `=== null`. A missing field reaching those would be a silent behaviour change, not a type error.
+//
+// The key lists are checked against the types with `satisfies`: a new nullable field on any of
+// these interfaces fails the build until it is added here.
+// ---------------------------------------------------------------------------
+
+/** The keys of `T` whose type includes `null`. */
+type NullableKeys<T> = { [K in keyof T]-?: null extends T[K] ? K : never }[keyof T];
+
+function restoreNulls<T extends object>(node: T, keys: Record<NullableKeys<T>, true>): void {
+  const fields = node as Record<string, unknown>;
+  for (const key of Object.keys(keys)) {
+    if (fields[key] === undefined) fields[key] = null;
+  }
+}
+
+const RECORD_NULLS = { originalFilename: true, ldipId: true, sourceId: true } satisfies Record<NullableKeys<AipRecordDetail>, true>;
+const OFFICE_NULLS = { officeId: true } satisfies Record<NullableKeys<AipOfficeDetail>, true>;
+const PROGRAM_NULLS = { functionBand: true } satisfies Record<NullableKeys<AipProgramDetail>, true>;
+const PROJECT_NULLS = { description: true, objective: true } satisfies Record<NullableKeys<AipProjectDetail>, true>;
+const ACTIVITY_NULLS = {
+  esreCode: true, implementingOffice: true, startDate: true, endDate: true, expectedOutputs: true,
+  fundingSourceId: true, fundingSourceSnapshot: true, ps: true, mooe: true, co: true, total: true,
+  ccAdaptation: true, ccMitigation: true, ccTypologyCode: true, divisionId: true, divisionName: true,
+} satisfies Record<NullableKeys<AipActivityDetail>, true>;
+
+const SUMMARY_PROGRAM_NULLS = { functionBand: true } satisfies Record<NullableKeys<AipProgramSummary>, true>;
+const SUMMARY_ACTIVITY_NULLS = {
+  ps: true, mooe: true, co: true, total: true, fundingSourceId: true, fundingSourceSnapshot: true,
+} satisfies Record<NullableKeys<AipActivitySummary>, true>;
+
+function restoreDetailNulls(record: AipRecordDetail): AipRecordDetail {
+  restoreNulls(record, RECORD_NULLS);
+  for (const office of record.offices) {
+    restoreNulls(office, OFFICE_NULLS);
+    for (const program of office.programs) {
+      restoreNulls(program, PROGRAM_NULLS);
+      for (const project of program.projects) {
+        restoreNulls(project, PROJECT_NULLS);
+        for (const activity of project.activities) restoreNulls(activity, ACTIVITY_NULLS);
+      }
+    }
+  }
+  return record;
+}
+
+function restoreSummaryNulls(record: AipRecordSummary): AipRecordSummary {
+  for (const office of record.offices) {
+    for (const program of office.programs) {
+      restoreNulls(program, SUMMARY_PROGRAM_NULLS);
+      for (const project of program.projects) {
+        for (const activity of project.activities) restoreNulls(activity, SUMMARY_ACTIVITY_NULLS);
+      }
+    }
+  }
+  return record;
 }
 
 // ---------------------------------------------------------------------------

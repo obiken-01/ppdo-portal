@@ -100,6 +100,10 @@ var host = new HostBuilder()
         // -- ASP.NET Core helpers --------------------------------------------
         services.AddHttpContextAccessor();
 
+        // -- Response compression (PPDO-182) ---------------------------------
+        // Gzip/Brotli for every response except /api/auth/*. See ResponseCompressionStartupFilter.
+        ResponseCompressionStartupFilter.AddApiResponseCompression(services);
+
         // -- In-memory cache (login rate limiting, RAL-58) -------------------
         services.AddMemoryCache();
 

@@ -84,7 +84,7 @@ A PPDO staff member who can log in to the portal.
 
 Entity `Office`
 
-Config table: a provincial government office (e.g.
+Config table: a provincial government office (e.g. PPDO, PGO).
 
 | Column | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
@@ -93,9 +93,9 @@ Config table: a provincial government office (e.g.
 | `is_active` | bit | No |  | `true` | Soft-delete flag. |
 | `is_host_office` | bit | No | Unique | `false` | Marks the office that hosts the portal — PPDO today (DECISION F, RAL-258). |
 | `landing_page` | int | Yes |  |  | Default landing page for every user in this office (RAL-251). |
-| `office_code` | nvarchar(20) | No | Unique |  | Short unique office code — e.g. |
+| `office_code` | nvarchar(20) | No | Unique |  | Short unique office code — e.g. "PPDO", "PGO". |
 | `office_name` | nvarchar(200) | No |  |  | Full office name. |
-| `office_ref_code` | nvarchar(50) | Yes |  |  | Last segment of the office-level AIP ref code (e.g. |
+| `office_ref_code` | nvarchar(50) | Yes |  |  | Last segment of the office-level AIP ref code (e.g. "013" from "3000-000-1-01-013"). |
 | `updated_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 
 **Indexes**
@@ -121,7 +121,7 @@ Configurable organisational division, scoped to an Office (v1.2 — RAL-97).
 | `can_manage_resource_links` | bit | No |  | `false` |  |
 | `can_manage_users` | bit | No |  | `false` |  |
 | `can_upload_aip` | bit | No |  | `false` |  |
-| `code` | nvarchar(20) | Yes |  |  | Optional short code, e.g. |
+| `code` | nvarchar(20) | Yes |  |  | Optional short code, e.g. "ADMIN", "ICT". |
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `is_active` | bit | No |  | `true` | Soft-delete flag. |
 | `landing_page` | int | Yes |  |  | Default landing page for every user in this division (RAL-251). |
@@ -154,9 +154,9 @@ Generic application-level audit trail covering all budget planning entities (RAL
 | `changed_by` | uniqueidentifier | No | FK → [`Users`](#users) |  | FK to the user who made the change. |
 | `new_values` | nvarchar(max) | Yes |  |  | JSON snapshot of the changed fields after the action. |
 | `old_values` | nvarchar(max) | Yes |  |  | JSON snapshot of the changed fields before the action. |
-| `record_guid` | uniqueidentifier | Yes |  |  | PK of the affected row in TableName, for Guid-keyed tables (e.g. |
+| `record_guid` | uniqueidentifier | Yes |  |  | PK of the affected row in TableName, for Guid-keyed tables (e.g. "users"). |
 | `record_id` | int | Yes |  |  | PK of the affected row in TableName, for int-keyed tables. |
-| `table_name` | nvarchar(100) | No |  |  | Physical table name — e.g. |
+| `table_name` | nvarchar(100) | No |  |  | Physical table name — e.g. "aip_activities", "wfp_expenditure_lines". |
 
 **Foreign keys**
 
@@ -186,7 +186,7 @@ A credential issued to an external system (GSO, PBO, …) to read finalized AIP 
 | `key_hash` | nvarchar(64) | No |  |  | SHA-256 hash (hex, 64 chars) of the whole plaintext key. |
 | `key_prefix` | nvarchar(16) | No | Unique |  | The 8-character public part of the key, used to look it up on every request without touching KeyHash. |
 | `last_used_at` | datetime2 | Yes |  |  | UTC timestamp of the most recent successful authenticated request. |
-| `partner_name` | nvarchar(100) | No |  |  | Human-readable name for the calling system, e.g. |
+| `partner_name` | nvarchar(100) | No |  |  | Human-readable name for the calling system, e.g. "GSO WFP system". |
 | `revoked_at` | datetime2 | Yes |  |  | UTC timestamp this key was revoked, or null while still active. |
 | `revoked_by_id` | uniqueidentifier | Yes | FK → [`Users`](#users) |  | FK to the admin who revoked this key. |
 
@@ -232,7 +232,7 @@ One logged call against `/api/external/v1` (v1.8.0 — PPDO-15/PPDO-13).
 | `key_id` | int | No | FK → [`partner_api_keys`](#partner_api_keys) |  | FK to the key that made this call. |
 | `office_code` | nvarchar(20) | Yes |  |  | The `officeCode` query parameter as requested, or null for a whole-year call. |
 | `requested_at` | datetime2 | No |  |  |  |
-| `route` | nvarchar(100) | No |  |  | Route called, e.g. |
+| `route` | nvarchar(100) | No |  |  | Route called, e.g. "aip", "aip/fiscal-years". |
 | `status_code` | int | No |  |  | HTTP status code returned for this call. |
 
 **Foreign keys**
@@ -539,7 +539,7 @@ One physical-count entry in the warehouse stock ledger (RAL-193).
 | `counted_qty` | decimal(18,2) | No |  |  | The quantity physically counted in the warehouse. |
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `effective_date` | date | No |  |  | The date the physical count was actually taken (may be backdated from CreatedAt). |
-| `reason` | nvarchar(500) | Yes |  |  | Optional free-text reason/note, e.g. |
+| `reason` | nvarchar(500) | Yes |  |  | Optional free-text reason/note, e.g. "Quarterly physical count", "Found during audit". |
 | `recorded_by_user_id` | uniqueidentifier | No |  |  | The user who recorded this entry. |
 | `stock_no` | nvarchar(50) | No |  |  | Catalog stock number. |
 | `system_on_hand_at_entry` | decimal(18,2) | No |  |  | Snapshot of what the system computed as on-hand for this StockNo at the moment this entry was saved (before this entry's own variance is applied). |
@@ -568,13 +568,13 @@ Config table: Chart of Accounts entry (Object of Expenditure).
 | Column | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
 | `id` | int | No | PK (identity) |  | Primary key (INT IDENTITY). |
-| `account_number` | nvarchar(20) | No | Unique |  | Unique account number — e.g. |
+| `account_number` | nvarchar(20) | No | Unique |  | Unique account number — e.g. "5-01-01-010". |
 | `account_title` | nvarchar(300) | No |  |  | Object of Expenditure label. |
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `default_apply_reserve` | bit | No |  | `false` | Default-only pre-fill for the WFP expenditure "Reserve" toggle. |
 | `default_nature` | nvarchar(20) | Yes |  |  | Default-only pre-fill for the WFP expenditure "Nature" field: "Procurement", "Non-Procurement", or "Combined". |
 | `description` | nvarchar(max) | Yes |  |  | Optional free-text description. |
-| `expense_class` | nvarchar(20) | No |  |  | Expenditure class — e.g. |
+| `expense_class` | nvarchar(20) | No |  |  | Expenditure class — e.g. "PS", "MOOE", "CO". |
 | `is_active` | bit | No |  | `true` | Soft-delete flag. |
 | `normal_balance` | nvarchar(10) | Yes |  |  | "Debit" or "Credit". |
 | `updated_at` | datetime2 | No |  | `GETUTCDATE()` |  |
@@ -590,13 +590,13 @@ Config table: Chart of Accounts entry (Object of Expenditure).
 
 Entity `FundingSource`
 
-Config table: a budget funding source (e.g.
+Config table: a budget funding source (e.g. GF, GAD, LDRRMF).
 
 | Column | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
 | `id` | int | No | PK (identity) |  | Primary key (INT IDENTITY). |
 | `aliases` | nvarchar(max) | Yes |  |  | Optional pipe-delimited list of alternate names for this fund source (RAL-157). |
-| `code` | nvarchar(20) | No | Unique |  | Short unique code — e.g. |
+| `code` | nvarchar(20) | No | Unique |  | Short unique code — e.g. "GF", "GAD", "LDRRMF". |
 | `color` | nvarchar(7) | Yes |  |  | Optional hex colour (#RRGGBB) for WFP report total groups. |
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `description` | nvarchar(max) | Yes |  |  | Optional free-text description. |
@@ -631,7 +631,7 @@ Config table: a procurement item name + unit price catalogue (v1.4 — RAL-118).
 | `name` | nvarchar(300) | No |  |  | Item name/description. |
 | `price_updated_at` | datetime2 | No |  | `GETUTCDATE()` | UTC timestamp of the last time UnitPrice actually changed — surfaced in search results (RAL-125) so a stale price is visible to the user, not silently trusted. |
 | `stock_card_no` | nvarchar(50) | Yes |  |  | GSO stock card number / item code (v1.5 — PPMP report). |
-| `unit` | nvarchar(50) | No |  |  | Unit of measure (e.g. |
+| `unit` | nvarchar(50) | No |  |  | Unit of measure (e.g. "ream", "box", "piece", "liter"). |
 | `unit_price` | decimal(18,2) | No |  |  | Current unit price. |
 | `updated_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 
@@ -713,13 +713,13 @@ Config table: an eSRE classification code used to tag an AIP activity (v1.8.0 �
 
 Entity `ClimateChangeTypology`
 
-Config table: a CCET (Climate Change Expenditure Tagging) typology code — e.g.
+Config table: a CCET (Climate Change Expenditure Tagging) typology code — e.g. "A113-08", "M314-03" — used to tag an AIP activity's climate-change contribution (v1.8.0 — RAL-247).
 
 | Column | Type | Null | Key | Default | Description |
 |---|---|---|---|---|---|
 | `id` | int | No | PK (identity) |  | Primary key (INT IDENTITY). |
 | `category` | nvarchar(20) | No |  |  | "Adaptation" or "Mitigation", from the code's leading letter. |
-| `code` | nvarchar(20) | No | Unique |  | The CCET code — e.g. |
+| `code` | nvarchar(20) | No | Unique |  | The CCET code — e.g. "A113-08". |
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `description` | nvarchar(max) | Yes |  |  | Optional free-text description. |
 | `is_active` | bit | No |  | `true` | Soft-delete flag. |
@@ -799,7 +799,7 @@ Maps an AIP Program to a Division for budget-planning assignment (v1.2 — RAL-9
 | `id` | int | No | PK (identity) |  |  |
 | `division_id` | int | No | FK → [`divisions`](#divisions) |  |  |
 | `office_id` | int | Yes | FK → [`offices`](#offices) |  | FK to the config `offices` row (RAL-249). |
-| `office_ref_code` | nvarchar(50) | No |  |  | `AipOffice.RefCode` of the containing office row — e.g. |
+| `office_ref_code` | nvarchar(50) | No |  |  | `AipOffice.RefCode` of the containing office row — e.g. `1000-000-1-01-010`. |
 | `program_ref_code` | nvarchar(50) | No |  |  | AipProgram.RefCode of the assigned program. |
 
 **Foreign keys**
@@ -832,8 +832,8 @@ Local Development Investment Program record (one multi-year document per office)
 | `created_at` | datetime2 | No |  | `GETUTCDATE()` |  |
 | `created_by` | uniqueidentifier | No | FK → [`Users`](#users) |  | FK to the user who created this record. |
 | `entry_mode` | nvarchar(20) | No |  |  | "New", "Amendment", or "Supplemental". |
-| `fiscal_year_end` | int | No |  |  | Last fiscal year covered — e.g. |
-| `fiscal_year_start` | int | No |  |  | First fiscal year covered — e.g. |
+| `fiscal_year_end` | int | No |  |  | Last fiscal year covered — e.g. 2029. |
+| `fiscal_year_start` | int | No |  |  | First fiscal year covered — e.g. 2027. |
 | `office_id` | int | Yes | FK → [`offices`](#offices) |  | FK to the config office this LDIP document belongs to (RAL-61). |
 | `ref_code` | nvarchar(50) | No | Unique |  | System-generated unique reference code. |
 | `source_id` | int | Yes | FK → [`ldip_records`](#ldip_records) |  | FK to the LDIP record this one was copied from (amendment/supplemental flow). |
@@ -891,7 +891,7 @@ LDIP hierarchy level 2 (RAL-61) — one program row under an office/sub-office g
 | `cc_mitigation` | decimal(18,2) | Yes |  |  | Climate change mitigation amount. |
 | `cc_typology_code` | nvarchar(max) | Yes |  |  | Climate change typology code(s). |
 | `co` | decimal(18,2) | Yes |  |  | Capital Outlay amount. |
-| `end_date` | nvarchar(50) | Yes |  |  | Schedule end — stored as string (bare year, e.g. |
+| `end_date` | nvarchar(50) | Yes |  |  | Schedule end — stored as string (bare year, e.g. "2029"). |
 | `expected_outputs` | nvarchar(max) | Yes |  |  | Expected outputs free text. |
 | `funding_source_id` | int | Yes | FK → [`funding_sources`](#funding_sources) |  | FK to the funding source config record. |
 | `funding_source_snapshot` | nvarchar(max) | Yes |  |  | Snapshot of FundingSource.Code at import time. |
@@ -907,7 +907,7 @@ LDIP hierarchy level 2 (RAL-61) — one program row under an office/sub-office g
 | `ref_code` | nvarchar(50) | No |  |  | Program-level AIP ref code (parent ref code + "-NNN"). |
 | `sdgs` | nvarchar(max) | Yes |  |  | SDG alignment tag. |
 | `sendai_framework` | nvarchar(max) | Yes |  |  | Sendai Framework alignment tag. |
-| `start_date` | nvarchar(50) | Yes |  |  | Schedule start — stored as string (the source file uses a bare year, e.g. |
+| `start_date` | nvarchar(50) | Yes |  |  | Schedule start — stored as string (the source file uses a bare year, e.g. "2026", but real data has been seen with stray characters, so this is not parsed as a number). |
 
 **Foreign keys**
 
@@ -936,7 +936,7 @@ Annual Investment Program record.
 |---|---|---|---|---|---|
 | `id` | int | No | PK (identity) |  | Primary key (INT IDENTITY). |
 | `entry_source` | nvarchar(10) | No |  |  | "Upload" or "Manual". |
-| `fiscal_year` | int | No |  |  | Fiscal year — e.g. |
+| `fiscal_year` | int | No |  |  | Fiscal year — e.g. 2027. |
 | `ldip_id` | int | Yes | FK → [`ldip_records`](#ldip_records) |  | Optional FK to the LDIP this AIP implements. |
 | `original_filename` | nvarchar(500) | Yes |  |  | Original uploaded file name. |
 | `source_id` | int | Yes | FK → [`aip_records`](#aip_records) |  | FK to the AIP record this one was copied from (amendment/supplemental flow). |
@@ -1048,7 +1048,7 @@ AIP hierarchy level 4 (leaf) — an activity (8-segment ref code).
 | `cc_typology_code` | nvarchar(50) | Yes |  |  | Climate change typology code. |
 | `co` | decimal(18,2) | Yes |  |  | Capital Outlay amount. |
 | `division_id` | int | Yes | FK → [`divisions`](#divisions) |  | The division whose work this activity is (v1.8.0 — PPDO-130, `docs/v1.8/Division_Submit_Spec.md` decision 1). |
-| `end_date` | nvarchar(50) | Yes |  |  | Schedule end — stored as string (e.g. |
+| `end_date` | nvarchar(50) | Yes |  |  | Schedule end — stored as string (e.g. "December"). |
 | `esre_code` | nvarchar(20) | Yes |  |  | ESRE classification code — "SS", "ES", "ID", or "EN". |
 | `expected_outputs` | nvarchar(max) | Yes |  |  | Expected outputs free text. |
 | `funding_source_id` | int | Yes | FK → [`funding_sources`](#funding_sources) |  | FK to the funding source config record. |
@@ -1061,7 +1061,7 @@ AIP hierarchy level 4 (leaf) — an activity (8-segment ref code).
 | `project_id` | int | No | FK → [`aip_projects`](#aip_projects) |  | FK to the parent AIP project (level 3). |
 | `ps` | decimal(18,2) | Yes |  |  | Personal Services amount. |
 | `ref_code` | nvarchar(50) | No |  |  | 8-segment AIP reference code. |
-| `start_date` | nvarchar(50) | Yes |  |  | Schedule start — stored as string (e.g. |
+| `start_date` | nvarchar(50) | Yes |  |  | Schedule start — stored as string (e.g. "January"). |
 | `total` | decimal(18,2) | Yes |  |  | Ps + Mooe + Co, computed at import time (RAL-144) — never read from the source file's own Total column, since a blank/stale source cell there would desync from the real components (WfpCeilingService treats this as the … |
 
 **Foreign keys**
@@ -1554,7 +1554,7 @@ Work and Financial Plan record — one WFP per office+division per AIP record (e
 | `created_by` | uniqueidentifier | No | FK → [`Users`](#users) |  | FK to the user who created this record. |
 | `division_id` | int | Yes | FK → [`divisions`](#divisions) |  | FK to the division this WFP is scoped to (RAL-102). |
 | `finalized_at` | datetime2 | Yes |  |  | UTC timestamp when the WFP was finalized. |
-| `fiscal_year` | int | No |  |  | Fiscal year — e.g. |
+| `fiscal_year` | int | No |  |  | Fiscal year — e.g. 2027. |
 | `office_id` | int | No | FK → [`offices`](#offices) |  | FK to the office this WFP is scoped to. |
 | `source_id` | int | Yes | FK → [`wfp_records`](#wfp_records) |  | FK to the WFP record this one was copied from (amendment/supplemental flow). |
 | `status` | nvarchar(20) | No |  | `Draft` | "Draft" (editable) or "Final" (locked). |

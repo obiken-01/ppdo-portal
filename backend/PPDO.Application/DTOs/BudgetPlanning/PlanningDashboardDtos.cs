@@ -1,4 +1,4 @@
-namespace PPDO.Application.DTOs.BudgetPlanning;
+﻿namespace PPDO.Application.DTOs.BudgetPlanning;
 
 public record StatusBreakdownDto(string Status, int Count);
 
@@ -78,7 +78,18 @@ public record OfficeAipSummaryDto(
     // this with the GF ceiling; comparing CostedInAip (every shared fund) there would let GAD or
     // LDRRMF money eat a General Fund remaining the submit card never charges it to. FY2027: equals
     // CostedInAip, as it always has.
-    decimal CostedAgainstCeiling = 0m
+    decimal CostedAgainstCeiling = 0m,
+    // PPDO-175 — where the office's AIP is in the review workflow, so the dashboard stops saying
+    // submission "opens in a later release". FY2028+ only; null for FY2027 and earlier (no workflow)
+    // and when the office has no groups. The office's state is AipReadinessColumn.OfficeStatus over
+    // its group rows: the least advanced group wins, the same rollup the Offices board uses.
+    string? WorkflowStatus = null,
+    // When the office's latest hand-off happened (UTC), and what it was (an AuditAction code:
+    // SUBMIT_DH, SUBMIT_PPD, RETURN_PPD, ACCEPT_PPD, REOPEN_PPD, RETURN_DH). Null before the first
+    // hand-off. LastHandOff is what tells a Draft that was returned by the department head
+    // (RETURN_DH) from one that was never submitted.
+    DateTime? WorkflowStatusSince = null,
+    string? LastHandOff = null
 );
 
 /// <param name="ByDivision">

@@ -1,5 +1,6 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
 using PPDO.Domain.Entities;
@@ -19,10 +20,61 @@ internal static class ConfigHttp
         PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
     };
 
+    /// <summary>
+    /// <see cref="Json"/> that leaves null properties out of the response (PPDO-185). For the big
+    /// AIP tree reads, where most activities carry no division, CC figures or typology and the
+    /// nulls were a fifth of a 1.5 MB body.
+    ///
+    /// ⚠️ <b>Opt-in per endpoint, never the default.</b> A missing field is not the same as
+    /// <c>null</c> to a reader that tests <c>=== null</c>, so each endpoint that uses this needs
+    /// its frontend reader to put the nulls back (<c>frontend/src/lib/aip.ts</c> does for the
+    /// AIP detail and summary). <c>WhenWritingNull</c>, not <c>WhenWritingDefault</c>: the latter
+    /// would also drop <c>0</c> amounts and <c>false</c> flags, which readers rely on.
+    /// </summary>
+    internal static readonly JsonSerializerOptions JsonOmitNulls = new(Json)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     internal static string? AuthHeader(HttpRequestData req)
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
+
+    /// <summary>
+    /// Sent with a cacheable reference-data response (PPDO-183). <c>private</c>: only the browser may
+    /// keep it, never a shared cache. <c>no-cache</c>: it must ask the server every time, sending
+    /// <c>If-None-Match</c>, so a stale catalogue is never shown — the saving is the body, not the
+    /// request.
+    /// </summary>
+    internal const string RevalidateEveryTime = "private, no-cache";
+
+    /// <summary>
+    /// True when the request's <c>If-None-Match</c> names <paramref name="etag"/> (PPDO-183).
+    /// Weak comparison (RFC 9110 §13.1.2): <c>W/</c> prefixes are ignored on both sides, which is the
+    /// comparison <c>If-None-Match</c> requires. Handles a comma-separated list and <c>*</c>.
+    /// </summary>
+    internal static bool IfNoneMatchMatches(HttpRequestData req, string etag)
+    {
+        if (!req.Headers.TryGetValues("If-None-Match", out IEnumerable<string>? values))
+            return false;
+
+        string wanted = StripWeak(etag);
+        return values
+            .SelectMany(v => v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Any(tag => tag == "*" || StripWeak(tag) == wanted);
+
+        static string StripWeak(string tag) => tag.StartsWith("W/", StringComparison.Ordinal) ? tag[2..] : tag;
+    }
+
+    /// <summary>A body-less 304 carrying the validator and cache policy (PPDO-183).</summary>
+    internal static HttpResponseData NotModified(HttpRequestData req, string etag)
+    {
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.NotModified);
+        response.Headers.Add("ETag", etag);
+        response.Headers.Add("Cache-Control", RevalidateEveryTime);
+        return response;
+    }
 
     /// <summary>Any authenticated user — used for reference-data list endpoints (dropdowns).</summary>
     internal static readonly Func<User, Task<bool>> Authenticated = _ => Task.FromResult(true);
@@ -166,24 +218,37 @@ internal static class ConfigHttp
     }
 
     internal static async Task<HttpResponseData> EnvelopeAsync<T>(
-        HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken)
+        HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken,
+        IReadOnlyList<(string Name, string Value)>? headers = null,
+        JsonSerializerOptions? options = null)
     {
         HttpResponseData response = req.CreateResponse(status);
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");
-        await response.WriteStringAsync(JsonSerializer.Serialize(body, Json), cancellationToken);
+        // ⚠️ Extra headers go on BEFORE the body. Under the ASP.NET Core integration the first body
+        // write sends the headers, and anything added after it is silently dropped (PPDO-183: the
+        // ETag vanished this way on the real host while the in-memory test fake kept it).
+        foreach ((string name, string value) in headers ?? [])
+            response.Headers.Add(name, value);
+        await response.WriteStringAsync(JsonSerializer.Serialize(body, options ?? Json), cancellationToken);
         return response;
     }
 
     /// <summary>Maps a <see cref="ServiceResult{T}"/> to an enveloped HTTP response.</summary>
+    /// <param name="options">
+    /// Serializer options for the body; <see cref="Json"/> when omitted. Pass
+    /// <see cref="JsonOmitNulls"/> to leave nulls out (PPDO-185) — read its remarks first.
+    /// </param>
     internal static Task<HttpResponseData> FromResultAsync<T>(
         HttpRequestData req,
         ServiceResult<T> result,
         CancellationToken cancellationToken,
         HttpStatusCode okStatus = HttpStatusCode.OK,
-        string? message = null)
+        string? message = null,
+        JsonSerializerOptions? options = null)
     {
         if (result.IsSuccess)
-            return EnvelopeAsync(req, okStatus, ApiResponse<T>.Ok(result.Value!, message), cancellationToken);
+            return EnvelopeAsync(req, okStatus, ApiResponse<T>.Ok(result.Value!, message), cancellationToken,
+                options: options);
 
         HttpStatusCode status = result.Code switch
         {
@@ -197,8 +262,9 @@ internal static class ConfigHttp
         // An error that carries data (PPDO-155: a stale-version 409, a 400's field errors) sends it
         // as the envelope's data. Every other error keeps the plain { error } body.
         return result.ErrorDetails is { } details
-            ? EnvelopeAsync(req, status, new ApiResponse<object>(details, error, null), cancellationToken)
-            : EnvelopeAsync(req, status, ApiResponse<T>.Fail(error), cancellationToken);
+            ? EnvelopeAsync(req, status, new ApiResponse<object>(details, error, null), cancellationToken,
+                options: options)
+            : EnvelopeAsync(req, status, ApiResponse<T>.Fail(error), cancellationToken, options: options);
     }
 
     /// <summary>Returns a CSV file response (text/csv + attachment filename).</summary>

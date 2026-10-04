@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -12,6 +12,26 @@ namespace PPDO.Domain.Interfaces;
 /// </summary>
 public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
 {
+    /// <summary>
+    /// One item by id, <c>WHERE id = @id</c> (PPDO-186). Tracked, because
+    /// the update and deactivate paths modify what it returns. The generic
+    /// <see cref="IRepository{T}.GetByIdAsync"/> is Guid-keyed, so int-keyed entities need their own.
+    /// </summary>
+    Task<PriceIndexItem?> GetByIntIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether another item already has this name and unit (PPDO-186): the create and update
+    /// duplicate checks, as one <c>EXISTS</c> on the <c>(name, unit)</c> index instead of a scan of
+    /// the whole catalogue. <paramref name="excludeId"/> is the item being updated, so it does not
+    /// collide with itself; null on create.
+    ///
+    /// ⚠️ Case-insensitive through the database collation — the same answer as the CSV import's
+    /// <c>OrdinalIgnoreCase</c> key and the unique <c>IX_price_index_items_name_unit</c> index. No
+    /// <c>LOWER()</c>, which would stop the index being seeked (the RAL-204 rule, see
+    /// <c>UserRepository.FindByUsernameAsync</c>). Callers pass already-trimmed values.
+    /// </summary>
+    Task<bool> NameAndUnitExistsAsync(string name, string unit, int? excludeId, CancellationToken ct = default);
+
     /// <summary>Returns the price index items matching any of the given ids.</summary>
     Task<IReadOnlyList<PriceIndexItem>> GetByIdsAsync(
         IReadOnlyList<int> ids, CancellationToken ct = default);
@@ -43,6 +63,15 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     /// </summary>
     Task<IReadOnlyList<PriceIndexPickerItem>> GetPickerItemsAsync(
         bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>
+    /// A cheap fingerprint of the whole catalogue for the picker's ETag (PPDO-183): the row count
+    /// and the latest <c>UpdatedAt</c>, in one aggregate query. Every write path in
+    /// <c>PriceIndexService</c> (create, update, deactivate, CSV import) stamps <c>UpdatedAt</c>, so
+    /// any change moves the maximum; a deleted row moves the count. <c>LastUpdatedAt</c> is null for
+    /// an empty table.
+    /// </summary>
+    Task<(int Count, DateTime? LastUpdatedAt)> GetVersionStampAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Filtered, sorted, paged read for the price-index management grid (RAL-233) — WHERE, COUNT,

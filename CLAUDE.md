@@ -598,7 +598,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-09-21 — v1.8.0 complete on `release/1.8.0`, not yet merged to `main`.**
+> **Updated: 2026-10-04 — v1.8.1 frozen on `release/1.8.1` for UAT (cut at PPDO-176). v1.8.0 and v1.8.1 ship to `main` together.**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -607,7 +607,9 @@ illustrate.
 > eleven weeks and six minor versions behind the code, which is why the rule is written down here.
 
 **Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
-**Ready:** v1.8.0 — every ticket closed on `release/1.8.0`; see the pre-deployment checklist below.
+**Built, not yet in production:** v1.8.0 — every ticket closed; in UAT since 2026-09-21.
+**Frozen for UAT:** v1.8.1 on `release/1.8.1`, cut from `release/1.8.0` on 2026-10-04. Ships to production
+**together with v1.8.0** in one deploy (`release/1.8.1` → `main`); see the v1.8.1 section below.
 
 ### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
@@ -682,7 +684,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.7.2B** | 2026-08-17 | #243, #245 | **Function App relocated Central US → Southeast Asia (RAL-237)** — removes the cross-region hop to Azure SQL; `Validators/` reorganized into per-feature subfolders (RAL-235) | 235, 237 |
 | **v1.7.3** | 2026-08-20 | #249 | Division name resolved in distribution history, code-keyed division upsert, division code in the history pill | 236, 239 |
 | **v1.7.4** | 2026-08-20 | #251 | Warehouse-count movement counted in Stock Overview columns, modal no longer closes on a drag-to-backdrop selection | 240, 273 |
-| **v1.8.0** | *pending* | — | **Office users, AIP redesign and the reviewer flow** — the largest release so far. Guest-office login and per-office scoping; AIP rebuilt for FY2028+ (entry wizard, expenditures, ceilings, ref codes); submit → review → return → re-submit with row-anchored comments; Annex B report and Excel export; external partner API with keys; Investment Planning rename; office setup for department heads (ceilings, divisions, per-office fund sources). ⚠️ **23 migrations, one of which rewrites existing AIP amounts** | PPDO-1…110, RAL-* (see the Linear note above) |
+| **v1.8.0** | *ships with v1.8.1* | — | **Office users, AIP redesign and the reviewer flow** — the largest release so far. Guest-office login and per-office scoping; AIP rebuilt for FY2028+ (entry wizard, expenditures, ceilings, ref codes); submit → review → return → re-submit with row-anchored comments; Annex B report and Excel export; external partner API with keys; Investment Planning rename; office setup for department heads (ceilings, divisions, per-office fund sources). ⚠️ **23 migrations, one of which rewrites existing AIP amounts** | PPDO-1…110, RAL-* (see the Linear note above) |
 
 > **v1.4.6 was never merged to `main`.** Its price-index work is the one real gap found in the
 > branch audit — see the `archive/fix/v1.4.6-budget-planning-query-perf` tag.
@@ -736,6 +738,8 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | v1.6 — AIP Editing + Responsive Shell | ✅ Done |
 | v1.7 — Inventory (+ .1–.4 patches) | ✅ Done |
 | **v1.8.0 — Office Users, AIP Redesign & Reviewer Flow** | ✅ **Complete on `release/1.8.0`, awaiting merge to `main`** — Phases 1–5 all shipped. Phases 6–7 were deliberately not built; see below |
+| **v1.8.1 — Optimization & Dashboard Fixes** | 🧊 **Frozen on `release/1.8.1` for UAT** (cut at PPDO-176) — ships to `main` together with v1.8.0 |
+| **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | ⏳ Not started — `release/1.8.2` cut after the production deploy |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -790,7 +794,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
   seeded an environment holds that account's password. Give production and each local instance its own
   password, set through the portal's change-password flow.
 
-### v1.8.0 — Office Users, AIP Redesign & Reviewer Flow (built, awaiting release)
+### v1.8.0 — Office Users, AIP Redesign & Reviewer Flow (built, ships with v1.8.1)
 
 The largest single change attempted so far, and it is **done on `release/1.8.0`**. **PPDO-28** was
 the Phase 1 epic; children carry a mix of `PPDO-*` and `RAL-*` identifiers after the 2026-09-02 team
@@ -805,10 +809,31 @@ shipped, Phases 6–7 did not** (see below).
   touching code structure.
 - `aip/detail/page.tsx` was extracted before the redesign (PPDO-64), as the retrospective asked.
 
-⚠️ **Before merging `release/1.8.0` → `main`, work `docs/v1.8/Pre_Deployment_Checklist.md`.**
+⚠️ **Before merging `release/1.8.1` → `main` (which carries v1.8.0), work `docs/v1.8/Pre_Deployment_Checklist.md`.**
 23 migrations production has never seen, one of which rewrites existing AIP amounts. The database
 steps are manual — **CI does not run migrations** — and the migration must run *before* the code
 deploys, or every funding-source read fails on a missing column.
+
+### v1.8.1 — frozen for UAT (branch strategy, decided 2026-10-04)
+
+v1.8.0 never reached production on its own; it was still in UAT testing when v1.8.1 work began.
+Ralph decided to **ship both in one production deploy**, so there is one working branch:
+
+- **`release/1.8.1` is the working branch.** It was cut from `release/1.8.0` @ `84bd1f32` (after #425), and
+  the first commit bumps `APP_VERSION` to `v1.8.1`.
+- ⚠️ **`release/1.8.1` is FROZEN** (cut at PPDO-176, Ralph 2026-10-04). **Only fixes found in UAT** go in
+  (`fix/v1.8.1-…`). Anything else merged now would ship to production untested.
+- **New work is v1.8.2** (Linear milestone "v1.8.2 — Dashboard Redesign, Caching & Remaining
+  Optimizations": PPDO-178…181, 187…189, 111/112/113). Its branch `release/1.8.2` is cut from `main` after
+  the production deploy. If v1.8.2 work must start during UAT, cut it from the frozen `release/1.8.1`
+  instead and merge every UAT fix forward. Its first commit bumps `APP_VERSION` to `v1.8.2`.
+- **`release/1.8.0` is frozen**: no further merges. It stays as the record of what v1.8.0 was.
+- **UAT:** merge `release/1.8.1` → `uat` to deploy. ⚠️ Still never branch off `uat`.
+- **Production:** `release/1.8.1` → `main`, after the pre-deployment checklist.
+- **What v1.8.1 ships:** PPDO-182/183/184 (compression, picker cache, AIP Entry), PPDO-185/186, PPDO-177
+  (dashboard parallel load), PPDO-175/176 (submission stage, reviewer top). **No migrations.**
+- ⚠️ **V18-71** (concurrent-edit guard) is unscheduled. It adds the migration `AddAipConcurrencyTokens`:
+  when it lands in a release, add it to the hand-applied migration list.
 
 #### What was deliberately NOT built
 
@@ -842,6 +867,6 @@ deploys, or every funding-source read fails on a missing column.
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.8.0 (unreleased) — 2026-09-21 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.8.1 (frozen for UAT; v1.8.0 unreleased) — 2026-10-04 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

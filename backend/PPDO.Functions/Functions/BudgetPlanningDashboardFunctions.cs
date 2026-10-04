@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -134,7 +134,7 @@ public sealed class BudgetPlanningDashboardFunctions
         return await OkJson(req, result, cancellationToken);
     }
 
-    // ── GET /api/budget-planning/dashboard/office?officeId=&fiscalYear= ──────
+    // ── GET /api/budget-planning/dashboard/office?officeId=&fiscalYear={int?} ─
     // officeId (RAL-229): office-scoped callers are ALWAYS clamped to their own office — the
     // officeId on the query string is ignored for them. Before this, the caller was discarded
     // entirely (`(_, denied)`) and any Budget Planning user could read any office's dashboard
@@ -151,11 +151,14 @@ public sealed class BudgetPlanningDashboardFunctions
             req, _jwt, u => _permissions.CanAccessBudgetPlanningAsync(u), cancellationToken);
         if (denied is not null) return denied;
 
-        if (!int.TryParse(req.Query["officeId"], out int officeId) ||
-            !int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+        if (!int.TryParse(req.Query["officeId"], out int officeId))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<OfficeDashboardDto>.Fail(
-                    "officeId and fiscalYear query parameters are required."), cancellationToken);
+                    "The officeId query parameter is required."), cancellationToken);
+
+        if (await ResolveFiscalYearQueryAsync(req, cancellationToken) is not int fiscalYear)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<OfficeDashboardDto>.Fail("fiscalYear must be a whole number."), cancellationToken);
 
         // Clamp AFTER validation so a malformed officeId is still a clean 400 rather than
         // silently falling back to the caller's own office.
@@ -194,7 +197,7 @@ public sealed class BudgetPlanningDashboardFunctions
         return ownOfficeSetupHolder ? (true, null) : (false, caller.DivisionId);
     }
 
-    // ── GET /api/budget-planning/dashboard/offices?fiscalYear= ──────────────
+    // ── GET /api/budget-planning/dashboard/offices?fiscalYear={int?} ────────
     // PPDO-20. One row per office in the caller's CROSS-OFFICE scope — the dashboard's office
     // table. Read-only.
     //
@@ -227,9 +230,9 @@ public sealed class BudgetPlanningDashboardFunctions
                 ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail(NoBudgetPlanningAccess),
                 cancellationToken);
 
-        if (!int.TryParse(req.Query["fiscalYear"], out int fiscalYear))
+        if (await ResolveFiscalYearQueryAsync(req, cancellationToken) is not int fiscalYear)
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
-                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail("fiscalYear is required."),
+                ApiResponse<IReadOnlyList<OfficeSummaryDto>>.Fail("fiscalYear must be a whole number."),
                 cancellationToken);
 
         ServiceResult<IReadOnlyList<OfficeSummaryDto>> result =
@@ -244,6 +247,23 @@ public sealed class BudgetPlanningDashboardFunctions
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
+
+    /// <summary>
+    /// The <c>fiscalYear</c> query value for the office endpoints (PPDO-177).
+    ///
+    /// <para>Absent: the same year <c>/dashboard</c> resolves to (requested, then the admin default,
+    /// then the newest AIP year, then next year), so the page can fire every band at once instead of
+    /// waiting for <c>/dashboard</c> to learn the year. Present but not a number: null, which the
+    /// caller turns into a 400 as before. A malformed value is a mistake, not a request for the
+    /// default.</para>
+    /// </summary>
+    private async Task<int?> ResolveFiscalYearQueryAsync(HttpRequestData req, CancellationToken ct)
+    {
+        string? raw = req.Query["fiscalYear"];
+        if (string.IsNullOrWhiteSpace(raw))
+            return (await _service.GetFiscalYearsAsync(null, ct)).FiscalYear;
+        return int.TryParse(raw, out int fiscalYear) ? fiscalYear : null;
+    }
 
     private static int? TryParseIntQuery(HttpRequestData req, string key)
     {

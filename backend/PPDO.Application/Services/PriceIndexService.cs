@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -67,6 +67,21 @@ public sealed class PriceIndexService : IPriceIndexService
             .ToList();
     }
 
+    /// <summary>
+    /// Bump when <see cref="PriceIndexPickerItemDto"/>'s shape changes, so browsers holding the old
+    /// shape refetch even though no row changed.
+    /// </summary>
+    public const string PickerShapeVersion = "1";
+
+    /// <inheritdoc />
+    public async Task<string> GetPickerETagAsync(CancellationToken cancellationToken = default)
+    {
+        (int count, DateTime? lastUpdatedAt) = await _repo.GetVersionStampAsync(cancellationToken);
+        // Weak (W/): the response compression middleware sends the same content gzip, Brotli or
+        // plain, so the bytes differ by encoding while the meaning does not.
+        return $"W/\"pi{PickerShapeVersion}-{count}-{lastUpdatedAt?.Ticks ?? 0}\"";
+    }
+
     /// <inheritdoc />
     public async Task<PriceIndexPageDto> GetPagedAsync(
         string? search, ActiveFilter active, string? sortColumn, bool sortDescending,
@@ -89,7 +104,7 @@ public sealed class PriceIndexService : IPriceIndexService
     /// <inheritdoc />
     public async Task<ServiceResult<PriceIndexItemDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        PriceIndexItem? p = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+        PriceIndexItem? p = await _repo.GetByIntIdAsync(id, cancellationToken);
         return p is null
             ? ServiceResult<PriceIndexItemDto>.NotFound($"Price index item {id} not found.")
             : ServiceResult<PriceIndexItemDto>.Ok(MapToDto(p));
@@ -106,8 +121,8 @@ public sealed class PriceIndexService : IPriceIndexService
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        IReadOnlyList<PriceIndexItem> all = await _repo.GetAllAsync(cancellationToken);
-        if (all.Any(p => SameKey(p, name, unit)))
+        // PPDO-186: one EXISTS on the (name, unit) index, not the whole ~6,400-row catalogue.
+        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: null, cancellationToken))
             return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
 
         DateTime now = DateTime.UtcNow;
@@ -143,14 +158,13 @@ public sealed class PriceIndexService : IPriceIndexService
         if (validationError is not null)
             return ServiceResult<PriceIndexItemDto>.BadRequest(validationError);
 
-        IReadOnlyList<PriceIndexItem> all = await _repo.GetAllAsync(cancellationToken);
-        PriceIndexItem? entity = all.FirstOrDefault(p => p.Id == id);
+        PriceIndexItem? entity = await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<PriceIndexItemDto>.NotFound($"Price index item {id} not found.");
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        if (all.Any(p => p.Id != id && SameKey(p, name, unit)))
+        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: id, cancellationToken))
             return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
 
         var oldSnapshot = new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo };
@@ -181,7 +195,7 @@ public sealed class PriceIndexService : IPriceIndexService
     /// <inheritdoc />
     public async Task<ServiceResult<PriceIndexItemDto>> DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
-        PriceIndexItem? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(p => p.Id == id);
+        PriceIndexItem? entity = await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<PriceIndexItemDto>.NotFound($"Price index item {id} not found.");
 
@@ -329,10 +343,6 @@ public sealed class PriceIndexService : IPriceIndexService
         if (unitPrice < 0) return "Unit price cannot be negative.";
         return null;
     }
-
-    private static bool SameKey(PriceIndexItem p, string name, string unit) =>
-        p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) &&
-        p.Unit.Equals(unit, StringComparison.OrdinalIgnoreCase);
 
     private static string Key(string name, string unit) => $"{name}|{unit}";
 

@@ -156,6 +156,9 @@ function AipEntryPageInner() {
   const [addProgramsOpen, setAddProgramsOpen] = useState(false);
 
   const [record, setRecord]   = useState<AipRecordDetail | null>(null);
+  // PPDO-184 — the open record's id, known as soon as the list lands and before the tree does, so the
+  // comments provider can start its fetch alongside the detail rather than after it.
+  const [openAipId, setOpenAipId] = useState<number | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
   // PPDO-100 — the implementing-office picker’s list. Active only: a deactivated office is not
@@ -340,6 +343,7 @@ function AipEntryPageInner() {
     setError(null);
     setNotOpened(false);
     setRecord(null);
+    setOpenAipId(null);
     setReadiness(null);
     setDivisions(null);
     setDivisionsError(null);
@@ -348,18 +352,27 @@ function AipEntryPageInner() {
       const open = list.find((r) => r.status !== "Archived");
       if (!open) { setNotOpened(true); return; }
 
-      // Sequential, not Promise.all on the first two: the readiness call needs the record id.
-      const detail = await getAipById(open.id);
+      // PPDO-184 — everything after the list needs only the record id, so it goes out together:
+      // the tree, the checklist and the division strip here, and the comments from the provider,
+      // which starts the moment `openAipId` is set. These used to run one after another.
+      // The tree is narrowed to this office: the page shows only `myGroups`, and a host-office
+      // caller would otherwise download the whole province's AIP to render one office.
+      setOpenAipId(open.id);
+      const [detail, nextReadiness] = await Promise.all([
+        getAipById(open.id, officeId),
+        getAipReadiness(open.id),
+        // Never throws — its error lands in `divisionsError`. Inside the skeleton's window, so the
+        // strip arrives with the checklist rather than after it.
+        loadDivisions(open.id),
+      ]);
       setRecord(detail);
-      setReadiness(await getAipReadiness(open.id));
-      // Inside the skeleton's window, so the strip arrives with the checklist rather than after it.
-      await loadDivisions(open.id);
+      setReadiness(nextReadiness);
     } catch (e) {
       setError(aipErrorMessage(e, "Could not load the AIP for this fiscal year."));
     } finally {
       setLoading(false);
     }
-  }, [fiscalYear, loadDivisions]);
+  }, [fiscalYear, officeId, loadDivisions]);
 
   // The skeleton (`loading` starts true) covers the wait for the default year.
   useEffect(() => { if (yearSettled) void load(); }, [load, yearSettled]);
@@ -796,6 +809,10 @@ function AipEntryPageInner() {
         </details>
       )}
 
+      {/* One fetch of the office's comments for every panel — a control per row fetching its own
+          would be an N+1 that only shows up on a big office. Mounted around the skeleton too
+          (PPDO-184), so that fetch runs in parallel with the tree instead of after it. */}
+      <AipCommentsProvider aipRecordId={openAipId} officeId={officeId}>
       {loading ? (
         <EntrySkeleton />
       ) : notOpened ? (
@@ -807,9 +824,6 @@ function AipEntryPageInner() {
           body="An administrator opens the fiscal year, which creates the AIP and populates every office's programs from its LDIP. Once that is done, your office's programs will appear here."
         />
       ) : record && officeId != null ? (
-        // One fetch of the office's comments for every panel — a control per row fetching its own
-        // would be an N+1 that only shows up on a big office.
-        <AipCommentsProvider aipRecordId={record.id} officeId={officeId}>
           <div className="space-y-4">
             <AipOfficeHeader
               fiscalYear={fiscalYear}
@@ -975,7 +989,6 @@ function AipEntryPageInner() {
               </>
             )}
           </div>
-        </AipCommentsProvider>
       ) : (
         // A user with no office resolves to "sees nothing" rather than "sees everything" —
         // DECISION F. An empty state, not an error.
@@ -984,6 +997,7 @@ function AipEntryPageInner() {
           body="Your account is not assigned to an office yet, so there is no AIP to build. Ask an administrator to assign one."
         />
       )}
+      </AipCommentsProvider>
     </div>
   );
 }
