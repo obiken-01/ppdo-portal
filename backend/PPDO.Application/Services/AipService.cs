@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Common;
@@ -145,8 +145,12 @@ public sealed class AipService : IAipService
         return records.Select(r => MapToListDto(r, officeCounts, userNames)).ToList();
     }
 
-    public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
+    public Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
         int id, User caller, CancellationToken ct = default)
+        => GetByIdAsync(id, caller, onlyOfficeId: null, ct);
+
+    public async Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
+        int id, User caller, int? onlyOfficeId, CancellationToken ct = default)
     {
         AipRecord? rec = await _aipRepo.GetByIntIdAsync(id, ct);
         if (rec is null)
@@ -160,6 +164,12 @@ public sealed class AipService : IAipService
         // yet, which is the only reason that was not a live leak.
         AipReadScope scope = AipReadScope.Resolve(caller);
         IReadOnlyList<AipOffice> offices = scope.FilterOffices(allOffices);
+
+        // PPDO-184 — narrow AFTER the scope filter, so this can only take offices away. Applied
+        // before the programs/projects/activities reads, which are keyed off this list, so the
+        // other offices' rows are never loaded at all.
+        if (onlyOfficeId is int only)
+            offices = offices.Where(o => o.OfficeId == only).ToList();
 
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);

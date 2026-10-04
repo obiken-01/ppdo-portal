@@ -15,6 +15,20 @@ public interface IAipService
     Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(int id, User caller, CancellationToken ct = default);
 
     /// <summary>
+    /// <see cref="GetByIdAsync(int, User, CancellationToken)"/>, narrowed to one office (PPDO-184).
+    ///
+    /// <para><paramref name="onlyOfficeId"/> is an <c>offices.id</c>. It only ever <b>narrows</b> the
+    /// caller's read scope: an office outside that scope yields no offices, never extra ones. Null
+    /// means "everything the caller may see", exactly as the overload without it.</para>
+    ///
+    /// <para>AIP Entry edits one office but a host-office caller's scope is the whole province, so
+    /// without this a PPDO user downloads every office's tree (1.5 MB on the FY 2027 record) to
+    /// show one.</para>
+    /// </summary>
+    Task<ServiceResult<AipRecordDetailDto>> GetByIdAsync(
+        int id, User caller, int? onlyOfficeId, CancellationToken ct = default);
+
+    /// <summary>
     /// Returns a slim hierarchy (Id, RefCode, Name, amounts, funding source) for the WFP
     /// activity grid. Omits heavy free-text fields — ~10× smaller than GetByIdAsync.
     /// </summary>
