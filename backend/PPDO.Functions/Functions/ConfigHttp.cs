@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
 using PPDO.Domain.Entities;
@@ -17,6 +18,22 @@ internal static class ConfigHttp
     {
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
+    };
+
+    /// <summary>
+    /// <see cref="Json"/> that leaves null properties out of the response (PPDO-185). For the big
+    /// AIP tree reads, where most activities carry no division, CC figures or typology and the
+    /// nulls were a fifth of a 1.5 MB body.
+    ///
+    /// ⚠️ <b>Opt-in per endpoint, never the default.</b> A missing field is not the same as
+    /// <c>null</c> to a reader that tests <c>=== null</c>, so each endpoint that uses this needs
+    /// its frontend reader to put the nulls back (<c>frontend/src/lib/aip.ts</c> does for the
+    /// AIP detail and summary). <c>WhenWritingNull</c>, not <c>WhenWritingDefault</c>: the latter
+    /// would also drop <c>0</c> amounts and <c>false</c> flags, which readers rely on.
+    /// </summary>
+    internal static readonly JsonSerializerOptions JsonOmitNulls = new(Json)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     internal static string? AuthHeader(HttpRequestData req)
@@ -202,7 +219,8 @@ internal static class ConfigHttp
 
     internal static async Task<HttpResponseData> EnvelopeAsync<T>(
         HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken,
-        IReadOnlyList<(string Name, string Value)>? headers = null)
+        IReadOnlyList<(string Name, string Value)>? headers = null,
+        JsonSerializerOptions? options = null)
     {
         HttpResponseData response = req.CreateResponse(status);
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");
@@ -211,20 +229,26 @@ internal static class ConfigHttp
         // ETag vanished this way on the real host while the in-memory test fake kept it).
         foreach ((string name, string value) in headers ?? [])
             response.Headers.Add(name, value);
-        await response.WriteStringAsync(JsonSerializer.Serialize(body, Json), cancellationToken);
+        await response.WriteStringAsync(JsonSerializer.Serialize(body, options ?? Json), cancellationToken);
         return response;
     }
 
     /// <summary>Maps a <see cref="ServiceResult{T}"/> to an enveloped HTTP response.</summary>
+    /// <param name="options">
+    /// Serializer options for the body; <see cref="Json"/> when omitted. Pass
+    /// <see cref="JsonOmitNulls"/> to leave nulls out (PPDO-185) — read its remarks first.
+    /// </param>
     internal static Task<HttpResponseData> FromResultAsync<T>(
         HttpRequestData req,
         ServiceResult<T> result,
         CancellationToken cancellationToken,
         HttpStatusCode okStatus = HttpStatusCode.OK,
-        string? message = null)
+        string? message = null,
+        JsonSerializerOptions? options = null)
     {
         if (result.IsSuccess)
-            return EnvelopeAsync(req, okStatus, ApiResponse<T>.Ok(result.Value!, message), cancellationToken);
+            return EnvelopeAsync(req, okStatus, ApiResponse<T>.Ok(result.Value!, message), cancellationToken,
+                options: options);
 
         HttpStatusCode status = result.Code switch
         {
@@ -238,8 +262,9 @@ internal static class ConfigHttp
         // An error that carries data (PPDO-155: a stale-version 409, a 400's field errors) sends it
         // as the envelope's data. Every other error keeps the plain { error } body.
         return result.ErrorDetails is { } details
-            ? EnvelopeAsync(req, status, new ApiResponse<object>(details, error, null), cancellationToken)
-            : EnvelopeAsync(req, status, ApiResponse<T>.Fail(error), cancellationToken);
+            ? EnvelopeAsync(req, status, new ApiResponse<object>(details, error, null), cancellationToken,
+                options: options)
+            : EnvelopeAsync(req, status, ApiResponse<T>.Fail(error), cancellationToken, options: options);
     }
 
     /// <summary>Returns a CSV file response (text/csv + attachment filename).</summary>
