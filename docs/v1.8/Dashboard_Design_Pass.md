@@ -100,8 +100,13 @@ flat, PPDO tokens, Segoe UI, no new colours.
 - **The fiscal year moves into the page header**; the locked Office/Division fields go (the office is in the
   header line).
 - **Bands are ordered by role:**
-  - **Reviewer:** the province bar (offices per stage) and the Offices board come right after the status band. PPDO's own
-    office shrinks to one summary card.
+  - **Reviewer:** the province bar (offices per stage) and the Offices board come right after the status band. Then
+    PPDO's own office shrinks to one summary card, beside an **Investment proposals, all offices** card (final /
+    draft / none across offices, and the offices in PPDO review with the fewest final proposals). Reviewers can
+    read and export every office's proposals, so the card links straight into that list.
+  - **Cross-office review is a grant, not a role** (Ralph, 2026-10-04). Anyone given `CanReviewAllOffices`
+    gets the reviewer top, a PPDO finance user included. A finance user with the grant sees the reviewer top
+    first, then the allocation, fund and division bands below it.
   - **Department head / encoder:** the ceiling meter, then Investment proposals and Recent activity side by side.
   - **PPDO finance:** the fund card with the division split, then the division table.
 - **Ceiling meter:** one wide tile, "₱38.4M of ₱50M", with a bar and "₱11.6M left". It states that it counts
@@ -137,7 +142,7 @@ flat, PPDO tokens, Segoe UI, no new colours.
 | 3 | Load the bands in parallel (B5) | Backend + frontend | S |
 | 4 | Status band replaces the action card and the rail (incl. phone, F12) | Frontend | M |
 | 5 | Cleanups: header, empty Divisions band, zero rows, one-fund width, Not started column (F6–F10) | Frontend | S |
-| 6 | Investment proposals band (F11, B3) | Backend + frontend | M |
+| 6 | Investment proposals band (F11, B3), including the all-offices card for cross-office reviewers | Backend + frontend | M |
 | 7 | Readable recent activity (F5, B4) | Backend + frontend | M |
 
 Tickets 1 and 2 fix wrong information and could ship as a v1.8.0 UAT fix. The rest fits v1.8.1.

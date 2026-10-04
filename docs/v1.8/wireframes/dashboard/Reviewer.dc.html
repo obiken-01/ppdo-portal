@@ -27,7 +27,7 @@ a { color: #1F7A45; } a:hover { color: #196638; }
 .feed p { margin: 0; }
 </style>
 </helmet>
-<div style="display: flex; flex-wrap: wrap; min-height: 1640px; align-items: stretch;">
+<div style="display: flex; flex-wrap: wrap; min-height: 2000px; align-items: stretch;">
 
   <nav class="side" aria-label="Main" style="flex: 1 1 232px; max-width: 232px; background: #1F7A45; padding: 20px 0; display: flex; flex-direction: column; gap: 2px;">
     <div style="padding: 0 20px 18px; color: #FFFFFF; font-size: 16px; font-weight: 700;">PPDO Portal</div>
@@ -139,7 +139,36 @@ a { color: #1F7A45; } a:hover { color: #196638; }
           <div style="display: flex; gap: 8px; flex-wrap: wrap;"><a class="btn sm" href="#">Open AIP Entry</a><a class="btn sm" href="#">Division allocation</a></div>
         </section>
 
-        <section class="card feed" aria-labelledby="recent" style="flex: 7 1 480px; min-width: 0;">
+        <section class="card" aria-labelledby="props" style="flex: 7 1 480px; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="props" style="margin: 0; font-size: 14px; font-weight: 600;">Investment proposals, all offices</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Open Investment Proposals</a>
+          </div>
+          <div style="padding: 14px 20px; display: flex; flex-direction: column; gap: 10px;">
+            <div role="img" aria-label="38 final, 21 draft, 54 with no proposal, of 113 projects" style="display: flex; height: 10px; gap: 2px;">
+              <div style="flex: 38; background: #1F7A45;"></div>
+              <div style="flex: 21; background: #EF9F27;"></div>
+              <div style="flex: 54; background: #CED4DA;"></div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #5A636B;">
+              <span><strong class="num" style="color: #343A40;">38</strong> final</span>
+              <span><strong class="num" style="color: #343A40;">21</strong> draft</span>
+              <span><strong class="num" style="color: #343A40;">54</strong> no proposal</span>
+              <span>of 113 projects</span>
+            </div>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <caption style="text-align: left; padding: 0 20px 8px; font-size: 12px; color: #5A636B;">Offices in PPDO review, fewest final first</caption>
+            <tbody>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PTO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">0 of 6 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PVO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">1 of 4 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+              <tr style="border-top: 1px solid #E9ECEF;"><td style="padding: 9px 20px; color: #343A40; font-weight: 600;">PSWDO</td><td style="padding: 9px 8px; color: #5A636B;" class="num">5 of 9 final</td><td style="padding: 9px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td></tr>
+            </tbody>
+          </table>
+          <p style="margin: 0; padding: 10px 20px 14px; font-size: 12px; color: #5A636B; border-top: 1px solid #E9ECEF;">Read and export only. Proposals are reviewed on paper; this card shows which offices are sending theirs incomplete.</p>
+        </section>
+
+        <section class="card feed" aria-labelledby="recent" style="flex: 1 1 100%; min-width: 0;">
           <div style="padding: 16px 20px 12px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E9ECEF;">
             <h2 id="recent" style="margin: 0; font-size: 14px; font-weight: 600;">Recent activity, all offices</h2>
             <a href="#" style="font-size: 13px; font-weight: 600;">Audit log</a>
@@ -153,12 +182,12 @@ a { color: #1F7A45; } a:hover { color: #196638; }
         </section>
       </div>
 
-      <p style="margin: 0; font-size: 12px; color: #5A636B;">Sample offices and figures, not real data. The PPDO money tiles, fund bars and division table move to the finance view (board 3); the reviewer sees their own office as one summary card.</p>
+      <p style="margin: 0; font-size: 12px; color: #5A636B;">Sample offices and figures, not real data. The PPDO money tiles, fund bars and division table move to the finance view (board 3); the reviewer sees their own office as one summary card. The same top applies to anyone holding the cross-office review grant, a PPDO finance user included.</p>
     </div>
   </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2000}}'>
 class Component extends DCLogic {
   renderVals() { return {}; }
 }

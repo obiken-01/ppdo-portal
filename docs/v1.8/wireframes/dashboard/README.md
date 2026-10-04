@@ -12,7 +12,7 @@ The findings, measurements and suggested tickets are in
 | File | Artboard |
 |---|---|
 | `Main.dc.html` | **1 · Department head, guest office.** Status band ("ready for you to send to PPDO"), step track, ceiling meter, Investment proposals band, readable recent activity. No Divisions band: the office has none |
-| `Reviewer.dc.html` | **2 · PPDO cross-office reviewer.** "4 offices are waiting for PPDO review", the province bar by stage, the Offices board moved up with a compact Not started column, PPDO's own office as one card |
+| `Reviewer.dc.html` | **2 · Cross-office reviewer** (anyone with the grant, PPDO finance included). "4 offices are waiting for PPDO review", the province bar by stage, the Offices board moved up with a compact Not started column, PPDO's own office as one card, and Investment proposals across all offices |
 | `HostFinance.dc.html` | **3 · PPDO finance.** Status band about unallocated money, the six-step host track, the fund card with the division split at full width, empty division rows folded |
 | `Mobile.dc.html` | **4 · Encoder on a phone.** The step track as a list, so status, action and progress fit the first screen |
 | `States.dc.html` | **5 · States.** The status band's sentence and button for every state and reader, recent activity today vs proposed, empty division rows, the loading skeleton |
