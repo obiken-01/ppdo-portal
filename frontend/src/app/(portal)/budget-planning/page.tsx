@@ -131,6 +131,12 @@ export default function BudgetPlanningPage() {
   );
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
+  // PPDO-177 — the year the reader PICKED, null until they do. The office bands load with this
+  // rather than `fiscalYear`: null asks the server for its default (the same year /dashboard
+  // resolves), so those bands no longer wait for /dashboard just to learn the year. Keying them
+  // on `fiscalYear` instead would fetch twice on every load — once before the year is known and
+  // again when /dashboard sets it.
+  const [requestedFiscalYear, setRequestedFiscalYear] = useState<number | null>(null);
   const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
 
   const [dashboard, setDashboard] = useState<PpdoDashboard | null>(null);
@@ -229,31 +235,32 @@ export default function BudgetPlanningPage() {
       .catch(() => setDashboardError("Could not load fiscal years."));
   }, [user, isHost, loadDashboard]);
 
-  // A host caller's office id is resolved server-side and only known once the dashboard lands; a
-  // guest caller's is their own.
-  const officeId = isHost ? dashboard?.officeId ?? null : user?.officeId ?? null;
+  // PPDO-177 — every caller's office id comes from /auth/me. A host-office user's own office IS
+  // the host office (`isHost` is read off it), so there is no need to wait for /dashboard to name
+  // it. The dashboard's id stays as a fallback for a host caller with no office on the token.
+  const officeId = user?.officeId ?? (isHost ? dashboard?.officeId ?? null : null);
 
   const loadOfficeDashboard = useCallback(() => {
-    if (officeId == null || fiscalYear == null) return;
+    if (officeId == null) return;
     setOfficeLoading(true);
     setOfficeError(null);
-    getOfficeDashboard(officeId, fiscalYear)
+    getOfficeDashboard(officeId, requestedFiscalYear)
       .then(setOfficeDashboard)
       .catch(() => setOfficeError("Could not load this office's readiness."))
       .finally(() => setOfficeLoading(false));
-  }, [officeId, fiscalYear]);
+  }, [officeId, requestedFiscalYear]);
 
   useEffect(loadOfficeDashboard, [loadOfficeDashboard]);
 
   const loadOffices = useCallback(() => {
-    if (!hasCrossOfficeScope || fiscalYear == null) return;
+    if (!hasCrossOfficeScope) return;
     setOfficesLoading(true);
     setOfficesError(null);
-    getDashboardOffices(fiscalYear)
+    getDashboardOffices(requestedFiscalYear)
       .then(setOffices)
       .catch(() => setOfficesError("Could not load offices."))
       .finally(() => setOfficesLoading(false));
-  }, [hasCrossOfficeScope, fiscalYear]);
+  }, [hasCrossOfficeScope, requestedFiscalYear]);
 
   useEffect(loadOffices, [loadOffices]);
 
@@ -582,8 +589,9 @@ export default function BudgetPlanningPage() {
           fiscalYearDisabled={dashboardLoading || officeLoading}
           onFiscalYearChange={(fy) => {
             setFiscalYear(fy);
-            // A guest office has no host dashboard to reload — the office-readiness and offices
-            // effects re-run off fiscalYear on their own.
+            // The office-readiness and offices effects re-run off requestedFiscalYear on their own.
+            // A guest office has no host dashboard to reload.
+            setRequestedFiscalYear(fy);
             if (isHost) loadDashboard(fy);
           }}
           officeField={<LockedField label="Office" value={officeLabel} />}

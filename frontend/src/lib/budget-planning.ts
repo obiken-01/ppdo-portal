@@ -41,11 +41,13 @@ export async function getRecentActivity(officeId?: number): Promise<RecentActivi
 
 export async function getOfficeDashboard(
   officeId: number,
-  fiscalYear: number
+  // PPDO-177 — omit for the configured default year (resolved server-side, the same rule as
+  // /dashboard), so the page need not wait for /dashboard to learn the year first.
+  fiscalYear?: number | null
 ): Promise<OfficeDashboard> {
   const { data } = await api.get<ApiResponse<OfficeDashboard>>(
     "/budget-planning/dashboard/office",
-    { params: { officeId, fiscalYear } }
+    { params: fiscalYear != null ? { officeId, fiscalYear } : { officeId } }
   );
   if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
   return data.data;
@@ -59,10 +61,11 @@ export async function getOfficeDashboard(
  * 403 here means the band should not have been requested. Callers gate on
  * `canReviewAllOffices || canManageOfficeCeilings || role === "SuperAdmin"` before calling.
  */
-export async function getDashboardOffices(fiscalYear: number): Promise<OfficeSummary[]> {
+export async function getDashboardOffices(fiscalYear?: number | null): Promise<OfficeSummary[]> {
+  // PPDO-177 — omit for the configured default year, as getOfficeDashboard.
   const { data } = await api.get<ApiResponse<OfficeSummary[]>>(
     "/budget-planning/dashboard/offices",
-    { params: { fiscalYear } }
+    fiscalYear != null ? { params: { fiscalYear } } : undefined
   );
   if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
   return data.data;
