@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -63,6 +63,16 @@ public interface IAuditRepository : IRepository<AuditLog>
     /// payloads. An empty id or action list returns null.
     /// </summary>
     Task<string?> GetLatestActionAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="GetLatestActionAsync"/> plus when it happened (PPDO-175): the dashboard says
+    /// "with PPDO since Oct 3". Still one row, two columns. <c>ChangedAt</c> is UTC.
+    /// </summary>
+    Task<(string Action, DateTime ChangedAt)?> GetLatestActionWithTimeAsync(
         string tableName,
         IReadOnlyList<int> recordIds,
         IReadOnlyList<string> actions,

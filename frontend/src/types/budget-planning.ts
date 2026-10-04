@@ -625,6 +625,20 @@ export interface OfficeAipSummary {
    * covers every shared fund. FY2027: equal to `costedInAip`.
    */
   costedAgainstCeiling: number;
+  /**
+   * PPDO-175 — the office's place in the review workflow (`AipWorkflowStatus`): Draft,
+   * DepartmentReview, SubmittedToPpdo, ReturnedByPpdo or Consolidated. The least advanced of the
+   * office's groups, as on the Offices board. Absent/null for FY2027 and earlier, and for an office
+   * with no groups in the record.
+   */
+  workflowStatus?: string | null;
+  /** When the latest hand-off happened (UTC ISO). Absent/null before the first one. */
+  workflowStatusSince?: string | null;
+  /**
+   * The latest hand-off's audit code (SUBMIT_DH, SUBMIT_PPD, RETURN_PPD, ACCEPT_PPD, REOPEN_PPD,
+   * RETURN_DH). RETURN_DH is what tells a Draft the department head sent back from a fresh one.
+   */
+  lastHandOff?: string | null;
 }
 
 export interface OfficeDashboard {
