@@ -1,4 +1,4 @@
-using PPDO.Domain.Entities;
+﻿using PPDO.Domain.Entities;
 
 namespace PPDO.Domain.Interfaces;
 
@@ -43,6 +43,15 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     /// </summary>
     Task<IReadOnlyList<PriceIndexPickerItem>> GetPickerItemsAsync(
         bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>
+    /// A cheap fingerprint of the whole catalogue for the picker's ETag (PPDO-183): the row count
+    /// and the latest <c>UpdatedAt</c>, in one aggregate query. Every write path in
+    /// <c>PriceIndexService</c> (create, update, deactivate, CSV import) stamps <c>UpdatedAt</c>, so
+    /// any change moves the maximum; a deleted row moves the count. <c>LastUpdatedAt</c> is null for
+    /// an empty table.
+    /// </summary>
+    Task<(int Count, DateTime? LastUpdatedAt)> GetVersionStampAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Filtered, sorted, paged read for the price-index management grid (RAL-233) — WHERE, COUNT,

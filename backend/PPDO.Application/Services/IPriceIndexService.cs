@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
 
 namespace PPDO.Application.Services;
@@ -26,6 +26,13 @@ public interface IPriceIndexService
     /// </summary>
     Task<IReadOnlyList<PriceIndexPickerItemDto>> GetPickerListAsync(
         string? search, ActiveFilter active, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The picker's ETag (PPDO-183): a weak validator built from the catalogue's row count and
+    /// latest <c>UpdatedAt</c>, without loading any rows. The same value for every filter: the
+    /// browser caches each picker URL separately, and any write to the catalogue changes it for all.
+    /// </summary>
+    Task<string> GetPickerETagAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Filtered, sorted, paged read for the management grid (RAL-233). <paramref name="page"/> is

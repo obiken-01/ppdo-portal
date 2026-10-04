@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+﻿using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -39,6 +39,17 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
             .OrderBy(p => p.Name)
             .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
             .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<(int Count, DateTime? LastUpdatedAt)> GetVersionStampAsync(CancellationToken ct = default)
+    {
+        // One SELECT COUNT(*), MAX(updated_at) — never loads a row.
+        var stamp = await _context.Set<PriceIndexItem>()
+            .GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Last = g.Max(p => (DateTime?)p.UpdatedAt) })
+            .FirstOrDefaultAsync(ct);
+        return stamp is null ? (0, null) : (stamp.Count, stamp.Last);
+    }
 
     /// <inheritdoc />
     public async Task<(IReadOnlyList<PriceIndexItem> Items, int TotalCount)> GetPagedAsync(
