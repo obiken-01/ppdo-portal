@@ -132,8 +132,8 @@ flat, PPDO tokens, Segoe UI, no new colours.
 
 | Order | Ticket | Scope | Size |
 |---|---|---|---|
-| 1 | Fix the stale submission stage and the department head's disabled Submit (F1, F2) | B1 + frontend | S |
-| 2 | Role-aware top: reviewer action card and band order (F3, F4) | Frontend | S |
+| 1 · **PPDO-175** | Fix the stale submission stage and the department head's disabled Submit (F1, F2) | B1 + frontend | S |
+| 2 · **PPDO-176** | Role-aware top: reviewer action card and band order (F3, F4) | Frontend | S |
 | 3 | Load the bands in parallel (B5) | Backend + frontend | S |
 | 4 | Status band replaces the action card and the rail (incl. phone, F12) | Frontend | M |
 | 5 | Cleanups: header, empty Divisions band, zero rows, one-fund width, Not started column (F6–F10) | Frontend | S |
