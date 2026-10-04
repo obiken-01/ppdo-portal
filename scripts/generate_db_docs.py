@@ -284,9 +284,17 @@ def first_paragraph(raw: str) -> str:
     return clean_doc(para)
 
 
+# A full stop after one of these does not end the sentence ("e.g. "aip_activities"" was cut at "e.g.").
+ABBREVIATIONS = re.compile(r"(?:\be\.g|\bi\.e|\betc|\bvs|\bNo)\.$")
+
+
 def first_sentence(text: str, limit: int = 220) -> str:
-    m = re.match(r"(.+?[.!?])(\s|$)", text)
-    s = m.group(1) if m else text
+    s = text
+    for m in re.finditer(r"[.!?](?=\s|$)", text):
+        candidate = text[:m.end()]
+        if not ABBREVIATIONS.search(candidate):
+            s = candidate
+            break
     if len(s) > limit:
         s = s[:limit].rsplit(" ", 1)[0] + " …"
     return s
