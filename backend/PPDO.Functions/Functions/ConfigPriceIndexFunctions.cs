@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -101,10 +101,20 @@ public sealed class ConfigPriceIndexFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, ConfigHttp.Authenticated, ct);
         if (denied is not null) return denied;
 
+        // PPDO-183: the catalogue is ~6,400 rows and changes rarely, so the browser keeps it and asks
+        // "has it changed?" on every visit. Unchanged → 304 with no body, and no rows are loaded:
+        // the ETag comes from one COUNT/MAX query. Checked after the JWT, so a 304 never answers an
+        // unauthenticated caller.
+        string etag = await _priceIndex.GetPickerETagAsync(ct);
+        if (ConfigHttp.IfNoneMatchMatches(req, etag))
+            return ConfigHttp.NotModified(req, etag);
+
         IReadOnlyList<PriceIndexPickerItemDto> data = await _priceIndex.GetPickerListAsync(
             req.Query["search"], ActiveFilterParser.Parse(req.Query["active"]), ct);
 
-        return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<PriceIndexPickerItemDto>>.Ok(data), ct);
+        return await ConfigHttp.EnvelopeAsync(
+            req, HttpStatusCode.OK, ApiResponse<IReadOnlyList<PriceIndexPickerItemDto>>.Ok(data), ct,
+            [("ETag", etag), ("Cache-Control", ConfigHttp.RevalidateEveryTime)]);
     }
 
     // ── GET /api/config/price-index/csv ──

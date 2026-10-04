@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker.Http;
 using PPDO.Application.Common;
@@ -23,6 +23,41 @@ internal static class ConfigHttp
         => req.Headers.TryGetValues("Authorization", out IEnumerable<string>? values)
             ? values.FirstOrDefault()
             : null;
+
+    /// <summary>
+    /// Sent with a cacheable reference-data response (PPDO-183). <c>private</c>: only the browser may
+    /// keep it, never a shared cache. <c>no-cache</c>: it must ask the server every time, sending
+    /// <c>If-None-Match</c>, so a stale catalogue is never shown — the saving is the body, not the
+    /// request.
+    /// </summary>
+    internal const string RevalidateEveryTime = "private, no-cache";
+
+    /// <summary>
+    /// True when the request's <c>If-None-Match</c> names <paramref name="etag"/> (PPDO-183).
+    /// Weak comparison (RFC 9110 §13.1.2): <c>W/</c> prefixes are ignored on both sides, which is the
+    /// comparison <c>If-None-Match</c> requires. Handles a comma-separated list and <c>*</c>.
+    /// </summary>
+    internal static bool IfNoneMatchMatches(HttpRequestData req, string etag)
+    {
+        if (!req.Headers.TryGetValues("If-None-Match", out IEnumerable<string>? values))
+            return false;
+
+        string wanted = StripWeak(etag);
+        return values
+            .SelectMany(v => v.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Any(tag => tag == "*" || StripWeak(tag) == wanted);
+
+        static string StripWeak(string tag) => tag.StartsWith("W/", StringComparison.Ordinal) ? tag[2..] : tag;
+    }
+
+    /// <summary>A body-less 304 carrying the validator and cache policy (PPDO-183).</summary>
+    internal static HttpResponseData NotModified(HttpRequestData req, string etag)
+    {
+        HttpResponseData response = req.CreateResponse(HttpStatusCode.NotModified);
+        response.Headers.Add("ETag", etag);
+        response.Headers.Add("Cache-Control", RevalidateEveryTime);
+        return response;
+    }
 
     /// <summary>Any authenticated user — used for reference-data list endpoints (dropdowns).</summary>
     internal static readonly Func<User, Task<bool>> Authenticated = _ => Task.FromResult(true);
@@ -166,10 +201,16 @@ internal static class ConfigHttp
     }
 
     internal static async Task<HttpResponseData> EnvelopeAsync<T>(
-        HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken)
+        HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken,
+        IReadOnlyList<(string Name, string Value)>? headers = null)
     {
         HttpResponseData response = req.CreateResponse(status);
         response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+        // ⚠️ Extra headers go on BEFORE the body. Under the ASP.NET Core integration the first body
+        // write sends the headers, and anything added after it is silently dropped (PPDO-183: the
+        // ETag vanished this way on the real host while the in-memory test fake kept it).
+        foreach ((string name, string value) in headers ?? [])
+            response.Headers.Add(name, value);
         await response.WriteStringAsync(JsonSerializer.Serialize(body, Json), cancellationToken);
         return response;
     }

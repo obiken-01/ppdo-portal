@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -847,5 +847,48 @@ public sealed class PriceIndexServiceTests
 
         repo.Verify(r => r.GetPagedAsync(
             expected, "pen", "unit", true, 2, 25, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── GetPickerETagAsync (PPDO-183) ─────────────────────────────────────────
+
+    private static async Task<string> ETagFor(int count, DateTime? lastUpdatedAt)
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([]);
+        repo.Setup(r => r.GetVersionStampAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((count, lastUpdatedAt));
+        return await sut.GetPickerETagAsync();
+    }
+
+    [Fact]
+    public async Task GetPickerETagAsync_ReturnsWeakTagFromShapeCountAndLatestUpdate()
+    {
+        string etag = await ETagFor(6398, FixedNow);
+
+        Assert.Equal($"W/\"pi{PriceIndexService.PickerShapeVersion}-6398-{FixedNow.Ticks}\"", etag);
+    }
+
+    [Fact]
+    public async Task GetPickerETagAsync_EmptyCatalogue_ReturnsStableTag()
+        => Assert.Equal($"W/\"pi{PriceIndexService.PickerShapeVersion}-0-0\"", await ETagFor(0, null));
+
+    [Fact]
+    public async Task GetPickerETagAsync_AnEditMovesTheLatestUpdate_ChangesTheTag()
+        => Assert.NotEqual(await ETagFor(6398, FixedNow), await ETagFor(6398, FixedNow.AddSeconds(1)));
+
+    [Fact]
+    public async Task GetPickerETagAsync_ARowRemoved_ChangesTheTag()
+        => Assert.NotEqual(await ETagFor(6398, FixedNow), await ETagFor(6397, FixedNow));
+
+    [Fact]
+    public async Task GetPickerETagAsync_NeverLoadsTheCatalogue()
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([]);
+        repo.Setup(r => r.GetVersionStampAsync(It.IsAny<CancellationToken>())).ReturnsAsync((1, FixedNow));
+
+        await sut.GetPickerETagAsync();
+
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.GetPickerItemsAsync(
+            It.IsAny<bool?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

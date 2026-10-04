@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.Config;
@@ -65,6 +65,21 @@ public sealed class PriceIndexService : IPriceIndexService
         return items
             .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled))
             .ToList();
+    }
+
+    /// <summary>
+    /// Bump when <see cref="PriceIndexPickerItemDto"/>'s shape changes, so browsers holding the old
+    /// shape refetch even though no row changed.
+    /// </summary>
+    public const string PickerShapeVersion = "1";
+
+    /// <inheritdoc />
+    public async Task<string> GetPickerETagAsync(CancellationToken cancellationToken = default)
+    {
+        (int count, DateTime? lastUpdatedAt) = await _repo.GetVersionStampAsync(cancellationToken);
+        // Weak (W/): the response compression middleware sends the same content gzip, Brotli or
+        // plain, so the bytes differ by encoding while the meaning does not.
+        return $"W/\"pi{PickerShapeVersion}-{count}-{lastUpdatedAt?.Ticks ?? 0}\"";
     }
 
     /// <inheritdoc />
