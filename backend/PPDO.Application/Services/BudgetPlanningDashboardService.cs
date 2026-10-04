@@ -1,4 +1,4 @@
-using PPDO.Application.Common;
+﻿using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -853,8 +853,21 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 .Sum(l => AipRounding.UpToThousand(l.Mooe) + AipRounding.UpToThousand(l.Co));
         }
 
+        // PPDO-175 — the office's place in the review workflow. FY2028+ only: FY2027 and earlier
+        // have no workflow. The state costs no query (the group rows are already loaded); the
+        // hand-off is one audit read for this office's groups.
+        string? workflowStatus = null;
+        (string Action, DateTime ChangedAt)? handOff = null;
+        if (AipFiscalYears.IsEntered(fiscalYear))
+        {
+            workflowStatus = AipReadinessColumn.OfficeStatus(matched.Select(o => o.WorkflowStatus));
+            handOff = await _auditRepo.GetLatestActionWithTimeAsync(
+                "aip_offices", officeIds, AuditAction.AipHandOffs, cancellationToken);
+        }
+
         return new OfficeAipSummaryDto(
             true, aipRecord.Status, programs.Count, projects.Count, activities.Count, costed,
-            costedAgainstCeiling);
+            costedAgainstCeiling,
+            workflowStatus, handOff?.ChangedAt, handOff?.Action);
     }
 }

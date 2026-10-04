@@ -50,6 +50,7 @@ import {
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import { submissionCard, submissionStage as describeSubmissionStage } from "@/lib/aip-submission-status";
 import type {
   OfficeDashboard,
   OfficeSummary,
@@ -359,6 +360,18 @@ export default function BudgetPlanningPage() {
       ? `/budget-planning/allocation?officeId=${officeId}${fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""}`
       : "/budget-planning/allocation";
 
+  // PPDO-175 — the office's real place in the review workflow, from /dashboard/office.
+  const submission = useMemo(
+    () => ({
+      workflowStatus: officeDashboard?.aip.workflowStatus,
+      workflowStatusSince: officeDashboard?.aip.workflowStatusSince,
+      lastHandOff: officeDashboard?.aip.lastHandOff,
+      isDepartmentHead: canReview,
+      fiscalYear,
+    }),
+    [officeDashboard, canReview, fiscalYear]
+  );
+
   const stages = useMemo<PipelineStage[]>(() => {
     const ceilingStage: PipelineStage = {
       key: "ceiling",
@@ -380,17 +393,14 @@ export default function BudgetPlanningPage() {
       href: aipEntryHref,
     };
 
-    const submissionStage: PipelineStage = {
-      key: "submission",
-      label: "AIP submission",
-      owner: canReview ? "You" : "Your office's reviewer",
-      // Constant until Phase 4 — spec §7. Do not derive this from anything; there is no
-      // submission entity to derive it from.
-      stage: "Todo",
-      detail: "Opens in a later release",
-    };
+    // PPDO-175 — derived from the office's workflow state. None for FY2027 and earlier (no review
+    // workflow) or before the office has AIP groups; the rail then simply ends at the AIP stage.
+    const described = describeSubmissionStage(submission, FIRST_ENTERED_FISCAL_YEAR);
+    const submissionStages: PipelineStage[] = described
+      ? [{ key: "submission", label: "AIP submission", href: aipEntryHref, ...described }]
+      : [];
 
-    if (!isHost) return [ceilingStage, aipStage, submissionStage];
+    if (!isHost) return [ceilingStage, aipStage, ...submissionStages];
 
     return [
       ceilingStage,
@@ -421,11 +431,11 @@ export default function BudgetPlanningPage() {
         href: canManageAllocation ? allocationHref : undefined,
       },
       aipStage,
-      submissionStage,
+      ...submissionStages,
     ];
   }, [
     isHost, hasCeiling, officeCeiling, hasAip, activityTotal, officeDashboard, allocatedToDivisions,
-    canManageAllocation, canManageOfficeCeilings, canReview, aipEntryHref, allocationHref,
+    canManageAllocation, canManageOfficeCeilings, aipEntryHref, allocationHref, submission,
   ]);
 
   // ── Money tiles ─────────────────────────────────────────────────────────
@@ -540,28 +550,19 @@ export default function BudgetPlanningPage() {
       );
     }
 
-    if (canReview) {
-      return (
-        <ActionCard
-          tone="waiting"
-          title="Submit when the AIP is complete"
-          description="You are this office's reviewer. Submission opens in a later release."
-          actionLabel="Submit AIP"
-          disabledReason="Submission opens in a later release"
-        />
-      );
-    }
-
+    // PPDO-175 — where the AIP is and who has it. Every action is a link to AIP Entry: the
+    // dashboard never submits, so the checklist and its gates stay in one place.
+    const card = submissionCard(submission, FIRST_ENTERED_FISCAL_YEAR);
     return (
       <ActionCard
-        tone="waiting"
-        title="Keep costing your AIP activities"
-        description="Your office's reviewer submits once every activity carries a cost."
-        actionLabel="AIP Entry"
+        tone={card.tone}
+        title={card.title}
+        description={card.description}
+        actionLabel={card.actionLabel}
         href={aipEntryHref}
       />
     );
-  }, [hasCeiling, hasAip, canManageOfficeCeilings, canReview, fiscalYear, officeLabel, allocationHref, aipEntryHref]);
+  }, [hasCeiling, hasAip, canManageOfficeCeilings, fiscalYear, officeLabel, allocationHref, aipEntryHref, submission]);
 
   // ── Fund bars ───────────────────────────────────────────────────────────
   // Funds with neither a ceiling nor an allocation are hidden — an all-zero bar is noise.

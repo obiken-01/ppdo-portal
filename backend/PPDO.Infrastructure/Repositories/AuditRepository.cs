@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
@@ -119,6 +119,31 @@ public sealed class AuditRepository : Repository<AuditLog>, IAuditRepository
             .OrderByDescending(a => a.ChangedAt).ThenByDescending(a => a.Id)
             .Select(a => a.Action)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<(string Action, DateTime ChangedAt)?> GetLatestActionWithTimeAsync(
+        string tableName,
+        IReadOnlyList<int> recordIds,
+        IReadOnlyList<string> actions,
+        CancellationToken cancellationToken = default)
+    {
+        if (recordIds.Count == 0 || actions.Count == 0) return null;
+
+        var latest = await _context.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.TableName == tableName
+                && a.RecordId != null && recordIds.Contains(a.RecordId.Value)
+                && actions.Contains(a.Action))
+            .OrderByDescending(a => a.ChangedAt).ThenByDescending(a => a.Id)
+            .Select(a => new { a.Action, a.ChangedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // The column is stored UTC but read back Unspecified; re-stamp it, or System.Text.Json
+        // writes no "Z" and the browser reads the time as local.
+        return latest is null
+            ? null
+            : (latest.Action, DateTime.SpecifyKind(latest.ChangedAt, DateTimeKind.Utc));
     }
 
     /// <inheritdoc />

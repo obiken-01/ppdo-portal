@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
@@ -1229,6 +1229,110 @@ public sealed class BudgetPlanningDashboardServiceTests
         // new Date(...) misparses the value as local time instead of UTC.
         Assert.Equal(DateTimeKind.Utc, result[0].ChangedAt.Kind);
         Assert.Equal(unspecified, result[0].ChangedAt, TimeSpan.FromSeconds(1));
+    }
+
+    // ── PPDO-175: the office's place in the review workflow ──────────────────
+
+    private static AipOffice Group(int id, string workflowStatus, int? officeId = 1)
+    {
+        AipOffice g = AipOff(id, 10, $"1000-000-1-01-01{id}", officeId: officeId);
+        g.WorkflowStatus = workflowStatus;
+        return g;
+    }
+
+    private static (BudgetPlanningDashboardService Sut, Mock<IAuditRepository> Audit) BuildWorkflow(
+        int fiscalYear, params AipOffice[] groups)
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) = Build(
+            [], [Aip(10, fiscalYear, "Draft")], [], [Off(1, "PPDO", refCode: "1-01-010")], [],
+            aipRepoMock: AipMockWithOffices(10, groups));
+        return (sut, audit);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_ReportsTheWorkflowStateAndTheLatestHandOff()
+    {
+        DateTime submitted = new(2026, 10, 3, 2, 30, 0, DateTimeKind.Utc);
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) =
+            BuildWorkflow(2028, Group(50, "SubmittedToPpdo"), Group(51, "SubmittedToPpdo"));
+        audit.Setup(a => a.GetLatestActionWithTimeAsync("aip_offices",
+                It.Is<IReadOnlyList<int>>(ids => ids.OrderBy(i => i).SequenceEqual(new[] { 50, 51 })),
+                AuditAction.AipHandOffs, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AuditAction.SubmitToPpdo, submitted));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal("SubmittedToPpdo", result.Aip.WorkflowStatus);
+        Assert.Equal(submitted, result.Aip.WorkflowStatusSince);
+        Assert.Equal("SUBMIT_PPD", result.Aip.LastHandOff);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_GroupsDisagree_LeastAdvancedWins()
+    {
+        // The same rollup as the Offices board (AipReadinessColumn.OfficeStatus). Red-tested by
+        // reading the first group's status instead, which reports this office as with PPDO.
+        (BudgetPlanningDashboardService sut, _) =
+            BuildWorkflow(2028, Group(50, "SubmittedToPpdo"), Group(51, "DepartmentReview"));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal("DepartmentReview", result.Aip.WorkflowStatus);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_DraftReturnedByTheDepartmentHead_CarriesTheReturn()
+    {
+        DateTime returned = new(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc);
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) =
+            BuildWorkflow(2028, Group(50, "Draft"));
+        audit.Setup(a => a.GetLatestActionWithTimeAsync(It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AuditAction.ReturnToEncoder, returned));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal("Draft", result.Aip.WorkflowStatus);
+        Assert.Equal("RETURN_DH", result.Aip.LastHandOff);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_NeverSubmitted_HasNoHandOff()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildWorkflow(2028, Group(50, "Draft"));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal("Draft", result.Aip.WorkflowStatus);
+        Assert.Null(result.Aip.WorkflowStatusSince);
+        Assert.Null(result.Aip.LastHandOff);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2027_HasNoWorkflow_AndNeverReadsTheAuditLog()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) =
+            BuildWorkflow(2027, Group(50, "Draft"));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2027, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.WorkflowStatus);
+        audit.Verify(a => a.GetLatestActionWithTimeAsync(It.IsAny<string>(),
+            It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_GuestOfficeWithNoGroups_HasNoWorkflow()
+    {
+        // Groups for another office only: this office has nothing in the record yet.
+        (BudgetPlanningDashboardService sut, _) =
+            BuildWorkflow(2028, Group(50, "SubmittedToPpdo", officeId: 99));
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.False(result.Aip.Exists);
+        Assert.Null(result.Aip.WorkflowStatus);
     }
 
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────
