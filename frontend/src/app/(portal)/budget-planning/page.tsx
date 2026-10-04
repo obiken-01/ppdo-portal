@@ -293,6 +293,17 @@ export default function BudgetPlanningPage() {
    */
   const divisions = useMemo(() => dashboard?.byDivision ?? [], [dashboard]);
 
+  /**
+   * The Divisions band's own data source (PPDO-126, PPDO-127) — `dashboard.byDivision` for PPDO,
+   * `officeDashboard.byDivision` for a guest office. Deliberately NOT folded into `divisions`
+   * above: that one only ever comes from `dashboard` (host-only) and feeds the host-only money-tile
+   * math below, which must keep reading empty for a guest office exactly as it always has.
+   */
+  const divisionsForBand = isHost ? divisions : officeDashboard?.byDivision ?? [];
+
+  /** A department head manages their own office's split the same way PPDO finance manages PPDO's. */
+  const canManageAllocationForBand = isHost ? canManageAllocation : user?.canManageOfficeSetup === true;
+
   const allocatedToDivisions = divisions.reduce((sum, d) => sum + d.allocated, 0);
 
   /**
@@ -459,7 +470,9 @@ export default function BudgetPlanningPage() {
     // `costedInAip` on the office endpoint is what makes this possible — the cross-office endpoint
     // computes the same number for every office, but correctly 403s a plain office user.
     const guestCeiling = officeCeiling;
-    const guestCosted = officeDashboard?.aip.costedInAip ?? null;
+    // ⚠️ Against the CEILING, so the ceiling's figure — General Fund, the submit gate's rule. The
+    // all-shared-funds `costedInAip` would let GAD money shrink a GF remaining (2026-09-24).
+    const guestCosted = officeDashboard?.aip.costedAgainstCeiling ?? null;
     return [
       ceilingTile,
       { key: "costed", label: "Costed in AIP", value: guestCosted },
@@ -637,28 +650,34 @@ export default function BudgetPlanningPage() {
           </div>
         )}
 
-        {/* ── Division table — host office only ───────────────────────────── */}
-        {isHost && (
-          <Band
-            title={`Divisions — FY ${fiscalYear ?? "…"}`}
-            description="Click a row to see allocation per fund"
-            loading={dashboardLoading}
-            error={dashboardError}
-            onRetry={() => loadDashboard(fiscalYear ?? undefined)}
-            skeleton={<TableBandSkeleton columns={6} />}
-          >
-            {divisions.length === 0 ? (
-              <BandEmpty message={`No records for FY ${fiscalYear ?? "—"} yet.`} />
-            ) : (
-              <DivisionTable
-                divisions={divisions}
-                canManageAllocation={canManageAllocation}
-                officeId={officeId}
-                fiscalYear={fiscalYear}
-              />
-            )}
-          </Band>
-        )}
+        {/* ── Division table — every office (PPDO-127); empty state when none are
+               configured yet, rather than hiding the band entirely. ───────────── */}
+        <Band
+          title={`Divisions — FY ${fiscalYear ?? "…"}`}
+          description="Click a row to see allocation per fund"
+          loading={isHost ? dashboardLoading : officeLoading}
+          error={isHost ? dashboardError : officeError}
+          onRetry={isHost ? () => loadDashboard(fiscalYear ?? undefined) : loadOfficeDashboard}
+          skeleton={<TableBandSkeleton columns={6} />}
+        >
+          {divisionsForBand.length === 0 ? (
+            <BandEmpty
+              message={
+                isHost
+                  ? `No records for FY ${fiscalYear ?? "—"} yet.`
+                  : "No divisions configured for this office yet."
+              }
+            />
+          ) : (
+            <DivisionTable
+              divisions={divisionsForBand}
+              noDivision={isHost ? dashboard?.noDivision : officeDashboard?.noDivision}
+              canManageAllocation={canManageAllocationForBand}
+              officeId={officeId}
+              fiscalYear={fiscalYear}
+            />
+          )}
+        </Band>
 
         {/* ── Office table — cross-office scope only ──────────────────────── */}
         {hasCrossOfficeScope && (

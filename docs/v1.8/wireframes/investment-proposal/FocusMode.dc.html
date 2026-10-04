@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Investment Proposal — one section at a time</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.side a { display: block; padding: 8px 16px 8px 32px; color: #D8EBDF; font-size: 14px; text-decoration: none; }
+.side a.on { background: #175C34; color: #FFFFFF; font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; text-decoration: none; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; color: #1F7A45; }
+.btn.xs { height: 26px; width: 26px; padding: 0; justify-content: center; font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-draft, .p-unsaved { background: #FFF3D6; color: #8A5A00; }
+.p-saved { background: #E6F4EC; color: #1F6B3F; }
+.tag { display: inline-block; padding: 1px 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: 0.02em; }
+.t-aip { background: #E7F0FB; color: #1D4E89; }
+.t-own { background: #F3E8FB; color: #6A2C91; }
+.rail a { display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 13px; color: #343A40; text-decoration: none; border-left: 3px solid transparent; }
+.rail a.cur { border-left-color: #1F7A45; background: #FFFFFF; font-weight: 600; }
+.rail .l { width: 18px; font-weight: 700; color: #5A636B; }
+.dot { width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; }
+.d-saved { background: #2F9E5F; } .d-unsaved { background: #D98E04; } .d-auto { background: #8AB4E8; } .d-empty { background: #FFFFFF; border: 1px solid #ADB5BD; }
+.sec { background: #FFFFFF; border: 1px solid #E8B93F; }
+.sh { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.letter { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #F1F3F5; font-weight: 700; font-size: 14px; }
+.sb { border-top: 1px solid #E9ECEF; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.sf { border-top: 1px solid #E9ECEF; padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: #FAFBFC; }
+.help { font-size: 12px; color: #7D858C; font-style: italic; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table.t th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 8px; background: #F8F9FA; border-bottom: 1px solid #DEE2E6; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid #F1F3F5; vertical-align: top; }
+tr.grp td { background: #F4F8F5; font-weight: 600; color: #1F6B3F; border-bottom: 1px solid #DEE2E6; }
+.cell { width: 100%; min-height: 32px; border: 1px solid #CED4DA; padding: 6px 8px; font-size: 13px; font-family: inherit; color: #343A40; background: #FFFFFF; line-height: 18px; }
+.cell.ro { border-color: transparent; background: transparent; color: #5A636B; padding-left: 0; }
+.sel { width: 100%; height: 32px; border: 1px solid #CED4DA; padding: 0 6px; font-size: 13px; font-family: inherit; background: #FFFFFF; color: #343A40; }
+</style>
+</helmet>
+<div style="width: 1440px; height: 1180px; display: flex;">
+
+  <nav class="side" style="width: 240px; flex-shrink: 0; background: #1E6B3E; display: flex; flex-direction: column; padding-top: 16px;" aria-label="Portal">
+    <div style="padding: 8px 20px 20px; color: #FFFFFF;">
+      <div style="font-size: 16px; font-weight: 700;">PPDO Portal</div>
+      <div style="font-size: 12px; color: #BFE0CC;">Occ. Mindoro · v1.8.0</div>
+    </div>
+    <div style="padding: 10px 20px; color: #FFFFFF; font-size: 14px; font-weight: 600; background: #175C34;">Investment Planning</div>
+    <a href="#">Dashboard</a>
+    <a href="#">AIP Entry</a>
+    <a class="on" href="#">Investment Proposals</a>
+    <a href="#">Office Ceilings</a>
+  </nav>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+    <div style="height: 56px; background: #FFFFFF; border-bottom: 1px solid #DEE2E6; display: flex; align-items: center; padding: 0 28px; flex-shrink: 0; font-size: 14px; color: #5A636B;">
+      <a href="#">Investment Planning</a>&#160;›&#160;<a href="#">Investment Proposals</a>&#160;›&#160;<span style="color: #343A40;">001 — Rice Seed Support</span>
+    </div>
+
+    <div style="background: #FFFFFF; border-bottom: 1px solid #DEE2E6; padding: 16px 28px; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h1 style="margin: 0; font-size: 22px; font-weight: 600;">PGOM Investment Proposal</h1>
+          <span class="pill p-draft">Draft</span>
+          <span class="pill p-unsaved"><span class="dot d-unsaved"></span>1 section unsaved</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn pri" type="button">Save all (1)</button>
+          <button class="btn" type="button">Export Word</button>
+          <button class="btn" type="button" disabled="" style="color: #ADB5BD;">Finalize</button>
+          <button class="btn" type="button" aria-label="More actions">⋯</button>
+        </div>
+      </div>
+      <div style="display: flex; align-items: flex-end; gap: 12px;">
+        <div style="width: 110px;">
+          <label class="cap" for="fy" style="display: block; margin-bottom: 4px;">Fiscal year</label>
+          <select id="fy" class="sel" style="height: 36px;"><option>FY 2028</option></select>
+        </div>
+        <div style="width: 360px;">
+          <label class="cap" for="prog" style="display: block; margin-bottom: 4px;">Program</label>
+          <input id="prog" class="cell" style="height: 36px;" value="001 — Agricultural Productivity Program">
+        </div>
+        <div style="width: 360px;">
+          <label class="cap" for="proj" style="display: block; margin-bottom: 4px;">Project</label>
+          <input id="proj" class="cell" style="height: 36px;" value="001 — Rice Seed Support · Draft">
+        </div>
+        <a class="btn sm" href="#" style="height: 36px;">Open in AIP Entry ↗</a>
+        <span style="flex-grow: 1;"></span>
+        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding-bottom: 8px;">
+          <input type="checkbox" checked="" style="width: 16px; height: 16px; accent-color: #1F7A45;">
+          One section at a time
+        </label>
+      </div>
+      <div style="font-size: 12px; color: #7D858C;">Project list shows each project's proposal status — None · Draft · Final. Picking a project with no proposal offers <strong>Create proposal</strong>. Switching project with unsaved sections asks first.</div>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; gap: 24px; padding: 20px 28px; min-height: 0;">
+      <nav class="rail" aria-label="Sections" style="width: 232px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;">
+        <div class="cap" style="padding: 0 12px 8px;">Sections</div>
+        <a href="#"><span class="l">A</span><span style="flex-grow: 1;">Project Summary</span><span class="dot d-saved"></span></a>
+        <a href="#"><span class="l">B</span><span style="flex-grow: 1;">Project Description</span><span class="dot d-saved"></span></a>
+        <a href="#"><span class="l">C</span><span style="flex-grow: 1;">Rationale</span><span class="dot d-saved"></span></a>
+        <a href="#"><span class="l">D</span><span style="flex-grow: 1;">Benefits and Costs</span><span class="dot d-saved"></span></a>
+        <a href="#"><span class="l">E</span><span style="flex-grow: 1;">Logical Framework</span><span class="dot d-saved"></span></a>
+        <a href="#"><span class="l">F</span><span style="flex-grow: 1;">Target Beneficiaries</span><span class="dot d-saved"></span></a>
+        <a class="cur" href="#"><span class="l">G</span><span style="flex-grow: 1;">Work Plan</span><span class="dot d-unsaved"></span></a>
+        <a href="#"><span class="l">H</span><span style="flex-grow: 1;">Annex H-1 Cost</span><span class="dot d-auto"></span></a>
+        <a href="#"><span class="l">I</span><span style="flex-grow: 1;">Implementing Team</span><span class="dot d-empty"></span></a>
+        <a href="#"><span class="l">J</span><span style="flex-grow: 1;">Partnership</span><span class="dot d-empty"></span></a>
+        <a href="#"><span class="l">K</span><span style="flex-grow: 1;">Monitoring &amp; Eval.</span><span class="dot d-empty"></span></a>
+        <a href="#"><span class="l">L</span><span style="flex-grow: 1;">Risk Management</span><span class="dot d-empty"></span></a>
+        <a href="#"><span class="l">M</span><span style="flex-grow: 1;">CC Typology</span><span class="dot d-auto"></span></a>
+        <a href="#"><span class="l">✎</span><span style="flex-grow: 1;">Signatories</span><span class="dot d-saved"></span></a>
+      </nav>
+
+      <main style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+        <section class="sec">
+          <div class="sh">
+            <span class="letter">G</span>
+            <span style="font-size: 15px; font-weight: 600;">Implementation Schedule / Work Plan</span>
+            <span class="pill p-unsaved"><span class="dot d-unsaved"></span>Unsaved changes</span>
+            <span style="flex-grow: 1;"></span>
+            <span style="font-size: 13px; color: #5A636B;">Section 7 of 14</span>
+          </div>
+          <div class="sb">
+            <div class="help">List the steps in order. Rows marked FROM AIP are the project's activities: their timeline and office come from the AIP. The grouping and order here also shape Annex H-1. Rows are numbered 1, 2, 3… straight through, ignoring groups, as printed.</div>
+            <table class="t">
+              <thead>
+                <tr>
+                  <th style="width: 84px;">No.</th>
+                  <th style="width: 26%;">Inputs/ Activities/ Project Components</th>
+                  <th>Performance Target and/or Indicator</th>
+                  <th>Gender Issues to be addressed</th>
+                  <th style="width: 150px;">Timeline/ Duration</th>
+                  <th style="width: 90px;">OPR</th>
+                  <th style="width: 170px;">Group</th>
+                  <th style="width: 40px;"><span style="position: absolute; left: -9999px;">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="grp"><td colspan="7">Pre-implementation</td><td><button class="btn ghost xs" type="button" aria-label="Remove group Pre-implementation">✕</button></td></tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">1.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><input class="cell" value="Preparation of Travel Order" aria-label="Step name"><div style="margin-top: 4px;"><span class="tag t-own">PROPOSAL ONLY</span></div></td>
+                  <td><div class="cell">TO approved 5 days before release</div></td>
+                  <td><div class="cell">—</div></td>
+                  <td><input class="cell" value="January 2028" aria-label="Timeline"></td>
+                  <td><input class="cell" value="OPA" aria-label="OPR"></td>
+                  <td><select class="sel" aria-label="Group"><option>Pre-implementation</option></select></td>
+                  <td><button class="btn ghost xs" type="button" aria-label="Delete step">✕</button></td>
+                </tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">2.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><div style="font-size: 13px; padding-top: 6px;">Validation of farmer beneficiaries</div><div style="margin-top: 4px;"><span class="tag t-aip">FROM AIP</span></div></td>
+                  <td><div class="cell">2,100 farmers validated against RSBSA</div></td>
+                  <td><div class="cell" style="border-color: #E8B93F;">Women farmers under-listed in RSBSA; validate with the MAO women's desk</div></td>
+                  <td><div class="cell ro">January–February 2028</div></td>
+                  <td><div class="cell ro">OPA</div></td>
+                  <td><select class="sel" aria-label="Group"><option>Pre-implementation</option></select></td>
+                  <td></td>
+                </tr>
+                <tr class="grp"><td colspan="7">Distribution</td><td><button class="btn ghost xs" type="button" aria-label="Remove group Distribution">✕</button></td></tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">3.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><div style="font-size: 13px; padding-top: 6px;">Procurement of certified inbred seed</div><div style="margin-top: 4px;"><span class="tag t-aip">FROM AIP</span></div></td>
+                  <td><div class="cell">4,200 bags delivered</div></td>
+                  <td><div class="cell">—</div></td>
+                  <td><div class="cell ro">February–April 2028</div></td>
+                  <td><div class="cell ro">OPA/GSO</div></td>
+                  <td><select class="sel" aria-label="Group"><option>Distribution</option></select></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">4.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><div style="font-size: 13px; padding-top: 6px;">Distribution to farmer associations</div><div style="margin-top: 4px;"><span class="tag t-aip">FROM AIP</span></div></td>
+                  <td><div class="cell">2 bags per farmer before wet-season planting</div></td>
+                  <td><div class="cell">Release point within the barangay so women farmers can claim</div></td>
+                  <td><div class="cell ro">May–June 2028</div></td>
+                  <td><div class="cell ro">OPA</div></td>
+                  <td><select class="sel" aria-label="Group"><option>Distribution</option></select></td>
+                  <td></td>
+                </tr>
+                <tr class="grp"><td colspan="8" style="color: #5A636B; background: #F8F9FA;">Not in a group</td></tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">5.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><div style="font-size: 13px; padding-top: 6px;">Field monitoring</div><div style="margin-top: 4px;"><span class="tag t-aip">FROM AIP</span> <span class="tag" style="background: #FFF3D6; color: #8A5A00;">NO COST DETAIL</span></div></td>
+                  <td><div class="cell">Quarterly visit per municipality</div></td>
+                  <td><div class="cell">—</div></td>
+                  <td><div class="cell ro">July–December 2028</div></td>
+                  <td><div class="cell ro">OPA</div></td>
+                  <td><select class="sel" aria-label="Group"><option>— none —</option></select></td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td><div style="display: flex; gap: 2px; align-items: flex-start;"><span style="width: 18px; font-weight: 700; font-size: 13px; padding-top: 4px;">6.</span><button class="btn xs" type="button" aria-label="Move up">↑</button><button class="btn xs" type="button" aria-label="Move down">↓</button></div></td>
+                  <td><input class="cell" value="Liquidation" aria-label="Step name"><div style="margin-top: 4px;"><span class="tag t-own">PROPOSAL ONLY</span></div></td>
+                  <td><div class="cell">Liquidated within 30 days</div></td>
+                  <td><div class="cell">—</div></td>
+                  <td><input class="cell" value="December 2028" aria-label="Timeline"></td>
+                  <td><input class="cell" value="OPA" aria-label="OPR"></td>
+                  <td><select class="sel" aria-label="Group"><option>— none —</option></select></td>
+                  <td><button class="btn ghost xs" type="button" aria-label="Delete step">✕</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="display: flex; gap: 16px;">
+              <button class="btn ghost sm" type="button" style="padding: 0;">+ Add group</button>
+              <button class="btn ghost sm" type="button" style="padding: 0;">+ Add step (proposal only)</button>
+            </div>
+          </div>
+          <div class="sf">
+            <a class="btn sm" href="#">← F · Target Beneficiaries</a>
+            <span style="flex-grow: 1;"></span>
+            <span style="font-size: 13px; color: #8A5A00;">Edited 2 minutes ago</span>
+            <button class="btn sm" type="button">Discard</button>
+            <button class="btn sm pri" type="button">Save section</button>
+            <a class="btn sm" href="#">H · Annex H-1 →</a>
+          </div>
+        </section>
+        <div style="font-size: 13px; color: #5A636B; padding: 0 4px;">Moving to another section with unsaved changes here asks first: <strong>Save and continue</strong> · <strong>Discard</strong> · <strong>Keep editing</strong>.</div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

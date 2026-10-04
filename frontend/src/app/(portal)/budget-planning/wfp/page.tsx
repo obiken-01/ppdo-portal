@@ -24,6 +24,7 @@
 import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { aipForFiscalYear, fetchDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import ClampedText from "@/components/ui/ClampedText";
 import { getAipSummary, listAip } from "@/lib/aip";
 import {
@@ -642,12 +643,18 @@ function WfpPageInner() {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
 
-    Promise.all([listAip(), listOffices({ active: "true" })])
-      .then(([aips, offices]) => {
+    // PPDO-145 — the admin default year rides along in the same round trip (it never rejects).
+    Promise.all([listAip(), listOffices({ active: "true" }), fetchDefaultFiscalYear()])
+      .then(([aips, offices, defaultFiscalYear]) => {
         setAipList(aips);
         setOfficeList(offices);
 
         if (urlAipId) setSelectedAipId(Number(urlAipId));
+        else {
+          // No ?aipId= — preselect the default year's AIP; without one, today's behaviour (none).
+          const forDefault = aipForFiscalYear(aips, defaultFiscalYear);
+          if (forDefault) setSelectedAipId(forDefault.id);
+        }
         // Pre-fill office from URL ?officeId= (me.officeId pre-fill handled in Effect A2)
         if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })

@@ -441,6 +441,62 @@ public sealed class AllocationFunctionsTests
         Assert.Equal(ForeignOffice, captured);
     }
 
+    // ── Demo 2.4 / PPDO-126 — who may READ the whole office's division split ──────
+
+    /// <summary>
+    /// The bug SPO hit on UAT. A department head sets their office's division allocations, gets a
+    /// truthful "Saved", reloads, and every field is blank — the write had worked and the READ was
+    /// hiding it.
+    ///
+    /// ⚠️ The old test was <c>CanManagePpdoAllocation</c>, which is host-office-exclusive, so a
+    /// department head fell into the encoder branch and was filtered to
+    /// <c>DivisionId == caller.DivisionId</c>. A guest-office user had no division at all before
+    /// PPDO-123 and <c>division_id</c> is a non-nullable FK, so NO row could ever match.
+    /// </summary>
+    [Fact]
+    public async Task GetDivisions_AsADepartmentHeadReadingTheirOwnOffice_ReturnsEveryDivision()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        caller.DivisionId = null;                       // the state every guest-office user was in
+        _permissions.Setup(p => p.CanManageOfficeSetupAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _allocation.Setup(s => s.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Allocation() });
+
+        HttpResponseData response = await Sut.GetDivisions(
+            FunctionHttp.Get($"officeId={OwnOffice}&fiscalYear={FiscalYear}&fundingSourceId={FundingSource}",
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // The row survives the clamp. Before the fix this body carried an empty array.
+        Assert.Contains("\"divisionId\":" + DivisionId, FunctionHttp.BodyText(response));
+    }
+
+    /// <summary>
+    /// The companion. The encoder clamp is NOT what was broken and must stay: another division's
+    /// peso amounts are not a rank-and-file encoder's business. Without this test the fix above is
+    /// one careless edit away from opening the office's whole split to everyone in it.
+    /// </summary>
+    [Fact]
+    public async Task GetDivisions_AsAPlainEncoder_StillSeesOnlyTheirOwnDivision()
+    {
+        User caller = Authenticate(Caller.PlainOfficeUser);
+        caller.DivisionId = 4242;                       // NOT the division on the returned row
+        _allocation.Setup(s => s.GetAllocationsAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { Allocation() });
+
+        HttpResponseData response = await Sut.GetDivisions(
+            FunctionHttp.Get($"officeId={OwnOffice}&fiscalYear={FiscalYear}&fundingSourceId={FundingSource}",
+                path: "budget-planning/allocation/divisions"),
+            CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("\"divisionId\":" + DivisionId, FunctionHttp.BodyText(response));
+    }
+
     [Theory]
     [InlineData(Caller.PlainOfficeUser)]
     [InlineData(Caller.OfficeCeilingsHolder)]

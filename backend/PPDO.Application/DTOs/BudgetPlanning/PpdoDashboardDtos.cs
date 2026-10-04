@@ -71,10 +71,15 @@ public record FundCeilingDto(
 /// year with an AIP. Split out of <see cref="PpdoDashboardDto"/> so callers that only need the
 /// picker (e.g. the Report page) don't pay for the LDIP/AIP/WFP-by-division/ceiling-by-fund
 /// build on every page load.
+///
+/// <see cref="DefaultFiscalYear"/> (PPDO-136) is the admin-set default, raw — <c>null</c> when
+/// unset. <see cref="FiscalYear"/> already folds it in; the raw value is for the client pages
+/// that keep their own fallback when nothing is set, which the resolved year cannot tell apart.
 /// </summary>
 public record FiscalYearsDto(
     int FiscalYear,
-    IReadOnlyList<int> AvailableFiscalYears);
+    IReadOnlyList<int> AvailableFiscalYears,
+    int? DefaultFiscalYear);
 
 /// <summary>
 /// The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old multi-office
@@ -97,7 +102,10 @@ public record PpdoDashboardDto(
     OfficeLdipSummaryDto Ldip,
     OfficeAipSummaryDto  Aip,
     IReadOnlyList<DivisionSummaryDto> ByDivision,
-    IReadOnlyList<FundCeilingDto>     CeilingByFund
+    IReadOnlyList<FundCeilingDto>     CeilingByFund,
+    // PPDO-150: FY2028+ untagged activities as one row, for a caller who sees every division, else
+    // null. Kept OUT of ByDivision so no per-division total can sum it by accident.
+    DivisionSummaryDto?               NoDivision = null
 );
 
 /// <summary>
@@ -130,6 +138,11 @@ public record PpdoDashboardDto(
 /// Returned badge. Not a column of its own.</param>
 /// <param name="AssignedProgramCount">Programs in the office's AIP groups for the year, whether or
 /// not anyone has touched them — the ones LDIP seeded. Zero when the office has no group row.</param>
+/// <param name="DivisionsSubmitted">PPDO-152 — how many of the office's required divisions (those
+/// with tagged activities) have submitted to the department head. <b>Null when the office is not in
+/// the division flow</b> (no active division, or FY ≤ 2027) — not the same as 0.</param>
+/// <param name="DivisionsRequired">PPDO-152 — the "m" of "n of m divisions submitted". Null with
+/// <paramref name="DivisionsSubmitted"/>.</param>
 public record OfficeSummaryDto(
     int      OfficeId,
     string   OfficeCode,
@@ -144,5 +157,7 @@ public record OfficeSummaryDto(
     string?  ReviewerName,
     string   ReadinessColumn,
     bool     IsReturned,
-    int      AssignedProgramCount
+    int      AssignedProgramCount,
+    int?     DivisionsSubmitted = null,
+    int?     DivisionsRequired  = null
 );

@@ -218,6 +218,71 @@ public sealed partial class AipServiceTests
             It.Is<IReadOnlyList<int>>(ids => IdsAre(ids, 50, 51, 52, 60, 70, 71)), It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ── Investment proposals (PPDO-155, proposal decision 26) ─────────────────
+
+    /// <summary>A proposal store that says project 40 has a proposal.</summary>
+    private static Mock<IInvestmentProposalRepository> ProposalOnProject40()
+    {
+        Mock<IInvestmentProposalRepository> proposals = new();
+        proposals.Setup(r => r.ExistsForAnyProjectAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) => ids.Contains(40));
+        return proposals;
+    }
+
+    [Fact]
+    public async Task DeleteProject_WithAnInvestmentProposal_Returns409AndDeletesNothing()
+    {
+        var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        var (sut, _, _, _, _, _, _, _, _, _, projectRepo, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
+                proposals: ProposalOnProject40());
+
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProjectAsync(40, HostCaller());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Equal(PPDO.Application.Services.AipService.DeleteProjectHasProposalMessage, result.Error);
+        projectRepo.Verify(r => r.DeleteAsync(It.IsAny<AipProject>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteProject_ASiblingHasTheProposal_StillDeletes()
+    {
+        var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
+                proposals: ProposalOnProject40());
+
+        Assert.True((await sut.DeleteProjectAsync(41, HostCaller())).IsSuccess);
+    }
+
+    [Fact]
+    public async Task DeleteProgram_AProjectHasAnInvestmentProposal_Returns409AndDeletesNothing()
+    {
+        var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        var (sut, _, _, _, _, _, _, _, _, programRepo, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
+                proposals: ProposalOnProject40());
+
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProgramAsync(30, HostCaller());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        programRepo.Verify(r => r.DeleteAsync(It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteOffice_AProjectHasAnInvestmentProposal_Returns409AndDeletesNothing()
+    {
+        var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        var (sut, _, _, _, _, _, officeRepo, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
+                proposals: ProposalOnProject40());
+
+        ServiceResult<bool> result = await sut.DeleteOfficeAsync(20, HostCaller());
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        officeRepo.Verify(r => r.DeleteAsync(It.IsAny<AipOffice>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Comments ──────────────────────────────────────────────────────────────
 
     [Fact]

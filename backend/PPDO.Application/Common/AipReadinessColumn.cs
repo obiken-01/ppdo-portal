@@ -13,8 +13,16 @@ namespace PPDO.Application.Common;
 ///
 /// <para>
 /// ⚠️ <b>Five columns, not six.</b> <see cref="AipWorkflowStatus.ReturnedByPpdo"/> is not a column:
-/// returned work is editable by the office again, exactly as in department review, so it sits in
-/// <see cref="OfficeReview"/> and the row carries <c>IsReturned</c> for the badge.
+/// the row carries <c>IsReturned</c> for the badge.
+/// ↩️ <b>Where it sits depends on who holds it</b> (PPDO-169, refined by PPDO-171; Ralph, 2026-09-30):
+/// <list type="bullet">
+/// <item>An office <b>in the division flow</b> → <see cref="InProgress"/>. A PPDO return reopens
+/// every division to Draft (PPDO-149), so the work is with its encoders; it reaches Office Review on
+/// its own once every division re-submits.</item>
+/// <item>An office <b>without</b> divisions (or any office before the entered years) →
+/// <see cref="OfficeReview"/>. The return lands with its department head, who re-sends it to PPDO —
+/// the encoder has no submit to make (<c>AipSubmitService</c>, "the same transition").</item>
+/// </list>
 /// </para>
 ///
 /// <para>
@@ -42,12 +50,17 @@ public static class AipReadinessColumn
     /// The column for an office at <paramref name="workflowStatus"/> holding
     /// <paramref name="activityCount"/> activities. A null status means the office has no AIP group
     /// row for the year at all, which reads as <see cref="AipWorkflowStatus.Draft"/>.
+    /// <paramref name="inDivisionFlow"/> is whether the office submits division by division this year
+    /// (an active division, entered year) — it decides only where a returned office sits.
     /// </summary>
-    public static string For(string? workflowStatus, int activityCount) => workflowStatus switch
+    public static string For(string? workflowStatus, int activityCount, bool inDivisionFlow = false)
+        => workflowStatus switch
     {
-        AipWorkflowStatus.DepartmentReview or AipWorkflowStatus.ReturnedByPpdo => OfficeReview,
-        AipWorkflowStatus.SubmittedToPpdo => PpdoReview,
-        AipWorkflowStatus.Consolidated    => Done,
+        AipWorkflowStatus.DepartmentReview => OfficeReview,
+        // A returned office has submitted once, so it is never "not started", whatever it holds.
+        AipWorkflowStatus.ReturnedByPpdo   => inDivisionFlow ? InProgress : OfficeReview,
+        AipWorkflowStatus.SubmittedToPpdo  => PpdoReview,
+        AipWorkflowStatus.Consolidated     => Done,
         _ => activityCount > 0 ? InProgress : NotStarted,
     };
 

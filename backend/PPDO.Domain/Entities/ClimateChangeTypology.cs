@@ -17,6 +17,21 @@ namespace PPDO.Domain.Entities;
 /// </summary>
 public sealed class ClimateChangeTypology
 {
+    /// <summary>
+    /// Column widths, shared by the EF configuration and the service's validator so a value the
+    /// validator accepts always fits the column. ↩️ A mismatch here is what turned a too-long name
+    /// into an unexplained 500 on CSV import — SQL refused the whole save instead of the validator
+    /// naming the row.
+    /// </summary>
+    public const int CodeMaxLength = 20;
+
+    /// <summary>
+    /// ↩️ Was 200. The official CCET typology titles run long — the province's list has one at 356
+    /// characters (A611-02), and seven over 200 — and a name is the official wording, so it is the
+    /// column that gives way, not the text.
+    /// </summary>
+    public const int NameMaxLength = 500;
+
     /// <summary>Primary key (INT IDENTITY).</summary>
     public int Id { get; set; }
 

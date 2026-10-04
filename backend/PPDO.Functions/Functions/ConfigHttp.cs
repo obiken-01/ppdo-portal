@@ -193,7 +193,12 @@ internal static class ConfigHttp
             ServiceErrorCode.Forbidden  => HttpStatusCode.Forbidden,
             _                           => HttpStatusCode.InternalServerError,
         };
-        return EnvelopeAsync(req, status, ApiResponse<T>.Fail(result.Error ?? "An unexpected error occurred."), cancellationToken);
+        string error = result.Error ?? "An unexpected error occurred.";
+        // An error that carries data (PPDO-155: a stale-version 409, a 400's field errors) sends it
+        // as the envelope's data. Every other error keeps the plain { error } body.
+        return result.ErrorDetails is { } details
+            ? EnvelopeAsync(req, status, new ApiResponse<object>(details, error, null), cancellationToken)
+            : EnvelopeAsync(req, status, ApiResponse<T>.Fail(error), cancellationToken);
     }
 
     /// <summary>Returns a CSV file response (text/csv + attachment filename).</summary>

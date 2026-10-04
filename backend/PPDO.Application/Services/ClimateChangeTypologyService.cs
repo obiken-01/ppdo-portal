@@ -316,6 +316,15 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
         if (!Categories.Contains(dto.Category.Trim(), StringComparer.OrdinalIgnoreCase))
             return $"Category must be one of: {string.Join(", ", Categories)}.";
 
+        // Checked here so an over-long value is a named row error (or a 400 on the form) rather
+        // than SQL refusing the whole save as an unexplained 500. Category needs no check — it is
+        // one of three fixed words.
+        if (dto.Code.Trim().Length > ClimateChangeTypology.CodeMaxLength)
+            return $"Code must be at most {ClimateChangeTypology.CodeMaxLength} characters.";
+        if (dto.Name.Trim().Length > ClimateChangeTypology.NameMaxLength)
+            return $"Name must be at most {ClimateChangeTypology.NameMaxLength} characters "
+                 + $"(this one is {dto.Name.Trim().Length}).";
+
         // A code carrying a separator is a pasted multi-code value, not a code. Letting one in
         // recreates the free-text field this table exists to replace — the FY2027 data already
         // holds 18 such values, in both comma and semicolon form.

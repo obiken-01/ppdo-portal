@@ -45,6 +45,14 @@ public sealed class AipService : IAipService
     // PPDO-88 — a delete clears the subtree's ledger reservations and comments.
     private readonly IAipAllocationLedgerRepository _ledgerRepo;
     private readonly IAipReviewCommentRepository    _commentRepo;
+    // PPDO-148 — the division lock. Every write below consults it after the office checks.
+    private readonly IAipDivisionLock               _divisionLock;
+    // PPDO-150 — a re-tag moves the activity's ceiling reservation to its new division.
+    private readonly IAipCeilingService             _ceiling;
+    // PPDO-155 — a project, program or office holding an investment proposal is not deleted
+    // (proposal decision 26). The proposal FK is NO ACTION, so without this check the delete
+    // would fail at the database as a 500.
+    private readonly IInvestmentProposalRepository  _proposals;
     private readonly ILogger<AipService>            _logger;
 
     public AipService(
@@ -65,8 +73,14 @@ public sealed class AipService : IAipService
         IAipExpenditureRepository expRepo,
         IAipAllocationLedgerRepository ledgerRepo,
         IAipReviewCommentRepository commentRepo,
+        IAipDivisionLock divisionLock,
+        IAipCeilingService ceiling,
+        IInvestmentProposalRepository proposals,
         ILogger<AipService> logger)
     {
+        _proposals    = proposals;
+        _ceiling      = ceiling;
+        _divisionLock = divisionLock;
         _ledgerRepo  = ledgerRepo;
         _commentRepo = commentRepo;
         _logger      = logger;
@@ -90,14 +104,15 @@ public sealed class AipService : IAipService
     // ── Read ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The host office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division axis
-    /// will actually narrow something (V18-39). A guest-office caller can never be narrowed by
-    /// division, so issuing this query for them would be a round trip whose result is discarded.
+    /// The caller's own office's <see cref="ProgramDivision"/> rows, loaded ONLY when the division
+    /// axis will actually narrow something (V18-39, re-keyed off the host office by PPDO-134). A
+    /// caller who is not narrowed at all — including most guest-office Staff with no division
+    /// assigned yet — never reaches this query.
     /// </summary>
-    private async Task<IReadOnlyList<ProgramDivision>> LoadHostAssignmentsAsync(
+    private async Task<IReadOnlyList<ProgramDivision>> LoadOwnAssignmentsAsync(
         AipReadScope scope, CancellationToken ct)
-        => scope.HostOfficeIdForAssignments is int hostOfficeId
-            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(hostOfficeId, ct)
+        => scope.OfficeIdForAssignments is int ownOfficeId
+            ? await _allocationRepo.GetProgramDivisionsByOfficeIdAsync(ownOfficeId, ct)
             : [];
 
     public async Task<IReadOnlyList<AipRecordDto>> GetAllAsync(
@@ -149,7 +164,7 @@ public sealed class AipService : IAipService
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
-            allPrograms, offices, await LoadHostAssignmentsAsync(scope, ct));
+            allPrograms, offices, await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
@@ -171,9 +186,24 @@ public sealed class AipService : IAipService
                 g => g.Key,
                 g => (IReadOnlyList<string>)g.Select(r => r.Code).ToList());
 
+        // PPDO-148 — each activity's division name and the caller's CanEdit. Two queries for the
+        // whole tree (divisions, submission rows), never two per office.
+        IReadOnlyDictionary<int, AipDivisionContext> divisionContexts =
+            await _divisionLock.LoadForOfficesAsync(rec, offices, caller, ct);
+        bool reviewerDenied = await _divisionLock.DeniesWriteAsync(caller, ct);
+        OfficeScope writeScope = OfficeScope.Resolve(caller);
+
         // Build nested DTO hierarchy.
         IReadOnlyList<AipOfficeDto> officeDtos = offices.Select(o =>
         {
+            AipDivisionContext div = divisionContexts.GetValueOrDefault(o.Id, AipDivisionContext.None);
+            // The same checks, in the same order, as the write path: AipWriteGuard.CheckAsync's
+            // three, the reviewer denial at the endpoint, then the division lock per row.
+            bool officeWritable = !reviewerDenied
+                && writeScope.Permits(o.OfficeId)
+                && rec.Status == PlanningStatus.Draft
+                && AipWorkflowStatus.IsOfficeEditable(o.WorkflowStatus)
+                && div.RefuseContainerWrite() is null;
             IReadOnlyList<AipProgramDto> progDtos = programs
                 .Where(p => p.OfficeId == o.Id)
                 .Select(p =>
@@ -182,7 +212,10 @@ public sealed class AipService : IAipService
                         .Where(j => j.ProgramId == p.Id)
                         .Select(j => new AipProjectDto(j.Id, j.ProgramId, j.RefCode, j.Name,
                             acts.Where(a => a.ProjectId == j.Id)
-                                .Select(a => MapActivityToDto(a, fundCodes.GetValueOrDefault(a.Id)))
+                                .Select(a => AipTreeMapper.MapActivity(
+                                    a, fundCodes.GetValueOrDefault(a.Id),
+                                    div.NameOf(a.DivisionId),
+                                    officeWritable && div.CanWriteActivity(a.DivisionId)))
                                 .ToList(),
                             j.IsSynthetic, j.Description, j.Objective))
                         .ToList();
@@ -220,7 +253,7 @@ public sealed class AipService : IAipService
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
             await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct),
             offices,
-            await LoadHostAssignmentsAsync(scope, ct));
+            await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
@@ -1135,8 +1168,15 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP project {projectId} not found.", ct);
+        (ServiceResult<AipActivityDto>? statusError, AipDivisionContext div) =
+            await GuardAsync<AipActivityDto>(office, caller, $"AIP project {projectId} not found.", ct);
         if (statusError is not null) return statusError;
+
+        // ⚠️ PPDO-148 decision 5 — the tag is decided here, before the body is validated, and an
+        // encoder's own `DivisionId` is never read: ResolveNewActivityTag ignores it for them.
+        (int? divisionId, string? tagRefused) = div.ResolveNewActivityTag(dto.DivisionId);
+        if (tagRefused is not null)
+            return ServiceResult<AipActivityDto>.BadRequest(tagRefused);
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
@@ -1185,6 +1225,7 @@ public sealed class AipService : IAipService
             CcAdaptation          = dto.CcAdaptation,
             CcMitigation          = dto.CcMitigation,
             CcTypologyCode        = dto.CcTypologyCode,
+            DivisionId            = divisionId,
             },
             async (e, token) =>
             {
@@ -1197,9 +1238,9 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.Conflict(
                 "Another activity was added to this project at the same moment. Please try again.");
         await _audit.LogAsync("aip_activities", entity.Id, AuditAction.Create,
-            null, new { entity.ProjectId, entity.RefCode, entity.Name, entity.Total }, ct);
+            null, new { entity.ProjectId, entity.RefCode, entity.Name, entity.Total, entity.DivisionId }, ct);
 
-        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity));
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(entity, div));
     }
 
     // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ──
@@ -1342,8 +1383,10 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.NotFound(
                 $"AIP activity {activityId} does not belong to AIP record {aipRecordId}.");
 
-        ServiceResult<AipActivityDto>? statusError = await CheckWritableAsync<AipActivityDto>(office, caller, $"AIP activity {activityId} not found.", ct, "edit");
+        (ServiceResult<AipActivityDto>? statusError, AipDivisionContext div) =
+            await GuardAsync<AipActivityDto>(office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
@@ -1402,7 +1445,7 @@ public sealed class AipService : IAipService
                 activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
             }, ct);
 
-        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div));
     }
 
     /// <inheritdoc />
@@ -1423,9 +1466,10 @@ public sealed class AipService : IAipService
         // ⚠️ The full guard, not just an office-scope check: it also refuses an archived record and
         // an office already past Draft. An encoder whose office is sitting with the department head
         // must not be able to edit the document under review.
-        ServiceResult<AipActivityDto>? refused = await CheckWritableAsync<AipActivityDto>(
+        (ServiceResult<AipActivityDto>? refused, AipDivisionContext div) = await GuardAsync<AipActivityDto>(
             office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (refused is not null) return refused;
+        if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
@@ -1466,7 +1510,60 @@ public sealed class AipService : IAipService
         // into its tree instead of reloading it (see that page's `patchActivity`), so an empty
         // list here would blank the row's fund cell the moment an encoder saved a description.
         IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activity.Id, ct);
-        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, fundCodes));
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div, fundCodes));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<AipActivityDto>> RetagActivityDivisionAsync(
+        int activityId, int divisionId, User caller, CancellationToken ct = default)
+    {
+        string notFound = $"AIP activity {activityId} not found.";
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+        if (activity is null) return ServiceResult<AipActivityDto>.NotFound(notFound);
+
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        AipProgram? program = project is null ? null : await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        AipOffice?  office  = program is null ? null : await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        if (office is null) return ServiceResult<AipActivityDto>.NotFound(notFound);
+
+        // The office checks only — not GuardAsync, whose container rule would answer an encoder
+        // with no division a 400 before the 403 below could say what is actually wrong.
+        if (await AipWriteGuard.CheckAsync<AipActivityDto>(office, caller, _aipRepo, notFound, ct, "edit")
+            is { } refused)
+            return refused;
+        AipDivisionContext div = await _divisionLock.LoadAsync(office, caller, ct);
+
+        // ⚠️ Forbidden, not the division lock's 400: an encoder may never re-tag, in any state, so
+        // this is a permission answer rather than "not right now" (spec §3.1 "Failure: encoder
+        // re-tags").
+        if (!div.IsDepartmentHead && div.HasDivisions)
+            return ServiceResult<AipActivityDto>.Forbidden(
+                "Only the department head can move an activity to another division.");
+        if (!div.HasDivisions)
+            return ServiceResult<AipActivityDto>.BadRequest(
+                "This office has no divisions, so its activities are not assigned to one.");
+
+        if (div.RefuseTarget(divisionId) is string badTarget)
+            return ServiceResult<AipActivityDto>.BadRequest(badTarget);
+
+        int? oldDivisionId = activity.DivisionId;
+        if (oldDivisionId != divisionId)
+        {
+            activity.DivisionId = divisionId;
+            await _aipRepo.SaveChangesAsync(ct);
+            await _audit.LogAsync("aip_activities", activity.Id, AuditAction.RetagActivityDivision,
+                new { DivisionId = oldDivisionId }, new { DivisionId = divisionId }, ct);
+            // The reservation follows the tag (PPDO-150): re-posted under the new division, and
+            // the rows it left under the old one are removed by the upsert itself.
+            await _ceiling.UpsertLedgerForActivityAsync(activity.Id, ct);
+            _logger.LogInformation(
+                "AIP activity re-tagged. ActivityId: {ActivityId}, OldDivisionId: {OldDivisionId}, "
+                + "NewDivisionId: {NewDivisionId}, UserId: {UserId}",
+                activity.Id, oldDivisionId, divisionId, caller.Id);
+        }
+
+        IReadOnlyList<string> fundCodes = await _expRepo.GetFundCodesByActivityIdAsync(activity.Id, ct);
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div, fundCodes));
     }
 
     // ── Delete (mistakes happen — mirrors the Add* guard chain) ───────────────
@@ -1477,7 +1574,8 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {officeId} not found.");
 
-        ServiceResult<bool>? statusError = await CheckWritableAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
+        (ServiceResult<bool>? statusError, AipDivisionContext div) =
+            await GuardAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         IReadOnlyList<AipProgram> officePrograms = await _aipRepo.GetProgramsByOfficeIdsAsync([office.Id], ct);
@@ -1485,6 +1583,12 @@ public sealed class AipService : IAipService
             await _aipRepo.GetProjectsByProgramIdsAsync(officePrograms.Select(p => p.Id).ToList(), ct);
         IReadOnlyList<AipActivity> officeActivities =
             await _aipRepo.GetActivitiesByProjectIdsAsync(officeProjects.Select(j => j.Id).ToList(), ct);
+        // PPDO-148 — the cascade reaches every division's work, so the container rule applies.
+        if (div.RefuseContainerDelete(officeActivities.Select(a => a.DivisionId), "office") is string heldOffice)
+            return ServiceResult<bool>.BadRequest(heldOffice);
+        if (await _proposals.ExistsForAnyProjectAsync(officeProjects.Select(j => j.Id).ToList(), ct))
+            return ServiceResult<bool>.Conflict(
+                "This office has a project with an investment proposal. Delete the proposal first.");
         List<int> officeActivityIds = officeActivities.Select(a => a.Id).ToList();
 
         await _activityRepo.ExecuteInTransactionAsync(async () =>
@@ -1511,12 +1615,18 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
+        (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
+            await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsAsync([program.Id], ct);
         IReadOnlyList<AipActivity> activities =
             await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(j => j.Id).ToList(), ct);
+        if (div.RefuseContainerDelete(activities.Select(a => a.DivisionId), "program") is string heldProgram)
+            return ServiceResult<AipDeleteResultDto>.BadRequest(heldProgram);
+        if (await _proposals.ExistsForAnyProjectAsync(projects.Select(j => j.Id).ToList(), ct))
+            return ServiceResult<AipDeleteResultDto>.Conflict(
+                "This program has a project with an investment proposal. Delete the proposal first.");
 
         // Programs never renumber — their codes are the LDIP's.
         return await DeleteNodeAsync(
@@ -1525,6 +1635,10 @@ public sealed class AipService : IAipService
             async () => { await _programRepo.DeleteAsync(program, ct); await _programRepo.SaveChangesAsync(ct); },
             renumber: null, ct);
     }
+
+    /// <summary>Investment proposal decision 26, word for word.</summary>
+    public const string DeleteProjectHasProposalMessage =
+        "This project has an investment proposal. Delete the proposal first.";
 
     public async Task<ServiceResult<AipDeleteResultDto>> DeleteProjectAsync(int projectId, User caller, CancellationToken ct = default)
     {
@@ -1539,10 +1653,15 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
+        (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
+            await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
 
         IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync([project.Id], ct);
+        if (div.RefuseContainerDelete(activities.Select(a => a.DivisionId), "project") is string heldProject)
+            return ServiceResult<AipDeleteResultDto>.BadRequest(heldProject);
+        if (await _proposals.ExistsForAnyProjectAsync([project.Id], ct))
+            return ServiceResult<AipDeleteResultDto>.Conflict(DeleteProjectHasProposalMessage);
         bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
         return await DeleteNodeAsync(
@@ -1568,8 +1687,10 @@ public sealed class AipService : IAipService
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
-        ServiceResult<AipDeleteResultDto>? statusError = await CheckWritableAsync<AipDeleteResultDto>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
+        (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
+            await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckDivision<AipDeleteResultDto>(div, activity.DivisionId) is { } locked) return locked;
 
         bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
@@ -1760,10 +1881,33 @@ public sealed class AipService : IAipService
     /// expenditure endpoints became a second service needing it (PPDO-52). Two copies would drift
     /// silently — the forgotten one would just stop refusing.
     /// </summary>
-    private Task<ServiceResult<T>?> CheckWritableAsync<T>(
+    private async Task<ServiceResult<T>?> CheckWritableAsync<T>(
         AipOffice office, User caller, string notFoundMessage,
         CancellationToken ct, string action = "add to")
-        => AipWriteGuard.CheckAsync<T>(office, caller, _aipRepo, notFoundMessage, ct, action);
+        => (await GuardAsync<T>(office, caller, notFoundMessage, ct, action)).Refused;
+
+    /// <summary>
+    /// <see cref="AipWriteGuard.CheckAsync{T}"/>'s three checks, then the division rule every write
+    /// owes (PPDO-148): an encoder with no division in a divisioned office is read-only. Hands back
+    /// the division context so an activity write can apply
+    /// <see cref="AipWriteGuard.CheckDivision{T}"/> on top without loading it twice.
+    ///
+    /// <para>
+    /// ⚠️ The division context is loaded only once the office checks have passed, and it can only
+    /// add a refusal — that order is what keeps the division rule from ever granting a write.
+    /// </para>
+    /// </summary>
+    private async Task<(ServiceResult<T>? Refused, AipDivisionContext Divisions)> GuardAsync<T>(
+        AipOffice office, User caller, string notFoundMessage,
+        CancellationToken ct, string action = "add to")
+    {
+        ServiceResult<T>? refused =
+            await AipWriteGuard.CheckAsync<T>(office, caller, _aipRepo, notFoundMessage, ct, action);
+        if (refused is not null) return (refused, AipDivisionContext.None);
+
+        AipDivisionContext div = await _divisionLock.LoadAsync(office, caller, ct);
+        return (AipWriteGuard.CheckContainer<T>(div), div);
+    }
 
     /// <summary>Next zero-padded 3-digit segment appended to <paramref name="parentRefCode"/>,
     /// one past the highest existing sibling suffix (e.g. "...-001-001-002-001" then "...-002").</summary>
@@ -2114,13 +2258,18 @@ public sealed class AipService : IAipService
         if (creationOffice is null || !OfficeScope.Resolve(caller).Permits(creationOffice.OfficeId))
             return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
 
+        // PPDO-148 — a WFP-era field write that never took the office-state guard. It takes the
+        // division lock all the same: a submitted activity must not change under its division.
+        AipDivisionContext div = await _divisionLock.LoadAsync(creationOffice, caller, ct);
+        if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
+
         bool oldValue = activity.IsCreation;
         activity.IsCreation = isCreation;
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update,
             new { IsCreation = oldValue }, new { IsCreation = isCreation }, ct);
 
-        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity));
+        return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div));
     }
 
     // ── Purge (dev/test only) ─────────────────────────────────────────────────
@@ -2241,6 +2390,16 @@ public sealed class AipService : IAipService
     private static AipActivityDto MapActivityToDto(
         AipActivity a, IReadOnlyList<string>? fundCodes = null)
         => AipTreeMapper.MapActivity(a, fundCodes);
+
+    /// <summary>
+    /// A write path's response (PPDO-148): the activity's division name and the caller's CanEdit.
+    /// Only called after the write guard has passed, so the office side of CanEdit is already true
+    /// and the division lock alone decides it.
+    /// </summary>
+    private static AipActivityDto MapActivityToDto(
+        AipActivity a, AipDivisionContext div, IReadOnlyList<string>? fundCodes = null)
+        => AipTreeMapper.MapActivity(
+            a, fundCodes, div.NameOf(a.DivisionId), div.CanWriteActivity(a.DivisionId));
 
     /// <summary>The only 3 values <c>function_band</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedFunctionBands =

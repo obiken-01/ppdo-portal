@@ -15,6 +15,8 @@ public sealed class AipReviewService : IAipReviewService
     private readonly IAipExpenditureRepository _expRepo;
     private readonly IPermissionService        _permissions;
     private readonly IAuditService             _audit;
+    // PPDO-149 — a PPDO return reopens every division of the office (decision 11).
+    private readonly IAipDivisionWorkflow      _divisions;
     private readonly ILogger<AipReviewService> _logger;
 
     public AipReviewService(
@@ -24,8 +26,10 @@ public sealed class AipReviewService : IAipReviewService
         IAipExpenditureRepository expRepo,
         IPermissionService        permissions,
         IAuditService             audit,
+        IAipDivisionWorkflow      divisions,
         ILogger<AipReviewService> logger)
     {
+        _divisions        = divisions;
         _aipRepo          = aipRepo;
         _officeRepo       = officeRepo;
         _officeConfigRepo = officeConfigRepo;
@@ -117,6 +121,17 @@ public sealed class AipReviewService : IAipReviewService
         if (blocking is not null)
             return refuse(blocking.WorkflowStatus);
 
+        // ↩️ PPDO-149 decision 11 — whenever work comes back from PPDO (a return, or a re-open of
+        // accepted work), EVERY division of the office goes back to Draft, so each resubmits exactly
+        // as in the first round. Staged before the one save below so the office state and the
+        // division rows cannot land apart. The office then stays ReturnedByPpdo until its last
+        // division resubmits (AipSubmitService.SubmitDivisionAsync).
+        AipDivisionOfficeState? divisions = target == AipWorkflowStatus.ReturnedByPpdo
+            ? await _divisions.LoadAsync(ctx.Record, officeId, ct)
+            : null;
+        IReadOnlyList<AipDivisionSubmission> reopened =
+            divisions is null ? [] : _divisions.StageReturnAll(divisions, caller.Id);
+
         foreach (AipOffice group in ctx.Groups)
         {
             group.WorkflowStatus = target;
@@ -137,10 +152,13 @@ public sealed class AipReviewService : IAipReviewService
                 GroupIds       = ctx.Groups.Select(g => g.Id).ToArray(),
             }, ct);
 
+        // One RETURN_DIV row per division, attributed to the PPDO reviewer (§3.4 "PPDO returns").
+        await _divisions.AuditReturnsAsync(reopened, "ppdo-" + auditAction, ct);
+
         _logger.LogInformation(
             logMessage + " AipRecordId: {AipRecordId}, OfficeId: {OfficeId}, "
-            + "Groups: {GroupCount}, UserId: {UserId}",
-            aipRecordId, officeId, ctx.Groups.Count, caller.Id);
+            + "Groups: {GroupCount}, DivisionsReopened: {DivisionsReopened}, UserId: {UserId}",
+            aipRecordId, officeId, ctx.Groups.Count, reopened.Count, caller.Id);
 
         return ServiceResult<AipSubmitResultDto>.Ok(new AipSubmitResultDto(
             aipRecordId, officeId, target, ctx.Groups.Count));

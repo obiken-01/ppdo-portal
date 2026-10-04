@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import { fmtThousands } from "@/lib/aip-units";
 import { AipFigureStrip, AipUnitCaption, type AipRowAmounts } from "./AipRowFigures";
 import { aipRefSegment } from "./AipEntrySelection";
@@ -136,10 +137,12 @@ export function AipUnresolvedBadge({ count }: { count: number }) {
  * panel rather than a link buried in it.
  */
 export function AipChildRow({
-  refCode, name, total, unresolved, onSelect,
+  refCode, name, total, unresolved, onSelect, tag,
 }: {
   refCode: string;
   name: string;
+  /** Shown after the name — the activity's division pill (PPDO-151). */
+  tag?: React.ReactNode;
   /** Null renders as an em dash: never costed, not costed at zero (V18-34). */
   total: number | null;
   unresolved: number;
@@ -156,6 +159,7 @@ export function AipChildRow({
       </span>
       {/* whitespace-pre-line: activity names carry the encoder's own line breaks (PPDO-85). */}
       <span className="min-w-0 flex-1 whitespace-pre-line text-sm text-slate-800">{name}</span>
+      {tag}
       <AipUnresolvedBadge count={unresolved} />
       <span className="shrink-0 tabular-nums text-sm text-slate-800">{fmtThousands(total)}</span>
     </button>
@@ -209,6 +213,11 @@ export function AipInlineAdd({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  // PPDO-166 — a typed-but-not-added name. Before the early returns: hooks cannot follow them.
+  useAipUnsavedChange(open && name.trim() !== "", `a new ${label.replace(/^\+\s*Add\s*/i, "").toLowerCase() || "item"}`, () => {
+    setName("");
+    setOpen(false);
+  });
 
   if (disabled) {
     return (

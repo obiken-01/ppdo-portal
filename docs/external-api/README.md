@@ -1,16 +1,16 @@
 ---
 status: built
-version: 1.1.0
-built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102
+version: 1.1.1
+built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102; 1.1.1 — schema limits match the columns (PR #420)
 spec: ../v1.8/External_AIP_API_Spec.md
 supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 ---
 
-# External AIP API — response schema & samples (1.1.0)
+# External AIP API — response schema & samples (1.1.1)
 
-> ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331). ⚠️ **Not live yet:** it reaches
-> production when v1.8.0 merges to `main`, and no partner key can be issued until the API Access page
-> (PPDO-86) is merged. See §0.
+> ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331, #332, #352). ⚠️ **Not live yet:** it
+> reaches production when v1.8.0 merges to `main`. Partner keys are issued from Configuration → API
+> Access (PPDO-86). See §0, and §8 for the 2026-10-02 re-check against `release/1.8.0`.
 >
 > This is the payload returned for a **whole fiscal year** (`GET /api/external/v1/aip?fiscalYear=…`)
 > or for **one office** (`…&officeCode=…`). **Both calls return the same shape** (§1). Keys, scope,
@@ -39,8 +39,9 @@ supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 | `X-Api-Key` check, office scope, 60 requests/minute per key, request log | PPDO-13 | ✅ Merged (#329) |
 | Read service producing this schema | PPDO-14 | ✅ Merged (#330) |
 | Endpoints + schema contract test (`ExternalAipSchemaContractTests`) | PPDO-12 | ✅ Merged (#331) |
-| **1.1.0** — `totals` and `printedTotals` on every program and project | PPDO-102 | 🚧 In progress |
-| Configuration → API Access page, to issue and revoke keys | PPDO-86 | ⏳ Not merged — until it is, no partner key can be issued |
+| **1.1.0** — `totals` and `printedTotals` on every program and project | PPDO-102 | ✅ Merged (#352) |
+| **1.1.1** — string limits no tighter than the database columns | — | ✅ PR #420 |
+| Configuration → API Access page, to issue and revoke keys | PPDO-86 | ✅ Merged (#332) |
 | Production | — | ⏳ Ships with v1.8.0 → `main`; run the migration by hand (CI does not) |
 
 ---
@@ -49,6 +50,7 @@ supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
 
 | Version | Change |
 |---|---|
+| **1.1.1** | Loosening only — every response valid under 1.1.0 is still valid. `activity.esreCode` `maxLength` 10 → **20** (the `esre_codes.code` column and config page allow 20). `maxLength` **removed** from `activity.name` (was 1000), `activity.implementingOffice` (200) and `program` / `project` / `group` `name` (500): those columns are `nvarchar(max)` and nothing caps the input, so 1.1.0 could reject a response the database had stored. Found in the §8 re-check |
 | **1.1.0** | Adds `totals` and `printedTotals` to every `program` and `project`, the same shape the `group` already carries. A consumer no longer has to add up activities to show a program or project figure. `printedTotals` is the sum of the activities' printed figures — **never a rounding of `totals`**, because the form rounds each line up. Null for legacy AIPs. Additive only. |
 | 1.0.0 | First built shape (PPDO-12, PPDO-14). |
 
@@ -272,3 +274,42 @@ The build asserts the same schema against real output: `ExternalAipSchemaContrac
 validates a response from the read service — Fy2028, Legacy and `data: null` — exactly as the
 endpoint serializes it. ⚠️ If this schema changes, run the backend tests: the contract test is what
 catches the code and this file drifting apart.
+
+---
+
+## 8. Re-check against `release/1.8.0` (2026-10-02, for the MIS meeting)
+
+Checked at `release/1.8.0` @ `c217eb8` (PR #419). **The response shape is unchanged since 1.1.0.**
+No external-API code (`ExternalAipDtos`, `ExternalAipMapper`, `ExternalAipReadService`, the
+endpoints) has changed since PPDO-102, and all three samples still validate (§7).
+
+What *did* change underneath, and how it touches the contract:
+
+| Change since 1.1.0 | Effect on the API |
+|---|---|
+| `aip_activities.division_id` + `aip_division_submissions` (PPDO-147, division submit) | None. Divisions are internal (decision 9). Release is still gated on every group being `Consolidated` |
+| Investment proposals (PPDO-174 and others) | None. Proposals feed the AIP but are not part of the released document |
+| `aip_procurement_items.period_no` (quarter Q1–Q4, added 2026-09-14) | **Not exposed — decided 2026-10-02.** The quarter is input-only and must not reach any total; GSO needs the total per account, which `expenditures[].amounts` already gives. Add `periodNo` (an additive 1.2.0) only if GSO explicitly asks for it |
+| Climate-change typologies seeded as a config table | None yet. `typologyCodes` is still split from the activity's single code column (§6) |
+
+**Schema limits that are tighter than the database.** The schema's `maxLength` values were
+written from the v0.6 draft; the columns behind them are wider, and no validator caps the input. A
+long enough value would produce a response that fails the published schema (the contract
+test only checks the values its own fixtures use):
+
+| Schema field | Schema `maxLength` | Column | Risk |
+|---|---|---|---|
+| `activity.esreCode` | 10 | `aip_activities.esre_code` nvarchar(20); `esre_codes.code` nvarchar(20) | An ESRE code of 11–20 characters (allowed by the config page) |
+| `activity.name` | 1000 | `aip_activities.name` nvarchar(max) | Long imported activity names |
+| `activity.implementingOffice` | 200 | nvarchar(max) | Free text |
+| `program.name`, `project.name`, `group.name` | 500 | nvarchar(max) | Long imported names |
+
+**✅ Fixed as schema 1.1.1 (2026-10-02):** `esreCode` raised to 20 and `maxLength` dropped on the
+free-text names — loosening only, so no consumer breaks. `ExternalAipConstants.SchemaVersion`, the
+schema `const` and the three samples moved together, and
+`ExternalAipSchemaContractTests.Fy2028Response_WithValuesAtColumnWidth_ValidatesAgainstSchema` now
+feeds column-width values through the real read service so this cannot drift back.
+
+**Decided (2026-10-02):** no per-quarter breakdown. Procurement items stay as they are and the
+per-account totals on each expenditure line are the figure GSO uses. Revisit only on an explicit
+request from GSO.

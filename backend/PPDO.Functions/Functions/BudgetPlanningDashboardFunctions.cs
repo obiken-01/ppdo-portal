@@ -161,11 +161,37 @@ public sealed class BudgetPlanningDashboardFunctions
         // silently falling back to the caller's own office.
         officeId = ConfigHttp.ClampOfficeId(caller!, officeId) ?? officeId;
 
-        OfficeDashboardDto result =
-            await _service.GetOfficeDashboardAsync(officeId, fiscalYear, cancellationToken);
+        (bool seeAllDivisions, int? divisionId) =
+            await ResolveOfficeDivisionScopeAsync(caller!, officeId, cancellationToken);
+
+        OfficeDashboardDto result = await _service.GetOfficeDashboardAsync(
+            officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<OfficeDashboardDto>.Ok(result), cancellationToken);
+    }
+
+    /// <summary>
+    /// Who may see EVERY division of <paramref name="officeId"/>'s breakdown, vs. only their own
+    /// (PPDO-126, PPDO-127) — mirrors <c>AllocationFunctions</c>' "whoever may set the office's
+    /// division split may see it back" rule for the Allocation page, applied here to the dashboard:
+    ///
+    ///   host-office (PPDO) caller                          → every division, any office
+    ///   department head (CanManageOfficeSetup) — OWN office → every division of that office
+    ///   everyone else (a division head)                    → their own division only
+    ///
+    /// Returned as an explicit pair rather than a single nullable divisionId: null already means
+    /// "unassigned" on <see cref="User.DivisionId"/>, and overloading it to also mean "no filter"
+    /// would show a divisionless Staff caller every division instead of none (DECISION F).
+    /// </summary>
+    private async Task<(bool SeeAllDivisions, int? DivisionId)> ResolveOfficeDivisionScopeAsync(
+        User caller, int officeId, CancellationToken ct)
+    {
+        if (OfficeScope.Resolve(caller).SeeAll) return (true, null);
+
+        bool ownOfficeSetupHolder = await _permissions.CanManageOfficeSetupAsync(caller, ct)
+            && caller.OfficeId == officeId;
+        return ownOfficeSetupHolder ? (true, null) : (false, caller.DivisionId);
     }
 
     // ── GET /api/budget-planning/dashboard/offices?fiscalYear= ──────────────

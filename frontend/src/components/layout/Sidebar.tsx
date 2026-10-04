@@ -27,8 +27,8 @@ import { useRouter, usePathname } from "next/navigation";
 import api from "@/lib/api";
 import { allocationLabels } from "@/lib/budget-planning-labels";
 import {
-  canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenLdip,
-  canOpenOfficeCeilings,
+  canOpenAipRecords, canOpenAipReview, canOpenBudgetPlanningReport, canOpenInvestmentProposals,
+  canOpenLdip, canOpenOfficeCeilings,
 } from "@/lib/budget-planning-access";
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
@@ -171,6 +171,12 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // One flag for both, because CanManageOfficeSetup is deliberately one grant covering all four
   // office-scoped surfaces rather than four flags (D1) — splitting it here would suggest otherwise.
   const showOwnOfficeSetup = !showConfig && me?.canManageOfficeSetup === true;
+  // PPDO-162 — the same rule as the page itself (`config/investment-planning`) and its tile: a
+  // province-wide setting, so a PPDO config holder or a SuperAdmin in any office. Kept out of the
+  // showConfig block because that is gated on !isOfficeUser, which would hide it from a
+  // guest-office SuperAdmin the page lets in.
+  const showInvestmentPlanningSettings =
+    me != null && (me.role === "SuperAdmin" || (me.canManageConfig === true && me.isHostOffice === true));
   // PPDO-81 — the AIP record list is where the base record is created, finalized and archived, and
   // all three are Admin actions. An encoder's surface is AIP Entry below. LDIP is hidden from a
   // GUEST office rather than from non-admins: PPDO planning staff work in it, but a guest office
@@ -190,6 +196,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   // something to read there while having no WFP at all. `canOpenBudgetPlanningReport` is the union,
   // derived from the two rules rather than restated, so the nav and the page cannot disagree.
   const showReport         = me != null && canOpenBudgetPlanningReport(me);
+  // Demo 2.15 (PPDO-159) — every office writes its own proposals, so the rule is Budget Planning
+  // access alone. Same file as the rest, so the nav and the page guard read one rule.
+  const showProposals      = me != null && canOpenInvestmentProposals(me);
   const showResourceLinks  = !isOfficeUser;
   const showDashboard      = !isOfficeUser;
   const showAnnouncements  = !isOfficeUser && isAdmin;
@@ -468,14 +477,20 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                     {pending && (
                       <Link
                         href={pending.href}
-                        title={`${pending.count} ${pending.count === 1 ? "office is" : "offices are"} waiting on you`}
-                        aria-label={`${pending.count} waiting on you`}
+                        title={pending.title}
+                        aria-label={pending.title}
                         className={`${SIDEBAR_PILL} min-w-[1.5rem] text-center tabular-nums`}
                       >
                         {pending.count}
                       </Link>
                     )}
                   </div>
+                )}
+                {showProposals && (
+                  <Link href="/budget-planning/proposals" className={childLinkCls(isActive("/budget-planning/proposals"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Investment Proposals</span>
+                  </Link>
                 )}
                 {showOfficeCeilings && (
                   <Link href="/budget-planning/office-ceilings" className={childLinkCls(isActive("/budget-planning/office-ceilings"))}>
@@ -507,7 +522,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         )}
 
         {/* Configuration — collapsible group; PPDO users with CanManageConfig or CanManageUsers */}
-        {(showConfig || showOwnOfficeSetup || showManageUsers || showAuditLog || showApiAccess) && (
+        {(showConfig || showOwnOfficeSetup || showInvestmentPlanningSettings || showManageUsers || showAuditLog || showApiAccess) && (
           <div>
             <button
               onClick={() => setConfigOpen((o) => !o)}
@@ -577,7 +592,18 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       <span className="text-xs">•</span>
                       <span className="truncate">Funding Sources</span>
                     </Link>
+                    {/* PPDO-135 — assign their own Staff to the divisions above, without CanManageUsers. */}
+                    <Link href="/config/office-users" className={childLinkCls(isActive("/config/office-users"))}>
+                      <span className="text-xs">•</span>
+                      <span className="truncate">Staff Divisions</span>
+                    </Link>
                   </>
+                )}
+                {showInvestmentPlanningSettings && (
+                  <Link href="/config/investment-planning" className={childLinkCls(isActive("/config/investment-planning"))}>
+                    <span className="text-xs">•</span>
+                    <span className="truncate">Investment Planning Settings</span>
+                  </Link>
                 )}
                 {showManageUsers && (
                   <Link href="/admin/users" className={childLinkCls(isActive("/admin/users"))}>

@@ -76,7 +76,8 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         officeId, FiscalYear,
         new AllocationSetupSummaryDto(null, 0m, null, false, 0, 0),
         new OfficeLdipSummaryDto(false, 0, Array.Empty<StatusBreakdownDto>()),
-        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m));
+        new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m),
+        Array.Empty<DivisionSummaryDto>());
 
     private static PpdoDashboardDto MakePpdoDashboard() => new(
         FiscalYear, new[] { FiscalYear }, OwnOffice, "PPDO", "Provincial Planning and Development Office",
@@ -87,11 +88,16 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
     /// <summary>Captures the officeId the handler resolves and hands to the service.</summary>
     private void ExpectOfficeDashboard(Action<int> captureOfficeId)
+        => ExpectOfficeDashboard((officeId, _, _) => captureOfficeId(officeId));
+
+    /// <summary>Captures the officeId AND the division-scope pair the handler resolves (PPDO-127).</summary>
+    private void ExpectOfficeDashboard(Action<int, bool, int?> capture)
     {
         _service.Setup(s => s.GetOfficeDashboardAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Callback((int officeId, int _, CancellationToken _) => captureOfficeId(officeId))
-            .ReturnsAsync((int officeId, int _, CancellationToken _) => MakeOfficeDashboard(officeId));
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback((int officeId, int _, bool seeAll, int? divisionId, CancellationToken _) =>
+                capture(officeId, seeAll, divisionId))
+            .ReturnsAsync((int officeId, int _, bool _, int? _, CancellationToken _) => MakeOfficeDashboard(officeId));
     }
 
     private void ExpectRecentActivity(Action<int?> captureOfficeId)
@@ -120,7 +126,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -134,7 +140,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Office clamp — GetOfficeDashboard (RAL-229, the IDOR) ──────────────────
@@ -202,7 +208,99 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── Division scope — GetOfficeDashboard's per-division breakdown (PPDO-126, PPDO-127) ─────
+    //
+    // Mirrors AllocationFunctions' "whoever may WRITE an office's division split may READ it" rule
+    // (see Permission_Matrix.md), applied to the dashboard's own division band.
+
+    private static User MakeDivisionScopedUser(int officeId, int? divisionId) => new()
+    {
+        Id = Guid.NewGuid(), FullName = "Division Head", Username = "divhead", PasswordHash = "hash",
+        Role = UserRole.Staff, OfficeId = officeId, DivisionId = divisionId,
+        Office = new Office { Id = officeId, OfficeCode = $"OFF{officeId}", IsHostOffice = false },
+    };
+
+    [Fact]
+    public async Task GetOfficeDashboard_AsPpdoUser_SeesEveryDivision()
+    {
+        User caller = MakeUser(officeId: null);
+        Authenticate(caller);
+        bool? seeAll = null; int? capturedDivisionId = -1;
+        ExpectOfficeDashboard((_, s, d) => { seeAll = s; capturedDivisionId = d; });
+
+        HttpResponseData response = await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={ForeignOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(seeAll);
+        Assert.Null(capturedDivisionId);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboard_DepartmentHeadInOwnOffice_SeesEveryDivision()
+    {
+        User caller = MakeDivisionScopedUser(OwnOffice, divisionId: null);
+        Authenticate(caller);
+        _permissions.Setup(p => p.CanManageOfficeSetupAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        bool? seeAll = null; int? capturedDivisionId = -1;
+        ExpectOfficeDashboard((_, s, d) => { seeAll = s; capturedDivisionId = d; });
+
+        HttpResponseData response = await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(seeAll);
+        Assert.Null(capturedDivisionId);
+    }
+
+    /// <summary>
+    /// ⚠️ The bug PPDO-126 fixed, pinned at the handler level: a division head — no
+    /// CanManageOfficeSetup grant — must be clamped to their OWN division, never every division.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeDashboard_DivisionHeadWithoutTheGrant_IsClampedToOwnDivision()
+    {
+        User caller = MakeDivisionScopedUser(OwnOffice, divisionId: 42);
+        Authenticate(caller);
+        _permissions.Setup(p => p.CanManageOfficeSetupAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        bool? seeAll = null; int? capturedDivisionId = -1;
+        ExpectOfficeDashboard((_, s, d) => { seeAll = s; capturedDivisionId = d; });
+
+        HttpResponseData response = await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(seeAll);
+        Assert.Equal(42, capturedDivisionId);
+    }
+
+    /// <summary>
+    /// A Staff caller with no division assigned at all must be clamped to divisionId=null with
+    /// seeAllDivisions=false — the pair the service reads as "show nothing" — never true (which
+    /// would mean "no filter"). Passing this caller's null DivisionId straight through as a lone
+    /// nullable int is exactly the DECISION F trap this two-value return exists to avoid.
+    /// </summary>
+    [Fact]
+    public async Task GetOfficeDashboard_StaffWithNoDivisionAssigned_IsClampedNotWidened()
+    {
+        User caller = MakeDivisionScopedUser(OwnOffice, divisionId: null);
+        Authenticate(caller);
+        _permissions.Setup(p => p.CanManageOfficeSetupAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        bool? seeAll = null; int? capturedDivisionId = -1;
+        ExpectOfficeDashboard((_, s, d) => { seeAll = s; capturedDivisionId = d; });
+
+        HttpResponseData response = await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(seeAll);
+        Assert.Null(capturedDivisionId);
     }
 
     // ── PPDO-only gate — GetDashboard (RAL-230) ───────────────────────────────

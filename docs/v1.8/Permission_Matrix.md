@@ -6,7 +6,7 @@
 > The two are a pair: change a rule and the corresponding row fails until both are updated. A flag
 > added to `IPermissionService` without a row fails the build (`Matrix_CoversEveryFlagOnThePermissionService`).
 >
-> **Read this instead of `PermissionService`.** The model now carries 14 flags across three
+> **Read this instead of `PermissionService`.** The model now carries 15 flags across three
 > mechanisms plus three scope dimensions and one subtractive guard — past the point where "read the
 > code" is a reasonable answer.
 
@@ -89,6 +89,51 @@ blank override means granted. An explicit `false` still turns it off.
 
 The uploaded file contains *every* office's records, so upload is host-office-only by construction.
 
+### 2.3a `CanManageInvestmentPlanningSettings` — config manager in the host office (PPDO-136)
+
+Composed from existing inputs; it has **no override column and no division flag of its own**. The
+override and division inputs below are `CanManageConfig`'s.
+
+| Role | Office | Override (`CanManageConfig`) | Division flag (`CanManageConfig`) | Result |
+|---|---|---|---|---|
+| SuperAdmin | any, or none | — | — | ✅ support access |
+| Admin | host | — | — | ✅ |
+| Admin | **guest**, or none | — | — | ❌ **the office check binds Admin** |
+| Staff | host | `null` | `false` | ❌ |
+| Staff | host | `null` | `true` | ✅ |
+| Staff | host | `true` | `false` | ✅ |
+| Staff | host | `false` | `true` | ❌ |
+| Staff | **guest**, or none | `true` | `true` | ❌ **never, however set** |
+
+It gates the province-wide default fiscal year (`docs/v1.8/Default_Fiscal_Year_Spec.md`), which
+moves every office's Investment Planning pages — so it is PPDO's to set, not any config manager's.
+
+> ⚠️ **Not the same shape as §2.3.** `CanUploadAip` lets every Admin through before it reads the
+> office; this flag reads the office first, so a guest-office Admin — who holds `CanManageConfig` by
+> role — is refused. Only SuperAdmin skips the office check. Pinned by the matrix rows and by
+> `CanManageInvestmentPlanningSettings_NoOffice_OnlySuperAdmin`.
+
+### 2.3b `CanReopenInvestmentProposal` — per office (PPDO-155)
+
+Reopens a Final investment proposal back to Draft (`Investment_Proposal_Spec.md` decision 5). Like
+2.3a it has **no override column of its own**: the override input below is
+`CanReviewBudgetPlanning`'s, the department-head grant. Unlike every other flag, it takes the
+**office** of the proposal as an argument.
+
+| Role | Caller's office | Proposal's office | Override (`CanReviewBudgetPlanning`) | Result |
+|---|---|---|---|---|
+| SuperAdmin | any | any | — | ✅ support access |
+| Admin | host | any | — | ✅ |
+| Admin | guest | its own | `true` | ✅ as that office's department head |
+| Admin | guest | any | `null` | ❌ not by role |
+| Staff | any | its own | `true` | ✅ the office's department head |
+| Staff | **host** | **another office** | `true` | ❌ **the §4a trap: compared to `users.office_id`, not `OfficeScope`** |
+| Staff | any | any | `null` / `false` | ❌ encoders finalize but never reopen |
+
+Pinned by the matrix rows (own office), `HostOfficeDeptHead_CannotReopenAnotherOffice` and
+`CanReopenInvestmentProposal_AnotherOffice`. The cross-office reviewer never reaches it: reopen is
+a write, so `ReviewerWriteGuard` refuses them first (§5).
+
 ### 2.4 Per-user grants
 
 `CanManagePpdoAllocation` · `CanManageOfficeCeilings` · `CanReviewBudgetPlanning` · `CanReviewAllOffices` ·
@@ -115,7 +160,7 @@ for each pair that could plausibly be conflated:
 | `CanReviewBudgetPlanning` | An office's reviewer — the department head who checks its work | PPDO-3 |
 | `CanReviewAllOffices` | Designated PPDO users who review **every** office's submissions | PPDO-5 |
 | `CanManageApiKeys` | Named person who issues/revokes partner API keys under Configuration → API Access | PPDO-15 |
-| `CanManageOfficeSetup` | A department head who sets up **their own office**: its division split, programme → division assignment, divisions and fund sources | PPDO-107 |
+| `CanManageOfficeSetup` | A department head who sets up **their own office**: its division split, programme → division assignment, divisions, fund sources, and (PPDO-135) which division each of their own Staff belongs to | PPDO-107, PPDO-135 |
 
 > ⚠️ `CanManageOfficeCeilingsAsync` deliberately does **not** fall back to `CanManagePpdoAllocationAsync`.
 > OR-ing them would hand every PPDO finance officer authority over other offices' ceilings.
@@ -175,6 +220,55 @@ query that forgets `.Include(...)` degrades to **more** restrictive, never to fu
 
 > ⚠️ **Consume both axes together.** For a guest-office caller the division axis reads "every
 > division", which is only safe because the office axis pins them to one office in the same query.
+
+### 3.2 The AIP division lock — who may write which activity (PPDO-148)
+
+`docs/v1.8/Division_Submit_Spec.md` decisions 2, 5 and 6. Not a flag: a rule over *who the caller
+is in this office* × *whose activity it is* × *whether that division has submitted*. It applies only
+where the office uses the division flow: an **FY2028+** record and an office with **at least one
+active division**. Everywhere else, including every FY ≤ 2027 record, the rules are today's.
+
+**Department head** here means Admin/SuperAdmin, or the holder of `CanReviewBudgetPlanning` whose
+`office_id` is **this** office (an office comparison, never `OfficeScope` — a PPDO reviewer is not
+every office's head). **Encoder in A** means Staff whose `division_id` is an active division of this
+office. A Staff member whose division belongs to another office — a PPDO user looking at a guest
+office, say — counts as having none.
+
+| Caller | Activity | Its division Draft | Its division Submitted |
+|---|---|---|---|
+| Encoder in A | A's | ✅ edit | ❌ "…submitted to the department head" |
+| Encoder in A | B's | ❌ "belongs to B" | ❌ |
+| Encoder in A | untagged | ❌ "no division yet" | — |
+| Staff, no division in this office | any | ❌ read-only | ❌ |
+| Department head | any | ✅ | ✅ (decision 2) |
+| Admin / SuperAdmin | any | ✅ | ✅ |
+| Office without divisions, or FY ≤ 2027 | any | today's rules | today's rules |
+
+| Action | Who |
+|---|---|
+| Create an activity | Encoder: tagged with their own division, and any client value is ignored; refused once their division has submitted. Department head / Admin: must name an active division of this office. |
+| Re-tag (`PUT …/activities/{id}/division`) | Department head / Admin only, in any division state. Everyone else gets **403**. |
+| Delete a program, project or office group | Encoder: only if every activity underneath is their own and not yet submitted. Department head: always. |
+| Rename or add to a program/project | Anyone who may write the office, except Staff with no division here. |
+| Expenditure lines | Follow their activity's row above. |
+
+⚠️ **The lock only refuses, and it runs after the office-state guard** (`AipWriteGuard.CheckAsync`).
+A department head is exempt from the division rule, not from the office rule: once the office is
+with PPDO, nobody writes. Pinned by `PermissionMatrixTests.DivisionLock_*`,
+`AipServiceTests.EditActivity_ByDepartmentHead_OnceTheOfficeIsWithPpdo_IsStillRefused` and
+`AipExpenditureDivisionLockTests`.
+
+**Division submit and return (PPDO-149).** Both act on the caller's **own** office only, as every
+office hand-off does. Another office's division answers 404, the same as a missing one (PPDO-46).
+
+| Action | Endpoint gate | Who, in the service |
+|---|---|---|
+| List divisions (`GET …/offices/{id}/divisions`) | `CanAccessBudgetPlanning` | Readable by anyone `OfficeScope.ResolveForReview` lets see the office. The `canSubmit` and `canReturn` flags are only ever true for the office's own people |
+| Submit a division | `CanAccessBudgetPlanning`, through `AuthorizeWriteAsync` like the office submit | That division's own encoder, or the department head / Admin on its behalf. Anyone else gets **403** |
+| Return a division | `CanReviewBudgetPlanning`, through `AuthorizeAsync` like `return-to-encoder` | The department head only. ⚠️ **A plain Admin is refused**, as they are for the office-level return (spec T3 note). SuperAdmin resolves the grant |
+
+Pinned by `AipDivisionSubmitServiceTests` and
+`ReviewerWriteGuardCoverageTests.ReturnDivision_IsGatedOnTheDepartmentHeadFlag`.
 
 ---
 
@@ -252,6 +346,74 @@ not GSO's rows plus everyone else's.
 > may write while their office holds at least one AIP group in an office-editable state, else
 > **409**. PPDO is never state-gated — it sets offices up across the whole cycle. The programme
 > write has no fiscal year at all (assignments are permanent across years), so no state can gate it.
+
+### `CanManageOfficeSetup`'s reads — whoever may WRITE an office's division split may READ it (PPDO-126, PPDO-127)
+
+Two read surfaces show an office's per-division breakdown, and both used to gate on
+`CanManagePpdoAllocation` — host-office-exclusive — rather than on who could actually see the
+office in question:
+
+| Surface | Endpoint |
+|---|---|
+| Allocation page's division-allocation panel | `GET .../allocation/divisions`, `.../allocation/divisions/all-funds` |
+| Dashboard's per-division band (`DivisionTable`) | `GET .../dashboard/office` |
+
+Both now resolve the same three-way rule:
+
+| Caller | Sees |
+|---|---|
+| Host-office (PPDO) caller | Every division, of any office |
+| Department head (`CanManageOfficeSetup`) — their OWN office | Every division of that office |
+| Anyone else (a division head) | Their own division's row only |
+| A division head with no division assigned | **Nothing** — never every row |
+
+⚠️ **The last row is the one this class of bug keeps producing.** Before PPDO-126, a department
+head fell into the "division head" branch (since `CanManagePpdoAllocation` is host-only) and was
+filtered to `DivisionId == caller.DivisionId`. Guest-office users had no division at all until
+PPDO-123, and the filter column is non-nullable, so **no row could ever match** — the office would
+save its allocations, get a truthful "Saved", reload, and find every field blank. The write had
+worked the whole time; the read was hiding it. The fix is the rule above, not a bigger clamp: a
+division-scoped caller with a *real* division is still narrowed to it, exactly as before.
+
+`AllocationFunctions.ResolveSetupScopeAsync`/`ClampAllocationsToScopeAsync` and
+`BudgetPlanningDashboardFunctions.ResolveOfficeDivisionScopeAsync` implement the same rule
+independently (one per endpoint family) rather than sharing a helper — the Allocation page's
+version also carries the D10 state gate for its WRITE half, which the read-only dashboard has no
+equivalent of, so a shared abstraction would need a flag distinguishing the two callers anyway.
+Pinned by `BudgetPlanningDashboardFunctionsTests` (dashboard) and `AllocationFunctionsTests`
+(allocation).
+
+### `CanManageOfficeSetup`'s third door — assigning divisions to a Staff member (PPDO-135)
+
+`GET /api/office/users` and `PUT /api/office/users/{id}/division` are gated on
+`CanManageOfficeSetup` **alone**, never OR'd with `CanManageUsers`. That is a deliberate,
+narrower door than User Management's own — see the ticket's own warning:
+
+> Granting the existing flag would be a privilege escalation, not a shortcut. `GET /api/users`
+> has no office axis and the write guard (`CanRequesterManageTarget`) checks **role only**, so a
+> department head holding `CanManageUsers` could list and edit Staff in **every** office
+> province-wide, including PPDO's.
+
+So this is a separate, deliberately smaller pair of endpoints rather than a widened
+`CanManageUsers`:
+
+| What it can do | What it cannot do |
+|---|---|
+| List the Staff in the caller's OWN office (slim `OfficeUserDto` — no email, no override flags) | See or touch a user in any other office |
+| Set or clear one Staff member's division | Create a user, reset a password, change a role, or touch any permission override |
+
+Both rules live in `UserService.SetOfficeUserDivisionAsync`, not in the Function handler or the
+UI: the target's `OfficeId` must equal the requester's own (an OFFICE comparison — deliberately
+**not** `CanRequesterManageTarget`'s role-only check, which would let this leak exactly the way
+the ticket warned about), and a non-null division id must belong to that same office
+(`ValidateDivisionAsync`'s existing `requireOfficeId` guard, reused rather than re-derived). A
+target who is SuperAdmin/Admin is refused — those roles carry no division. Pinned by
+`UserServiceTests.SetOfficeUserDivisionAsync_TargetInAnotherOffice_ReturnsForbidden` and its
+siblings, red-tested against the office comparison specifically (this project has shipped three
+cross-office leaks already: RAL-229, PPDO-18, PPDO-30).
+
+Refuses rather than clamps, same reasoning as `AllocationFunctions`: silently reassigning a
+user's division to keep the request "working" is a worse failure than a 403.
 
 ### `CanManagePpdoAllocation` is exclusive to host-office users
 
@@ -334,4 +496,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148)*

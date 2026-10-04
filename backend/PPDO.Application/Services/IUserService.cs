@@ -169,4 +169,36 @@ public interface IUserService
     Task<ServiceResult<bool>> AcknowledgePasswordResetAsync(
         User caller,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Users belonging to <paramref name="officeId"/>, slim (PPDO-135) — the office-scoped
+    /// division-assignment screen a department head reaches through <c>CanManageOfficeSetup</c>.
+    /// The Function handler passes the CALLER's own office id, never one read off the request, so
+    /// there is nothing here for a caller to widen.
+    /// </summary>
+    Task<IReadOnlyList<OfficeUserDto>> GetByOfficeIdAsync(
+        int officeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets or clears (null) a Staff user's division — PPDO-135's narrow write. Everything else
+    /// about the target user is untouched; this is deliberately not a partial <see cref="UpdateAsync"/>.
+    ///
+    /// Enforces, in order:
+    ///   1. <paramref name="targetId"/> belongs to the SAME office as <paramref name="requester"/> —
+    ///      an office comparison, not the role comparison <c>CanRequesterManageTarget</c> does, since
+    ///      a department head must never reach a Staff member outside their own office;
+    ///   2. the target is not SuperAdmin/Admin — those roles carry no division;
+    ///   3. a non-null division id belongs to that same office (<c>ValidateDivisionAsync</c>).
+    ///
+    /// Returns:
+    ///   <see cref="ServiceErrorCode.NotFound"/>   — target user not found.
+    ///   <see cref="ServiceErrorCode.Forbidden"/>  — target is not in the requester's own office.
+    ///   <see cref="ServiceErrorCode.BadRequest"/>  — target is SuperAdmin/Admin, or the division id
+    ///                                                is invalid, inactive, or belongs to another office.
+    /// </summary>
+    Task<ServiceResult<OfficeUserDto>> SetOfficeUserDivisionAsync(
+        User requester,
+        Guid targetId,
+        int? divisionId,
+        CancellationToken cancellationToken = default);
 }

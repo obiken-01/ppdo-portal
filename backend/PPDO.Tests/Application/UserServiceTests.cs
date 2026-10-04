@@ -1733,4 +1733,181 @@ public sealed class UserServiceTests
 
     private static bool HasProperty(object snapshot, string name)
         => snapshot.GetType().GetProperty(name) is not null;
+
+    // ── GetByOfficeIdAsync / SetOfficeUserDivisionAsync (PPDO-135) ───────────────
+
+    private const int GuestOfficeId  = 7;   // matches DefaultDivisions()'s division 5
+    private const int OtherOfficeId  = 8;   // an office the requester does NOT belong to
+
+    private static User MakeOfficeStaff(int officeId, int? divisionId = null) => new()
+    {
+        Id       = Guid.NewGuid(),
+        FullName = "Office Staff",
+        Username = "office.staff",
+        PasswordHash = "hash",
+        Role     = UserRole.Staff,
+        OfficeId = officeId,
+        DivisionId = divisionId,
+        Division = divisionId is int did ? new Division { Id = did, OfficeId = officeId, Name = "Office Division" } : null,
+        IsActive = true,
+    };
+
+    private static User MakeDepartmentHead(int officeId) => MakeOfficeStaff(officeId, divisionId: null);
+
+    [Fact]
+    public async Task GetByOfficeIdAsync_ReturnsOnlyThatOfficesUsers_AsSlimDtos()
+    {
+        User target = MakeOfficeStaff(GuestOfficeId, divisionId: 5);
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByOfficeIdWithDivisionAsync(GuestOfficeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<User> { target });
+
+        IReadOnlyList<OfficeUserDto> result = await BuildSut(repo).GetByOfficeIdAsync(GuestOfficeId);
+
+        OfficeUserDto dto = Assert.Single(result);
+        Assert.Equal(target.Id, dto.Id);
+        Assert.Equal(5, dto.DivisionId);
+        Assert.Equal("Office Division", dto.Division);
+
+        // The repo call itself is the SQL-side scope — GetByOfficeIdAsync must never fall back to
+        // GetAllWithDivisionAsync and filter in memory (CLAUDE.md).
+        repo.Verify(r => r.GetAllWithDivisionAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_TargetNotFound_ReturnsNotFound()
+    {
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(MakeDepartmentHead(GuestOfficeId), Guid.NewGuid(), 5);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    /// <summary>
+    /// ⚠️ The one this ticket exists for. A department head must NEVER reach a Staff member outside
+    /// their own office — CanRequesterManageTarget's ROLE-only check would let this through, which
+    /// is exactly why SetOfficeUserDivisionAsync does not call it. Red-tested: deleting the office
+    /// comparison in the service must make this fail (see CLAUDE.md / red-test-every-guard).
+    /// </summary>
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_TargetInAnotherOffice_ReturnsForbidden()
+    {
+        User requester = MakeDepartmentHead(GuestOfficeId);
+        User target = MakeOfficeStaff(OtherOfficeId);
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: 5);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_RequesterHasNoOffice_ReturnsForbidden()
+    {
+        // DECISION F — unassigned sees nothing, never "every office".
+        User requester = MakeStaff();
+        requester.OfficeId = null;
+        User target = MakeOfficeStaff(GuestOfficeId);
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: null);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_TargetIsAdmin_ReturnsBadRequest()
+    {
+        User requester = MakeDepartmentHead(GuestOfficeId);
+        User target = MakeOfficeStaff(GuestOfficeId);
+        target.Role = UserRole.Admin;
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: null);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_DivisionBelongsToAnotherOffice_ReturnsBadRequest()
+    {
+        // Division 2 belongs to office 100 (DefaultDivisions), not GuestOfficeId — pins
+        // ValidateDivisionAsync's requireOfficeId argument, per the ticket's acceptance criterion.
+        User requester = MakeDepartmentHead(GuestOfficeId);
+        User target = MakeOfficeStaff(GuestOfficeId);
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: 2);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_ValidDivisionInSameOffice_SetsIt()
+    {
+        User requester = MakeDepartmentHead(GuestOfficeId);
+        User target = MakeOfficeStaff(GuestOfficeId);
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: 5);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(5, result.Value!.DivisionId);
+        Assert.Equal(5, target.DivisionId);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_NullDivisionId_ClearsIt()
+    {
+        User requester = MakeDepartmentHead(GuestOfficeId);
+        User target = MakeOfficeStaff(GuestOfficeId, divisionId: 5);
+        Mock<IUserRepository> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: null);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.DivisionId);
+        Assert.Null(target.DivisionId);
+    }
+
+    [Fact]
+    public async Task SetOfficeUserDivisionAsync_NeverReachesCanRequesterManageTarget_OfficeAxisIsWhatGuardsThis()
+    {
+        // A SuperAdmin requester with no office at all is scoped to nothing by the office check —
+        // proving the guard is the OFFICE comparison, not any role-based bypass a SuperAdmin might
+        // otherwise get elsewhere in this service.
+        User requester = MakeSuperAdmin();
+        requester.OfficeId = null;
+        User target = MakeOfficeStaff(GuestOfficeId);
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(target);
+
+        ServiceResult<OfficeUserDto> result =
+            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: null);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
 }

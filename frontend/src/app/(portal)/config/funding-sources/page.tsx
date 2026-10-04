@@ -41,8 +41,10 @@ import {
   createFundingSource,
   deactivateFundingSource,
   exportFundingSourcesCsv,
+  getFundingSourceOwnershipImpact,
   importFundingSourcesCsv,
   listFundingSources,
+  listOffices,
   updateFundingSource,
 } from "@/lib/config";
 import DataTable, { type Column } from "@/components/ui/DataTable";
@@ -58,6 +60,7 @@ import type {
   ActiveFilter,
   CsvImportResult,
   FundingSourceResponse,
+  OfficeResponse,
   UpsertFundingSourceRequest,
 } from "@/types";
 
@@ -104,6 +107,11 @@ interface FormState {
   color: string;
   noColor: boolean;
   aliases: string;
+  /**
+   * Owning office as a select value — "" is province-wide (shared). Config managers only; a
+   * department head's fund is always their own office's, and the server pins it (PPDO-128).
+   */
+  officeId: string;
 }
 
 const blankForm = (): FormState => ({
@@ -113,6 +121,7 @@ const blankForm = (): FormState => ({
   color: "#D5E8D4",
   noColor: true,
   aliases: "",
+  officeId: "",
 });
 
 // ---------------------------------------------------------------------------
@@ -132,6 +141,8 @@ export default function FundingSourceConfigPage() {
    */
   const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
   const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
+  // For the config manager's ownership picker (PPDO-128). Never loaded for a department head.
+  const [offices, setOffices] = useState<OfficeResponse[]>([]);
 
   // Data
   const [sources, setSources] = useState<FundingSourceResponse[]>([]);
@@ -172,6 +183,8 @@ export default function FundingSourceConfigPage() {
         if (!data.canManageConfig) {
           setOwnOfficeOnly(true);
           setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
+        } else {
+          listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
         }
       })
       .catch(() => router.replace("/login"));
@@ -225,6 +238,7 @@ export default function FundingSourceConfigPage() {
       color: source.color ?? "#D5E8D4",
       noColor: source.color == null,
       aliases: source.aliases ?? "",
+      officeId: source.officeId != null ? String(source.officeId) : "",
     });
     setFormError(null);
     setCodeError(null);
@@ -275,8 +289,53 @@ export default function FundingSourceConfigPage() {
       // Modal does not edit status; preserve it on update, default active on create.
       isActive: editTarget ? editTarget.isActive : true,
       aliases: form.aliases.trim() || null,
+      // ⚠️ Always sent by a config manager, on update as well as create (PPDO-128). The server now
+      // READS it on update, so omitting it would make every edit turn an office's fund into a
+      // shared one. A department head sends nothing — the server pins their own office.
+      ...(ownOfficeOnly ? {} : { officeId: form.officeId ? Number(form.officeId) : null }),
     };
 
+    // ── PPDO-128: warn, then allow ──
+    // Limiting a fund to one office takes it out of every other office's pickers. Ask the server who
+    // would lose it FIRST, and only save once PPDO has seen the per-year split and confirmed. The
+    // server refuses an unconfirmed change anyway, so this is the explanation, not the guard.
+    const targetOfficeId = body.officeId ?? null;
+    const narrowing = editTarget != null && !ownOfficeOnly
+      && targetOfficeId !== null && targetOfficeId !== editTarget.officeId;
+    if (narrowing) {
+      setSaving(true);
+      setFormError(null);
+      try {
+        const impact = await getFundingSourceOwnershipImpact(editTarget.id, targetOfficeId);
+        if (impact.otherOfficeLines > 0) {
+          const office = offices.find((o) => o.id === targetOfficeId);
+          const years = impact.byFiscalYear.map((y) => `FY${y.fiscalYear}: ${y.lines}`).join(", ");
+          setConfirm({
+            title: "Other offices use this fund",
+            message:
+              `${body.code} is used on ${impact.otherOfficeLines} AIP/WFP line` +
+              `${impact.otherOfficeLines === 1 ? "" : "s"} in other offices (${years}). ` +
+              `Limiting it to ${office?.officeCode ?? "one office"} removes it from their fund pickers. ` +
+              "Their saved lines keep showing it, but re-saving one of them will ask for another fund.",
+            confirmLabel: "Limit anyway",
+            variant: "danger",
+            onConfirm: () => { setConfirm(null); void saveFund({ ...body, confirmOwnershipChange: true }); },
+            onClose: () => setConfirm(null),
+          });
+          setSaving(false);
+          return;
+        }
+      } catch (err) {
+        setFormError(configErrorMessage(err, "Could not check who uses this fund. Please try again."));
+        setSaving(false);
+        return;
+      }
+    }
+
+    await saveFund(body);
+  }
+
+  async function saveFund(body: UpsertFundingSourceRequest) {
     setSaving(true);
     setFormError(null);
     try {
@@ -334,6 +393,8 @@ export default function FundingSourceConfigPage() {
         color: source.color,
         isActive: true,
         aliases: source.aliases,
+        // ⚠️ Echo the current owner (PPDO-128) — omitting it would reactivate the fund as shared.
+        officeId: source.officeId,
       });
       toast.success("Funding source reactivated", `${source.code} is now active.`);
       await load();
@@ -701,6 +762,38 @@ export default function FundingSourceConfigPage() {
                 </label>
               </div>
             </div>
+
+            {/* Owner — config managers only (PPDO-128) */}
+            {!ownOfficeOnly && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Shared with</label>
+                <select
+                  value={form.officeId}
+                  onChange={(e) => setForm((f) => ({ ...f, officeId: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                >
+                  <option value="">All offices (shared)</option>
+                  {offices.map((o) => (
+                    <option key={o.id} value={o.id}>{o.officeCode} — {o.officeName} only</option>
+                  ))}
+                  {/* The current owner stays selectable even if that office is now inactive — a
+                      select missing its own value would silently show and save "shared". */}
+                  {editTarget?.officeId != null && !offices.some((o) => o.id === editTarget.officeId) && (
+                    <option value={editTarget.officeId}>
+                      {editTarget.officeCode ?? editTarget.officeId} — {editTarget.officeName ?? ""} only
+                    </option>
+                  )}
+                </select>
+                {/* Said before saving, because the effect lands on other offices, not on this form. */}
+                {editTarget && form.officeId !== (editTarget.officeId != null ? String(editTarget.officeId) : "") && (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    {form.officeId
+                      ? "Every other office will stop seeing this fund. If another office already uses it, you will be asked to confirm."
+                      : "Every office will be able to see and pick this fund."}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Aliases */}
             <div>

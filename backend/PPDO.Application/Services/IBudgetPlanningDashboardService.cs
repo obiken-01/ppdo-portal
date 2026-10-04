@@ -31,11 +31,20 @@ public interface IBudgetPlanningDashboardService
 
     /// <summary>
     /// Office-scoped readiness hub (RAL-60): allocation-setup summary, LDIP program
-    /// count (stubbed until RAL-61 adds ldip_records.office_id), and AIP presence +
-    /// PPA/activity count for the given office+FY.
+    /// count (stubbed until RAL-61 adds ldip_records.office_id), AIP presence +
+    /// PPA/activity count, and the per-division breakdown (PPDO-127) for the given office+FY.
+    ///
+    /// <paramref name="seeAllDivisions"/>/<paramref name="divisionId"/> are resolved and clamped by
+    /// the caller (the Functions layer), same contract as <see cref="GetDashboardAsync"/>'s
+    /// divisionId — except expressed as an explicit pair rather than overloading null, because null
+    /// already means "unassigned" for <see cref="User.DivisionId"/> and reusing it here to also mean
+    /// "no filter" would silently show a divisionless Staff caller every division instead of none
+    /// (DECISION F). <paramref name="divisionId"/> is only read when
+    /// <paramref name="seeAllDivisions"/> is false.
     /// </summary>
     Task<OfficeDashboardDto> GetOfficeDashboardAsync(
-        int officeId, int fiscalYear, CancellationToken cancellationToken = default);
+        int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// One row per office in <paramref name="caller"/>'s cross-office scope, for the dashboard's

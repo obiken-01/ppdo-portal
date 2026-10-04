@@ -34,12 +34,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMe } from "@/lib/me-cache";
+import { useToast } from "@/components/ui/Toast";
 import {
   listAip, getAipById, getAipReadiness, submitAip, submitAipToPpdo, returnAipToEncoder,
-  aipErrorMessage,
+  getAipOfficeDivisions, submitAipDivision, returnAipDivision, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
-import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
+import DivisionTable from "../../DivisionTable";
+import { AipUnsavedChangesProvider, useAipLeaveGuard } from "@/components/aip/entry/AipUnsavedChanges";
+import { ENTERED_FISCAL_YEAR_OPTIONS, FIRST_ENTERED_FISCAL_YEAR, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
+import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
 import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-workflow";
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
@@ -50,6 +55,11 @@ import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
 import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
 import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
 import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
+import { buildDivisionView, isUnassignedEncoder } from "@/components/aip/entry/AipDivisionParts";
+import AipDivisionsPanel from "@/components/aip/entry/AipDivisionsPanel";
+import ProposalStrip from "@/components/proposals/ProposalStrip";
+import { getProposalProjects } from "@/lib/investment-proposals";
+import { isCommentOnlyReviewer } from "@/lib/budget-planning-access";
 import {
   addActivityToTree, addProjectToTree, applyActivityTotals, patchActivity, patchProject,
 } from "@/components/aip/entry/AipEntryTree";
@@ -58,13 +68,15 @@ import {
   type AipSelectionIds,
 } from "@/components/aip/entry/AipEntrySelection";
 import type {
+  ProposalProjectOption,
   AipRecordDetail, AipOfficeDetail, AipProjectDetail, AipActivityDetail,
   AipDeleteResult, AipCommentNodeType,
   AccountResponse, FundingSourceResponse, OfficeResponse, AipReadiness, PriceIndexPickerItem,
+  DivisionSummary, AipDivisionStatus, AipDivisionStatusList,
 } from "@/types";
 
 /** FY2028 onward. The entry process does not exist below the break year. */
-const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+const YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
 
 /**
  * Whether an office that already HAS programs is offered "+ Add programs" (Ralph, 2026-09-16).
@@ -84,7 +96,16 @@ const YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
  */
 const SHOW_ADD_PROGRAMS_WHEN_POPULATED = false;
 
+/** PPDO-166 — the unsaved-changes guard wraps the whole page, so every exit below can ask it. */
 export default function AipEntryPage() {
+  return (
+    <AipUnsavedChangesProvider>
+      <AipEntryPageInner />
+    </AipUnsavedChangesProvider>
+  );
+}
+
+function AipEntryPageInner() {
   const me = useMe((m) => m.canAccessBudgetPlanning);
   // The department-head reviewer's grant. Office scoping is not in the flag — the server narrows
   // to the caller's own office — so this only decides whether the second submit is offered here.
@@ -103,9 +124,15 @@ export default function AipEntryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedYear = Number(searchParams.get("fiscalYear"));
-  const [fiscalYear, setFiscalYear] = useState(
-    YEARS.includes(requestedYear) ? requestedYear : FIRST_ENTERED_FISCAL_YEAR
+  // PPDO-145 — the URL's year wins; with none, the admin default when it is an entry year, else
+  // the break year. ⚠️ With no URL year nothing year-dependent loads until the default has
+  // settled (`yearSettled`), so the page never shows one year and then jumps to another.
+  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const [pickedYear, setPickedYear] = useState<number | null>(
+    YEARS.includes(requestedYear) ? requestedYear : null
   );
+  const yearSettled = pickedYear != null || defaultReady;
+  const fiscalYear = pickedYear ?? resolveEnteredFiscalYear(null, defaultFiscalYear);
 
   // ⚠️ **The selection lives in the URL** (spec decision 5) — a reload keeps the encoder's place,
   // the returned-work banner and the review search can deep-link to a node, and "Change activity"
@@ -144,8 +171,32 @@ export default function AipEntryPage() {
   const [notOpened, setNotOpened] = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+
+  /**
+   * PPDO-151 — where this office's divisions stand (`Division_Submit_Spec.md` §6.1).
+   *
+   * ⚠️ Fetched after readiness and **failing on its own**: a division-status error must not blank
+   * the page, but it must not be guessed either. Until it has loaded, the office is treated as
+   * read-only (`divisionsKnown`), because "no divisions" and "not loaded" would otherwise look
+   * the same and the first one means editable.
+   */
+  const [divisions, setDivisions] = useState<AipDivisionStatusList | null>(null);
+  const [divisionsError, setDivisionsError] = useState<string | null>(null);
+  const [divisionsLoading, setDivisionsLoading] = useState(false);
 
   const officeId = me?.officeId ?? null;
+
+  // PPDO-127 — the office's own per-division allocation breakdown, collapsed by default so it
+  // doesn't fight this page's own "one node at a time" decluttering (PPDO-89). Fetched
+  // independently of `record`/readiness: it comes from the Dashboard payload, not the AIP one.
+  const [divisionRows, setDivisionRows] = useState<DivisionSummary[]>([]);
+  // PPDO-150 — the untagged "No division" row, from the same payload.
+  const [noDivisionRow, setNoDivisionRow] = useState<DivisionSummary | null>(null);
+  const [divisionRowsLoading, setDivisionRowsLoading] = useState(true);
+  // PPDO-165 — see the refetch effect below.
+  const [divisionPanelOpen, setDivisionPanelOpen] = useState(false);
+  const [divisionRowsStale, setDivisionRowsStale] = useState(false);
 
   // Only the caller's own office's groups.
   //
@@ -163,6 +214,13 @@ export default function AipEntryPage() {
   );
 
   const programOptions = useMemo(() => listAipProgramOptions(myGroups), [myGroups]);
+
+  // PPDO-152 — the untagged callout's list, from the tree already loaded (no second fetch).
+  const untaggedActivities = useMemo(
+    () => myGroups.flatMap((g) => g.programs.flatMap((p) => p.projects.flatMap((j) => j.activities)))
+      .filter((a) => a.divisionId == null),
+    [myGroups]
+  );
 
   /**
    * The selected nodes, resolved against the loaded tree.
@@ -206,24 +264,76 @@ export default function AipEntryPage() {
   // The selection mirrored back into the URL. `scroll: false` — a replace that jumped the page to
   // the top on every pick would undo the reason the panel is on screen.
   useEffect(() => {
+    // Not before the year is known — writing the fallback year into the URL would then pin it.
+    if (!yearSettled) return;
     const q = new URLSearchParams({ fiscalYear: String(fiscalYear) });
     if (ids.programId != null) q.set("programId", String(ids.programId));
     if (ids.projectId != null) q.set("projectId", String(ids.projectId));
     if (ids.activityId != null) q.set("activityId", String(ids.activityId));
     router.replace(`/budget-planning/aip/entry?${q.toString()}`, { scroll: false });
-  }, [router, fiscalYear, ids]);
+  }, [router, fiscalYear, ids, yearSettled]);
 
   const workflowStatus = readiness?.workflowStatus ?? AIP_WORKFLOW.draft;
   // ↩️ Was `=== "Draft"` until PPDO-70. The office keeps editing through department review and
   // after a PPDO return; the lock falls when the work reaches PPDO. Mirrors the server's
   // AipWorkflowStatus.IsOfficeEditable — change both together.
   const canEdit = isOfficeEditable(workflowStatus);
-  const holder = describeAipHolder(workflowStatus);
+  const holder = describeAipHolder(workflowStatus, divisions?.hasDivisions === true);
 
-  // The division filter applies to the HOST office only, and only when the user has a division —
-  // the same condition AipReadScope uses. A guest office is never division-filtered, so telling
-  // them about it would be a lie.
-  const divisionFiltered = me?.isHostOffice === true && me.divisionId != null && !!me.division;
+  // PPDO-151 — the server's own department-head test (`IsDepartmentHeadAsync`): Admin/SuperAdmin or
+  // the review grant. Only ever about the caller's own office, which is the only one edited here.
+  const isHead = canReview || me?.role === "Admin" || me?.role === "SuperAdmin";
+  const divisionView = useMemo(
+    () => buildDivisionView(divisions, me?.divisionId ?? null, isHead),
+    [divisions, me?.divisionId, isHead]
+  );
+  const divisionsKnown = divisions != null;
+  // ⚠️ The office-level gate every panel receives. An activity narrows it further by its own
+  // server-computed `canEdit` (AipSelectedPanel), so this only ever takes editability away.
+  const officeCanEdit = canEdit && divisionsKnown && !isUnassignedEncoder(divisionView);
+
+  // ── Demo 2.15 (PPDO-159) — the Investment proposal strip in the project panel (spec §6.4) ──
+  //
+  // ⚠️ ONE call for the office and year, mapped by project, never one per project. Re-read when a
+  // project panel is opened (the selected project changes), not after every edit: a proposal created
+  // from the strip navigates away, and one created elsewhere shows on the next open.
+  //
+  // ⚠️ Fails silently: on an error the map stays null and the strip is left out. The panel works
+  // without it, and the Investment Proposals list is the way in.
+  const [proposalOptions, setProposalOptions] = useState<Map<number, ProposalProjectOption> | null>(null);
+  const openProjectId = ids.projectId;
+  useEffect(() => {
+    if (officeId == null || openProjectId == null || !yearSettled) return;
+    let live = true;
+    getProposalProjects(fiscalYear, officeId)
+      .then((list) => { if (live) setProposalOptions(new Map(list.map((o) => [o.aipProjectId, o]))); })
+      .catch(() => { if (live) setProposalOptions(null); });
+    return () => { live = false; };
+  }, [officeId, fiscalYear, openProjectId, yearSettled]);
+  // Create is the server's to refuse; these two would only ever get a 403, so they never see it.
+  const proposalReadOnly = (me != null && isCommentOnlyReviewer(me)) || isUnassignedEncoder(divisionView);
+
+  // Mirrors AipReadScope.DivisionNarrows (PPDO-134): any office's Staff member with a division
+  // assigned is narrowed to it, host or guest alike. A guest office's Staff member with NO
+  // division is not narrowed — most guest offices have none configured yet, and this banner would
+  // be a lie for them ("assigned to X" when nothing is assigned). Admins/SuperAdmins are never
+  // narrowed regardless of office, so `me.division` being set is what actually gates this.
+  const divisionFiltered = me?.divisionId != null && !!me.division;
+
+  /** PPDO-151 — never throws; an error lands in `divisionsError` and keeps the page read-only. */
+  const loadDivisions = useCallback(async (aipId: number) => {
+    if (officeId == null) return;
+    setDivisionsLoading(true);
+    setDivisionsError(null);
+    try {
+      setDivisions(await getAipOfficeDivisions(aipId, officeId));
+    } catch {
+      setDivisions(null);
+      setDivisionsError("Could not load division status.");
+    } finally {
+      setDivisionsLoading(false);
+    }
+  }, [officeId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -231,6 +341,8 @@ export default function AipEntryPage() {
     setNotOpened(false);
     setRecord(null);
     setReadiness(null);
+    setDivisions(null);
+    setDivisionsError(null);
     try {
       const list = await listAip({ fiscalYear });
       const open = list.find((r) => r.status !== "Archived");
@@ -240,14 +352,17 @@ export default function AipEntryPage() {
       const detail = await getAipById(open.id);
       setRecord(detail);
       setReadiness(await getAipReadiness(open.id));
+      // Inside the skeleton's window, so the strip arrives with the checklist rather than after it.
+      await loadDivisions(open.id);
     } catch (e) {
       setError(aipErrorMessage(e, "Could not load the AIP for this fiscal year."));
     } finally {
       setLoading(false);
     }
-  }, [fiscalYear]);
+  }, [fiscalYear, loadDivisions]);
 
-  useEffect(() => { void load(); }, [load]);
+  // The skeleton (`loading` starts true) covers the wait for the default year.
+  useEffect(() => { if (yearSettled) void load(); }, [load, yearSettled]);
 
   // Reference data, fetched once and off the critical path — the page renders without it.
   //
@@ -264,9 +379,58 @@ export default function AipEntryPage() {
       .finally(() => setPriceIndexLoading(false));
   }, [officeId]);
 
+  // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
+  // PPDO finance sees every division of this office, anyone else sees only their own division row.
+  const fetchDivisionRows = useCallback(() => {
+    if (officeId == null) return Promise.reject(new Error("No office."));
+    return me?.isHostOffice
+      ? getDashboard(fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }))
+      : getOfficeDashboard(officeId, fiscalYear).then((d) => ({ rows: d.byDivision, none: d.noDivision ?? null }));
+  }, [officeId, fiscalYear, me?.isHostOffice]);
+
+  useEffect(() => {
+    if (!yearSettled) return;
+    if (officeId == null) { setDivisionRowsLoading(false); return; }
+    setDivisionRowsLoading(true);
+    setDivisionRowsStale(false);
+    fetchDivisionRows()
+      .then(({ rows, none }) => { setDivisionRows(rows); setNoDivisionRow(none); })
+      .catch(() => { setDivisionRows([]); setNoDivisionRow(null); })
+      .finally(() => setDivisionRowsLoading(false));
+  }, [officeId, yearSettled, fetchDivisionRows]);
+
+  // PPDO-165 — the panel's Costed / Remaining move with every edit, but its rows come from the
+  // dashboard payload, which is heavier than the readiness call and sits in a panel that is closed
+  // by default. So an edit only marks them stale, and they are refetched while the panel is open —
+  // now, or the next time it is opened. ⚠️ Not through `divisionRowsLoading`: that gate unmounts the
+  // <details>, which would snap an open panel shut under the encoder on every save.
+
+  // ⚠️ Ordered by a counter, not an effect-cleanup `cancelled` flag: clearing `divisionRowsStale`
+  // re-runs this effect, and a cleanup flag then discarded the very response it had just asked for.
+  // The counter drops only a response overtaken by a newer refresh (two quick saves).
+  const divisionRowsRequest = useRef(0);
+  useEffect(() => {
+    if (!divisionRowsStale || !divisionPanelOpen || divisionRowsLoading) return;
+    setDivisionRowsStale(false);
+    const request = ++divisionRowsRequest.current;
+    fetchDivisionRows()
+      .then(({ rows, none }) => {
+        if (request !== divisionRowsRequest.current) return;
+        setDivisionRows(rows);
+        setNoDivisionRow(none);
+      })
+      .catch(() => { /* keep the last figures — stale, not wrong */ });
+  }, [divisionRowsStale, divisionPanelOpen, divisionRowsLoading, fetchDivisionRows]);
+
   async function refreshReadiness() {
     if (!record) return;
+    setDivisionRowsStale(true);
     try { setReadiness(await getAipReadiness(record.id)); } catch { /* checklist stays stale, page works */ }
+    // A division's activity count and blockers move with the same edits the checklist does.
+    // ⚠️ Only once loaded — a refresh must not replace a Retry prompt with a silent second failure.
+    if (divisions) {
+      try { setDivisions(await getAipOfficeDivisions(record.id, divisions.officeId)); } catch { /* stale, not wrong */ }
+    }
   }
 
   // ── Selection ───────────────────────────────────────────────────────────
@@ -279,6 +443,16 @@ export default function AipEntryPage() {
     setIds(next);
   }, []);
 
+  // PPDO-166 — what the READER asks for goes through the unsaved-changes guard: the picker, Done,
+  // Change activity/project, child rows, checklist and comment jumps, the year. `select` itself stays
+  // unguarded for the moves that FOLLOW a completed save (a new node becoming the selection, a
+  // deleted one handing it to its parent) — nothing is left unsaved to ask about there.
+  const leaveGuard = useAipLeaveGuard();
+  const requestSelect = useCallback(
+    (next: AipSelectionIds) => leaveGuard(() => select(next)),
+    [leaveGuard, select],
+  );
+
   /** Selects the node a checklist issue or a comment names, wherever it sits in the tree. */
   const selectNode = useCallback(
     (nodeType: AipCommentNodeType, nodeId: number) => {
@@ -289,9 +463,9 @@ export default function AipEntryPage() {
         setSelectionNotice("That row is not in the part of this AIP you can see.");
         return;
       }
-      select(found);
+      requestSelect(found);
     },
-    [myGroups, select]
+    [myGroups, requestSelect]
   );
 
   // "Change activity" clears the box and puts the cursor back in it — the encoder's next move is
@@ -311,8 +485,10 @@ export default function AipEntryPage() {
   }, [focusActivityLookup]);
 
   function changeActivity() {
-    select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
-    setFocusActivityLookup(true);
+    leaveGuard(() => {
+      select({ programId: ids.programId, projectId: ids.projectId, activityId: null });
+      setFocusActivityLookup(true);
+    });
   }
 
   // ── Submit hops ─────────────────────────────────────────────────────────
@@ -322,9 +498,17 @@ export default function AipEntryPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await submitAip(record.id);
+      const result = await submitAip(record.id);
       await load();
       void refreshAipNotifications();
+      // PPDO-146: it went through over the ceiling. The confirm said so before; this repeats it
+      // once it has happened, so the encoder leaves knowing the department head is blocked on it.
+      if (result.ceilingWarning) {
+        toast.warn(
+          "Submitted over the ceiling",
+          "Your department head cannot send it to PPDO until it is within the ceiling."
+        );
+      }
     } catch (e) {
       setError(aipErrorMessage(e, "Could not submit this AIP."));
     } finally {
@@ -354,6 +538,55 @@ export default function AipEntryPage() {
     }
   }
 
+  /**
+   * PPDO-151 — a division hands its own work to the department head.
+   *
+   * ⚠️ The record is RELOADED, not spliced: every one of the division's activities just changed
+   * its `canEdit`, and the server is the only thing that knows which. A splice would leave the
+   * encoder looking at inputs that save and then fail.
+   */
+  async function doSubmitDivision(division: AipDivisionStatus) {
+    if (!record) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await submitAipDivision(record.id, division.divisionId);
+      await load();
+      void refreshAipNotifications();
+      toast.success(
+        `${division.name} submitted to your department head.`,
+        result.ceilingWarning
+          ? "The office is over its ceiling — your department head cannot send it to PPDO until it is within it."
+          : undefined
+      );
+    } catch (e) {
+      setError(aipErrorMessage(e, `Could not submit ${division.name}.`));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  /**
+   * PPDO-152 — the department head reopens one division. Reloaded rather than spliced for the same
+   * reason as a division submit: the office may leave department review, and every one of that
+   * division's activities changes `canEdit` for its encoders.
+   */
+  async function doReturnDivision(division: AipDivisionStatus) {
+    if (!record) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await returnAipDivision(record.id, division.divisionId);
+      await load();
+      void refreshAipNotifications();
+      toast.success(`${division.name} returned to its encoders.`);
+    } catch (e) {
+      setError(aipErrorMessage(e, `Could not return ${division.name}.`));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   /** The department head hands the work back down to the encoders (added 2026-09-14). */
   async function doReturnToEncoder() {
     if (!record || officeId == null) return;
@@ -378,7 +611,18 @@ export default function AipEntryPage() {
    * either strands the office or tells them their work is frozen when it is not.
    */
   const submitStage: AipSubmitStage =
-    workflowStatus === AIP_WORKFLOW.draft
+    // ↩️ PPDO-151 — an office that submits by division. The department head's send to PPDO is
+    // unchanged (below); everyone else stands at their division's own hop while the office is
+    // in its own hands. Offices without divisions never enter this branch.
+    divisionView && canEdit &&
+    !(canReview && (workflowStatus === AIP_WORKFLOW.departmentReview ||
+      workflowStatus === AIP_WORKFLOW.returnedByPpdo))
+      ? divisionView.mine
+        ? { kind: "division", division: divisionView.mine, onSubmit: () => void doSubmitDivision(divisionView.mine!) }
+        : divisionView.isHead
+          ? { kind: "awaitingDivisions", waiting: readiness?.waitingDivisions ?? [] }
+          : { kind: "noDivision" }
+    : workflowStatus === AIP_WORKFLOW.draft
       ? { kind: "encoder", onSubmit: doSubmit }
       : workflowStatus === AIP_WORKFLOW.departmentReview ||
           workflowStatus === AIP_WORKFLOW.returnedByPpdo
@@ -387,6 +631,8 @@ export default function AipEntryPage() {
               kind: "toPpdo",
               resubmit: workflowStatus === AIP_WORKFLOW.returnedByPpdo,
               onSubmit: doSubmitToPpdo,
+              waitingDivisions: divisionView ? readiness?.waitingDivisions ?? [] : [],
+              untaggedCount: divisionView?.list.untaggedActivityCount ?? 0,
               // Department review only — the one state the server returns work down from.
               onReturnToEncoder:
                 workflowStatus === AIP_WORKFLOW.departmentReview ? doReturnToEncoder : undefined,
@@ -473,15 +719,24 @@ export default function AipEntryPage() {
             Fiscal year
           </label>
           <select
-            value={fiscalYear}
+            // Blank and disabled, not guessed, until the year is known — showing the fallback
+            // first is exactly the one-year-then-another jump the spec rules out.
+            value={yearSettled ? fiscalYear : ""}
+            disabled={!yearSettled}
             onChange={(e) => {
-              setFiscalYear(Number(e.target.value));
-              // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
-              // across would name rows of the year just left and resolve to a stale-id notice on
-              // arrival — a message about nothing the reader did.
-              select(EMPTY_SELECTION_IDS);
+              const year = Number(e.target.value);
+              // PPDO-166 — guarded. The select is controlled, so "Keep editing" leaves it on the
+              // year the reader is still working in.
+              leaveGuard(() => {
+                setPickedYear(year);
+                // ⚠️ The selection is cleared with the year. Ids are per-record, so carrying them
+                // across would name rows of the year just left and resolve to a stale-id notice on
+                // arrival — a message about nothing the reader did.
+                select(EMPTY_SELECTION_IDS);
+              });
             }}
             className="border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600">
+            {!yearSettled && <option value="">FY …</option>}
             {YEARS.map((y) => <option key={y} value={y}>FY {y}</option>)}
           </select>
         </div>
@@ -508,6 +763,37 @@ export default function AipEntryPage() {
           Your office&rsquo;s other programs are here but belong to other divisions — ask an
           administrator if one should be assigned to yours.
         </p>
+      )}
+
+      {/* PPDO-126, PPDO-127 — collapsed by default (PPDO-89's decluttering). A department head or
+          PPDO finance sees every division here; anyone else sees only their own row. */}
+      {!divisionRowsLoading && officeId != null && (
+        <details
+          className="mb-4 border border-slate-200 bg-white"
+          open={divisionPanelOpen}
+          onToggle={(e) => setDivisionPanelOpen(e.currentTarget.open)}
+        >
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-slate-800">
+            Division allocations — FY {fiscalYear}
+          </summary>
+          <div className="border-t border-slate-200">
+            {divisionRows.length === 0 ? (
+              <p className="px-4 py-3 text-sm text-slate-600">
+                No divisions configured for this office yet.
+              </p>
+            ) : (
+              <DivisionTable
+                divisions={divisionRows}
+                noDivision={noDivisionRow}
+                canManageAllocation={
+                  me?.isHostOffice ? me?.canManagePpdoAllocation === true : me?.canManageOfficeSetup === true
+                }
+                officeId={officeId}
+                fiscalYear={fiscalYear}
+              />
+            )}
+          </div>
+        </details>
       )}
 
       {loading ? (
@@ -539,7 +825,7 @@ export default function AipEntryPage() {
               // panel itself, where adding them is the whole point rather than a recovery path.
               action={
                 SHOW_ADD_PROGRAMS_WHEN_POPULATED &&
-                canEdit && myGroups.length > 0 && !addProgramsOpen ? (
+                officeCanEdit && myGroups.length > 0 && !addProgramsOpen ? (
                   <button
                     type="button"
                     onClick={() => setAddProgramsOpen(true)}
@@ -555,19 +841,51 @@ export default function AipEntryPage() {
                 the year-open already populates every office from it — this is the recovery path for
                 a program the LDIP gained afterwards, so it stays out of the encoding flow until
                 someone asks for it (Ralph, 2026-09-16). */}
-            {SHOW_ADD_PROGRAMS_WHEN_POPULATED && canEdit && myGroups.length > 0 && (
+            {SHOW_ADD_PROGRAMS_WHEN_POPULATED && officeCanEdit && myGroups.length > 0 && (
               <AipAddProgramsPanel
                 aipRecordId={record.id} officeConfigId={officeId}
                 open={addProgramsOpen} onOpenChange={setAddProgramsOpen}
                 onAdded={() => void load()} />
             )}
 
-            {readiness && (
+            {/* PPDO-151 — the division status failed or is re-loading. Said, with a way out, and the
+                office stays read-only meanwhile (`officeCanEdit`): never guess editable. */}
+            {divisionsLoading && !divisions ? (
+              <div className="h-16 w-full animate-pulse border border-slate-200 bg-white" />
+            ) : divisionsError ? (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <span>{divisionsError} Editing is paused until it loads.</span>
+                <button
+                  type="button"
+                  onClick={() => void loadDivisions(record.id)}
+                  className="border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+
+            {readiness && divisionsKnown && (
               <AipSubmitChecklist
                 readiness={readiness}
                 stage={submitStage}
                 submitting={submitting}
                 history={{ aipRecordId: record.id, officeId }}
+                onSelectActivity={(activityId) => selectNode("Activity", activityId)}
+                proposalCheck={
+                  fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? { fiscalYear, officeId } : undefined
+                }
+              />
+            )}
+
+            {/* PPDO-152 — the department head's view of the division hop. Never for an encoder,
+                who has their own division's stage in the panel above. */}
+            {divisionView?.isHead && (
+              <AipDivisionsPanel
+                list={divisionView.list}
+                untagged={untaggedActivities}
+                busy={submitting}
+                onReturn={(d) => void doReturnDivision(d)}
                 onSelectActivity={(activityId) => selectNode("Activity", activityId)}
               />
             )}
@@ -581,7 +899,7 @@ export default function AipEntryPage() {
                 title="Nothing here yet"
                 body="Your office has no programs in this AIP. Add them from your LDIP to begin — the AIP cannot contain a program the LDIP does not."
                 action={
-                  canEdit ? (
+                  officeCanEdit ? (
                     <AipAddProgramsPanel
                       aipRecordId={record.id} officeConfigId={officeId}
                       onAdded={() => void load()} />
@@ -602,13 +920,17 @@ export default function AipEntryPage() {
                   ids={ids}
                   projects={selection?.program?.projects ?? []}
                   activities={selection?.project?.activities ?? []}
-                  onChange={select}
+                  onChange={requestSelect}
                   activityInputRef={activityInputRef}
                 />
 
                 <AipSelectedPanel
                   selection={selection}
-                  canEdit={canEdit}
+                  canEdit={officeCanEdit}
+                  divisionView={divisionView}
+                  renderProposalSlot={(projectId) => (
+                    <ProposalStrip option={proposalOptions?.get(projectId)} readOnly={proposalReadOnly} />
+                  )}
                   holder={holder}
                   accounts={accounts}
                   funds={funds}
@@ -620,7 +942,7 @@ export default function AipEntryPage() {
                   // a default of the full name would be retyped by every encoder (PPDO-80).
                   offices={offices}
                   proponentOfficeCode={me?.officeCode ?? null}
-                  onSelect={select}
+                  onSelect={requestSelect}
                   onChangeActivity={changeActivity}
                   onProjectAdded={onProjectAdded}
                   onActivityAdded={onActivityAdded}

@@ -16,12 +16,12 @@ public sealed class ClimateChangeTypologyConfiguration : IEntityTypeConfiguratio
         builder.Property(t => t.Code)
             .HasColumnName("code")
             .IsRequired()
-            .HasMaxLength(20);
+            .HasMaxLength(ClimateChangeTypology.CodeMaxLength);
 
         builder.Property(t => t.Name)
             .HasColumnName("name")
             .IsRequired()
-            .HasMaxLength(200);
+            .HasMaxLength(ClimateChangeTypology.NameMaxLength);
 
         builder.Property(t => t.Category)
             .HasColumnName("category")

@@ -40,6 +40,22 @@ import { canOpenBudgetPlanningReport, canOpenOfficeCeilings } from "@/lib/budget
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api";
 
 // Page title map — keyed by pathname prefix.
+/**
+ * Configuration pages a guest-office department head may open for their own office, while they
+ * hold `canManageOfficeSetup` — the office-user gate below lets these through.
+ *
+ * ⚠️ **A new own-office config page needs a line HERE as well as its sidebar link and its page
+ * guard** — the third place is the one that keeps getting missed. PPDO-135 shipped
+ * `/config/office-users` with the link and the guard but not this line, so the Staff Divisions link
+ * bounced every department head straight back to the dashboard. The same happened to the Report
+ * page before it (PPDO-92).
+ */
+const OWN_OFFICE_CONFIG_ROUTES = [
+  "/config/divisions",       // PPDO-108 — their own office's divisions
+  "/config/funding-sources", // PPDO-109 — their own funds, beside PPDO's shared list
+  "/config/office-users",    // PPDO-135 — assign their own Staff to those divisions
+];
+
 const PAGE_TITLES: Record<string, string> = {
   "/home":          "Opening…",   // transient — /home redirects on mount (RAL-264)
   "/dashboard":     "Main Dashboard",
@@ -253,16 +269,10 @@ export default function PortalLayout({
       (pathname.startsWith("/budget-planning") && !ppdoOnlyBudgetPlanning) ||
       // /profile only redirects to /account (RAL-252); allowing it lets that redirect land
       // instead of the gate racing it to landingPath.
-      // PPDO-108 — the ONE Configuration page a guest office can reach: their own office's
-      // divisions, and only while they hold the grant. Listed here because this gate closes
-      // everything outside /budget-planning to a guest office, so the page's own rule would
-      // never get a chance to run.
-      (pathname.startsWith("/config/divisions") && me.canManageOfficeSetup) ||
-      // PPDO-109 — the second Configuration page a guest office can reach: their own office's fund
-      // sources, beside PPDO's province-wide list, and only while they hold the grant. Listed for
-      // the same reason as divisions above: this gate closes everything outside /budget-planning to
-      // a guest office, so the page's own rule would never get a chance to run.
-      (pathname.startsWith("/config/funding-sources") && me.canManageOfficeSetup) ||
+      // The Configuration pages a guest-office department head manages for their own office, and
+      // only while they hold the grant. Listed here because this gate closes everything outside
+      // /budget-planning to a guest office, so the page's own rule would never get a chance to run.
+      (me.canManageOfficeSetup && OWN_OFFICE_CONFIG_ROUTES.some((r) => pathname.startsWith(r))) ||
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account") ||
       // /home resolves the destination itself; letting the gate fire here too would

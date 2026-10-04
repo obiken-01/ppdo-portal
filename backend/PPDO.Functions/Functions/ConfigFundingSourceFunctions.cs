@@ -28,8 +28,10 @@ namespace PPDO.Functions.Functions;
 ///   <item><description><b>Creates are stamped</b> with the caller's own office; a body office id is
 ///   ignored rather than rejected, for the same reason PPDO-108 drops the division flags — an older
 ///   client that still sends one must not break, and the field is not theirs to set either way.
-///   Ownership is then fixed for the row's life; <c>FundingSourceService.UpdateAsync</c> does not
-///   read <c>OfficeId</c> off the body at all.</description></item>
+///   ↩️ <b>Updates are pinned the same way since PPDO-128.</b> Ownership used to be fixed for the
+///   row's life; now a config manager may move a fund between shared and office-owned, so
+///   <c>FundingSourceService.UpdateAsync</c> reads <c>OfficeId</c> — and an office-scoped caller's
+///   value is overwritten with their own office before it gets there.</description></item>
 ///   <item><description><b>The CSV routes stay <c>CanManageConfig</c>-only</b>, exactly as in
 ///   PPDO-108: a bulk upsert keyed by code spans every office's funds, so an office-scoped caller
 ///   has no safe reading of it.</description></item>
@@ -164,6 +166,24 @@ public sealed class ConfigFundingSourceFunctions
         return await ConfigHttp.FromResultAsync(req, await _funding.GetByIdAsync(id, ct), ct);
     }
 
+    // ── GET /api/config/funding-sources/{id}/ownership-impact?officeId= ──
+    // Config managers only (PPDO-128): what limiting the fund to that office would take away from
+    // every other office, per fiscal year. Only a config manager can change ownership at all — a
+    // department head's is pinned on update — so nobody else has a use for the answer, and it
+    // reports on other offices' data.
+    [Function("FundingSourcesOwnershipImpact")]
+    public async Task<HttpResponseData> OwnershipImpact(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "config/funding-sources/{id:int}/ownership-impact")] HttpRequestData req,
+        int id, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
+        if (denied is not null) return denied;
+
+        // Absent or unparseable means "make it shared", which hides the fund from nobody.
+        int? target = int.TryParse(req.Query["officeId"], out int oid) ? oid : null;
+        return await ConfigHttp.FromResultAsync(req, await _funding.GetOwnershipImpactAsync(id, target, ct), ct);
+    }
+
     // ── POST /api/config/funding-sources ──
     [Function("FundingSourcesCreate")]
     public async Task<HttpResponseData> Create(
@@ -224,9 +244,17 @@ public sealed class ConfigFundingSourceFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<FundingSourceDto>.Fail("Request body is missing or malformed."), ct);
 
-        if (await IsOfficeScopedAsync(caller, ct)
-            && await DenyForeignFundAsync(req, caller, id, ct) is { } foreign)
-            return foreign;
+        if (await IsOfficeScopedAsync(caller, ct))
+        {
+            if (await DenyForeignFundAsync(req, caller, id, ct) is { } foreign)
+                return foreign;
+
+            // ⚠️ Pinned, not trusted (PPDO-128). UpdateAsync now READS OfficeId so a config manager
+            // can move a fund between shared and office-owned. A department head may not: the fund
+            // is theirs (checked just above), and it stays theirs whatever the body says — sending
+            // null would otherwise publish their private fund to every office.
+            body = body with { OfficeId = caller.OfficeId };
+        }
 
         return await ConfigHttp.FromResultAsync(req, await _funding.UpdateAsync(id, body, ct), ct);
     }

@@ -194,6 +194,22 @@ public sealed class AllocationService : IAllocationService
         IReadOnlyList<UpsertDivisionAllocationDto> dtos,
         CancellationToken ct = default)
     {
+        // Guard 0 — there must be something to save (Demo 2.4 / PPDO-126).
+        //
+        // ⚠️ An empty list used to be accepted as a perfectly ordinary request: both guards below
+        // pass trivially (Σ 0 ≤ any ceiling), the loop runs zero times, and the method answers Ok
+        // with an empty payload. The caller cannot tell that from a real save, so the allocation
+        // page reported "Saved" for offices that have no divisions at all — 15 of 19 — and nothing
+        // was written. SPO on UAT is where it surfaced.
+        //
+        // ⚠️ This rejects a NO-OP, not a clear-out. Setting every division back to zero still
+        // sends one row per division and is unaffected; "no rows at all" is the only shape refused,
+        // and for it there is no caller with a legitimate intent to express.
+        if (dtos.Count == 0)
+            return ServiceResult<IReadOnlyList<DivisionAllocationDto>>.BadRequest(
+                $"No divisions were supplied for office {officeId}. An office needs at least one "
+                + "division configured before its ceiling can be split.");
+
         // Guard 1 — ceiling must exist for this fund.
         BudgetCeiling? ceiling = await _ceilingRepo.FindAsync(officeId, fiscalYear, fundingSourceId, ct);
         if (ceiling is null)

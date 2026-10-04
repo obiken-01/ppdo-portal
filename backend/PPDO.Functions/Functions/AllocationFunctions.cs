@@ -112,6 +112,45 @@ public sealed class AllocationFunctions
     }
 
     /// <summary>
+    /// Narrows a division-allocation read to the caller's own division, unless they are entitled
+    /// to see the whole office's split (Demo 2.4 / PPDO-126, PPDO-127).
+    ///
+    /// <para>
+    /// ⚠️ <b>The rule is: whoever may WRITE an office's division split may READ it.</b> Both are
+    /// resolved through the same <see cref="ResolveSetupScopeAsync"/>, so the two cannot drift
+    /// apart — and a caller who can set the numbers but not see them back is not a coherent state
+    /// to leave anybody in.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>This fixes a silent data-loss-looking bug.</b> The test was previously
+    /// <c>CanManagePpdoAllocation</c>, which is exclusive to PPDO users, so a department head fell
+    /// into the encoder branch and was filtered to <c>DivisionId == caller.DivisionId</c>. Guest
+    /// office users had no division at all until PPDO-123, and <c>division_id</c> is a non-nullable
+    /// FK, so <b>no row could ever match and the read returned nothing</b>. An office would set its
+    /// allocations, get a truthful "Saved", reload, and find every field blank — the write had
+    /// worked the whole time and the read was hiding it. SPO on UAT is where it surfaced.
+    /// </para>
+    ///
+    /// <para>
+    /// The encoder clamp itself stays: other divisions' peso amounts are not a rank-and-file
+    /// encoder's business, and that was never the broken part.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<DivisionAllocationDto>> ClampAllocationsToScopeAsync(
+        User caller, int officeId, IReadOnlyList<DivisionAllocationDto> data, CancellationToken ct)
+    {
+        // officeId is already clamped by the caller, so this asks about an office the caller is
+        // allowed to be looking at in the first place.
+        SetupScope scope = await ResolveSetupScopeAsync(
+            caller, _ => Task.FromResult<int?>(officeId), ct);
+
+        return scope is SetupScope.None
+            ? data.Where(a => a.DivisionId == caller.DivisionId).ToList()
+            : data;
+    }
+
+    /// <summary>
     /// Clamps a caller-supplied officeId for the allocation-setup reads (PPDO-18). Call this
     /// AFTER the endpoint's int.TryParse validation so a malformed officeId is still a 400 rather
     /// than a silent fallback to the caller's own office.
@@ -279,8 +318,7 @@ public sealed class AllocationFunctions
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsAsync(officeId, fiscalYear, fundingSourceId, ct);
 
-        if (!await CanManagePpdoAllocation(caller))
-            data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
+        data = await ClampAllocationsToScopeAsync(caller, officeId, data, ct);
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Ok(data), ct);
@@ -311,8 +349,7 @@ public sealed class AllocationFunctions
         IReadOnlyList<DivisionAllocationDto> data =
             await _allocation.GetAllocationsForAllFundsAsync(officeId, fiscalYear, ct);
 
-        if (!await CanManagePpdoAllocation(caller))
-            data = data.Where(a => a.DivisionId == caller.DivisionId).ToList();
+        data = await ClampAllocationsToScopeAsync(caller, officeId, data, ct);
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<DivisionAllocationDto>>.Ok(data), ct);

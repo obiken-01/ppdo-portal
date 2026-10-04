@@ -186,6 +186,46 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOfficeActivityFundTotalsDto>> SumMooeCoByRecordAndFundAsync(
+        int aipRecordId, int fundingSourceId, CancellationToken ct = default)
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId)
+            .GroupBy(e => new { e.ActivityId, ConfigOfficeId = e.Activity.Project.Program.Office.OfficeId })
+            .Select(g => new AipOfficeActivityFundTotalsDto(
+                g.Key.ConfigOfficeId,
+                g.Key.ActivityId,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityProgramFundTotalsDto>> SumMooeCoByConfigOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default)
+        // The all-funds sibling of SumMooeCoByConfigOfficeAndFundAsync: same office-wide scope (every
+        // group row of the config office, bounded to the record), one GROUP BY, no per-fund loop.
+        => await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId != null
+                     && e.Activity.Project.Program.Office.AipRecordId == aipRecordId
+                     && e.Activity.Project.Program.Office.OfficeId == configOfficeId)
+            .GroupBy(e => new
+            {
+                e.ActivityId,
+                ProgramRefCode  = e.Activity.Project.Program.RefCode,
+                FundingSourceId = e.FundingSourceId!.Value,
+                // PPDO-150 — one value per activity, so grouping on it splits nothing.
+                e.Activity.DivisionId,
+            })
+            .Select(g => new AipActivityProgramFundTotalsDto(
+                g.Key.ProgramRefCode,
+                g.Key.ActivityId,
+                g.Key.FundingSourceId,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m,
+                g.Key.DivisionId))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default)
     {
         // Two sequential counts, not Task.WhenAll — they share one DbContext, which is not
@@ -195,5 +235,32 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
         int activities = await _context.Set<AipActivity>()
             .CountAsync(a => a.FundingSourceId == fundingSourceId, ct);
         return lines + activities;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, int>> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default)
+    {
+        // ⚠️ `!= officeId` on a nullable column: EF's C# null semantics make NULL != 7 TRUE, which
+        // is what counts an unattributed row as outside. Do not "simplify" this to a SQL-side
+        // comparison that would drop NULLs.
+        //
+        // Two sequential grouped queries, not Task.WhenAll — one DbContext (CLAUDE.md).
+        var lines = await _context.Set<AipExpenditure>()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.OfficeId != officeId)
+            .GroupBy(e => e.Activity.Project.Program.Office.AipRecord.FiscalYear)
+            .Select(g => new { FiscalYear = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var activities = await _context.Set<AipActivity>()
+            .Where(a => a.FundingSourceId == fundingSourceId
+                     && a.Project.Program.Office.OfficeId != officeId)
+            .GroupBy(a => a.Project.Program.Office.AipRecord.FiscalYear)
+            .Select(g => new { FiscalYear = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return lines.Concat(activities)
+            .GroupBy(x => x.FiscalYear)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Count));
     }
 }

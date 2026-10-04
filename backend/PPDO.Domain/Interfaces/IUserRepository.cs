@@ -47,6 +47,16 @@ public interface IUserRepository : IRepository<User>
     Task<IReadOnlyList<User>> GetAllWithDivisionAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the users belonging to <paramref name="officeId"/>, ordered by
+    /// <see cref="User.FullName"/>, with <see cref="User.Division"/> included. Scoped at the
+    /// database, not <see cref="GetAllWithDivisionAsync"/> filtered in memory (CLAUDE.md) — the
+    /// office-scoped division-assignment screen (PPDO-135) must never pull every user in the
+    /// province to show one office's handful.
+    /// </summary>
+    Task<IReadOnlyList<User>> GetByOfficeIdWithDivisionAsync(
+        int officeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns Id → FullName for the given user ids, computed in SQL (RAL-165 — perf audit
     /// Tier 1). Used by list endpoints (e.g. <c>AipService.GetAllAsync</c>) that need to
     /// resolve a handful of "uploaded by" names without loading the whole users table.

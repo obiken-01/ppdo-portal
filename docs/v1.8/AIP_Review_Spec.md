@@ -327,7 +327,7 @@ Routes follow the shipped `budget-planning/aip/...` family (`AipSubmitFunctions`
 | `sectors` | ✅ OR | `AipOffice.Sector IN (…)` |
 | `refCode` | ✅ OR, typed list or comma | **Prefix** match `LIKE 'x%'` per value — SARGable. ⚠️ Never `LIKE '%x%'` |
 | `title` | ❌ single | Free text over program / project / activity name. ⚠️ **Do not OR-split** — a title may legitimately contain the word "or" |
-| `workflowStatuses` | ✅ OR | Chip filter, mirrors the kanban columns |
+| `workflowStatuses` | ✅ OR | Chip filter, mirrors the kanban columns. ↩️ **Per row since PPDO-167:** while an office is `Draft`/`ReturnedByPpdo`, an activity whose division has submitted reads `DepartmentReview`, and so does a project/program all of whose activities are in submitted divisions; past that stage the office's own state wins |
 | `mine` | — | The "everything applicable to me" tag, scoped by the caller's own permissions |
 
 Fields AND together. **No boolean expressions** (decision 16).
@@ -562,14 +562,18 @@ convenience, never a gate.
 | Column | Rule |
 |---|---|
 | **Not Started** | `Draft` (or no AIP office row yet) **and zero activities** |
-| **In Progress** | `Draft` and one or more activities |
-| **Office Review** | `DepartmentReview` — **or `ReturnedByPpdo`, carrying a *Returned* badge** |
+| **In Progress** | `Draft` and one or more activities — **or `ReturnedByPpdo` in an office with divisions**, carrying a *Returned* badge (PPDO-169/171) |
+| **Office Review** | `DepartmentReview` — **or `ReturnedByPpdo` in an office without divisions**, carrying a *Returned* badge (PPDO-171) |
 | **PPDO Review** | `SubmittedToPpdo` |
 | **Done** | `Consolidated` |
 
-- ⚠️ **"Returned by PPDO" is NOT a sixth column.** Returned work re-enters the department-review
-  condition, so it sits in Office Review with a *Returned* badge — the reviewer's most actionable
-  signal ("I sent this back; has it come back?") without column sprawl.
+- ⚠️ **"Returned by PPDO" is NOT a sixth column.** It carries a *Returned* badge — the reviewer's
+  most actionable signal ("I sent this back; has it come back?") without column sprawl.
+  ↩️ **The column follows who holds it** (PPDO-169, refined by PPDO-171; Ralph, 2026-09-30). In an
+  office **with divisions** (entered years, an active division) a PPDO return reopens every division
+  to Draft (PPDO-149), so the work is with its encoders: **In Progress**, until every division
+  re-submits. In an office **without divisions** the return lands with the department head, who
+  re-sends it to PPDO — the encoder has no submit to make — so it stays in **Office Review**.
 - ✅ **Not Started vs In Progress is decided by activity count**, not seeded programs. Programs
   arrive from LDIP without anyone in the office touching the record, so counting them would show an
   office that never opened the page as working. Submission states win over both.
@@ -788,7 +792,7 @@ accept `Draft`, `DepartmentReview` and `ReturnedByPpdo`, and its remarks must be
 - [ ] Typing "1000-000-1-01-010 OR 3000-000-1-01-010" in the ref-code box returns both
 - [ ] A title containing the word "or" is matched literally, not split
 - [ ] An office with LDIP-seeded programs and zero activities sits in Not Started, not In Progress
-- [ ] A returned office appears in Office Review with a Returned badge, not in a sixth column
+- [ ] A returned office appears with a Returned badge, not in a sixth column — in In Progress if it has divisions, in Office Review if not (PPDO-169/171)
 - [ ] No card anywhere shows a percentage
 - [ ] An office encoder sees no Offices band and no board on the dashboard, and AIP Review is absent
       from their sidebar

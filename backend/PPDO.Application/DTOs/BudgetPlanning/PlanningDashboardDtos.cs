@@ -72,13 +72,32 @@ public record OfficeAipSummaryDto(
     int ProgramCount,
     int ProjectCount,
     int ActivityCount,
-    decimal CostedInAip
+    decimal CostedInAip,
+    // ↩️ 2026-09-24. What the office has costed AGAINST ITS CEILING — General Fund, MOOE + CO, PS
+    // exempt, rounded up per activity: the submit gate's own figure. A guest office's tiles compare
+    // this with the GF ceiling; comparing CostedInAip (every shared fund) there would let GAD or
+    // LDRRMF money eat a General Fund remaining the submit card never charges it to. FY2027: equals
+    // CostedInAip, as it always has.
+    decimal CostedAgainstCeiling = 0m
 );
 
+/// <param name="ByDivision">
+/// The office's own per-division breakdown (PPDO-126, PPDO-127) — empty for an office with no
+/// divisions configured yet (render an empty state, not a blank panel), and for a division-scoped
+/// caller narrowed to a division they no longer hold. A department head
+/// (<c>CanManageOfficeSetup</c>) sees every division of their own office; anyone else sees only
+/// their own division's row, same "whoever may set the split may see it" rule the Allocation page
+/// applies. Reuses <see cref="DivisionSummaryDto"/> — the same shape <see cref="PpdoDashboardDto"/>
+/// carries for PPDO's own dashboard — so a guest office renders on the same <c>DivisionTable</c>
+/// component rather than a second one.
+/// </param>
 public record OfficeDashboardDto(
     int OfficeId,
     int FiscalYear,
     AllocationSetupSummaryDto Allocation,
     OfficeLdipSummaryDto Ldip,
-    OfficeAipSummaryDto Aip
+    OfficeAipSummaryDto Aip,
+    IReadOnlyList<DivisionSummaryDto> ByDivision,
+    // PPDO-150: see PpdoDashboardDto.NoDivision. Same rule, for a department head's own office.
+    DivisionSummaryDto? NoDivision = null
 );

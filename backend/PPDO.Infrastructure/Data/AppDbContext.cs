@@ -102,6 +102,23 @@ public sealed class AppDbContext : DbContext
     // ── v1.8 New AIP| eSRE Codes (RAL-248) ─────────────────────────────────
     public DbSet<EsreCode> EsreCodes { get; set; } = null!;
 
+    // ── v1.8.0 — Investment Planning settings, single row (PPDO-136) ──────────
+    public DbSet<InvestmentPlanningSettings> InvestmentPlanningSettings { get; set; } = null!;
+
+    // ── v1.8.0 — Division submit to the department head (PPDO-130) ─────────────
+    public DbSet<AipDivisionSubmission> AipDivisionSubmissions { get; set; } = null!;
+
+    // ── v1.8.0 Demo 2.15 — Investment proposals (PPDO-154) ───────────────────
+    public DbSet<InvestmentProposal> InvestmentProposals { get; set; } = null!;
+    public DbSet<InvestmentProposalBeneficiary> InvestmentProposalBeneficiaries { get; set; } = null!;
+    public DbSet<InvestmentProposalBenefit> InvestmentProposalBenefits { get; set; } = null!;
+    public DbSet<InvestmentProposalLogframe> InvestmentProposalLogframe { get; set; } = null!;
+    public DbSet<InvestmentProposalGroup> InvestmentProposalGroups { get; set; } = null!;
+    public DbSet<InvestmentProposalWorkPlanRow> InvestmentProposalWorkPlanRows { get; set; } = null!;
+    public DbSet<InvestmentProposalTeamMember> InvestmentProposalTeamMembers { get; set; } = null!;
+    public DbSet<InvestmentProposalMonitoring> InvestmentProposalMonitoring { get; set; } = null!;
+    public DbSet<InvestmentProposalRisk> InvestmentProposalRisks { get; set; } = null!;
+
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 
     public DbSet<PartnerApiKey> PartnerApiKeys { get; set; } = null!;
@@ -117,6 +134,20 @@ public sealed class AppDbContext : DbContext
         // Discover and apply all IEntityTypeConfiguration<T> classes in this assembly.
         // Each entity has its own configuration file under Data/Configurations/.
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+    }
+
+    /// <summary>
+    /// One place that makes every <c>DateTime</c> / <c>DateTime?</c> come back from SQL as
+    /// <see cref="DateTimeKind.Utc"/> (PPDO-164), so it serializes with a "Z" and the browser
+    /// converts it to Manila time instead of reading it as local. A property that needs different
+    /// handling can still override this with its own <c>HasConversion</c>.
+    /// </summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
     }
 
     // ── Audit timestamp interception ──────────────────────────────────────────

@@ -188,6 +188,23 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .ToListAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipDivisionRollupDto>> GetDivisionRollupsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default)
+    {
+        if (aipOfficeIds.Count == 0) return [];
+        return await (
+                from activity in _context.Set<AipActivity>()
+                where aipOfficeIds.Contains(activity.Project.Program.OfficeId)
+                group activity by activity.DivisionId into g
+                select new AipDivisionRollupDto(
+                    g.Key,
+                    g.Count(),
+                    g.Count(a => a.Total != null && a.Total != 0m),
+                    g.Sum(a => a.Total ?? 0m)))
+            .ToListAsync(ct);
+    }
+
     // ── Notifications (V18-58 / PPDO-75) ──────────────────────────────────────
 
     /// <inheritdoc />
@@ -297,16 +314,35 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         if (q.Sectors.Count > 0)
             offices = offices.Where(o => q.Sectors.Contains(o.Sector));
 
-        if (q.WorkflowStatuses.Count > 0)
-            offices = offices.Where(o => q.WorkflowStatuses.Contains(o.WorkflowStatus));
-
         IQueryable<AipProgram>  programs   = FilterNodes(_context.Set<AipProgram>(),  p => p.RefCode, p => p.Name, q);
         IQueryable<AipProject>  projects   = FilterNodes(_context.Set<AipProject>(),  j => j.RefCode, j => j.Name, q);
         IQueryable<AipActivity> activities = FilterNodes(_context.Set<AipActivity>(), a => a.RefCode, a => a.Name, q);
 
+        // ── PPDO-167: a row's status follows its division before the office submits ──
+        //
+        // While an office is still with its divisions (Draft, or ReturnedByPpdo and being re-worked),
+        // work a division has already submitted is with the department head — and the reviewer asked
+        // to see it under Office review then, not only once every division is in. So:
+        //   - an activity reads DepartmentReview when its own division has submitted;
+        //   - a project or program only when it has activities and EVERY one of them is in a submitted
+        //     division (an untagged activity belongs to no division, so it never is).
+        // Past that stage (DepartmentReview and later) the office's own state is the answer: division
+        // rows stay Submitted after the office goes to PPDO, and would otherwise drag rows back.
+        //
+        // ⚠️ No row in aip_division_submissions means Draft, so an office with no divisions — or one
+        // that never submitted — is untouched. Scoped to the record: last year's rows never count.
+        IQueryable<int> submittedDivisions = _context.Set<AipDivisionSubmission>()
+            .Where(s => s.AipRecordId == q.AipRecordId && s.Status == AipDivisionStatus.Submitted)
+            .Select(s => s.DivisionId);
+        IQueryable<AipActivity> allActivities = _context.Set<AipActivity>();
+
+        const string draft        = AipWorkflowStatus.Draft;
+        const string returned     = AipWorkflowStatus.ReturnedByPpdo;
+        const string officeReview = AipWorkflowStatus.DepartmentReview;
+
         // ⚠️ Anonymous projections, and the three shapes must match member-for-member in order and
         // type or the Concat will not translate.
-        var programRows =
+        IQueryable<NodeRow> programRows =
             from p in programs
             join o in offices on p.OfficeId equals o.Id
             select new NodeRow
@@ -314,10 +350,16 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
                 Level = nameof(AipCommentNodeType.Program), NodeId = p.Id,
                 RefCode = p.RefCode, Name = p.Name,
                 AipOfficeId = o.Id, AipOfficeName = o.Name, OfficeId = o.OfficeId,
-                Sector = o.Sector, WorkflowStatus = o.WorkflowStatus,
+                Sector = o.Sector,
+                WorkflowStatus =
+                    (o.WorkflowStatus == draft || o.WorkflowStatus == returned)
+                    && allActivities.Any(a => a.Project.ProgramId == p.Id)
+                    && !allActivities.Any(a => a.Project.ProgramId == p.Id
+                        && (a.DivisionId == null || !submittedDivisions.Contains(a.DivisionId.Value)))
+                        ? officeReview : o.WorkflowStatus,
             };
 
-        var projectRows =
+        IQueryable<NodeRow> projectRows =
             from j in projects
             join p in _context.Set<AipProgram>() on j.ProgramId equals p.Id
             join o in offices on p.OfficeId equals o.Id
@@ -326,10 +368,16 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
                 Level = nameof(AipCommentNodeType.Project), NodeId = j.Id,
                 RefCode = j.RefCode, Name = j.Name,
                 AipOfficeId = o.Id, AipOfficeName = o.Name, OfficeId = o.OfficeId,
-                Sector = o.Sector, WorkflowStatus = o.WorkflowStatus,
+                Sector = o.Sector,
+                WorkflowStatus =
+                    (o.WorkflowStatus == draft || o.WorkflowStatus == returned)
+                    && allActivities.Any(a => a.ProjectId == j.Id)
+                    && !allActivities.Any(a => a.ProjectId == j.Id
+                        && (a.DivisionId == null || !submittedDivisions.Contains(a.DivisionId.Value)))
+                        ? officeReview : o.WorkflowStatus,
             };
 
-        var activityRows =
+        IQueryable<NodeRow> activityRows =
             from a in activities
             join j in _context.Set<AipProject>() on a.ProjectId equals j.Id
             join p in _context.Set<AipProgram>() on j.ProgramId equals p.Id
@@ -339,8 +387,21 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
                 Level = nameof(AipCommentNodeType.Activity), NodeId = a.Id,
                 RefCode = a.RefCode, Name = a.Name,
                 AipOfficeId = o.Id, AipOfficeName = o.Name, OfficeId = o.OfficeId,
-                Sector = o.Sector, WorkflowStatus = o.WorkflowStatus,
+                Sector = o.Sector,
+                WorkflowStatus =
+                    (o.WorkflowStatus == draft || o.WorkflowStatus == returned)
+                    && a.DivisionId != null && submittedDivisions.Contains(a.DivisionId.Value)
+                        ? officeReview : o.WorkflowStatus,
             };
+
+        // The status filter now tests the ROW's status, so it moved from the office set to each leg.
+        // ⚠️ Still before the Concat — a Where over the union's projection does not translate (above).
+        if (q.WorkflowStatuses.Count > 0)
+        {
+            programRows  = programRows.Where(r => q.WorkflowStatuses.Contains(r.WorkflowStatus));
+            projectRows  = projectRows.Where(r => q.WorkflowStatuses.Contains(r.WorkflowStatus));
+            activityRows = activityRows.Where(r => q.WorkflowStatuses.Contains(r.WorkflowStatus));
+        }
 
         return programRows.Concat(projectRows).Concat(activityRows);
     }

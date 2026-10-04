@@ -21,6 +21,7 @@ import AipProgramPanel from "./AipProgramPanel";
 import AipProjectPanel from "./AipProjectPanel";
 import AipActivityPanel from "./AipActivityPanel";
 import { useAipUnresolvedCount } from "./AipComments";
+import { activityDivisionLock, type AipDivisionView } from "./AipDivisionParts";
 import {
   EMPTY_SELECTION_IDS, type AipResolvedSelection, type AipSelectionIds,
 } from "./AipEntrySelection";
@@ -34,10 +35,23 @@ import {
 export default function AipSelectedPanel({
   selection, canEdit, holder, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   offices, proponentOfficeCode, onSelect, onChangeActivity, onProjectAdded, onActivityAdded,
-  onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails,
+  onDeleted, onProjectUpdated, onActivityTotals, onActivityDetails, divisionView = null,
+  renderProposalSlot,
 }: {
   selection: AipResolvedSelection | null;
+  /**
+   * The office-level gate: the office is in its own hands (and, in a divisioned office, the
+   * division status has loaded and the reader is assigned). An activity is further narrowed by
+   * its own server-computed `canEdit` below.
+   */
   canEdit: boolean;
+  /** PPDO-151 — the caller's place in the division flow; null outside it. */
+  divisionView?: AipDivisionView | null;
+  /**
+   * Demo 2.15 (PPDO-159) — the Investment proposal strip for a project, shown in its panel. AIP
+   * Entry passes it; AIP Review does not, so the review screen has no strip.
+   */
+  renderProposalSlot?: (projectId: number) => React.ReactNode;
   /** Passed straight through as each panel's `lockedReason`. Null on AIP Review (PPDO-94) — there is
    * no holder to name, so the add/delete controls are omitted rather than disabled with a reason. */
   holder: string | null;
@@ -74,6 +88,12 @@ export default function AipSelectedPanel({
   if (selection.activity && selection.project && selection.program) {
     const { program, project, activity } = selection;
     const isLastActivity = project.activities[project.activities.length - 1]?.id === activity.id;
+    // ⚠️ AND-ed with the server's per-activity flag (PPDO-148), never re-derived here. On an
+    // office without divisions the two agree, so nothing changes there.
+    const activityCanEdit = canEdit && activity.canEdit;
+    // A division lock names itself in the panel; the delete control's "With {holder}" would name
+    // the office's holder instead, which is wrong while the office is still in its own hands.
+    const divisionLocked = activityDivisionLock(activity, divisionView) != null;
     return (
       <AipActivityPanel
         // ⚠️ Keyed, so each activity gets its OWN instance. ↩️ The tree this replaced keyed every
@@ -82,8 +102,9 @@ export default function AipSelectedPanel({
         // expenditure refetch, a failed delete's error text and a half-typed add across the switch.
         key={activity.id}
         activity={activity}
-        canEdit={canEdit}
-        lockedReason={holder}
+        canEdit={activityCanEdit}
+        lockedReason={divisionLocked ? null : holder}
+        divisionView={divisionView}
         isLastSibling={isLastActivity}
         accounts={accounts}
         funds={funds}
@@ -113,6 +134,8 @@ export default function AipSelectedPanel({
         project={project}
         canEdit={canEdit}
         lockedReason={holder}
+        divisionView={divisionView}
+        proposalSlot={renderProposalSlot?.(project.id) ?? null}
         isLastSibling={isLastProject}
         proponentOfficeCode={proponentOfficeCode}
         unresolvedCount={unresolvedCount}

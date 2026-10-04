@@ -60,6 +60,7 @@ const SECTIONS: Section[] = [
       { prefix: "/config/esre-codes",          label: "eSRE Codes" },
       { prefix: "/config/price-index",         label: "Price Index" },
       { prefix: "/config/divisions",           label: "Divisions" },
+      { prefix: "/config/office-users",        label: "Staff Divisions" },
       { prefix: "/config/procurement-presets", label: "Procurement Presets" },
       { prefix: "/config/audit-log",           label: "Audit Log" },
       { prefix: "/config/api-access",           label: "API Access" },

@@ -155,4 +155,33 @@ public interface IPermissionService
     /// stays that way) and of both reviewer grants, in both directions.
     /// </summary>
     Task<bool> CanManageOfficeSetupAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may change the province-wide Investment Planning settings — the default
+    /// fiscal year every office's pages open on (v1.8.0 — PPDO-136).
+    ///
+    /// <see cref="CanManageConfigAsync"/> AND a seat in the host office. The value moves every
+    /// office, so it is PPDO's to set: a guest-office Admin, who holds CanManageConfig by role,
+    /// must not reach it. SuperAdmin passes from any office (or none), for support access.
+    ///
+    /// ⚠️ Admin does <b>not</b> bypass the office check. <see cref="CanUploadAipAsync"/> is also
+    /// described as host-office-only but lets every Admin through before reading the office — do
+    /// not copy that shape here.
+    /// </summary>
+    Task<bool> CanManageInvestmentPlanningSettingsAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// True when the user may reopen a Final investment proposal of the config office
+    /// <paramref name="officeId"/> back to Draft (v1.8.0 Demo 2.15 — PPDO-155, spec decision 5).
+    ///
+    /// SuperAdmin: always. Admin: only in the host office. Otherwise the department head
+    /// (<see cref="CanReviewBudgetPlanningAsync"/>) of THAT office only. Encoders can finalize but
+    /// not reopen, so "Final" means something.
+    ///
+    /// ⚠️ <b>"That office" is <c>users.office_id == officeId</c>, never <c>OfficeScope.Resolve</c></b>
+    /// (Permission_Matrix.md §4a). A host-office department head resolves to SeeAll and would
+    /// otherwise gain reopen over every office in the province. Pinned by
+    /// <c>PermissionMatrixTests.HostOfficeDeptHead_CannotReopenAnotherOffice</c>.
+    /// </summary>
+    Task<bool> CanReopenInvestmentProposalAsync(User user, int officeId, CancellationToken cancellationToken = default);
 }

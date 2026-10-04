@@ -110,6 +110,15 @@ const TILES: TileDef[] = [
   },
 ];
 
+const SETTINGS_TILE: TileDef = {
+  key: "investmentPlanning",
+  icon: "📅",
+  name: "Investment Planning Settings",
+  caption: "Default fiscal year the Investment Planning pages open on.",
+  href: "/config/investment-planning",
+  // A single setting, not a collection — no count to show.
+};
+
 const USER_TILE: TileDef = {
   key: "users",
   icon: "👥",
@@ -131,6 +140,8 @@ export default function ConfigDashboardPage() {
 
   const [authChecked] = useState(true);
   const [canManageUsers, setCanManageUsers] = useState(false);
+  // Courtesy only — the server gates the settings routes (CanManageInvestmentPlanningSettings).
+  const [canManageSettings, setCanManageSettings] = useState(false);
   // null = loading, number = count, "error" = failed to load this tile's count
   const [counts, setCounts] = useState<Record<string, number | "error" | null>>({
     accounts: null,
@@ -139,6 +150,7 @@ export default function ConfigDashboardPage() {
     priceIndex: null,
     divisions: null,
     procurementPresets: "error", // no account-agnostic count — renders as a dash, never fetched
+    investmentPlanning: "error", // a single setting, not a collection — renders as a dash
     users: null,
   });
 
@@ -148,7 +160,10 @@ export default function ConfigDashboardPage() {
     fetchMe()
       .then((data) => {
         if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
-        else setCanManageUsers(data.canManageUsers === true);
+        else {
+          setCanManageUsers(data.canManageUsers === true);
+          setCanManageSettings(data.role === "SuperAdmin" || data.isHostOffice);
+        }
       })
       .catch(() => router.replace("/login"));
   }, [router]);
@@ -192,7 +207,11 @@ export default function ConfigDashboardPage() {
 
         {/* Tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...TILES, ...(canManageUsers ? [USER_TILE] : [])].map((tile) => (
+          {[
+            ...TILES,
+            ...(canManageSettings ? [SETTINGS_TILE] : []),
+            ...(canManageUsers ? [USER_TILE] : []),
+          ].map((tile) => (
             <Link
               key={tile.key}
               href={tile.href}

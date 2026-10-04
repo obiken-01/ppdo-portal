@@ -125,6 +125,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("co");
 
+                    b.Property<int?>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
                     b.Property<string>("EndDate")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
@@ -197,6 +201,9 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DivisionId")
+                        .HasDatabaseName("IX_aip_activities_division_id");
+
                     b.HasIndex("FundingSourceId");
 
                     b.HasIndex("ProjectId")
@@ -260,6 +267,74 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_aip_division_allocation_ledger_division_fy_fund_activity");
 
                     b.ToTable("aip_division_allocation_ledger", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionSubmission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AipRecordId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_record_id");
+
+                    b.Property<int>("DivisionId")
+                        .HasColumnType("int")
+                        .HasColumnName("division_id");
+
+                    b.Property<int>("OfficeId")
+                        .HasColumnType("int")
+                        .HasColumnName("office_id");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("returned_at");
+
+                    b.Property<Guid?>("ReturnedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("returned_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Draft")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid?>("SubmittedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("submitted_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DivisionId");
+
+                    b.HasIndex("OfficeId");
+
+                    b.HasIndex("ReturnedById");
+
+                    b.HasIndex("SubmittedById");
+
+                    b.HasIndex("AipRecordId", "DivisionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_aip_division_submissions_record_division");
+
+                    b.HasIndex("AipRecordId", "OfficeId")
+                        .HasDatabaseName("IX_aip_division_submissions_record_office");
+
+                    b.ToTable("aip_division_submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_aip_division_submissions_status", "[status] IN ('Draft', 'Submitted')");
+                        });
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
@@ -960,8 +1035,8 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
                         .HasColumnName("name");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -1360,6 +1435,624 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_funding_sources_office_id");
 
                     b.ToTable("funding_sources", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentPlanningSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("DefaultFiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("default_fiscal_year");
+
+                    b.Property<string>("LceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("lce_name");
+
+                    b.Property<string>("LcePosition")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("lce_position");
+
+                    b.Property<string>("PpdcName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("ppdc_name");
+
+                    b.Property<string>("PpdcPosition")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("ppdc_position");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("investment_planning_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_planning_settings_singleton", "[id] = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AipProjectId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_project_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("DirectSameAsSummary")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true)
+                        .HasColumnName("direct_same_as_summary");
+
+                    b.Property<DateTime?>("FinalizedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("finalized_at");
+
+                    b.Property<Guid?>("FinalizedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("finalized_by_user_id");
+
+                    b.Property<string>("GeneralObjective")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("general_objective");
+
+                    b.Property<string>("HgdgChecklist")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasColumnName("hgdg_checklist");
+
+                    b.Property<decimal?>("HgdgScore")
+                        .HasPrecision(3, 1)
+                        .HasColumnType("decimal(3,1)")
+                        .HasColumnName("hgdg_score");
+
+                    b.Property<string>("PartnershipSustainability")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("partnership_sustainability");
+
+                    b.Property<string>("ProjectLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("project_location");
+
+                    b.Property<string>("ProjectManager")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("project_manager");
+
+                    b.Property<string>("ProjectSupervisor")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("project_supervisor");
+
+                    b.Property<string>("Rationale")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("rationale");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Signatory1Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("signatory1_label");
+
+                    b.Property<string>("Signatory1Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory1_name");
+
+                    b.Property<string>("Signatory1Position")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory1_position");
+
+                    b.Property<string>("Signatory2Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("signatory2_label");
+
+                    b.Property<string>("Signatory2Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory2_name");
+
+                    b.Property<string>("Signatory2Position")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory2_position");
+
+                    b.Property<string>("Signatory3Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("signatory3_label");
+
+                    b.Property<string>("Signatory3Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory3_name");
+
+                    b.Property<string>("Signatory3Position")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory3_position");
+
+                    b.Property<string>("Signatory4Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("signatory4_label");
+
+                    b.Property<string>("Signatory4Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory4_name");
+
+                    b.Property<string>("Signatory4Position")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("signatory4_position");
+
+                    b.Property<string>("SnapshotJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("snapshot_json");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Draft")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.Property<string>("WomensImpactStrategy")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("womens_impact_strategy");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AipProjectId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_investment_proposals_aip_project_id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("FinalizedById");
+
+                    b.HasIndex("UpdatedById");
+
+                    b.ToTable("investment_proposals", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposals_status", "[status] IN ('Draft', 'Final')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalBeneficiary", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("Female")
+                        .HasColumnType("int")
+                        .HasColumnName("female");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("label");
+
+                    b.Property<int?>("Male")
+                        .HasColumnType("int")
+                        .HasColumnName("male");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("section");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId")
+                        .HasDatabaseName("IX_investment_proposal_beneficiaries_proposal_id");
+
+                    b.ToTable("investment_proposal_beneficiaries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_beneficiaries_section", "[section] IN ('Summary', 'Direct', 'Indirect')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalBenefit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Benefit")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("benefit");
+
+                    b.Property<string>("Cost")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("cost");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("Sector")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("sector");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId", "Sector")
+                        .IsUnique()
+                        .HasDatabaseName("UX_investment_proposal_benefits_proposal_sector");
+
+                    b.ToTable("investment_proposal_benefits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_benefits_sector", "[sector] IN ('Social', 'Economic', 'Environmental', 'Institutional', 'Infrastructure/Land Use')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId")
+                        .HasDatabaseName("IX_investment_proposal_groups_proposal_id");
+
+                    b.ToTable("investment_proposal_groups", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalLogframe", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("level");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("target");
+
+                    b.Property<string>("Verification")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("verification");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId", "Level")
+                        .IsUnique()
+                        .HasDatabaseName("UX_investment_proposal_logframe_proposal_level");
+
+                    b.ToTable("investment_proposal_logframe", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_logframe_level", "[level] IN ('Impact', 'Outcome', 'Output', 'Input')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalMonitoring", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Activity")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("activity");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("phase");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("Schedule")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("schedule");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("Tools")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("tools");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId")
+                        .HasDatabaseName("IX_investment_proposal_monitoring_proposal_id");
+
+                    b.ToTable("investment_proposal_monitoring", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_monitoring_phase", "[phase] IN ('Pre', 'During', 'Post')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalRisk", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Monitoring")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("monitoring");
+
+                    b.Property<string>("Prevention")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("prevention");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("Risk")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("risk");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId")
+                        .HasDatabaseName("IX_investment_proposal_risks_proposal_id");
+
+                    b.ToTable("investment_proposal_risks", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalTeamMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Expertise")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("expertise");
+
+                    b.Property<string>("GadTrainings")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("gad_trainings");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<string>("RequiredTraining")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("required_training");
+
+                    b.Property<string>("Sex")
+                        .IsRequired()
+                        .HasMaxLength(1)
+                        .IsUnicode(false)
+                        .HasColumnType("char(1)")
+                        .HasColumnName("sex")
+                        .IsFixedLength();
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProposalId")
+                        .HasDatabaseName("IX_investment_proposal_team_members_proposal_id");
+
+                    b.ToTable("investment_proposal_team_members", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_team_members_sex", "[sex] IN ('M', 'F')");
+                        });
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalWorkPlanRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AipActivityId")
+                        .HasColumnType("int")
+                        .HasColumnName("aip_activity_id");
+
+                    b.Property<string>("GenderIssues")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("gender_issues");
+
+                    b.Property<int?>("GroupId")
+                        .HasColumnType("int")
+                        .HasColumnName("group_id");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Opr")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("opr");
+
+                    b.Property<string>("PerformanceTarget")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)")
+                        .HasColumnName("performance_target");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("Timeline")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("timeline");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AipActivityId")
+                        .HasDatabaseName("IX_investment_proposal_work_plan_rows_aip_activity_id");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("IX_investment_proposal_work_plan_rows_group_id");
+
+                    b.HasIndex("ProposalId", "AipActivityId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_investment_proposal_work_plan_rows_proposal_activity")
+                        .HasFilter("[aip_activity_id] IS NOT NULL");
+
+                    b.ToTable("investment_proposal_work_plan_rows", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_investment_proposal_work_plan_rows_activity_or_name", "[aip_activity_id] IS NOT NULL OR [name] IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.ItemMaster", b =>
@@ -3327,6 +4020,12 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipActivity", b =>
                 {
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_activities_divisions_division_id");
+
                     b.HasOne("PPDO.Domain.Entities.FundingSource", "FundingSource")
                         .WithMany()
                         .HasForeignKey("FundingSourceId")
@@ -3339,6 +4038,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_aip_activities_aip_projects_project_id");
+
+                    b.Navigation("Division");
 
                     b.Navigation("FundingSource");
 
@@ -3373,6 +4074,52 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Division");
 
                     b.Navigation("FundingSource");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionSubmission", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipRecord", "AipRecord")
+                        .WithMany()
+                        .HasForeignKey("AipRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_aip_records_aip_record_id");
+
+                    b.HasOne("PPDO.Domain.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_divisions_division_id");
+
+                    b.HasOne("PPDO.Domain.Entities.Office", "Office")
+                        .WithMany()
+                        .HasForeignKey("OfficeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aip_division_submissions_offices_office_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "ReturnedBy")
+                        .WithMany()
+                        .HasForeignKey("ReturnedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_division_submissions_users_returned_by_user_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "SubmittedBy")
+                        .WithMany()
+                        .HasForeignKey("SubmittedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_division_submissions_users_submitted_by_user_id");
+
+                    b.Navigation("AipRecord");
+
+                    b.Navigation("Division");
+
+                    b.Navigation("Office");
+
+                    b.Navigation("ReturnedBy");
+
+                    b.Navigation("SubmittedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipExpenditure", b =>
@@ -3687,6 +4434,149 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_funding_sources_offices_office_id");
 
                     b.Navigation("Office");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentPlanningSettings", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_investment_planning_settings_users_updated_by_user_id");
+
+                    b.Navigation("UpdatedBy");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposal", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipProject", "AipProject")
+                        .WithMany()
+                        .HasForeignKey("AipProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposals_aip_projects_aip_project_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_investment_proposals_users_created_by_user_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "FinalizedBy")
+                        .WithMany()
+                        .HasForeignKey("FinalizedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_investment_proposals_users_finalized_by_user_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_investment_proposals_users_updated_by_user_id");
+
+                    b.Navigation("AipProject");
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("FinalizedBy");
+
+                    b.Navigation("UpdatedBy");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalBeneficiary", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Beneficiaries")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_beneficiaries_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalBenefit", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Benefits")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_benefits_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalGroup", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Groups")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_groups_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalLogframe", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Logframe")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_logframe_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalMonitoring", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Monitoring")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_monitoring_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalRisk", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("Risks")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_risks_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalTeamMember", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("TeamMembers")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_team_members_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalWorkPlanRow", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.AipActivity", "AipActivity")
+                        .WithMany()
+                        .HasForeignKey("AipActivityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_investment_proposal_work_plan_rows_aip_activities_aip_activity_id");
+
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposalGroup", "Group")
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_investment_proposal_work_plan_rows_investment_proposal_groups_group_id");
+
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", null)
+                        .WithMany("WorkPlanRows")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_work_plan_rows_investment_proposals_proposal_id");
+
+                    b.Navigation("AipActivity");
+
+                    b.Navigation("Group");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipOffice", b =>
@@ -4146,6 +5036,25 @@ namespace PPDO.Infrastructure.Data.Migrations
             modelBuilder.Entity("PPDO.Domain.Entities.Division", b =>
                 {
                     b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposal", b =>
+                {
+                    b.Navigation("Beneficiaries");
+
+                    b.Navigation("Benefits");
+
+                    b.Navigation("Groups");
+
+                    b.Navigation("Logframe");
+
+                    b.Navigation("Monitoring");
+
+                    b.Navigation("Risks");
+
+                    b.Navigation("TeamMembers");
+
+                    b.Navigation("WorkPlanRows");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.LdipOffice", b =>

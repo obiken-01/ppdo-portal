@@ -45,6 +45,8 @@ public sealed class AipReviewServiceTests
     private readonly Mock<IRepository<AipOffice>>    _officeRepo  = new();
     private readonly Mock<IPermissionService>        _permissions = new();
     private readonly Mock<IAuditService>             _audit       = new();
+    // PPDO-149 — no divisions unless a test seeds some.
+    private readonly AipDivisionLockFixture          Divisions    = new();
     private readonly Mock<IOfficeRepository>         _officeConfigRepo = new();
     private readonly Mock<IAipExpenditureRepository> _expRepo     = new();
 
@@ -102,7 +104,8 @@ public sealed class AipReviewServiceTests
 
         return new AipReviewService(
             _aipRepo.Object, _officeRepo.Object, _officeConfigRepo.Object, _expRepo.Object,
-            _permissions.Object, _audit.Object, NullLogger<AipReviewService>.Instance);
+            _permissions.Object, _audit.Object, Divisions.Workflow(_audit.Object),
+            NullLogger<AipReviewService>.Instance);
     }
 
     /// <summary>
@@ -318,6 +321,45 @@ public sealed class AipReviewServiceTests
         _audit.Verify(a => a.LogAsync(
             "aip_offices", GroupA, AuditAction.ReturnByPpdo,
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── PPDO-149 decision 11: a PPDO return reopens every division ────────────
+
+    [Fact]
+    public async Task ReturnToOffice_InAnOfficeWithDivisions_ReopensEveryDivision_AndAuditsEach()
+    {
+        Divisions.AddDivision(60, OfficeId, "Planning Division");
+        Divisions.AddDivision(61, OfficeId, "Engineering Division");
+        Divisions.Submit(RecordId, OfficeId, 60);
+        Divisions.Submit(RecordId, OfficeId, 61);
+        Divisions.Submissions[0].Id = 1; Divisions.Submissions[1].Id = 2;
+        AipReviewService sut = Build();
+        User reviewer = PpdoReviewer();
+
+        ServiceResult<AipSubmitResultDto> result = await sut.ReturnToOfficeAsync(RecordId, OfficeId, reviewer);
+
+        Assert.True(result.IsSuccess);
+        Assert.All(Divisions.Submissions, row =>
+        {
+            Assert.Equal(AipDivisionStatus.Draft, row.Status);
+            Assert.Equal(reviewer.Id, row.ReturnedById);
+        });
+        _audit.Verify(a => a.LogAsync("aip_division_submissions", It.IsAny<int>(), AuditAction.ReturnDivision,
+            It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        // Still ONE save: the office rows and the division rows share the context.
+        _officeRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Accept_DoesNotTouchTheDivisions()
+    {
+        Divisions.AddDivision(60, OfficeId, "Planning Division");
+        Divisions.Submit(RecordId, OfficeId, 60);
+        AipReviewService sut = Build();
+
+        await sut.AcceptOfficeAsync(RecordId, OfficeId, PpdoReviewer());
+
+        Assert.Equal(AipDivisionStatus.Submitted, Divisions.Submissions[0].Status);
     }
 
     // ── 409: somebody else already moved it ───────────────────────────────────

@@ -92,7 +92,24 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
                 ref_code TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
                 is_creation INTEGER NOT NULL DEFAULT 0,
-                is_synthetic INTEGER NOT NULL DEFAULT 0
+                is_synthetic INTEGER NOT NULL DEFAULT 0,
+                funding_source_id INTEGER NULL,
+                division_id INTEGER NULL
+            );
+            -- PPDO-128: the usage counts group by the record's fiscal year.
+            CREATE TABLE aip_records (
+                id INTEGER PRIMARY KEY,
+                fiscal_year INTEGER NOT NULL
+            );
+            -- PPDO-128: WFP lines reach their office through the AIP activity they hang off.
+            CREATE TABLE wfp_activities (
+                id INTEGER PRIMARY KEY,
+                aip_activity_id INTEGER NOT NULL
+            );
+            CREATE TABLE wfp_expenditures (
+                id INTEGER PRIMARY KEY,
+                wfp_activity_id INTEGER NOT NULL,
+                funding_source_id INTEGER NULL
             );
             """);
     }
@@ -306,6 +323,158 @@ public sealed class AipExpenditureRepositoryTests : IDisposable
         Assert.Equal([9001, 9002], rows.Select(r => r.ActivityId).OrderBy(i => i).ToArray());
         Assert.Equal(600_000m, rows.Sum(r => r.Mooe));
         Assert.Equal(25_000m,  rows.Sum(r => r.Co));
+    }
+
+    // ── Fund usage outside one office (PPDO-128) ──────────────────────────────
+    // The guard behind limiting a fund to one office. Worth a real database because both halves of
+    // the rule are SQL properties: the four-join office attribution, and that an AIP office with a
+    // NULL config office id counts as OUTSIDE (C# null semantics, not SQL's NULL != x → unknown).
+
+    private const int FundUnderTest = 17, OurOffice = 1, OtherOffice = 9;
+
+    /// <summary>Our office (9001), another office (9004), and an unattributed group (9006).</summary>
+    private async Task SeedUsageTreeAsync()
+    {
+        await SeedTreeAsync(
+            (570, 44, OurOffice,   9001),
+            (571, 44, OtherOffice, 9004));
+
+        await using AppDbContext ctx = new(_options);
+        await ctx.Database.ExecuteSqlRawAsync("""
+            INSERT INTO aip_records (id, fiscal_year) VALUES (44, 2027);
+            INSERT INTO aip_offices (id, aip_record_id, ref_code, name, sector, office_id)
+                VALUES (572, 44, 'rc', 'UNMATCHED', 'GENERAL', NULL);
+            INSERT INTO aip_programs (id, office_id, ref_code, name) VALUES (5720, 572, 'p', 'Program');
+            INSERT INTO aip_projects (id, program_id, ref_code, name) VALUES (57200, 5720, 'pr', 'Project');
+            INSERT INTO aip_activities (id, project_id, ref_code, name) VALUES (9006, 57200, 'a', 'Activity');
+            """);
+    }
+
+    [Fact]
+    public async Task CountByFundingSourceOutsideOffice_CountsOtherOfficesAndUnattributed_NotOurOwn()
+    {
+        await SeedUsageTreeAsync();
+        await SeedAsync(
+            WithFund(Line(9001, mooe: 1m), FundUnderTest),   // ours — the fund stays visible to it
+            WithFund(Line(9001, mooe: 1m), FundUnderTest),
+            WithFund(Line(9004, mooe: 1m), FundUnderTest),   // another office → counts
+            WithFund(Line(9006, mooe: 1m), FundUnderTest),   // owner unknown → counts
+            WithFund(Line(9004, mooe: 1m), 3));              // another fund → never counts
+        await using (AppDbContext setup = new(_options))
+        {
+            // An activity-level fund (import / FY≤2027) is usage too — the other half of the count.
+            await setup.Database.ExecuteSqlRawAsync(
+                $"UPDATE aip_activities SET funding_source_id = {FundUnderTest} WHERE id IN (9001, 9004)");
+        }
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyDictionary<int, int> outside =
+            await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice);
+
+        // 9004 line + 9006 line + 9004 activity, all in the FY2027 record. None of 9001's three rows.
+        Assert.Equal(new Dictionary<int, int> { [2027] = 3 }, outside);
+    }
+
+    [Fact]
+    public async Task CountByFundingSourceOutsideOffice_UsedOnlyByThatOffice_ReturnsZero()
+    {
+        await SeedUsageTreeAsync();
+        await SeedAsync(WithFund(Line(9001, mooe: 1m), FundUnderTest));
+
+        await using AppDbContext ctx = new(_options);
+
+        // Absent rather than a 0 entry — a year with no rows produces no group.
+        Assert.Empty(await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice));
+        // …and the same row IS outside from any other office's point of view.
+        Assert.Equal(new Dictionary<int, int> { [2027] = 1 },
+            await NewRepo(ctx).CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OtherOffice));
+    }
+
+    [Fact]
+    public async Task WfpCountByFundingSourceOutsideOffice_AttributesThroughTheAipActivity()
+    {
+        await SeedUsageTreeAsync();
+        await using (AppDbContext setup = new(_options))
+        {
+            await setup.Database.ExecuteSqlRawAsync($"""
+                INSERT INTO wfp_activities (id, aip_activity_id) VALUES (1, 9001), (2, 9004), (3, 9006);
+                INSERT INTO wfp_expenditures (id, wfp_activity_id, funding_source_id) VALUES
+                    (1, 1, {FundUnderTest}),   -- ours
+                    (2, 2, {FundUnderTest}),   -- another office
+                    (3, 3, {FundUnderTest}),   -- unattributed
+                    (4, 2, 3);                 -- another fund
+                """);
+        }
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyDictionary<int, int> outside = await new WfpExpenditureRepository(ctx)
+            .CountByFundingSourceOutsideOfficeAsync(FundUnderTest, OurOffice);
+
+        Assert.Equal(new Dictionary<int, int> { [2027] = 2 }, outside);
+    }
+
+    [Fact]
+    public async Task SumMooeCoByConfigOffice_GroupsPerActivityAndFund_ForThatOfficeAndRecordOnly()
+    {
+        // The FY2028 division table's source (2026-09-24): every fund at once, per activity, with
+        // the program ref code that division assignments key on.
+        const int record = 44, ourOffice = 1, otherOffice = 9, gf = 1, gad = 2;
+        await SeedTreeAsync(
+            (560, record, ourOffice,   9001),
+            (561, record, ourOffice,   9002),   // a second group row of the same office
+            (563, record, otherOffice, 9004),   // another office — excluded
+            (564, 43,     ourOffice,   9005));  // our office, another record — excluded
+
+        await SeedAsync(
+            WithFund(Line(9001, ps: 500_000m, mooe: 100m, co: 0m), gf),
+            WithFund(Line(9001, mooe: 50m, co: 25m), gf),       // same activity + fund → summed
+            WithFund(Line(9001, mooe: 7m), gad),                 // same activity, other fund → own row
+            WithFund(Line(9002, co: 300m), gf),
+            Line(9002, mooe: 999m),                              // no fund → omitted
+            WithFund(Line(9004, mooe: 888m), gf),
+            WithFund(Line(9005, mooe: 777m), gf));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipActivityProgramFundTotalsDto> rows =
+            await NewRepo(ctx).SumMooeCoByConfigOfficeAsync(record, ourOffice);
+
+        Assert.Equal(
+            new[]
+            {
+                new AipActivityProgramFundTotalsDto("p", 9001, gf,  150m, 25m),   // PS never returned
+                new AipActivityProgramFundTotalsDto("p", 9001, gad, 7m,   0m),
+                new AipActivityProgramFundTotalsDto("p", 9002, gf,  0m,   300m),
+            },
+            rows.OrderBy(r => r.ActivityId).ThenBy(r => r.FundingSourceId).ToArray());
+    }
+
+    [Fact]
+    public async Task SumMooeCoByRecordAndFund_EveryOfficeInOneQuery_OneFundOnly()
+    {
+        // The readiness board's "costed against the ceiling" for every office at once (2026-09-24).
+        const int record = 44, gso = 1, pho = 9, gf = 1, gad = 2;
+        await SeedTreeAsync(
+            (560, record, gso, 9001),
+            (561, record, pho, 9004),
+            (564, 43,     gso, 9005));   // another record — excluded
+
+        await SeedAsync(
+            WithFund(Line(9001, ps: 900m, mooe: 100m, co: 20m), gf),
+            WithFund(Line(9001, mooe: 7m), gad),                  // other fund — excluded
+            WithFund(Line(9004, mooe: 50m), gf),
+            WithFund(Line(9005, mooe: 777m), gf));
+
+        await using AppDbContext ctx = new(_options);
+        IReadOnlyList<AipOfficeActivityFundTotalsDto> rows =
+            await NewRepo(ctx).SumMooeCoByRecordAndFundAsync(record, gf);
+
+        Assert.Equal(
+            new[]
+            {
+                new AipOfficeActivityFundTotalsDto(gso, 9001, 100m, 20m),   // PS never returned
+                new AipOfficeActivityFundTotalsDto(pho, 9004, 50m,  0m),
+            },
+            rows.OrderBy(r => r.ActivityId).ToArray());
     }
 
     // ── The form's Funding Source column (PPDO-80) ────────────────────────────

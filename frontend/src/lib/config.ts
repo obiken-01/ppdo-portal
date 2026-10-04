@@ -21,15 +21,19 @@ import type {
   CreateApiKeyRequest,
   CreateApiKeyResult,
   CsvImportResult,
+  DefaultFiscalYearResponse,
+  SignatoryDefaults,
   DivisionResponse,
   ClimateChangeTypologyResponse,
   EsreCodeResponse,
+  FundOwnershipImpact,
   FundingSourceResponse,
   OfficeResponse,
   PriceIndexItemResponse,
   PriceIndexPage,
   PriceIndexPickerItem,
   ProcurementPresetResponse,
+  UpdateDefaultFiscalYearRequest,
   UpsertAccountRequest,
   UpsertDivisionRequest,
   UpsertClimateChangeTypologyRequest,
@@ -424,6 +428,22 @@ export async function updateFundingSource(
   return unwrap(data);
 }
 
+/**
+ * GET /api/config/funding-sources/{id}/ownership-impact?officeId= — other offices' usage that
+ * limiting the fund to `officeId` would cut off, per fiscal year (PPDO-128). Config managers only.
+ * `officeId` null means "make it shared", which always answers zero.
+ */
+export async function getFundingSourceOwnershipImpact(
+  id: number,
+  officeId: number | null,
+): Promise<FundOwnershipImpact> {
+  const { data } = await api.get<ApiResponse<FundOwnershipImpact>>(
+    `/config/funding-sources/${id}/ownership-impact`,
+    { params: officeId == null ? {} : { officeId } },
+  );
+  return unwrap(data);
+}
+
 /** DELETE /api/config/funding-sources/{id} — soft delete (isActive = false). */
 export async function deactivateFundingSource(id: number): Promise<FundingSourceResponse> {
   const { data } = await api.delete<ApiResponse<FundingSourceResponse>>(
@@ -779,5 +799,40 @@ export async function listApiKeyRequests(id: number, page = 1): Promise<ApiKeyRe
   const { data } = await api.get<ApiResponse<ApiKeyRequestPage>>(`/config/api-keys/${id}/requests`, {
     params: { page },
   });
+  return unwrap(data);
+}
+
+// ---------------------------------------------------------------------------
+// Investment Planning settings — /api/config/investment-planning (PPDO-136)
+// ---------------------------------------------------------------------------
+
+/** GET — host-office config managers only (SuperAdmin from anywhere); 403 otherwise. */
+export async function getDefaultFiscalYear(): Promise<DefaultFiscalYearResponse> {
+  const { data } = await api.get<ApiResponse<DefaultFiscalYearResponse>>(
+    "/config/investment-planning/default-fiscal-year",
+  );
+  return unwrap(data);
+}
+
+/** PUT — { defaultFiscalYear: null } clears it. A 400 carries the range message in `error`. */
+export async function updateDefaultFiscalYear(
+  body: UpdateDefaultFiscalYearRequest,
+): Promise<DefaultFiscalYearResponse> {
+  const { data } = await api.put<ApiResponse<DefaultFiscalYearResponse>>(
+    "/config/investment-planning/default-fiscal-year",
+    body,
+  );
+  return unwrap(data);
+}
+
+/** GET — readable with Budget Planning access (create needs it); edited by config managers. */
+export async function getSignatoryDefaults(): Promise<SignatoryDefaults> {
+  const { data } = await api.get<ApiResponse<SignatoryDefaults>>("/config/investment-planning/signatory-defaults");
+  return unwrap(data);
+}
+
+/** PUT — blank clears a value. A 400 carries the length message in `error`. */
+export async function updateSignatoryDefaults(body: SignatoryDefaults): Promise<SignatoryDefaults> {
+  const { data } = await api.put<ApiResponse<SignatoryDefaults>>("/config/investment-planning/signatory-defaults", body);
   return unwrap(data);
 }

@@ -74,6 +74,35 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
         int aipRecordId, int configOfficeId, int fundingSourceId, CancellationToken ct = default);
 
     /// <summary>
+    /// Every fund at once: one row per (activity, fund) for config office
+    /// <paramref name="configOfficeId"/> in AIP record <paramref name="aipRecordId"/>, carrying the
+    /// activity's program ref code and its MOOE and CO summed over that fund's lines — what the
+    /// dashboard's division table needs to say how much of each division's allocation the AIP has
+    /// used (FY2028+, where there is no WFP ledger to read).
+    ///
+    /// ⚠️ Per-activity and un-summed for the same reason as
+    /// <see cref="SumMooeCoByConfigOfficeAndFundAsync"/>: the caller rounds each figure up to the
+    /// thousand before adding (DECISION 9), so the result agrees with the ceiling check.
+    ///
+    /// ⚠️ Carries the program's REF CODE, not its id — division assignments are keyed by ref code
+    /// (<c>ProgramDivision</c> survives across fiscal years; see the project notes on why it is not an
+    /// FK). Lines naming no fund are omitted; PS is not returned (exempt, like the ceiling).
+    /// </summary>
+    Task<IReadOnlyList<AipActivityProgramFundTotalsDto>> SumMooeCoByConfigOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every office at once: one row per activity in AIP record <paramref name="aipRecordId"/> with
+    /// its config office and its MOOE and CO for <paramref name="fundingSourceId"/> — the readiness
+    /// board's "costed against the ceiling" for every office in one query, where
+    /// <see cref="SumMooeCoByConfigOfficeAndFundAsync"/> in a loop would be one query per office.
+    /// Per-activity and un-summed so the caller rounds before adding (DECISION 9); lines naming
+    /// another fund, and PS, are not returned.
+    /// </summary>
+    Task<IReadOnlyList<AipOfficeActivityFundTotalsDto>> SumMooeCoByRecordAndFundAsync(
+        int aipRecordId, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
     /// Line counts for a set of activities, computed in SQL (V18-49 / PPDO-59).
     ///
     /// ⚠️ Counts, not rows. The submit checklist asks only "does this activity have any lines?" for
@@ -173,6 +202,22 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
     /// as one number because the caller only needs to say how many rows would be left dangling.
     /// </summary>
     Task<int> CountByFundingSourceAsync(int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The same two-table count as <see cref="CountByFundingSourceAsync"/>, restricted to rows that
+    /// belong to any office OTHER than <paramref name="officeId"/> (PPDO-128) — the rows that would
+    /// lose sight of the fund if it were limited to that office — keyed by the AIP record's fiscal
+    /// year. Grouped in SQL; a year with no rows is absent, never 0.
+    ///
+    /// Split by year because the answer differs by year: FY2027's uploaded AIP names a fund on
+    /// nearly every office's activities, which is history, while FY2028+ usage is live entry. The
+    /// caller shows the split and lets PPDO decide.
+    ///
+    /// ⚠️ A row under an AIP office with no config office id (a pre-V18-32 row the backfill did
+    /// not match) counts as OUTSIDE. Its owner is unknown, so it cannot be shown to be safe.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, int>> CountByFundingSourceOutsideOfficeAsync(
+        int fundingSourceId, int officeId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -202,6 +247,33 @@ public sealed record AipActivityFundTotalsDto(
     int     ActivityId,
     decimal Mooe,
     decimal Co);
+
+/// <summary>
+/// One activity's MOOE and CO for one fund, with the program it belongs to — see
+/// <see cref="IAipExpenditureRepository.SumMooeCoByConfigOfficeAsync"/>.
+/// </summary>
+/// <summary>
+/// One activity's MOOE and CO for one fund, with its config office — see
+/// <see cref="IAipExpenditureRepository.SumMooeCoByRecordAndFundAsync"/>. The office is null for an
+/// AIP group row the V18-32 backfill could not match to a config office.
+/// </summary>
+public sealed record AipOfficeActivityFundTotalsDto(
+    int?    ConfigOfficeId,
+    int     ActivityId,
+    decimal Mooe,
+    decimal Co);
+
+/// <param name="DivisionId">
+/// The activity's own division tag (PPDO-150) — what FY2028+ division figures attribute by. Null
+/// when untagged. <see cref="ProgramRefCode"/> is kept for FY ≤ 2027's program-based attribution.
+/// </param>
+public sealed record AipActivityProgramFundTotalsDto(
+    string  ProgramRefCode,
+    int     ActivityId,
+    int     FundingSourceId,
+    decimal Mooe,
+    decimal Co,
+    int?    DivisionId = null);
 
 /// <summary>
 /// How many expenditure lines one activity has, and how many of them name no funding source

@@ -137,6 +137,7 @@ var host = new HostBuilder()
         services.AddScoped<IWfpReportExcelService, WfpReportExcelService>();
         services.AddScoped<IPpmpReportExcelService, PpmpReportExcelService>();
         services.AddScoped<IAipFormExcelService, AipFormExcelService>();
+        services.AddScoped<IInvestmentProposalWordService, InvestmentProposalWordService>();
 
         // NagerHolidayProvider uses a typed HttpClient. Timeout is short so a slow
         // Nager.Date response fails fast and falls back to static data or empty list.
@@ -164,6 +165,12 @@ var host = new HostBuilder()
         services.AddScoped<IFundingSourceService, FundingSourceService>();
         services.AddScoped<IClimateChangeTypologyService, ClimateChangeTypologyService>();
         services.AddScoped<IEsreCodeService, EsreCodeService>();
+        // TimeProvider: the default-fiscal-year range is "current Manila year + 3" (PPDO-136);
+        // registered explicitly so the service never relies on its optional-parameter fallback.
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IInvestmentPlanningSettingsService, InvestmentPlanningSettingsService>();
+        services.AddScoped<IInvestmentProposalService, InvestmentProposalService>();
+        services.AddScoped<IInvestmentProposalExportService, InvestmentProposalExportService>();
         services.AddScoped<IPriceIndexService, PriceIndexService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
         services.AddScoped<IProcurementPresetRepository, ProcurementPresetRepository>();
@@ -196,6 +203,13 @@ var host = new HostBuilder()
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
+        services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
+        services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
+        services.AddScoped<IInvestmentProposalRepository, InvestmentProposalRepository>();
+        // PPDO-148 — the division lock AipService and AipExpenditureService consult on every write.
+        services.AddScoped<IAipDivisionLock, AipDivisionLock>();
+        // PPDO-149 — division state + reopen-all, shared by AipSubmitService and AipReviewService.
+        services.AddScoped<IAipDivisionWorkflow, AipDivisionWorkflow>();
         services.AddScoped<IAllocationService, AllocationService>();
 
         // -- v1.8.0 Phase 5 — Partner API keys (PPDO-15) -----------------------

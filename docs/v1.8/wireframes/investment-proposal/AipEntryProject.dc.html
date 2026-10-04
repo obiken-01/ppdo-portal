@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIP Entry — project panel with proposal link</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; font-size: 13px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-none { background: #F1F3F5; color: #5A636B; }
+.p-draft { background: #FFF3D6; color: #8A5A00; }
+.p-final { background: #E6F4EC; color: #1F6B3F; }
+.p-div { background: #E6F4EC; color: #1F6B3F; }
+.tag { display: inline-block; padding: 1px 6px; font-size: 11px; font-weight: 600; background: #E6F4EC; color: #1F6B3F; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.fig { display: flex; flex-direction: column; align-items: flex-end; }
+.fig .k { font-size: 11px; font-weight: 600; color: #5A636B; }
+.fig .v { font-size: 15px; color: #343A40; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t td { padding: 9px 12px; border-bottom: 1px solid #F1F3F5; }
+.strip { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #F7FAF8; border-top: 1px solid #DCEAE1; border-bottom: 1px solid #DCEAE1; }
+.why { font-size: 13px; color: #5A636B; }
+</style>
+</helmet>
+<div style="width: 1120px; height: 1040px; padding: 40px; display: flex; flex-direction: column; gap: 24px;">
+  <div>
+    <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 600;">AIP Entry — the way into a project's proposal</h1>
+    <div class="why">The project panel gets an <strong>Investment proposal</strong> strip between the project details and its activities. FY 2028 onward only.</div>
+  </div>
+
+  <!-- The project panel, as AIP Entry renders it today, plus the strip -->
+  <div class="card">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div><span class="tag">PROJECT</span> <span style="font-family: Consolas, monospace; font-size: 13px; color: #5A636B;">1000-000-1-01-015-001-<strong style="color: #343A40;">001</strong></span></div>
+        <div style="font-size: 17px; font-weight: 600;">Rice Seed Support</div>
+      </div>
+      <div style="display: flex; gap: 20px; align-items: flex-start;">
+        <div class="fig"><span class="k">PS</span><span class="v num">—</span></div>
+        <div class="fig"><span class="k">MOOE</span><span class="v num">1,150.00</span></div>
+        <div class="fig"><span class="k">CO</span><span class="v num">100.00</span></div>
+        <div class="fig"><span class="k">TOTAL</span><span class="v num" style="font-weight: 600;">1,250.00</span></div>
+        <a href="#" style="font-size: 13px; color: #C92A2A; padding-top: 2px;">Delete project</a>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding: 0 16px 16px;">
+      <div><div class="cap">Description</div><div style="font-size: 14px; margin-top: 2px;">Certified inbred seed for registered rice farmers before the wet season.</div></div>
+      <div style="display: flex; justify-content: space-between; gap: 16px;"><div><div class="cap">Objective</div><div style="font-size: 14px; margin-top: 2px;">Raise average yield of participating farms.</div></div><a href="#" style="font-size: 13px; white-space: nowrap;">Edit details</a></div>
+    </div>
+
+    <div class="strip">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F6B3F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+      <span style="font-size: 14px; font-weight: 600;">Investment proposal</span>
+      <span class="pill p-draft">Draft</span>
+      <span style="font-size: 13px; color: #5A636B;">Last saved 2:14 PM by Agriculturist User</span>
+      <span style="flex-grow: 1;"></span>
+      <a class="btn pri" href="FocusMode.dc.html">Open proposal →</a>
+    </div>
+
+    <div style="padding: 12px 16px 6px;"><div class="cap">Activities <span style="color: #ADB5BD;">3</span></div></div>
+    <table class="t">
+      <tbody>
+        <tr><td style="width: 60px; font-family: Consolas, monospace; font-weight: 600;">001</td><td>Validation of farmer beneficiaries</td><td style="width: 140px;"><span class="pill p-div">Admin Division</span></td><td class="num" style="width: 110px; text-align: right;">150.00</td></tr>
+        <tr><td style="font-family: Consolas, monospace; font-weight: 600;">002</td><td>Procurement and distribution of seed</td><td><span class="pill p-div">Admin Division</span></td><td class="num" style="text-align: right;">1,000.00</td></tr>
+        <tr><td style="font-family: Consolas, monospace; font-weight: 600;">003</td><td>Field monitoring</td><td><span class="pill p-div">Admin Division</span></td><td class="num" style="text-align: right;">100.00</td></tr>
+      </tbody>
+    </table>
+    <div style="padding: 10px 16px 14px;"><a href="#" style="font-size: 13px; font-weight: 500;">+ Add activity</a></div>
+  </div>
+
+  <!-- Strip states -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div class="cap">The strip in every state</div>
+
+    <div class="card"><div class="strip" style="border: 0;">
+      <span style="font-size: 14px; font-weight: 600; width: 160px;">No proposal yet</span>
+      <span class="pill p-none">None</span>
+      <span class="why" style="flex-grow: 1;">Creates it with the description, objective and activity names already filled in.</span>
+      <button class="btn pri" type="button">Create proposal</button>
+    </div></div>
+
+    <div class="card"><div class="strip" style="border: 0;">
+      <span style="font-size: 14px; font-weight: 600; width: 160px;">Draft</span>
+      <span class="pill p-draft">Draft</span>
+      <span class="why" style="flex-grow: 1;">Last saved 2:14 PM by Agriculturist User</span>
+      <a class="btn pri" href="#">Open proposal →</a>
+    </div></div>
+
+    <div class="card"><div class="strip" style="border: 0;">
+      <span style="font-size: 14px; font-weight: 600; width: 160px;">Final</span>
+      <span class="pill p-final">Final</span>
+      <span class="why" style="flex-grow: 1;">Finalized 12 Oct 2028 · Export Word from the proposal page</span>
+      <a class="btn" href="#">Open proposal →</a>
+    </div></div>
+
+    <div class="card"><div class="strip" style="border: 0;">
+      <span style="font-size: 14px; font-weight: 600; width: 160px;">Reviewer (read-only)</span>
+      <span class="pill p-draft">Draft</span>
+      <span class="why" style="flex-grow: 1;">No Create for a PPDO cross-office reviewer; Open shows the proposal read-only.</span>
+      <a class="btn" href="#">View proposal →</a>
+    </div></div>
+
+    <div class="why" style="padding-top: 4px;">FY 2027 projects show no strip at all — proposals start with FY 2028. A project whose program belongs to another division shows the strip read-only, like the rest of its panel.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1120,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

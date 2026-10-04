@@ -9,7 +9,9 @@ namespace PPDO.Application.DTOs.BudgetPlanning;
 /// </summary>
 /// <param name="Kind">
 /// A stable machine-readable slug the UI groups and links on: <c>no-lines</c>,
-/// <c>costed-at-zero</c>, <c>missing-esre</c>, <c>missing-cc-typology</c>, <c>ceiling</c>.
+/// <c>costed-at-zero</c>, <c>zero-total</c>, <c>missing-fund</c>, <c>missing-esre</c>, <c>empty</c>.
+/// ↩️ <c>ceiling</c> is no longer an issue kind (PPDO-146). It is
+/// <see cref="AipReadinessDto.CeilingWarning"/> now, because it no longer blocks every submit.
 /// ⚠️ Not a display string — the message is the display string. Switching the UI on
 /// <see cref="Message"/> would break the moment the wording improves.
 /// </param>
@@ -28,8 +30,13 @@ public sealed record AipReadinessIssueDto(
 /// Served by <c>GET /api/budget-planning/aip/{aipId}/readiness</c> so the checklist can be shown
 /// <b>before</b> the encoder presses submit, rather than as a wall of errors afterwards.
 ///
-/// ⚠️ <b>This is a gate, not a summary.</b> There is no "submit anyway" — spec §6.2. If
-/// <see cref="CanSubmit"/> is false the submit endpoint refuses with the same issues.
+/// ⚠️ <b>This is a gate, not a summary.</b> There is no "submit anyway" for completeness (spec
+/// §6.2). If <see cref="CanSubmit"/> is false the submit endpoint refuses with the same issues.
+///
+/// ↩️ <b>The ceiling is a two-level rule since PPDO-146</b> (<c>Division_Submit_Spec.md</c>
+/// decision 13). Over the ceiling is a <see cref="CeilingWarning"/> at the submit to the department
+/// head, and a block at the send to PPDO (<see cref="CanSubmitToPpdo"/>). So the gate still
+/// exists, one hop later, and is still the only place the ceiling is enforced.
 /// </summary>
 /// <param name="WorkflowStatus">
 /// The office's current state. ⚠️ An office can hold <b>several</b> <c>AipOffice</c> rows — one per
@@ -41,6 +48,28 @@ public sealed record AipReadinessIssueDto(
 /// The office's ceiling position, including a <c>Remaining</c> that <b>may be negative</b> — which
 /// is exactly the state a ceiling cut leaves behind, and what must block submit.
 /// </param>
+/// <param name="CanSubmit">
+/// Whether the submit to the department head may go ahead: every completeness check passes. The
+/// ceiling does not affect it (PPDO-146).
+/// </param>
+/// <param name="CeilingWarning">
+/// The ceiling service's own sentence when the office is over its ceiling, naming the fund, the
+/// total, the ceiling and the overage. Null when within it.
+/// </param>
+/// <param name="CanSubmitToPpdo">
+/// Whether the send to PPDO may go ahead: <see cref="CanSubmit"/> <b>and</b> within the ceiling,
+/// and — in an office that submits by division — every division with activities has submitted and
+/// nothing is untagged (PPDO-149).
+/// </param>
+/// <param name="SubmitsByDivision">
+/// PPDO-149. True when the office uses the division flow (FY2028+, at least one active division).
+/// The office-level submit is refused then, so <see cref="CanSubmit"/> is false; each division
+/// submits through <c>POST …/divisions/{divisionId}/submit</c> instead.
+/// </param>
+/// <param name="WaitingDivisions">
+/// PPDO-149. The divisions with activities that have not submitted, by name — the department
+/// head's "Waiting on: …". Empty outside the division flow.
+/// </param>
 public sealed record AipReadinessDto(
     int                                  AipRecordId,
     int                                  OfficeId,
@@ -48,7 +77,72 @@ public sealed record AipReadinessDto(
     bool                                 CanSubmit,
     int                                  ActivityCount,
     IReadOnlyList<AipReadinessIssueDto>  Issues,
-    AipCeilingStatusDto?                 Ceiling);
+    AipCeilingStatusDto?                 Ceiling,
+    string?                              CeilingWarning,
+    bool                                 CanSubmitToPpdo,
+    bool                                 SubmitsByDivision = false,
+    IReadOnlyList<string>?               WaitingDivisions = null);
+
+// ── Division submit (v1.8.0 — PPDO-149, Division_Submit_Spec.md §4) ───────────
+
+/// <summary>
+/// Body of <c>GET …/aip/{aipId}/offices/{officeId}/divisions</c>: every division of one office and
+/// where each one stands.
+/// </summary>
+/// <param name="HasDivisions">False outside the division flow; <see cref="Divisions"/> is then empty.</param>
+/// <param name="UntaggedActivityCount">
+/// Activities in the office with no division. Any number above zero blocks every division submit
+/// (decision 4) until the department head tags them.
+/// </param>
+public sealed record AipDivisionStatusListDto(
+    int OfficeId,
+    string OfficeWorkflowStatus,
+    bool HasDivisions,
+    int UntaggedActivityCount,
+    IReadOnlyList<AipDivisionStatusDto> Divisions);
+
+/// <summary>One division's row in <see cref="AipDivisionStatusListDto"/>.</summary>
+/// <param name="Status"><c>Draft</c> or <c>Submitted</c> (<c>AipDivisionStatus</c>).</param>
+/// <param name="ActivityCount">
+/// Its tagged activities. ⚠️ Zero is listed rather than hidden, so the department head can see the
+/// division exists; a division with none never blocks the office (decision 10).
+/// </param>
+/// <param name="CanSubmit">Whether THIS caller may submit it now: allowed to, and nothing blocks it.</param>
+/// <param name="CanReturn">Whether THIS caller may return it now.</param>
+/// <param name="Blockers">
+/// Why it cannot be submitted, as the refusal would say it — the untagged count, "no activities",
+/// and the completeness issues of this division's own activities. Empty when ready.
+/// </param>
+public sealed record AipDivisionStatusDto(
+    int       DivisionId,
+    string?   Code,
+    string    Name,
+    bool      IsActive,
+    string    Status,
+    int       ActivityCount,
+    DateTime? SubmittedAt,
+    string?   SubmittedByName,
+    DateTime? ReturnedAt,
+    bool      CanSubmit,
+    bool      CanReturn,
+    IReadOnlyList<string> Blockers);
+
+/// <summary>
+/// Result of a division submit or return (<c>Division_Submit_Spec.md</c> §4).
+/// </summary>
+/// <param name="OfficeWorkflowStatus">
+/// The office's state after the transition — <c>DepartmentReview</c> when this was the last
+/// division to submit (decision 9), otherwise unchanged or back to <c>Draft</c> on a return.
+/// </param>
+/// <param name="CeilingWarning">
+/// The office-wide overage, on a submit only (decision 13). The submit went ahead; this is what the
+/// toast repeats. Null on a return and when within the ceiling.
+/// </param>
+public sealed record AipDivisionSubmitResultDto(
+    int     DivisionId,
+    string  Status,
+    string  OfficeWorkflowStatus,
+    string? CeilingWarning = null);
 
 /// <summary>
 /// Where the office's work now sits after a workflow transition.
@@ -60,11 +154,16 @@ public sealed record AipReadinessDto(
 /// handles one handles all of them; renaming it would churn PPDO-69's shipped code and its
 /// frontend type for no behaviour.
 /// </summary>
+/// <param name="CeilingWarning">
+/// Set only by the submit to the department head, when it went through over the ceiling (PPDO-146),
+/// so the page can say so at the moment it happens. Null for every other transition.
+/// </param>
 public sealed record AipSubmitResultDto(
-    int    AipRecordId,
-    int    OfficeId,
-    string WorkflowStatus,
-    int    GroupsMoved);
+    int     AipRecordId,
+    int     OfficeId,
+    string  WorkflowStatus,
+    int     GroupsMoved,
+    string? CeilingWarning = null);
 
 /// <summary>
 /// One office's whole AIP as the PPDO consolidated reviewer reads it (V18-56 / PPDO-74,

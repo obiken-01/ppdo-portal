@@ -5,12 +5,12 @@ export const AIP_MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-export const AIP_ESRE_OPTIONS = [
-  { value: "SS", label: "SS — Social Services" },
-  { value: "ES", label: "ES — Economic Services" },
-  { value: "ID", label: "ID — Infrastructure Development" },
-  { value: "EN", label: "EN — Environment" },
-];
+// ↩️ AIP_ESRE_OPTIONS was removed in Demo 2.2 (PPDO-124). It hardcoded four eSRE codes while a
+// full CRUD config page sat at /config/esre-codes, so editing that page changed nothing an encoder
+// could see. The list now comes from the config table via useAipCodeOptions.
+//
+// ⚠️ Deleted rather than left unused on purpose — an exported constant that still compiles is one
+// import away from quietly becoming the source of truth again.
 
 export const AIP_SECTOR_OPTIONS = ["GENERAL", "SOCIAL", "ECONOMIC", "OTHERS"] as const;
 

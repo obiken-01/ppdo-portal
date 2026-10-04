@@ -60,4 +60,11 @@ public sealed class AipAllocationLedgerRepository : Repository<AipDivisionAlloca
             .Where(l => aipActivityIds.Contains(l.AipActivityId))
             .ExecuteDeleteAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteForActivityOutsideDivisionAsync(
+        int aipActivityId, int divisionId, CancellationToken ct = default)
+        => await _context.Set<AipDivisionAllocationLedger>()
+            .Where(l => l.AipActivityId == aipActivityId && l.DivisionId != divisionId)
+            .ExecuteDeleteAsync(ct);
 }

@@ -11,8 +11,8 @@
 
 ## 1. Database — the one irreversible part
 
-v1.8.0 carries migrations that production has never seen — **23 as of 2026-09-21, the full
-release**. The count has drifted twice now (13 → 15 → 23), so **recheck it rather than trusting any
+v1.8.0 carries migrations that production has never seen — **29 as of 2026-10-01** (PPDO-137,
+PPDO-143, PPDO-147, PPDO-139, PPDO-154 and PPDO-173 each added one after the release was called complete). The count has drifted eight times now (13 → 15 → 23 → 24 → 25 → 26 → 27 → 28 → 29), so **recheck it rather than trusting any
 number written here**:
 
 ```bash
@@ -28,6 +28,12 @@ All of them are additive (new tables, columns, permission flags) except one:
 | **13** | **`20260903004121_MigrateAipAmountsToPesos`** | ⚠️ **Rewrites existing values in place** |
 | 14 | `20260903023255_AddAipOfficeOwnershipFk` (V18-32 / PPDO-33) | Schema, additive — **plus a backfill** |
 | 15–23 | `20260907020223_AddAipDivisionAllocationLedger` … `20260920234022_AddFundingSourceOfficeId` | Schema, additive |
+| 24 | `20260924064806_WidenClimateChangeTypologyName` (PPDO-137) | Schema — widens `climate_change_typologies.name` 200 → 500. Up is lossless; **Down fails** once any name exceeds 200 |
+| 25 | `20260927060651_AddInvestmentPlanningSettings` (PPDO-143) | Schema, additive — new single-row `investment_planning_settings` table, seeded **unset**. ⚠️ **Must run before the code deploys**: `GET /budget-planning/fiscal-years` reads it, and the dashboard, Office Ceilings and Report load their year through that endpoint |
+| 26 | `20260928024451_AddAipDivisionSubmit` (PPDO-147, PPDO-130 T1) | Schema, additive — new nullable `aip_activities.division_id` and new `aip_division_submissions` table — **plus a backfill**: FY2028+ activities whose program has exactly one active division of their own office in `program_divisions` get that division; everything else stays NULL. No existing value changes. Down drops both, so the tags are lost. ⚠️ **Must run before the code deploys**: every AIP tree read maps `division_id` |
+| 27 | `20260929000622_SeedClimateChangeTypologies` (PPDO-139) | Data — seeds the **LGU typology, JMC 2015-01 (DBM-CCC-DILG) Annex A** from `docs/v1.8/seed/cc_typologies_seed.csv` (286 codes, 282 active). ⚠️ Not JMC 2013-01 — it reuses the same code numbers with different meanings. One `MERGE` on `code`: overwrites name/category/description/is_active of matched codes (**config-page edits are lost** — the CSV is the source of truth) and inserts the rest. A code **outside** the list is **deleted** if no `aip_activities` / `ldip_programs` row carries it, otherwise kept **inactive with its name reset to the code**. Writes only `climate_change_typologies`. Down is a no-op. Verify after: `SELECT COUNT(*), SUM(CAST(is_active AS int)) FROM climate_change_typologies` → 286 / 282, plus any production-only code an activity still carries (inactive, name = code) |
+| 28 | `20261001002343_AddInvestmentProposals` (PPDO-154, Demo 2.15 T1) | Schema, additive — ten new empty `investment_proposal*` tables and four nullable signatory-default columns on `investment_planning_settings` (`ppdc_name`, `ppdc_position`, `lce_name`, `lce_position`). No backfill, and no existing AIP table is altered: `investment_proposal_work_plan_rows` only gains an FK **into** `aip_activities` (cascade), and `investment_proposals.aip_project_id` is `NO ACTION`, so from then on an AIP project with a proposal cannot be deleted. Down drops the tables, empty on first deploy but holding real proposals after that, so take a backup before any later Down. ⚠️ **Run before the code deploys**: the settings read maps the new columns |
+| 29 | `20261001015710_AlignInvestmentProposalsWithTemplate` (PPDO-173, Demo 2.15 T1b) | Schema, on #28's tables only. It adds `signatory4_label`, `signatory4_name` and `signatory4_position` to `investment_proposals` and `required_training` to `investment_proposal_team_members`, a CHECK on `investment_proposal_benefits.sector`, and **drops `investment_proposal_capacity_trainings`**. It runs right after #28, so that table is still empty, and no code ever wrote to it. Down re-creates the table empty. ⚠️ **Run before the code deploys**, together with #28 |
 
 ↩️ **`20260903045149_AddAipRecordOwningOffice` was listed here as #15 and no longer exists.** PPDO-61
 reversed the office-owned record shape and **dropped** the migration rather than reversing it,
@@ -95,8 +101,9 @@ data rather than add to it.
       `SqlConnectionString` pointing at `ppdo-portal-db`. One command applies all 15, in timestamp
       order.
 
-      ⚠️ **The units migration is #13 of 23, not last** — an earlier draft of this checklist said
-      it ran last, and it does not. **Ten** schema migrations sort after it (the draft said two).
+      ⚠️ **The units migration is #13 of 24, not last** — an earlier draft of this checklist said
+      it ran last, and it does not. **Eleven** schema migrations sort after it (the draft said two;
+      #24, PPDO-137, re-checked 2026-09-24 — it alters only `climate_change_typologies`).
       That is **safe, and worth understanding rather than working around**: none of the ten touches
       `aip_activities` at all. Verified 2026-09-21 by grepping every one of them for
       `table: "aip_activities"` (zero hits) and for raw `Sql()` calls — there is exactly one, in #14,
@@ -171,6 +178,28 @@ data rather than add to it.
 
       ⚠️ Do this *after* the migrations and *before* announcing the release, per the step above.
 
+- [ ] **Record the division-tag backfill's untagged count** (PPDO-147, migration #26). Additive and
+      NULL-only, so it cannot damage data. But in an office **with divisions**, every untagged
+      FY2028+ activity blocks all of that office's division submits until the department head tags
+      it (`Division_Submit_Spec.md` decision 4). Run it after applying, and tell each office with a
+      non-zero count before division submit goes live:
+
+      ```sql
+      SELECT o.office_id,
+             COUNT(*)                                                 AS activities,
+             SUM(CASE WHEN a.division_id IS NULL THEN 1 ELSE 0 END)   AS untagged
+      FROM   aip_activities a
+      JOIN   aip_projects p ON p.id = a.project_id
+      JOIN   aip_programs g ON g.id = p.program_id
+      JOIN   aip_offices  o ON o.id = g.office_id
+      JOIN   aip_records  r ON r.id = o.aip_record_id
+      WHERE  r.fiscal_year >= 2028
+        AND  EXISTS (SELECT 1 FROM divisions d WHERE d.office_id = o.office_id AND d.is_active = 1)
+      GROUP  BY o.office_id ORDER BY untagged DESC;
+      ```
+
+      Offices without divisions are left out on purpose: untagged is their permanent, correct state.
+
 > ⚠️ **`Down` is not a general rollback.** It divides by 1000, which exactly reverses the multiply
 > — but only while nothing has been written since. The moment a user saves an AIP activity through
 > the migrated UI, that row holds a genuine peso amount, and rolling back divides *that* by 1000
@@ -219,6 +248,26 @@ data rather than add to it.
       thousand on every subsequent edit.
 - [ ] Upload an FY2027 `.xlsm` into a scratch record and confirm the amounts land as pesos. The
       province's workbook is denominated in ₱000 and `AipXlsmParser` converts on import.
+- [ ] *(Optional — PPDO-150.)* Re-point existing FY2028+ AIP reservation rows to their activity's
+      division tag. Nothing reads this ledger yet, and each row is rewritten on its activity's next
+      expenditure save, so this only tidies what is already there. Rows for an untagged activity
+      are removed; they post again once the activity is tagged.
+
+      ```sql
+      BEGIN TRAN;
+      DELETE l FROM aip_division_allocation_ledger l
+        JOIN aip_activities a ON a.id = l.aip_activity_id
+       WHERE l.fiscal_year >= 2028 AND a.division_id IS NULL;
+      UPDATE l SET l.division_id = a.division_id, l.updated_at = SYSUTCDATETIME()
+        FROM aip_division_allocation_ledger l
+        JOIN aip_activities a ON a.id = l.aip_activity_id
+       WHERE l.fiscal_year >= 2028 AND a.division_id <> l.division_id;
+      -- expect 0 rows from the check below before committing
+      SELECT division_id, fiscal_year, funding_source_id, aip_activity_id, COUNT(*)
+        FROM aip_division_allocation_ledger
+       GROUP BY division_id, fiscal_year, funding_source_id, aip_activity_id HAVING COUNT(*) > 1;
+      COMMIT;
+      ```
 
 ---
 

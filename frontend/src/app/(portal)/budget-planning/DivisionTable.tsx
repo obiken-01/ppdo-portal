@@ -4,19 +4,25 @@ import { useState } from "react";
 import Link from "next/link";
 import StatusPill from "@/components/ui/StatusPill";
 import { formatMoney } from "@/lib/money";
+import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import type { DivisionSummary } from "@/types";
 
 /**
- * DivisionTable — one row per PPDO division: allocation, AIP progress, and what is left
- * (PPDO-20, ticket F). Host office only; a guest office has no division split.
+ * DivisionTable — one row per division: allocation, AIP progress, and what is left
+ * (PPDO-20, ticket F). Shared by PPDO's own dashboard and a guest office's (PPDO-127) — both
+ * pass a server-scoped `divisions` list, already narrowed to what the caller may see.
  *
- * ⚠️ **The column is not additive down the page when a PPA is shared.** A program assigned to two
- * divisions counts in full against both, because the row answers "what is this division
- * responsible for" — not "how does the office total split". Splitting it evenly would invent a
- * number nobody entered. Do not add a total row implying otherwise.
+ * ⚠️ **FY2027 and earlier: the column is not additive down the page when a PPA is shared.** A
+ * program assigned to two divisions counts in full against both there. ↩️ **FY2028+ is additive**
+ * (PPDO-150): each activity counts once, against its own division tag, and untagged work sits on
+ * the separate "No division" row — so the rows plus that row equal the office. Still no total row:
+ * a division-scoped viewer sees only their own row, and a total would read as the office's.
  *
- * Rows expand to the per-fund breakdown, which keeps the WFP ledger's Used/Remaining figures. That
- * is the Allocation page's own ledger view; the AIP-based Remaining is the one on the row itself.
+ * Rows expand to the per-fund breakdown. ↩️ **Where "used" comes from depends on the year**
+ * (2026-09-24): FY2027 and earlier read the WFP ledger, as the Allocation page does; FY2028+ has no
+ * WFP, so the server reads the AIP by the ceiling's rule (MOOE + CO, PS exempt, rounded up per
+ * activity) and the row becomes the sum of its fund rows. The label says which, because the two are
+ * different numbers and a "WFP used" label on AIP money would mislead.
  */
 
 function divisionLabel(division: DivisionSummary): string {
@@ -30,14 +36,22 @@ function DivisionRow({
   canManageAllocation,
   officeId,
   fiscalYear,
+  unassigned = false,
 }: {
   division: DivisionSummary;
   canManageAllocation: boolean;
   officeId: number | null;
   fiscalYear: number | null;
+  /**
+   * PPDO-150 — the "No division" row: FY2028+ work nobody has tagged yet. It has no allocation, so
+   * Allocated and Remaining read as a dash, and it never shows "Over ceiling" — it is work waiting
+   * to be tagged, not a division over its share.
+   */
+  unassigned?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isOver = division.remaining < 0;
+  const isOver = !unassigned && division.remaining < 0;
+  const usedLabel = fiscalYear != null && fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? "AIP costed" : "WFP used";
 
   return (
     <>
@@ -54,9 +68,18 @@ function DivisionRow({
           >
             ›
           </span>
-          <span className="font-medium text-slate-800">{divisionLabel(division)}</span>
-          {division.divisionCode && (
-            <span className="ml-2 text-xs text-slate-500">{division.divisionName}</span>
+          {unassigned ? (
+            <>
+              <span className="font-medium italic text-slate-800">No division</span>
+              <span className="ml-2 text-xs text-slate-500">Activities to tag in AIP Entry</span>
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-slate-800">{divisionLabel(division)}</span>
+              {division.divisionCode && (
+                <span className="ml-2 text-xs text-slate-500">{division.divisionName}</span>
+              )}
+            </>
           )}
         </td>
         <td className="px-4 py-2.5">
@@ -69,7 +92,7 @@ function DivisionRow({
           {division.costedActivityCount} / {division.totalActivities}
         </td>
         <td className="px-4 py-2.5 text-sm text-right text-slate-600 tabular-nums">
-          ₱{formatMoney(division.allocated)}
+          {unassigned ? "—" : `₱${formatMoney(division.allocated)}`}
         </td>
         <td className="px-4 py-2.5 text-sm text-right text-slate-600 tabular-nums">
           ₱{formatMoney(division.costedInAip)}
@@ -79,12 +102,12 @@ function DivisionRow({
             isOver ? "text-danger-500" : "text-slate-600"
           }`}
         >
-          ₱{formatMoney(division.remaining)}
+          {unassigned ? "—" : `₱${formatMoney(division.remaining)}`}
         </td>
         <td className="px-4 py-2.5 text-right">
           {/* Hidden, not disabled: a division-scoped encoder can never edit an allocation, and a
               greyed control just invites clicking. Disabled is reserved for state, not permission. */}
-          {canManageAllocation && officeId != null && (
+          {canManageAllocation && officeId != null && !unassigned && (
             <Link
               href={`/budget-planning/allocation?officeId=${officeId}${
                 fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""
@@ -111,16 +134,16 @@ function DivisionRow({
                   {division.allocationByFund.map((fund) => (
                     <tr key={fund.fundingSourceId} className="bg-slate-50 text-xs">
                       <td className="px-4 py-1.5 pl-10 text-slate-600">{fund.fundName}</td>
-                      <td className="px-4 py-1.5 text-slate-500">WFP used</td>
+                      <td className="px-4 py-1.5 text-slate-500">{usedLabel}</td>
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
-                        ₱{formatMoney(fund.amount)}
+                        {unassigned ? "—" : `₱${formatMoney(fund.amount)}`}
                       </td>
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
                         ₱{formatMoney(fund.used)}
                       </td>
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
-                        ₱{formatMoney(fund.remaining)}
+                        {unassigned ? "—" : `₱${formatMoney(fund.remaining)}`}
                       </td>
                       <td className="px-4 py-1.5" />
                     </tr>
@@ -140,11 +163,14 @@ const TH =
 
 export default function DivisionTable({
   divisions,
+  noDivision = null,
   canManageAllocation,
   officeId,
   fiscalYear,
 }: {
   divisions: DivisionSummary[];
+  /** PPDO-150 — the server's untagged row, rendered last. Null when there is nothing untagged. */
+  noDivision?: DivisionSummary | null;
   canManageAllocation: boolean;
   officeId: number | null;
   fiscalYear: number | null;
@@ -173,6 +199,16 @@ export default function DivisionTable({
               fiscalYear={fiscalYear}
             />
           ))}
+          {noDivision && (
+            <DivisionRow
+              key="no-division"
+              division={noDivision}
+              canManageAllocation={false}
+              officeId={officeId}
+              fiscalYear={fiscalYear}
+              unassigned
+            />
+          )}
         </tbody>
       </table>
     </div>

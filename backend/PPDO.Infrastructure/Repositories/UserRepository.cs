@@ -78,6 +78,15 @@ public sealed class UserRepository : Repository<User>, IUserRepository
             .ToListAsync(cancellationToken);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<User>> GetByOfficeIdWithDivisionAsync(
+        int officeId, CancellationToken cancellationToken = default)
+        => await _context.Users
+            .Where(u => u.OfficeId == officeId)
+            .Include(u => u.Division)
+            .OrderBy(u => u.FullName)
+            .ToListAsync(cancellationToken);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<Guid, string>> GetNamesByIdsAsync(
         IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default)
     {

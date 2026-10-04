@@ -141,6 +141,15 @@ export interface CreateAipActivityRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+  /**
+   * PPDO-148 — required from the department head in an office with divisions, and ignored for
+   * an encoder, whose activity always takes their own division.
+   */
+  divisionId?: number | null;
+}
+
+export interface UpdateAipActivityDivisionRequest {
+  divisionId: number;
 }
 
 // ── AIP inline activity edit (RAL-179) ────────────────────────────────────────
@@ -246,6 +255,19 @@ export interface AipActivityDetail {
    * those responses into its tree rather than reloading it.
    */
   fundCodes: string[];
+  /**
+   * The division whose work this is (PPDO-148). Null when untagged, and for every activity of an
+   * office without divisions or an FY ≤ 2027 record.
+   */
+  divisionId: number | null;
+  /** That division's name, for the row's pill. Null when untagged. */
+  divisionName: string | null;
+  /**
+   * Whether the signed-in user may write this activity right now — record Draft, office still in
+   * its own hands, and the division lock. Computed by the server; do not re-derive it here.
+   * ⚠️ Always false on the review screen's tree, which carries its own `canEdit`.
+   */
+  canEdit: boolean;
 }
 
 export interface AipProjectDetail {
@@ -446,6 +468,12 @@ export interface AipReviewNotifications {
   ppdoFiscalYear: number | null;
   /** Open years in which the user's own office is in department review. 0 unless a department head. */
   pendingForDepartmentHead: number;
+  /**
+   * PPDO-152 — divisions of the user's own office that have submitted to them while the office is
+   * still with its divisions. State-based, not "since your last visit". 0 unless a department head.
+   */
+  divisionsSubmitted: number;
+  /** The earliest year with either department-head count. */
   departmentHeadFiscalYear: number | null;
   /** Years in which the user's own office is returned to them, earliest first. */
   returned: AipReturnedNotice[];
@@ -482,6 +510,13 @@ export interface OfficeSummary {
   isReturned: boolean;
   /** Programs in the office's AIP for the year, touched or not — the ones LDIP seeded. */
   assignedProgramCount: number;
+  /**
+   * PPDO-152 — required divisions (those with tagged activities) that have submitted to the
+   * department head. **Null when the office is not in the division flow** — not the same as 0.
+   */
+  divisionsSubmitted: number | null;
+  /** PPDO-152 — the "m" of "n of m divisions submitted". Null with `divisionsSubmitted`. */
+  divisionsRequired: number | null;
 }
 
 /** One division's share of a fund's office-wide ceiling. */
@@ -510,6 +545,11 @@ export interface FundCeiling {
 export interface FiscalYears {
   fiscalYear: number;
   availableFiscalYears: number[];
+  /**
+   * The admin-set default fiscal year, raw — `null` when unset (PPDO-136). `fiscalYear` already
+   * folds it in; this is for pages that keep their own fallback when nothing is set.
+   */
+  defaultFiscalYear: number | null;
 }
 
 /**
@@ -528,6 +568,12 @@ export interface PpdoDashboard {
   aip: OfficeAipSummary;
   byDivision: DivisionSummary[];
   ceilingByFund: FundCeiling[];
+  /**
+   * PPDO-150 — FY2028+ activities with no division tag, as one row. Only for a viewer who sees
+   * every division; null otherwise, or when nothing is untagged. Kept out of `byDivision` so no
+   * per-division sum picks it up.
+   */
+  noDivision?: DivisionSummary | null;
 }
 
 export interface RecentActivity {
@@ -573,6 +619,12 @@ export interface OfficeAipSummary {
    * keeps the office total agreeing with the office table's row for the same office.
    */
   costedInAip: number;
+  /**
+   * Costed AGAINST THE CEILING — General Fund, MOOE + CO, PS exempt, rounded up per activity: the
+   * submit gate's figure (2026-09-24). Compare THIS with the GF ceiling, never `costedInAip`, which
+   * covers every shared fund. FY2027: equal to `costedInAip`.
+   */
+  costedAgainstCeiling: number;
 }
 
 export interface OfficeDashboard {
@@ -581,6 +633,18 @@ export interface OfficeDashboard {
   allocation: AllocationSetupSummary;
   ldip: OfficeLdipSummary;
   aip: OfficeAipSummary;
+  /**
+   * The office's own per-division breakdown (PPDO-126, PPDO-127) — empty for an office with no
+   * divisions configured yet (render an empty state, not a blank panel) or for a division-scoped
+   * caller narrowed to a division they no longer hold. Already scoped server-side: a department
+   * head sees every division of their own office, anyone else sees only their own division's row.
+   * Never re-filter this client-side. Reuses `DivisionSummary` — the same shape `PpdoDashboard`
+   * carries — so a guest office renders on the same `DivisionTable` component PPDO's dashboard
+   * uses.
+   */
+  byDivision: DivisionSummary[];
+  /** PPDO-150 — see `PpdoDashboard.noDivision`. Only for a department head's own office. */
+  noDivision?: DivisionSummary | null;
 }
 
 // ── WFP ──────────────────────────────────────────────────────────────────────
@@ -1309,15 +1373,75 @@ export interface AipReadinessIssue {
   message: string;
 }
 
-/** ⚠️ A gate, not a summary — there is no "submit anyway". */
+/**
+ * ⚠️ A gate, not a summary — there is no "submit anyway" for completeness.
+ *
+ * ↩️ The ceiling is two-level since PPDO-146: over it is a warning at the submit to the
+ * department head (`canSubmit` ignores it) and a block at the send to PPDO (`canSubmitToPpdo`).
+ */
 export interface AipReadiness {
   aipRecordId: number;
   officeId: number;
   workflowStatus: string;
+  /** The submit to the department head: every completeness check passes. */
   canSubmit: boolean;
   activityCount: number;
   issues: AipReadinessIssue[];
   ceiling: AipCeilingStatus | null;
+  /** The ceiling service's own sentence when over the ceiling (fund, total, ceiling, overage), else null. */
+  ceilingWarning: string | null;
+  /**
+   * The send to PPDO: complete AND within the ceiling — and, in an office that submits by division,
+   * every division with activities has submitted and nothing is untagged (PPDO-149).
+   */
+  canSubmitToPpdo: boolean;
+  /**
+   * PPDO-149. The office uses the division flow, so the office-level submit is closed (`canSubmit`
+   * is false) and each division submits on its own. Use `getAipOfficeDivisions` for their state.
+   */
+  submitsByDivision: boolean;
+  /** PPDO-149. Divisions with activities that have not submitted — "Waiting on: …". */
+  waitingDivisions: string[];
+}
+
+// ── Division submit (PPDO-149, Division_Submit_Spec.md §4) ───────────────────
+
+export interface AipDivisionStatus {
+  divisionId: number;
+  code: string | null;
+  name: string;
+  isActive: boolean;
+  /** `"Draft"` or `"Submitted"`. */
+  status: string;
+  /** Tagged activities. Zero is listed, and never blocks the office. */
+  activityCount: number;
+  submittedAt: string | null;
+  submittedByName: string | null;
+  returnedAt: string | null;
+  /** Whether the signed-in user may submit it right now. Computed server-side. */
+  canSubmit: boolean;
+  /** Whether the signed-in user may return it right now. Computed server-side. */
+  canReturn: boolean;
+  /** Why it cannot be submitted, in the refusal's own words. Empty when ready or submitted. */
+  blockers: string[];
+}
+
+export interface AipDivisionStatusList {
+  officeId: number;
+  officeWorkflowStatus: string;
+  /** False outside the division flow (FY ≤ 2027, or no active division); `divisions` is empty then. */
+  hasDivisions: boolean;
+  untaggedActivityCount: number;
+  divisions: AipDivisionStatus[];
+}
+
+export interface AipDivisionSubmitResult {
+  divisionId: number;
+  status: string;
+  /** `DepartmentReview` when this was the last division to submit; otherwise unchanged or `Draft`. */
+  officeWorkflowStatus: string;
+  /** Submit only: the office-wide overage. The submit went ahead (decision 13). */
+  ceilingWarning: string | null;
 }
 
 export interface AipSubmitResult {
@@ -1326,6 +1450,8 @@ export interface AipSubmitResult {
   workflowStatus: string;
   /** How many sub-office group rows moved. An office with three printed blocks moves all three. */
   groupsMoved: number;
+  /** Set only when the submit to the department head went through over the ceiling (PPDO-146). */
+  ceilingWarning?: string | null;
 }
 
 /**

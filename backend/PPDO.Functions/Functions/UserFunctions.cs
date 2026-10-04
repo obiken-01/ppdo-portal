@@ -20,6 +20,12 @@ namespace PPDO.Functions.Functions;
 ///
 /// Exception: <c>PUT /api/users/{id}/permissions</c> is SuperAdmin-only —
 /// that additional check is enforced inside <see cref="IUserService.SetPermissionsAsync"/>.
+///
+/// Second exception: <c>/api/office/users</c> and <c>/api/office/users/{id}/division</c>
+/// (PPDO-135) are gated on <see cref="IPermissionService.CanManageOfficeSetupAsync"/> instead —
+/// a department head's narrow, own-office-only screen for assigning divisions to their Staff.
+/// Deliberately a separate gate rather than widening <c>CanManageUsers</c>: see
+/// <c>docs/v1.8/Permission_Matrix.md</c> for why.
 /// </summary>
 public sealed class UserFunctions
 {
@@ -348,6 +354,69 @@ public sealed class UserFunctions
         await _users.AcknowledgePasswordResetAsync(caller, cancellationToken);
 
         return req.CreateResponse(HttpStatusCode.NoContent);
+    }
+
+    // ── GET /api/office/users ───────────────────────────────────────────────────
+    //
+    // PPDO-135 — a department head's own-office user list, for the division-assignment screen.
+    // Gated on CanManageOfficeSetup ALONE, deliberately not OR'd with CanManageUsers: granting the
+    // latter to reach this would be the privilege escalation the ticket warned against (a
+    // department head could then list/edit Staff in every office, PPDO included — see
+    // docs/v1.8/Permission_Matrix.md).
+
+    [Function("GetOfficeUsers")]
+    public async Task<HttpResponseData> GetOfficeUsers(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "office/users")]
+        HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        if (!await _permissions.CanManageOfficeSetupAsync(caller, cancellationToken))
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        // ⚠️ The caller's OWN office, always — there is no office query parameter to widen here,
+        // unlike ConfigDivisionFunctions.List which also serves the (CanManageConfig) admin form.
+        // An unassigned caller (DECISION F: null office_id means unassigned) is refused rather than
+        // shown an empty list, since CanManageOfficeSetupAsync should never be true without one.
+        if (caller.OfficeId is not int officeId)
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        IReadOnlyList<OfficeUserDto> result = await _users.GetByOfficeIdAsync(officeId, cancellationToken);
+        return await OkJson(req, result, cancellationToken);
+    }
+
+    // ── PUT /api/office/users/{id}/division ─────────────────────────────────────
+    //
+    // PPDO-135's one write: set or clear a Staff member's division. Nothing else about the user —
+    // role, permission overrides, password — is reachable through this route. The office axis and
+    // the "target must be Staff" rule are enforced inside SetOfficeUserDivisionAsync, not here.
+
+    [Function("SetOfficeUserDivision")]
+    public async Task<HttpResponseData> SetOfficeUserDivision(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "office/users/{id:guid}/division")]
+        HttpRequestData req,
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
+        if (caller is null)
+            return req.CreateResponse(HttpStatusCode.Unauthorized);
+
+        if (!await _permissions.CanManageOfficeSetupAsync(caller, cancellationToken))
+            return req.CreateResponse(HttpStatusCode.Forbidden);
+
+        SetUserDivisionDto? body =
+            await ConfigHttp.ReadBodyAsync<SetUserDivisionDto>(req, cancellationToken, _jsonOptions);
+        if (body is null)
+            return await BadRequest(req, "Request body is missing or malformed.");
+
+        ServiceResult<OfficeUserDto> result =
+            await _users.SetOfficeUserDivisionAsync(caller, id, body.DivisionId, cancellationToken);
+
+        return await ToResponse(req, result, HttpStatusCode.OK, cancellationToken);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────

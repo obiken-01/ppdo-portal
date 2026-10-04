@@ -18,6 +18,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private readonly IRepository<FundingSource> _fsRepo;
     private readonly IAuditService              _audit;
     private readonly IPermissionService         _permissions;
+    // PPDO-148 — expenditure lines follow their activity's division lock.
+    private readonly IAipDivisionLock           _divisionLock;
     private readonly ILogger<AipExpenditureService> _logger;
 
     public AipExpenditureService(
@@ -29,8 +31,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IRepository<FundingSource> fsRepo,
         IAuditService              audit,
         IPermissionService         permissions,
+        IAipDivisionLock           divisionLock,
         ILogger<AipExpenditureService> logger)
     {
+        _divisionLock = divisionLock;
         _aipRepo     = aipRepo;
         _expRepo     = expRepo;
         _totals      = totals;
@@ -91,6 +95,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
             await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
                 ctx.Office, caller, _aipRepo, NotFound(activityId), ct);
         if (refused is not null) return refused;
+        if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
 
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
@@ -157,6 +162,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
             await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "edit");
         if (refused is not null) return refused;
+        if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
 
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
@@ -234,6 +240,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
             await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "delete from");
         if (refused is not null) return refused;
+        if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
 
         await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Delete,
             new { line.ActivityId, line.Ps, line.Mooe, line.Co, line.Total }, null, ct);
@@ -512,4 +519,16 @@ public sealed class AipExpenditureService : IAipExpenditureService
             i.UnitPrice, i.Qty, i.NumberOfDays, i.LineTotal, i.PeriodNo)).ToList());
 
     private sealed record AipContext(AipActivity Activity, AipOffice Office);
+
+    /// <summary>
+    /// The activity's division lock (PPDO-148, spec "Expenditure lines follow their activity").
+    /// ⚠️ Only ever called after <see cref="AipWriteGuard.CheckAsync{T}"/> has passed — it can
+    /// only refuse, so the office's state keeps the last word.
+    /// </summary>
+    private async Task<ServiceResult<AipExpenditureWriteResultDto>?> CheckDivisionAsync(
+        AipContext ctx, User caller, CancellationToken ct)
+    {
+        AipDivisionContext div = await _divisionLock.LoadAsync(ctx.Office, caller, ct);
+        return AipWriteGuard.CheckDivision<AipExpenditureWriteResultDto>(div, ctx.Activity.DivisionId);
+    }
 }

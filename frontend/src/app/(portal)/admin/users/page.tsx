@@ -207,8 +207,18 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
   const hostOffice = offices.find((o) => o.isHostOffice) ?? null;
   const selectedOffice = offices.find((o) => o.id === form.officeId) ?? null;
   const isOfficeUser = form.officeId != null && !selectedOffice?.isHostOffice;
-  // Division is required only for host-office Staff. Guest-office users are scoped by office_id.
-  const isPpdoDivisionUser = form.role === "Staff" && !isOfficeUser;
+  // Staff carry a division; SuperAdmin and Admin never do.
+  //
+  // ⚠️ A guest-office Staff user may ALSO have one. Until the Demo 2 round this was
+  // `role === "Staff" && !isOfficeUser`, which disabled the picker for every office user — but
+  // the server has always accepted a division for them (UserService.CreateAsync: "Office users →
+  // division is optional; office_id scopes them") and validates that it belongs to their office.
+  // The block was only ever here, and it left department heads unable to put their encoders in
+  // the divisions PPDO-108 lets them create.
+  const canHaveDivision = form.role === "Staff";
+  // Still REQUIRED only for host-office Staff. A guest office is already scoped by office_id, so
+  // a division there is an optional finer grain, not the scoping axis.
+  const isDivisionRequired = canHaveDivision && !isOfficeUser;
   // Drives which landing pages can be offered — a Staff user inherits feature flags from here.
   const selectedDivision = divisions.find((d) => d.id === form.divisionId) ?? null;
 
@@ -342,12 +352,12 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
 
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">
-            Division{isPpdoDivisionUser ? " *" : ""}
+            Division{isDivisionRequired ? " *" : ""}
           </label>
           <select
             value={form.divisionId ?? ""}
             onChange={(e) => onChange({ divisionId: e.target.value ? Number(e.target.value) : null })}
-            disabled={!isPpdoDivisionUser}
+            disabled={!canHaveDivision}
             className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 bg-white disabled:bg-slate-100 disabled:text-slate-400"
           >
             <option value="">— None —</option>
@@ -357,9 +367,19 @@ function UserForm({ form, divisions, offices, isEdit, error, onChange }: UserFor
               </option>
             ))}
           </select>
-          {!isPpdoDivisionUser && (
+          {!canHaveDivision ? (
             <p className="mt-1 text-[11px] text-slate-600">SuperAdmin / Admin have no division.</p>
-          )}
+          ) : isOfficeUser && divisionOptions.length === 0 ? (
+            // ⚠️ Worth saying out loud: most guest offices have no divisions configured yet, and an
+            // empty picker with no explanation reads as "broken", not as "nothing to pick".
+            <p className="mt-1 text-[11px] text-slate-600">
+              This office has no divisions yet — add them in Config → Divisions first.
+            </p>
+          ) : isOfficeUser ? (
+            <p className="mt-1 text-[11px] text-slate-600">
+              Optional. The office already scopes this user; a division narrows them further.
+            </p>
+          ) : null}
         </div>
 
         {/* Office (v1.1) — pick a guest office to create a Budget-Planning-only user. */}
@@ -751,12 +771,24 @@ export default function UsersPage() {
 
   function openEdit(user: UserResponse) {
     setEditTarget(user);
-    // Guest-office users: clear any stale host-office division — they're scoped by officeId.
-    // Must test "is a GUEST office", not "has an office": since RAL-258 every user has one, so
-    // the old null test would wipe the division of every host-office user opened for edit.
-    const isGuestOffice =
-      user.officeId != null && !offices.find((o) => o.id === user.officeId)?.isHostOffice;
-    const divisionId = isGuestOffice ? null : user.divisionId;
+    // Keep the stored division only while it still belongs to this user's office.
+    //
+    // ⚠️ This used to drop the division of every GUEST-office user, back when office users could
+    // not have one at all. Now that they can, the real hazard is narrower and runs in both
+    // directions: a user moved between offices can carry an id from the old one, and since the
+    // picker's options are office-filtered, a stale value would sit invisible in the form and be
+    // submitted unchanged. The server rejects it, but silently losing the edit is the worse
+    // failure. Test office membership, not guest-ness.
+    //
+    // ⚠️ Clears only on a POSITIVE mismatch. The divisions fetch has a catch that falls back to
+    // an empty list, so "not found here" can mean "we failed to load them" — and nulling on
+    // ignorance would quietly strip the division off every user opened for edit while the config
+    // endpoint was down.
+    const storedDivision = divisions.find((d) => d.id === user.divisionId) ?? null;
+    const divisionId =
+      storedDivision != null && storedDivision.officeId !== user.officeId
+        ? null
+        : user.divisionId;
     setEditForm({
       fullName:                      user.fullName,
       username:                      user.username,

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Section I — Implementing Team</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.why { font-size: 13px; color: #5A636B; line-height: 19px; }
+.help { font-size: 12px; color: #7D858C; font-style: italic; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; font-size: 14px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn.ghost { border-color: transparent; background: transparent; color: #1F7A45; }
+.btn.xs { height: 26px; width: 26px; padding: 0; justify-content: center; font-size: 14px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-unsaved { background: #FFF3D6; color: #8A5A00; }
+.p-final { background: #E6F4EC; color: #1F6B3F; }
+.p-empty { background: #F1F3F5; color: #5A636B; }
+.sec { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.sec.dirty { border-color: #E8B93F; }
+.sh { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.letter { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #F1F3F5; font-weight: 700; font-size: 14px; }
+.sb { border-top: 1px solid #E9ECEF; padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+.sf { border-top: 1px solid #E9ECEF; padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: #FAFBFC; }
+.sub { font-size: 14px; font-weight: 600; color: #343A40; }
+.fld { display: flex; flex-direction: column; gap: 4px; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+table.t th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 8px; background: #F8F9FA; border-bottom: 1px solid #DEE2E6; }
+table.t td { padding: 6px 8px; border-bottom: 1px solid #F1F3F5; vertical-align: top; }
+.cell { width: 100%; min-height: 32px; border: 1px solid #CED4DA; padding: 6px 8px; font-size: 13px; font-family: inherit; color: #343A40; background: #FFFFFF; line-height: 18px; }
+.cell.e { border-color: #E03131; }
+.err { font-size: 12px; color: #C92A2A; margin-top: 4px; }
+.sel { width: 100%; height: 32px; border: 1px solid #CED4DA; padding: 0 6px; font-size: 13px; font-family: inherit; background: #FFFFFF; color: #343A40; }
+.seg { display: inline-flex; border: 1px solid #CED4DA; }
+.seg button { height: 30px; width: 34px; border: 0; background: #FFFFFF; font-family: inherit; font-size: 13px; color: #343A40; cursor: pointer; }
+.seg button + button { border-left: 1px solid #CED4DA; }
+.seg button.on { background: #1F7A45; color: #FFFFFF; font-weight: 600; }
+.seg.e { border-color: #E03131; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #F8F9FA; border: 1px solid #E9ECEF; font-size: 12px; color: #5A636B; }
+</style>
+</helmet>
+<div style="width: 1280px; height: 1620px; padding: 40px; display: flex; flex-direction: column; gap: 24px;">
+  <div>
+    <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 600;">Section I — Implementing Team</h1>
+    <div class="why">One section with one Save, laid out as the template: the two lead roles, the members of the implementation team, then the capacity development training each member needs. Labels are the template's, word for word.</div>
+  </div>
+
+  <section class="sec dirty">
+    <div class="sh">
+      <span class="letter">I</span>
+      <span style="font-size: 15px; font-weight: 600;">Implementing Team</span>
+      <span class="pill p-unsaved">Unsaved changes</span>
+      <span style="flex-grow: 1;"></span>
+      <span style="font-size: 13px; color: #5A636B;">Section 9 of 14</span>
+    </div>
+    <div class="sb">
+      <div class="help">Name the people who will run the project. List every team member's GAD-related trainings, then the training each member still needs to do the job.</div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+        <div class="fld"><label class="cap" for="sup">Overall Project Supervisor:</label><input id="sup" class="cell" value="Engr. Maria L. Dela Cruz, Provincial Agriculturist"></div>
+        <div class="fld"><label class="cap" for="mgr">Project Manager</label><input id="mgr" class="cell" value="Jose P. Ramos, Agriculturist II"></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="sub">Members of the Implementation Team</span>
+          <span class="chip">3 members · 2 F · 1 M</span>
+        </div>
+        <table class="t">
+          <thead><tr><th style="width: 26%;">Members of the Implementation Team</th><th style="width: 92px;">Sex</th><th>GAD-related Trainings Attended</th><th style="width: 24%;">Expertise</th><th style="width: 44px;"><span style="position: absolute; left: -9999px;">Actions</span></th></tr></thead>
+          <tbody>
+            <tr>
+              <td><input class="cell" value="Ana R. Villanueva" aria-label="Name, row 1"></td>
+              <td><div class="seg" role="group" aria-label="Sex, row 1"><button type="button">M</button><button class="on" type="button" aria-pressed="true">F</button></div></td>
+              <td><div class="cell">Gender Sensitivity Training (2026); HGDG Orientation (2027)</div></td>
+              <td><input class="cell" value="Seed technologist" aria-label="Expertise, row 1"></td>
+              <td><button class="btn ghost xs" type="button" aria-label="Row actions, row 1">⋯</button></td>
+            </tr>
+            <tr>
+              <td><input class="cell" value="Ramon T. Bautista" aria-label="Name, row 2"></td>
+              <td><div class="seg" role="group" aria-label="Sex, row 2"><button class="on" type="button" aria-pressed="true">M</button><button type="button">F</button></div></td>
+              <td><div class="cell" style="color: #ADB5BD;">None yet</div></td>
+              <td><input class="cell" value="Agricultural technician, distribution" aria-label="Expertise, row 2"></td>
+              <td><button class="btn ghost xs" type="button" aria-label="Row actions, row 2">⋯</button></td>
+            </tr>
+            <tr>
+              <td><input class="cell" value="Liza M. Santos" aria-label="Name, row 3"></td>
+              <td><div class="seg e" role="group" aria-label="Sex, row 3" aria-invalid="true"><button type="button">M</button><button type="button">F</button></div><div class="err">Choose M or F.</div></td>
+              <td><div class="cell">Gender Sensitivity Training (2025)</div></td>
+              <td><input class="cell" value="Monitoring and evaluation" aria-label="Expertise, row 3"></td>
+              <td><button class="btn ghost xs" type="button" aria-label="Row actions, row 3">⋯</button></td>
+            </tr>
+          </tbody>
+        </table>
+        <div><button class="btn ghost sm" type="button" style="padding: 0;">+ Add member</button></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="sub">Required Capacity Development Training of the Implementation Team</span>
+          <span style="flex-grow: 1;"></span>
+          <button class="btn ghost sm" type="button" style="padding: 0;">Same for all members</button>
+        </div>
+        <table class="t">
+          <thead><tr><th style="width: 30%;">Members of the Implementation Team</th><th>Required Capacity Development Training</th></tr></thead>
+          <tbody>
+            <tr><td style="padding-top: 12px;">Ana R. Villanueva</td><td><input class="cell" value="Capacity building in gender sensitivity and M&amp;E" aria-label="Required training, Ana R. Villanueva"></td></tr>
+            <tr><td style="padding-top: 12px;">Ramon T. Bautista</td><td><input class="cell" value="Capacity building in gender sensitivity and M&amp;E" aria-label="Required training, Ramon T. Bautista"></td></tr>
+            <tr><td style="padding-top: 12px;">Liza M. Santos</td><td><input class="cell" value="" aria-label="Required training, Liza M. Santos"></td></tr>
+          </tbody>
+        </table>
+        <div class="why" style="font-size: 12px;">Lists every member above automatically, in the same order: there is no Add here, and adding, renaming or removing a member changes this table too. <strong>Same for all members</strong> copies the first filled training into every empty cell. In the export, identical neighbouring trainings merge into one cell, as in the samples; rows 1 and 2 above print as one merged cell.</div>
+      </div>
+    </div>
+    <div class="sf">
+      <a class="btn sm" href="#">← H · Annex H-1</a>
+      <span style="flex-grow: 1;"></span>
+      <span style="font-size: 13px; color: #8A5A00;">Edited just now</span>
+      <button class="btn sm" type="button">Discard</button>
+      <button class="btn sm pri" type="button">Save section</button>
+      <a class="btn sm" href="#">J · Partnership →</a>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="cap">Not started</div>
+      <section class="sec">
+        <div class="sh"><span class="letter">I</span><span style="font-size: 15px; font-weight: 600;">Implementing Team</span><span class="pill p-empty">Not started</span></div>
+        <div class="sb">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <div class="fld"><label class="cap" for="s2">Overall Project Supervisor:</label><input id="s2" class="cell" value=""></div>
+            <div class="fld"><label class="cap" for="m2">Project Manager</label><input id="m2" class="cell" value=""></div>
+          </div>
+          <table class="t">
+            <thead><tr><th>Members of the Implementation Team</th><th style="width: 80px;">Sex</th><th>GAD-related Trainings Attended</th></tr></thead>
+            <tbody><tr><td><input class="cell" value="" aria-label="Name"></td><td><div class="seg" role="group" aria-label="Sex"><button type="button">M</button><button type="button">F</button></div></td><td><input class="cell" value="" aria-label="GAD trainings"></td></tr></tbody>
+          </table>
+          <div class="why" style="font-size: 12px;">Each table starts with one blank row. Blank rows are dropped on save, so an empty table saves as empty and does not trip the M/F rule.</div>
+        </div>
+      </section>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div class="cap">Final, or a cross-office reviewer</div>
+      <section class="sec">
+        <div class="sh"><span class="letter">I</span><span style="font-size: 15px; font-weight: 600;">Implementing Team</span><span class="pill p-final">Final</span></div>
+        <div class="sb" style="gap: 10px;">
+          <div style="font-size: 13px;"><span class="cap">Overall Project Supervisor:</span>&#160; Engr. Maria L. Dela Cruz, Provincial Agriculturist</div>
+          <div style="font-size: 13px;"><span class="cap">Project Manager</span>&#160; Jose P. Ramos, Agriculturist II</div>
+          <table class="t">
+            <thead><tr><th>Members of the Implementation Team</th><th style="width: 44px;">Sex</th><th>GAD-related Trainings Attended</th></tr></thead>
+            <tbody>
+              <tr><td>Ana R. Villanueva</td><td>F</td><td>Gender Sensitivity Training (2026); HGDG Orientation (2027)</td></tr>
+              <tr><td>Ramon T. Bautista</td><td>M</td><td>—</td></tr>
+              <tr><td>Liza M. Santos</td><td>F</td><td>Gender Sensitivity Training (2025)</td></tr>
+            </tbody>
+          </table>
+          <div class="why" style="font-size: 12px;">Text only: no inputs, no row actions, no Add buttons, no footer. Expertise and the capacity table render the same way; identical neighbouring trainings show as one merged cell, as they print.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1620}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

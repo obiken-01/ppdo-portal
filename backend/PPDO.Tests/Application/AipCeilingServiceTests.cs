@@ -317,10 +317,17 @@ public sealed class AipCeilingServiceTests
     /// is. Host is read from the flag, never from "does this office have divisions" and never from
     /// the code "PPDO" (DECISION F / RAL-258).
     /// </summary>
-    private void GivenActivityChain(bool isHostOffice)
+    /// <param name="fiscalYear">
+    /// ↩️ PPDO-150: FY2028+ attributes by the activity's own tag, FY ≤ 2027 through
+    /// <c>ProgramDivision</c> — the year decides which rule a test is about.
+    /// </param>
+    private void GivenActivityChain(bool isHostOffice, int fiscalYear = FiscalYear, int? activityDivisionId = null)
     {
         _aipRepo.Setup(r => r.GetActivityByIdAsync(LedgerActivityId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AipActivity { Id = LedgerActivityId, ProjectId = LedgerProjectId });
+            .ReturnsAsync(new AipActivity
+            {
+                Id = LedgerActivityId, ProjectId = LedgerProjectId, DivisionId = activityDivisionId,
+            });
 
         _aipRepo.Setup(r => r.GetProjectByIdAsync(LedgerProjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AipProject { Id = LedgerProjectId, ProgramId = LedgerProgramId });
@@ -339,7 +346,7 @@ public sealed class AipCeilingServiceTests
             });
 
         _aipRepo.Setup(r => r.GetByIntIdAsync(AipRecordId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = FiscalYear });
+            .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = fiscalYear });
 
         _officeRepo.Setup(r => r.GetByIdAsync(ConfigOfficeId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Office
@@ -383,9 +390,9 @@ public sealed class AipCeilingServiceTests
     /// (which would make each division's figures overlap).
     /// </summary>
     [Fact]
-    public async Task UpsertLedger_HostOfficeProgramUnassigned_ConsultsTheTableAndStillWritesNothing()
+    public async Task UpsertLedger_Fy2027_HostOfficeProgramUnassigned_ConsultsTheTableAndStillWritesNothing()
     {
-        GivenActivityChain(isHostOffice: true);
+        GivenActivityChain(isHostOffice: true, fiscalYear: 2027);
         _allocationRepo.Setup(r => r.FindProgramDivisionsAsync(
                 OfficeRefCode, ProgramRefCode, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ProgramDivision>());
@@ -398,13 +405,13 @@ public sealed class AipCeilingServiceTests
     }
 
     /// <summary>
-    /// PPDO's division-level path is unchanged by PPDO-57 — an assigned host-office program still
-    /// writes its reservation row against the division.
+    /// FY ≤ 2027: an assigned host-office program still writes its reservation row against the
+    /// division (PPDO-57), through <c>ProgramDivision</c> — unchanged by PPDO-150.
     /// </summary>
     [Fact]
-    public async Task UpsertLedger_HostOfficeProgramAssignedToADivision_WritesTheRow()
+    public async Task UpsertLedger_Fy2027_HostOfficeProgramAssignedToADivision_WritesTheRow()
     {
-        GivenActivityChain(isHostOffice: true);
+        GivenActivityChain(isHostOffice: true, fiscalYear: 2027);
         _allocationRepo.Setup(r => r.FindProgramDivisionsAsync(
                 OfficeRefCode, ProgramRefCode, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ProgramDivision>
@@ -412,42 +419,119 @@ public sealed class AipCeilingServiceTests
                 new() { Id = 1, OfficeRefCode = OfficeRefCode, ProgramRefCode = ProgramRefCode, DivisionId = DivisionId },
             });
 
+        GivenLedgerWritePath(DivisionId, 2027);
+
+        await Build().UpsertLedgerForActivityAsync(LedgerActivityId);
+
+        Assert.NotNull(_added);
+        AipDivisionAllocationLedger row = _added!;
+        Assert.Equal(DivisionId,      row.DivisionId);
+        Assert.Equal(GeneralFundId,   row.FundingSourceId);
+        Assert.Equal(LedgerActivityId, row.AipActivityId);
+        // ⚠️ The ledger reserves RAW pesos, not the rounded-up figure the ceiling check sums. The
+        // rounding is a property of the printed form, not of the reservation.
+        Assert.Equal(500_000m, row.ReservedAmount);
+        Assert.Equal(900_000m, row.AllocatedAmountSnapshot);
+    }
+
+    // ── PPDO-150: FY2028+ follows the activity's own tag ──────────────────────
+
+    private AipDivisionAllocationLedger? _added;
+
+    /// <summary>
+    /// Everything the write path touches once attribution has picked <paramref name="division"/>:
+    /// one ₱300K MOOE + ₱200K CO General Fund line, no prior row, a ₱900K allocation. The row
+    /// written lands in <see cref="_added"/>.
+    /// </summary>
+    private void GivenLedgerWritePath(int division, int fiscalYear)
+    {
+        _added = null;
         _expRepo.Setup(r => r.GetByActivityIdAsync(LedgerActivityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AipExpenditure>
             {
                 new() { Id = 1, ActivityId = LedgerActivityId, FundingSourceId = GeneralFundId, Mooe = 300_000m, Co = 200_000m },
             });
-
+        _ledgerRepo.Setup(r => r.DeleteForActivityOutsideDivisionAsync(
+                LedgerActivityId, division, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
         _ledgerRepo.Setup(r => r.GetFundingSourceIdsForActivityAsync(
                 LedgerActivityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<int>());
         _ledgerRepo.Setup(r => r.FindAsync(
-                DivisionId, FiscalYear, GeneralFundId, LedgerActivityId, It.IsAny<CancellationToken>()))
+                division, fiscalYear, GeneralFundId, LedgerActivityId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((AipDivisionAllocationLedger?)null);
-
         _allocation.Setup(a => a.GetAllocationsAsync(
-                ConfigOfficeId, FiscalYear, GeneralFundId, It.IsAny<CancellationToken>()))
+                ConfigOfficeId, fiscalYear, GeneralFundId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<DivisionAllocationDto>
             {
-                new(1, DivisionId, "Planning", FiscalYear, GeneralFundId, "GF", "General Fund", 900_000m),
+                new(1, division, "Planning", fiscalYear, GeneralFundId, "GF", "General Fund", 900_000m),
             });
-
-        AipDivisionAllocationLedger? added = null;
         _ledgerRepo.Setup(r => r.AddAsync(It.IsAny<AipDivisionAllocationLedger>(), It.IsAny<CancellationToken>()))
-            .Callback<AipDivisionAllocationLedger, CancellationToken>((l, _) => added = l)
+            .Callback<AipDivisionAllocationLedger, CancellationToken>((l, _) => _added = l)
             .Returns(Task.CompletedTask);
         _ledgerRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+    }
+
+    /// <summary>
+    /// ⚠️ The tag wins, and <c>ProgramDivision</c> is <b>never consulted</b> for an entered year —
+    /// the strict mock has no setup for it, so asking would throw. That is what stops a shared
+    /// program's lowest-id division from quietly taking the reservation again.
+    /// </summary>
+    [Fact]
+    public async Task UpsertLedger_Fy2028_TaggedActivity_PostsToItsTag_WithoutAskingProgramDivision()
+    {
+        const int tag = 6;
+        GivenActivityChain(isHostOffice: true, activityDivisionId: tag);
+        GivenLedgerWritePath(tag, FiscalYear);
 
         await Build().UpsertLedgerForActivityAsync(LedgerActivityId);
 
-        Assert.NotNull(added);
-        Assert.Equal(DivisionId,      added!.DivisionId);
-        Assert.Equal(GeneralFundId,   added.FundingSourceId);
-        Assert.Equal(LedgerActivityId, added.AipActivityId);
-        // ⚠️ The ledger reserves RAW pesos, not the rounded-up figure the ceiling check sums. The
-        // rounding is a property of the printed form, not of the reservation.
-        Assert.Equal(500_000m, added.ReservedAmount);
-        Assert.Equal(900_000m, added.AllocatedAmountSnapshot);
+        Assert.NotNull(_added);
+        Assert.Equal(tag, _added!.DivisionId);
+        Assert.Equal(500_000m, _added.ReservedAmount);
+        _allocationRepo.VerifyNoOtherCalls();
+    }
+
+    /// <summary>A re-tag moves the reservation: the rows it left under any other division go.</summary>
+    [Fact]
+    public async Task UpsertLedger_Fy2028_ClearsTheActivitysRowsUnderAnyOtherDivision()
+    {
+        const int tag = 6;
+        GivenActivityChain(isHostOffice: true, activityDivisionId: tag);
+        GivenLedgerWritePath(tag, FiscalYear);
+
+        await Build().UpsertLedgerForActivityAsync(LedgerActivityId);
+
+        _ledgerRepo.Verify(r => r.DeleteForActivityOutsideDivisionAsync(
+            LedgerActivityId, tag, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// An untagged FY2028+ host activity reserves nothing — and does not fall back to
+    /// <c>ProgramDivision</c> either (decision: untagged work sits on the dashboard's "No division"
+    /// row until its department head tags it).
+    /// </summary>
+    [Fact]
+    public async Task UpsertLedger_Fy2028_UntaggedActivity_WritesNothing_AndDoesNotFallBack()
+    {
+        GivenActivityChain(isHostOffice: true, activityDivisionId: null);
+
+        await Build().UpsertLedgerForActivityAsync(LedgerActivityId);
+
+        _ledgerRepo.VerifyNoOtherCalls();
+        _allocationRepo.VerifyNoOtherCalls();
+        _expRepo.VerifyNoOtherCalls();
+    }
+
+    /// <summary>Guest offices still write no ledger row, tagged or not (decision: host office only).</summary>
+    [Fact]
+    public async Task UpsertLedger_Fy2028_GuestOffice_TaggedActivity_StillWritesNothing()
+    {
+        GivenActivityChain(isHostOffice: false, activityDivisionId: 6);
+
+        await Build().UpsertLedgerForActivityAsync(LedgerActivityId);
+
+        _ledgerRepo.VerifyNoOtherCalls();
     }
 
     /// <summary>

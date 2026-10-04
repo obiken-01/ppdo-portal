@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proposal section states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+.cap { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; font-size: 13px; font-weight: 500; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; cursor: pointer; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 500; white-space: nowrap; }
+.p-unsaved { background: #FFF3D6; color: #8A5A00; }
+.p-saved { background: #E6F4EC; color: #1F6B3F; }
+.p-auto { background: #E7F0FB; color: #1D4E89; }
+.p-err { background: #FDE8E8; color: #A61B1B; }
+.p-final { background: #E6F4EC; color: #1F6B3F; }
+.dot { width: 8px; height: 8px; border-radius: 9999px; }
+.d-unsaved { background: #D98E04; } .d-err { background: #C92A2A; }
+.sec { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.sh { display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.letter { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: #F1F3F5; font-weight: 700; font-size: 14px; }
+.title { font-size: 15px; font-weight: 600; }
+.sum { font-size: 13px; color: #5A636B; flex-grow: 1; }
+.chev { width: 32px; height: 32px; border: 0; background: transparent; color: #5A636B; cursor: pointer; }
+.sf { border-top: 1px solid #E9ECEF; padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: #FAFBFC; }
+.row { display: flex; flex-direction: column; gap: 6px; }
+.why { font-size: 13px; color: #5A636B; padding-left: 2px; }
+</style>
+</helmet>
+<div style="width: 960px; height: 1080px; padding: 40px; display: flex; flex-direction: column; gap: 22px;">
+  <div>
+    <h1 style="margin: 0 0 4px; font-size: 22px; font-weight: 600;">Section card — every state</h1>
+    <div style="font-size: 14px; color: #5A636B;">Collapsed cards show a one-line summary so a finished section can be folded away and still read at a glance.</div>
+  </div>
+
+  <div class="row">
+    <div class="cap">1 · Collapsed, saved</div>
+    <div class="sec"><div class="sh"><span class="letter">D</span><span class="title">Project Benefits and Costs</span><span class="sum">3 of 5 sectors filled</span><span class="pill p-saved">Saved</span><button class="chev" type="button" aria-label="Expand section D" aria-expanded="false">▸</button></div></div>
+  </div>
+
+  <div class="row">
+    <div class="cap">2 · Collapsed with unsaved edits</div>
+    <div class="sec" style="border-color: #E8B93F;"><div class="sh"><span class="letter">E</span><span class="title">Logical Framework</span><span class="sum">2 of 4 levels filled</span><span class="pill p-unsaved"><span class="dot d-unsaved"></span>Unsaved changes</span><button class="btn pri" type="button">Save</button><button class="chev" type="button" aria-label="Expand section E" aria-expanded="false">▸</button></div></div>
+    <div class="why">Collapsing never throws edits away. A folded section keeps a Save of its own in the header, so nobody has to reopen it to save.</div>
+  </div>
+
+  <div class="row">
+    <div class="cap">3 · Expanded, editing</div>
+    <div class="sec" style="border-color: #E8B93F;">
+      <div class="sh"><span class="letter">C</span><span class="title">Rationale / Background</span><span class="pill p-unsaved"><span class="dot d-unsaved"></span>Unsaved changes</span><span style="flex-grow: 1;"></span><button class="chev" type="button" aria-label="Collapse section C" aria-expanded="true">▾</button></div>
+      <div style="border-top: 1px solid #E9ECEF; padding: 14px 18px; font-size: 13px; color: #7D858C;">[ section fields ]</div>
+      <div class="sf"><span style="font-size: 13px; color: #8A5A00;">Edited just now</span><span style="flex-grow: 1;"></span><button class="btn" type="button">Discard</button><button class="btn pri" type="button">Save section</button></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="cap">4 · Save refused — validation</div>
+    <div class="sec" style="border-color: #E0A3A3;">
+      <div class="sh"><span class="letter">A</span><span class="title">Project Summary</span><span class="pill p-err"><span class="dot d-err"></span>1 error — not saved</span><span style="flex-grow: 1;"></span><button class="chev" type="button" aria-label="Collapse section A" aria-expanded="true">▾</button></div>
+      <div style="border-top: 1px solid #E9ECEF; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px;">
+        <label style="font-size: 12px; font-weight: 600; color: #5A636B;" for="s">HGDG score</label>
+        <input id="s" value="21" style="width: 120px; height: 36px; border: 1px solid #C92A2A; padding: 0 10px; font-size: 14px; font-family: inherit;">
+        <div style="font-size: 12px; color: #C92A2A;">HGDG score must be between 0 and 20.</div>
+      </div>
+      <div class="sf"><span style="font-size: 13px; color: #A61B1B;">Fix the field above, then save again. Your input is kept.</span><span style="flex-grow: 1;"></span><button class="btn" type="button">Discard</button><button class="btn pri" type="button">Save section</button></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="cap">5 · Filled from the AIP — no Save</div>
+    <div class="sec"><div class="sh"><span class="letter">H</span><span class="title">Estimated Cost — Annex H-1</span><span class="sum">PhP 1,250,000.00 · matches Section A</span><span class="pill p-auto">From AIP · nothing to save</span><button class="chev" type="button" aria-label="Expand section H" aria-expanded="false">▸</button></div></div>
+    <div class="why">H and M are read-only previews of AIP data. Changing them means editing the AIP, so they carry no Save.</div>
+  </div>
+
+  <div class="row">
+    <div class="cap">6 · Proposal is Final — read-only</div>
+    <div class="sec"><div class="sh"><span class="letter">C</span><span class="title">Rationale / Background</span><span class="sum">4 paragraphs</span><span class="pill p-final">Final</span><button class="chev" type="button" aria-label="Expand section C" aria-expanded="false">▸</button></div></div>
+    <div class="why">No Save or Discard anywhere. The header shows "Final — 12 Oct 2028 by Agriculturist User" and Reopen for the department head.</div>
+  </div>
+
+  <div class="row">
+    <div class="cap">7 · Someone else saved first (conflict)</div>
+    <div class="sec" style="border-color: #E8B93F;">
+      <div class="sh"><span class="letter">J</span><span class="title">Partnership and Sustainability</span><span class="pill p-unsaved"><span class="dot d-unsaved"></span>Not saved — newer version</span><span style="flex-grow: 1;"></span><button class="chev" type="button" aria-label="Collapse section J" aria-expanded="true">▾</button></div>
+      <div class="sf" style="background: #FFF8E6;"><span style="font-size: 13px; color: #6B4A00;"><strong>Provincial Agriculturist saved this proposal at 3:02 PM.</strong> Your text is still here. Reload to see their changes, then save again.</span><span style="flex-grow: 1;"></span><button class="btn" type="button">Keep editing</button><button class="btn pri" type="button">Reload</button></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
