@@ -12,6 +12,19 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
     public PriceIndexItemRepository(AppDbContext context) : base(context) { }
 
     /// <inheritdoc />
+    public async Task<PriceIndexItem?> GetByIntIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<PriceIndexItem>().FirstOrDefaultAsync(p => p.Id == id, ct);
+
+    /// <inheritdoc />
+    public async Task<bool> NameAndUnitExistsAsync(
+        string name, string unit, int? excludeId, CancellationToken ct = default)
+        // Plain == on purpose: the collation is case-insensitive, and LOWER() would make the
+        // predicate non-SARGable (RAL-204).
+        => await _context.Set<PriceIndexItem>()
+            .AnyAsync(p => p.Name == name && p.Unit == unit
+                        && (excludeId == null || p.Id != excludeId.Value), ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<PriceIndexItem>> GetByIdsAsync(
         IReadOnlyList<int> ids, CancellationToken ct = default)
     {
