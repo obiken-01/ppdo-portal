@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard: PPDO finance</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.side a { display: block; padding: 9px 16px 9px 28px; color: #D4EDDE; font-size: 14px; text-decoration: none; }
+.side a.on { background: #13512D; color: #FFFFFF; font-weight: 600; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 600; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; text-decoration: none; cursor: pointer; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.step { flex: 1 1 0; min-width: 110px; display: flex; flex-direction: column; gap: 6px; }
+.bar { height: 6px; background: #E9ECEF; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: #5A636B; padding: 10px 12px; border-bottom: 1px solid #E9ECEF; white-space: nowrap; }
+td { padding: 12px; font-size: 13px; color: #5A636B; border-bottom: 1px solid #F1F3F5; white-space: nowrap; }
+.r { text-align: right; }
+.feed p { margin: 0; }
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 1460px; align-items: stretch;">
+
+  <nav class="side" aria-label="Main" style="flex: 1 1 232px; max-width: 232px; background: #1F7A45; padding: 20px 0; display: flex; flex-direction: column; gap: 2px;">
+    <div style="padding: 0 20px 18px; color: #FFFFFF; font-size: 16px; font-weight: 700;">PPDO Portal</div>
+    <div style="padding: 6px 20px; color: #FFFFFF; font-size: 14px; font-weight: 600;">Investment Planning</div>
+    <a class="on" href="#">Dashboard</a>
+    <a href="#">AIP Entry</a>
+    <a href="#">Allocation</a>
+    <a href="#">Investment Proposals</a>
+    <a href="#">WFP</a>
+    <a href="#">Report</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 24px 24px 48px;">
+    <div style="max-width: 1152px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;">
+        <div>
+          <h1 style="margin: 0; font-size: 20px; font-weight: 700;">Investment Planning</h1>
+          <p style="margin: 4px 0 0; font-size: 14px; color: #5A636B;">Provincial Planning and Development Office (PPDO) · all divisions</p>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5A636B;">Fiscal year
+          <select style="height: 36px; padding: 0 10px; font-size: 14px; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40;">
+            <option>FY 2028</option><option>FY 2027</option>
+          </select>
+        </label>
+      </header>
+
+      <section class="card" aria-labelledby="where" style="padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px;">
+          <div style="flex: 1 1 520px; min-width: 0;">
+            <p style="margin: 0 0 6px; font-size: 14px; color: #5A636B;">FY 2028 AIP · PPDO</p>
+            <h2 id="where" style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 600;">₱9,500,000.00 of the ceiling is not allocated to a division yet.</h2>
+            <p style="margin: 8px 0 0; font-size: 14px; line-height: 21px; color: #5A636B;">6 programs have no division either, so nobody can encode them. The AIP itself was returned to the divisions on Oct 2.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <a class="btn" href="#">Assign programs</a>
+            <a class="btn pri" href="#">Allocate to divisions</a>
+          </div>
+        </div>
+        <ol aria-label="PPDO's AIP progress" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px;">
+          <li class="step"><div class="bar" style="background: #3BAD6A;"></div><span style="font-size: 13px; font-weight: 600;">Ceiling</span><span style="font-size: 12px; color: #5A636B;">₱30,000,000.00</span></li>
+          <li class="step" aria-current="step"><div class="bar" style="background: linear-gradient(90deg, #1F7A45 68%, #E9ECEF 68%); box-shadow: 0 0 0 2px #A8DABC;"></div><span style="font-size: 13px; font-weight: 700; color: #1F7A45;">Division allocation</span><span style="font-size: 12px; color: #343A40;">68% · you</span></li>
+          <li class="step"><div class="bar" style="background: linear-gradient(90deg, #1F7A45 76%, #E9ECEF 76%);"></div><span style="font-size: 13px; font-weight: 700; color: #1F7A45;">Program assignment</span><span style="font-size: 12px; color: #343A40;">19 of 25 · you</span></li>
+          <li class="step"><div class="bar" style="background: #EF9F27;"></div><span style="font-size: 13px; font-weight: 600;">Encoding</span><span style="font-size: 12px; color: #8A5A00;">Returned, 0 of 2 divisions resubmitted</span></li>
+          <li class="step"><div class="bar"></div><span style="font-size: 13px; font-weight: 600; color: #5A636B;">Department review</span><span style="font-size: 12px; color: #5A636B;">PDC</span></li>
+          <li class="step"><div class="bar"></div><span style="font-size: 13px; font-weight: 600; color: #5A636B;">Accepted</span><span style="font-size: 12px; color: #5A636B;">PPDO reviewer</span></li>
+        </ol>
+      </section>
+
+      <section class="card" aria-labelledby="fund" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline;">
+          <h2 id="fund" style="margin: 0; font-size: 14px; font-weight: 600;">General Fund ceiling, by division</h2>
+          <span style="font-size: 12px; color: #5A636B;">Set by PBO, read only</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;">
+          <div><div class="label">Ceiling</div><div class="num" style="font-size: 20px; font-weight: 700; margin-top: 4px;">₱30,000,000.00</div></div>
+          <div><div class="label">Allocated</div><div class="num" style="font-size: 20px; font-weight: 700; margin-top: 4px;">₱20,500,000.00</div></div>
+          <div><div class="label">Costed in AIP</div><div class="num" style="font-size: 20px; font-weight: 700; margin-top: 4px;">₱427,000.00</div></div>
+          <div><div class="label">Not allocated</div><div class="num" style="font-size: 20px; font-weight: 700; margin-top: 4px; color: #8A5A00;">₱9,500,000.00</div></div>
+        </div>
+        <div role="img" aria-label="Planning 10.5 million, Admin 10 million, not allocated 9.5 million" style="display: flex; height: 14px; gap: 2px;">
+          <div style="flex: 10.5; background: #1F7A45;"></div>
+          <div style="flex: 10; background: #6DC492;"></div>
+          <div style="flex: 9.5; background: repeating-linear-gradient(45deg, #E9ECEF 0 6px, #F8F9FA 6px 12px);"></div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #5A636B;">
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: #1F7A45; margin-right: 6px;"></span>Planning ₱10,500,000.00</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: #6DC492; margin-right: 6px;"></span>Admin ₱10,000,000.00</span>
+          <span><span style="display: inline-block; width: 10px; height: 10px; background: #E9ECEF; margin-right: 6px;"></span>Not allocated ₱9,500,000.00</span>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="div">
+        <div style="padding: 14px 20px; border-bottom: 1px solid #E9ECEF;">
+          <h2 id="div" style="margin: 0; font-size: 14px; font-weight: 600;">Divisions</h2>
+          <p style="margin: 2px 0 0; font-size: 12px; color: #5A636B;">Select a division to see its allocation per fund</p>
+        </div>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; min-width: 760px;">
+            <thead><tr><th>Division</th><th>AIP</th><th class="r">Activities costed</th><th class="r">Allocated</th><th class="r">Costed</th><th class="r">Remaining</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><strong style="color: #343A40;">PLANNING</strong> Sectoral Planning</td><td><span class="pill" style="background: #FEF3CD; color: #8A5A00;">Returned</span></td><td class="r num">2 of 2</td><td class="r num">₱10,500,000.00</td><td class="r num">₱311,000.00</td><td class="r num" style="color: #343A40; font-weight: 600;">₱10,189,000.00</td><td class="r"><a href="#" style="font-weight: 600;">Allocation</a></td></tr>
+              <tr><td><strong style="color: #343A40;">ADMIN</strong> Administrative</td><td><span class="pill" style="background: #FEF3CD; color: #8A5A00;">Returned</span></td><td class="r num">2 of 2</td><td class="r num">₱10,000,000.00</td><td class="r num">₱116,000.00</td><td class="r num" style="color: #343A40; font-weight: 600;">₱9,884,000.00</td><td class="r"><a href="#" style="font-weight: 600;">Allocation</a></td></tr>
+              <tr><td colspan="7" style="color: #5A636B; background: #F8F9FA;">4 divisions have no allocation or activities yet: FPIP, ICT, OG-CSO, RMES. <a href="#" style="font-weight: 600;">Show them</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <section class="card" aria-labelledby="pp" style="flex: 5 1 340px; min-width: 0; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;">
+          <h2 id="pp" style="margin: 0; font-size: 14px; font-weight: 600;">Investment proposals</h2>
+          <div style="display: flex; height: 10px; gap: 2px;" role="img" aria-label="1 final, 2 draft, 22 none, of 25 projects"><div style="flex: 1; background: #1F7A45;"></div><div style="flex: 2; background: #EF9F27;"></div><div style="flex: 22; background: #CED4DA;"></div></div>
+          <p style="margin: 0; font-size: 13px; color: #5A636B;"><strong class="num" style="color: #343A40;">1</strong> final · <strong class="num" style="color: #343A40;">2</strong> draft · <strong class="num" style="color: #343A40;">22</strong> no proposal, of 25 projects. <a href="#" style="font-weight: 600;">Open</a></p>
+        </section>
+        <section class="card feed" aria-labelledby="recent" style="flex: 7 1 480px; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="recent" style="margin: 0; font-size: 14px; font-weight: 600;">Recent activity, PPDO</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Audit log</a>
+          </div>
+          <div style="padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 19px; color: #5A636B;">
+            <p><strong style="color: #343A40;">Jose Santos</strong> moved an activity in Planning to the Admin division. <span>Sep 28, 1:56 PM</span></p>
+            <p><strong style="color: #343A40;">System Administrator</strong> allocated ₱10,500,000.00 of the General Fund to Planning. <span>Sep 21, 9:49 AM</span></p>
+          </div>
+        </section>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #5A636B;">Figures follow the local test data shape and are illustrative. With more than one fund, the fund card repeats per fund in a two-column grid; with one fund it takes the full width, as here.</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1460}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

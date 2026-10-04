@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard: department head</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body { margin: 0; background: #F1F3F5; font-family: "Segoe UI", "Source Sans Pro", system-ui, sans-serif; color: #343A40; -webkit-font-smoothing: antialiased; }
+a { color: #1F7A45; } a:hover { color: #196638; }
+.num { font-variant-numeric: tabular-nums; }
+.side a { display: block; padding: 9px 16px 9px 28px; color: #D4EDDE; font-size: 14px; text-decoration: none; }
+.side a.on { background: #13512D; color: #FFFFFF; font-weight: 600; }
+.card { background: #FFFFFF; border: 1px solid #DEE2E6; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; font-size: 14px; font-weight: 600; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40; text-decoration: none; cursor: pointer; }
+.btn.pri { background: #1F7A45; border-color: #1F7A45; color: #FFFFFF; }
+.pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 9999px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #5A636B; }
+.step { flex: 1 1 0; min-width: 120px; display: flex; flex-direction: column; gap: 6px; }
+.bar { height: 6px; background: #E9ECEF; }
+.feed p { margin: 0; }
+</style>
+</helmet>
+<div style="display: flex; flex-wrap: wrap; min-height: 1480px; align-items: stretch;">
+
+  <nav class="side" aria-label="Main" style="flex: 1 1 232px; max-width: 232px; background: #1F7A45; padding: 20px 0; display: flex; flex-direction: column; gap: 2px;">
+    <div style="padding: 0 20px 18px; color: #FFFFFF; font-size: 16px; font-weight: 700;">PPDO Portal</div>
+    <div style="padding: 6px 20px; color: #FFFFFF; font-size: 14px; font-weight: 600;">Investment Planning</div>
+    <a class="on" href="#">Dashboard</a>
+    <a href="#">AIP Entry</a>
+    <a href="#">AIP Review</a>
+    <a href="#">Investment Proposals</a>
+    <a href="#">Report</a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 24px 24px 48px;">
+    <div style="max-width: 1152px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px;">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;">
+        <div>
+          <h1 style="margin: 0; font-size: 20px; font-weight: 700; color: #343A40;">Investment Planning</h1>
+          <p style="margin: 4px 0 0; font-size: 14px; color: #5A636B;">Office of the Provincial Agriculturist (OPA)</p>
+        </div>
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #5A636B;">Fiscal year
+          <select style="height: 36px; padding: 0 10px; font-size: 14px; font-family: inherit; border: 1px solid #CED4DA; background: #FFFFFF; color: #343A40;">
+            <option>FY 2028</option><option>FY 2027</option>
+          </select>
+        </label>
+      </header>
+
+      <section class="card" aria-labelledby="where" style="padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px;">
+          <div style="flex: 1 1 520px; min-width: 0;">
+            <p style="margin: 0 0 6px; font-size: 14px; color: #5A636B;">FY 2028 AIP · with you since Oct 2</p>
+            <h2 id="where" style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; color: #343A40;">Your encoders are done. The AIP is ready for you to send to PPDO.</h2>
+            <p style="margin: 8px 0 0; font-size: 14px; line-height: 21px; color: #5A636B;">Every activity is costed and the office is within its ceiling. 3 projects have no final investment proposal yet. That does not hold the send.</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <a class="btn" href="#">Return to encoders</a>
+            <a class="btn pri" href="#">Review and send to PPDO</a>
+          </div>
+        </div>
+
+        <ol aria-label="AIP progress" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px;">
+          <li class="step">
+            <div class="bar" style="background: #3BAD6A;"></div>
+            <span style="font-size: 13px; font-weight: 600; color: #343A40;">Ceiling</span>
+            <span style="font-size: 12px; color: #5A636B;">Published by PBO</span>
+          </li>
+          <li class="step">
+            <div class="bar" style="background: #3BAD6A;"></div>
+            <span style="font-size: 13px; font-weight: 600; color: #343A40;">Encoding</span>
+            <span style="font-size: 12px; color: #5A636B;">Done, Sep 30</span>
+          </li>
+          <li class="step" aria-current="step">
+            <div class="bar" style="background: #1F7A45; height: 6px; box-shadow: 0 0 0 2px #A8DABC;"></div>
+            <span style="font-size: 13px; font-weight: 700; color: #1F7A45;">Department review</span>
+            <span style="font-size: 12px; color: #343A40;">You</span>
+          </li>
+          <li class="step">
+            <div class="bar"></div>
+            <span style="font-size: 13px; font-weight: 600; color: #5A636B;">PPDO review</span>
+            <span style="font-size: 12px; color: #5A636B;">PPDO reviewer</span>
+          </li>
+          <li class="step">
+            <div class="bar"></div>
+            <span style="font-size: 13px; font-weight: 600; color: #5A636B;">Accepted</span>
+            <span style="font-size: 12px; color: #5A636B;">Goes into the provincial AIP</span>
+          </li>
+        </ol>
+      </section>
+
+      <section aria-label="Money" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div class="card" style="grid-column: span 2; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline;">
+            <span class="label">Against the General Fund ceiling</span>
+            <span class="num" style="font-size: 13px; color: #1F7A45; font-weight: 600;">₱11,580,000.00 left</span>
+          </div>
+          <div class="num" style="font-size: 22px; font-weight: 700; color: #343A40;">₱38,420,000.00 <span style="font-size: 14px; font-weight: 400; color: #5A636B;">of ₱50,000,000.00</span></div>
+          <div role="img" aria-label="77 percent of the ceiling costed" style="height: 10px; background: #E9ECEF; display: flex;">
+            <div style="width: 76.8%; background: #3BAD6A;"></div>
+          </div>
+          <span style="font-size: 12px; color: #5A636B;">MOOE and CO, rounded up per activity, as the submit check counts it. PS is not charged.</span>
+        </div>
+        <div class="card" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 6px;">
+          <span class="label">Activities</span>
+          <span class="num" style="font-size: 22px; font-weight: 700;">31</span>
+          <span style="font-size: 12px; color: #5A636B;">in 12 projects, 4 programs</span>
+        </div>
+        <div class="card" style="padding: 16px 20px; display: flex; flex-direction: column; gap: 6px;">
+          <span class="label">All funds costed</span>
+          <span class="num" style="font-size: 22px; font-weight: 700;">₱41,050,000.00</span>
+          <span style="font-size: 12px; color: #5A636B;">includes GAD and special funds</span>
+        </div>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+
+        <section class="card" aria-labelledby="props" style="flex: 7 1 520px; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="props" style="margin: 0; font-size: 14px; font-weight: 600;">Investment proposals</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Open Investment Proposals</a>
+          </div>
+          <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px;">
+            <div role="img" aria-label="5 final, 4 draft, 3 with no proposal, of 12 projects" style="display: flex; height: 10px; gap: 2px;">
+              <div style="flex: 5; background: #1F7A45;"></div>
+              <div style="flex: 4; background: #EF9F27;"></div>
+              <div style="flex: 3; background: #CED4DA;"></div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #5A636B;">
+              <span><strong class="num" style="color: #343A40;">5</strong> final</span>
+              <span><strong class="num" style="color: #343A40;">4</strong> draft</span>
+              <span><strong class="num" style="color: #343A40;">3</strong> no proposal</span>
+              <span>of 12 projects</span>
+            </div>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <caption style="text-align: left; padding: 0 20px 8px; font-size: 12px; color: #5A636B;">Needs attention</caption>
+            <tbody>
+              <tr style="border-top: 1px solid #E9ECEF;">
+                <td style="padding: 10px 20px; color: #343A40;">Rice Project 1</td>
+                <td style="padding: 10px 8px;"><span class="pill" style="background: #F1F3F5; color: #5A636B;">None</span></td>
+                <td style="padding: 10px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Create</a></td>
+              </tr>
+              <tr style="border-top: 1px solid #E9ECEF;">
+                <td style="padding: 10px 20px; color: #343A40;">Corn Seed Distribution</td>
+                <td style="padding: 10px 8px;"><span class="pill" style="background: #F1F3F5; color: #5A636B;">None</span></td>
+                <td style="padding: 10px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Create</a></td>
+              </tr>
+              <tr style="border-top: 1px solid #E9ECEF;">
+                <td style="padding: 10px 20px; color: #343A40;">Farm-to-Market Training</td>
+                <td style="padding: 10px 8px;"><span class="pill" style="background: #FEF3CD; color: #8A5A00;">Draft</span></td>
+                <td style="padding: 10px 20px; text-align: right;"><a href="#" style="font-weight: 600;">Open</a></td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin: 0; padding: 10px 20px 14px; font-size: 12px; color: #5A636B; border-top: 1px solid #E9ECEF;">4 more on the Investment Proposals page</p>
+        </section>
+
+        <section class="card feed" aria-labelledby="recent" style="flex: 5 1 340px; min-width: 0;">
+          <div style="padding: 16px 20px 12px; display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E9ECEF;">
+            <h2 id="recent" style="margin: 0; font-size: 14px; font-weight: 600;">Recent activity</h2>
+            <a href="#" style="font-size: 13px; font-weight: 600;">Full history</a>
+          </div>
+          <div style="padding: 12px 20px 4px; font-size: 12px; font-weight: 600; color: #5A636B;">Today</div>
+          <div style="padding: 6px 20px 10px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 19px; color: #5A636B;">
+            <p><strong style="color: #343A40;">Agriculturist User</strong> finalized the proposal for Corn Seed Distribution. <span style="color: #5A636B;">10:42 AM</span></p>
+            <p><strong style="color: #343A40;">Agriculturist User</strong> costed 3 activities in Rice Project 1. <span>9:15 AM</span></p>
+          </div>
+          <div style="padding: 8px 20px 4px; font-size: 12px; font-weight: 600; color: #5A636B; border-top: 1px solid #F1F3F5;">Sep 30</div>
+          <div style="padding: 6px 20px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; line-height: 19px; color: #5A636B;">
+            <p><strong style="color: #343A40;">Agriculturist User</strong> submitted the AIP to you. <span>5:44 PM</span></p>
+            <p><strong style="color: #343A40;">PBO</strong> published the FY 2028 ceiling, ₱50,000,000.00. <span>9:30 AM</span></p>
+          </div>
+        </section>
+      </div>
+
+      <p style="margin: 0; font-size: 12px; color: #5A636B;">Sample figures, not real data. No Divisions band: this office has none, so the band is left out instead of showing an empty table.</p>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
