@@ -100,6 +100,16 @@ public sealed class PriceIndexServiceTests
                 return ((IReadOnlyList<PriceIndexItem>)ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
                         ordered.Count);
             });
+        // PPDO-186 — the single-item paths read one row and ask SQL about duplicates. Both mocked
+        // off the live seed; the duplicate check mirrors the case-insensitive DB collation.
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => seed.FirstOrDefault(p => p.Id == id));
+        repo.Setup(r => r.NameAndUnitExistsAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string name, string unit, int? excludeId, CancellationToken _) =>
+                seed.Any(p => (excludeId == null || p.Id != excludeId.Value)
+                           && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                           && p.Unit.Equals(unit, StringComparison.OrdinalIgnoreCase)));
         repo.Setup(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()))
             .Callback<PriceIndexItem, CancellationToken>((p, _) => seed.Add(p))
             .Returns(Task.CompletedTask);
@@ -202,6 +212,66 @@ public sealed class PriceIndexServiceTests
         ServiceResult<PriceIndexItemDto> result = await sut.DeleteAsync(1);
         Assert.True(result.IsSuccess);
         Assert.False(target.IsActive);
+    }
+
+    // ── Single-item reads and saves stay off the full catalogue (PPDO-186) ────
+
+    [Fact]
+    public async Task UpdateAsync_RenameOntoAnotherItemsNameAndUnit_ReturnsConflict()
+    {
+        (PriceIndexService sut, _) = Build(
+            [Item(1, "Bond Paper", "ream", 250m), Item(2, "Ballpen", "piece", 15m)]);
+
+        ServiceResult<PriceIndexItemDto> result =
+            await sut.UpdateAsync(2, new UpsertPriceIndexItemDto("Bond Paper", "ream", 15m, null));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_KeepingItsOwnNameAndUnit_IsNotADuplicate()
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([Item(1, "Bond Paper", "ream", 250m)]);
+
+        ServiceResult<PriceIndexItemDto> result =
+            await sut.UpdateAsync(1, new UpsertPriceIndexItemDto("Bond Paper", "ream", 275m, null));
+
+        Assert.True(result.IsSuccess);
+        repo.Verify(r => r.NameAndUnitExistsAsync("Bond Paper", "ream", 1, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PaddedNameAndUnit_ChecksTheTrimmedKeyWithNoExclusion()
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([]);
+
+        await sut.CreateAsync(new UpsertPriceIndexItemDto("  Bond Paper ", " ream ", 250m, null));
+
+        repo.Verify(r => r.NameAndUnitExistsAsync("Bond Paper", "ream", null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnknownId_ReturnsNotFound()
+    {
+        (PriceIndexService sut, _) = Build([Item(1, "Bond Paper", "ream", 250m)]);
+
+        ServiceResult<PriceIndexItemDto> result =
+            await sut.UpdateAsync(99, new UpsertPriceIndexItemDto("Bond Paper", "ream", 250m, null));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task SingleItemPaths_NeverLoadTheWholeCatalogue()
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([Item(1, "Bond Paper", "ream", 250m)]);
+
+        await sut.GetByIdAsync(1);
+        await sut.CreateAsync(new UpsertPriceIndexItemDto("Ballpen", "piece", 15m, null));
+        await sut.UpdateAsync(1, new UpsertPriceIndexItemDto("Bond Paper", "ream", 260m, null));
+        await sut.DeleteAsync(1);
+
+        repo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── price_updated_at behavior (the core new rule) ───────────────────────
