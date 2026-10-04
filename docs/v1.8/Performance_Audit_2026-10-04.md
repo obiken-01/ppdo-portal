@@ -93,18 +93,20 @@ Things that are already right and should stay:
 
 ## 4. Suggested tickets
 
-Ordered by value for effort. None needs a migration.
+Ordered by value for effort. None needs a migration. Filed 2026-10-04 in milestone "v1.8.1 — Caching,
+Dashboard Improvements & Optimization". **Ralph: optimizations go first in v1.8.1**, ahead of the dashboard
+redesign and the caching groundwork. Priorities: 1–3 High, 4–6 Medium, 7–8 Low.
 
 | Order | Ticket | Findings | Scope | Size |
 |---|---|---|---|---|
-| 1 | Compress API responses (spike, then switch on) | O1 | Backend | S |
-| 2 | Price-index picker as type-ahead, or cached with ETag | O2 | Frontend (+ backend for ETag) | M |
-| 3 | AIP Entry: parallel loads and an office-scoped detail | O3, O4 | Backend + frontend | M |
-| 4 | Slim the AIP detail/summary JSON (omit empty fields) | O5 | Backend + frontend types | S |
-| 5 | Price index: by-id and duplicate checks in SQL | O6 | Backend | S |
-| 6 | `AsNoTracking` on read-only repository methods | O8 | Backend | S |
-| 7 | Small tidy-ups: config by-id lookups, LDIP list count, PR line lookup, `/auth/me` callers, lazy editors, dead `/dashboard/stats` | O9–O11, O13–O15 | Both | S each |
-| 8 | Stock balance import, set-based | O7 | Backend | M |
+| 1 · **PPDO-182** | Compress API responses (spike, then switch on) | O1 | Backend | S |
+| 2 · **PPDO-183** | Price-index picker as type-ahead, or cached with ETag | O2 | Frontend (+ backend for ETag) | M |
+| 3 · **PPDO-184** | AIP Entry: parallel loads and an office-scoped detail | O3, O4 | Backend + frontend | M |
+| 4 · **PPDO-185** | Slim the AIP detail/summary JSON (omit empty fields) | O5 | Backend + frontend types | S |
+| 5 · **PPDO-186** | Price index: by-id and duplicate checks in SQL | O6 | Backend | S |
+| 6 · **PPDO-187** | `AsNoTracking` on read-only repository methods | O8 | Backend | S |
+| 7 · **PPDO-188** | Small tidy-ups: config by-id lookups, LDIP list count, PR line lookup, `/auth/me` callers, lazy editors, dead `/dashboard/stats` | O9–O11, O13–O15 | Both | S each |
+| 8 · **PPDO-189** | Stock balance import, set-based | O7 | Backend | M |
 
 O12 (audit row in the same save) is left out of the list: it changes the audit contract and wants a spec line first.
 
