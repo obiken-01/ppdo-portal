@@ -436,7 +436,7 @@ public sealed class PriceIndexService : IPriceIndexService
             }
 
             string? category    = Blank(CleanText(row.AccountName));
-            string? stockCardNo = Blank(CleanText(row.ItemCode));
+            string? stockCardNo = Blank(NormalizeItemCode(row.ItemCode));
             string? tooLong =
                 Csv.OverLimit("unit", unit, UnitMax) ??
                 Csv.OverLimit("account name", category, CategoryMax) ??
@@ -536,6 +536,15 @@ public sealed class PriceIndexService : IPriceIndexService
         string noEscapes = System.Text.RegularExpressions.Regex.Replace(value, "_x[0-9A-Fa-f]{4}_", " ");
         return System.Text.RegularExpressions.Regex.Replace(noEscapes, @"\s+", " ").Trim();
     }
+
+    /// <summary>
+    /// PGOM writes some item codes with an en dash ("RAM–BAOS-4100294508") where the codes already
+    /// in the catalogue use a plain hyphen. Left alone, every such row would import as a near-twin of
+    /// the item it duplicates. Dash look-alikes become "-", then the usual whitespace clean-up.
+    /// </summary>
+    private static string NormalizeItemCode(string? code)
+        => CleanText(code?.Replace('‐', '-').Replace('‑', '-').Replace('‒', '-')
+                         .Replace('–', '-').Replace('—', '-').Replace('−', '-'));
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
