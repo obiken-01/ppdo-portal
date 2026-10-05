@@ -40,6 +40,7 @@ import {
   getAipOfficeDivisions, submitAipDivision, returnAipDivision, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
+import { cacheKey, loadThroughCache } from "@/lib/reference-cache";
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
 import DivisionTable from "../../DivisionTable";
 import { AipUnsavedChangesProvider, useAipLeaveGuard } from "@/components/aip/entry/AipUnsavedChanges";
@@ -382,15 +383,33 @@ function AipEntryPageInner() {
   // PPDO-109 — the fund picker asks for THIS office's funds, so it shows the province-wide list plus
   // whatever this office added. `officeId` here is the office whose groups this page edits, which is
   // the encoder's own; the server clamps it anyway, so it can only ever narrow.
+  //
+  // ↩️ PPDO-111 — through the reference cache (lib/reference-cache): a repeat visit renders these
+  // pickers from IndexedDB at once, and a background re-fetch re-renders them only if the list
+  // changed. A first visit, or a browser without IndexedDB, behaves exactly as before. Every key
+  // carries the filter it was fetched with.
   useEffect(() => {
-    void listAccounts().then(setAccounts).catch(() => setAccounts([]));
-    void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
-    void listFundingSources({ active: "true", officeId }).then(setFunds).catch(() => setFunds([]));
-    void listPriceIndexForPicker({ active: "true" })
-      .then(setPriceIndex)
-      .catch(() => setPriceIndex([]))
-      .finally(() => setPriceIndexLoading(false));
-  }, [officeId]);
+    void loadThroughCache(cacheKey("accounts"), () => listAccounts(), setAccounts, () => setAccounts([]));
+    void loadThroughCache(
+      cacheKey("offices", { active: "true" }), () => listOffices({ active: "true" }),
+      setOffices, () => setOffices([]));
+    void loadThroughCache(
+      cacheKey("price-index", { active: "true" }), () => listPriceIndexForPicker({ active: "true" }),
+      (rows) => { setPriceIndex(rows); setPriceIndexLoading(false); },
+      () => { setPriceIndex([]); setPriceIndexLoading(false); });
+  }, []);
+
+  // ⚠️ Funding sources are office-scoped (PPDO-109) and clamped per caller, so the key carries the
+  // office asked for AND who asked: a key without either would serve office A's private funds to
+  // office B on a shared machine (spec decision 8). Waits for /auth/me so the user is known.
+  const meUserId = me?.userId;
+  useEffect(() => {
+    if (!meUserId) return;
+    void loadThroughCache(
+      cacheKey("funding-sources", { active: "true", office: officeId, user: meUserId }),
+      () => listFundingSources({ active: "true", officeId }),
+      setFunds, () => setFunds([]));
+  }, [officeId, meUserId]);
 
   // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
   // PPDO finance sees every division of this office, anyone else sees only their own division row.
