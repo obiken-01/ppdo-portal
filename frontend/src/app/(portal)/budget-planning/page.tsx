@@ -65,6 +65,7 @@ import DivisionTable from "./DivisionTable";
 import MoneyTiles, { MoneyTilesSkeleton, type MoneyTile } from "./MoneyTiles";
 import OfficeBoard, { OfficeBoardSkeleton } from "./OfficeBoard";
 import OfficeTable from "./OfficeTable";
+import RecentActivityList from "./RecentActivityList";
 
 type OfficesView = "board" | "table";
 
@@ -88,14 +89,6 @@ function readOfficesView(userId: string | undefined): OfficesView | null {
 // ---------------------------------------------------------------------------
 // Recent activity
 // ---------------------------------------------------------------------------
-
-// Exactly one of recordId/recordGuid is set on an entry, depending on whether the affected table
-// has an int or Guid PK. Guids are shortened to their first segment to keep the row compact.
-function recordLabel(entry: RecentActivity): string {
-  if (entry.recordId != null) return `#${entry.recordId}`;
-  if (entry.recordGuid != null) return `#${entry.recordGuid.split("-")[0]}`;
-  return "";
-}
 
 /** The Offices band's Board / Table switch — a two-segment control in the band header. */
 function ViewSwitch({ value, onChange }: { value: OfficesView; onChange: (view: OfficesView) => void }) {
@@ -170,6 +163,8 @@ export default function BudgetPlanningPage() {
   const canManageOfficeCeilings = user?.canManageOfficeCeilings === true;
   const canReviewAllOffices = user?.canReviewAllOffices === true;
   const canReview = user?.canReviewBudgetPlanning === true;
+  // Mirrors the sidebar's own gate for the Audit Log link (Sidebar.tsx `showAuditLog`).
+  const canSeeAuditLog = user?.isHostOffice === true && user?.role === "SuperAdmin";
 
   // The office table's own gate — it must match the endpoint's, or the page requests a band it is
   // about to be 403'd for. SuperAdmin resolves true on both flags server-side; naming it here
@@ -822,6 +817,15 @@ export default function BudgetPlanningPage() {
         <Band
           title="Recent activity"
           description={officeLabel}
+          // PPDO-181 — the audit log is SuperAdmin-only (the sidebar gates it the same way), so the
+          // link is only offered to someone it will open for.
+          actions={
+            canSeeAuditLog ? (
+              <Link href="/config/audit-log" className="text-xs font-medium text-green-600 hover:text-green-700">
+                Full history →
+              </Link>
+            ) : undefined
+          }
           loading={activityLoading}
           error={activityError}
           onRetry={() => {
@@ -837,20 +841,7 @@ export default function BudgetPlanningPage() {
           {activity.length === 0 ? (
             <BandEmpty message="No recent activity yet." />
           ) : (
-            <div className="divide-y divide-slate-50">
-              {activity.map((entry) => (
-                <div key={entry.id} className="px-5 py-3 flex items-start justify-between gap-4">
-                  <p className="text-sm text-slate-600">
-                    <span className="font-medium text-slate-800">{entry.actorName}</span>
-                    {" — "}
-                    {entry.action.toLowerCase()} on {entry.tableName} {recordLabel(entry)}
-                  </p>
-                  <span className="text-xs text-slate-500 whitespace-nowrap shrink-0">
-                    {new Date(entry.changedAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" })}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <RecentActivityList entries={activity} />
           )}
         </Band>
       </div>

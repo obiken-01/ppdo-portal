@@ -30,6 +30,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         "ldip_records",
         "wfp_records", "wfp_expenditures",
         "budget_ceilings", "division_allocations", "program_divisions",
+        // PPDO-181 — the review hand-offs (submit, return, accept) are written against these two.
+        // Without them the band could never say "OPA sent its AIP to PPDO".
+        "aip_offices", "aip_division_submissions",
     ];
 
     private readonly ILdipRepository                _ldipRepo;
@@ -48,6 +51,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IPermissionService             _permissions;
     private readonly IInvestmentPlanningSettingsRepository _settingsRepo;
     private readonly IAipDivisionSubmissionRepository _divisionSubmissionRepo;
+    private readonly RecentActivityDescriber        _activityDescriber;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -65,7 +69,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IUserRepository                userRepo,
         IPermissionService             permissions,
         IInvestmentPlanningSettingsRepository settingsRepo,
-        IAipDivisionSubmissionRepository divisionSubmissionRepo)
+        IAipDivisionSubmissionRepository divisionSubmissionRepo,
+        RecentActivityDescriber        activityDescriber)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -83,6 +88,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _permissions       = permissions;
         _settingsRepo      = settingsRepo;
         _divisionSubmissionRepo = divisionSubmissionRepo;
+        _activityDescriber      = activityDescriber;
     }
 
     /// <inheritdoc />
@@ -461,8 +467,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IReadOnlyList<AuditLog> audits = await _auditRepo.GetRecentAsync(
             10, officeId, BudgetPlanningTableNames, cancellationToken);
 
+        // PPDO-181 — the sentences, with every label resolved in at most one query per table.
+        IReadOnlyList<string> descriptions = await _activityDescriber.DescribeAsync(audits, cancellationToken);
+
         return audits
-            .Select(a => new RecentActivityDto(
+            .Select((a, i) => new RecentActivityDto(
                 a.Id,
                 // EF Core loses DateTimeKind on the SQL Server round-trip (datetime2 columns don't
                 // store it), so a.ChangedAt reads back as Kind=Unspecified even though AuditService
@@ -470,11 +479,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 // serializes it without a trailing "Z", and the browser's `new Date(...)` then
                 // misparses it as local time instead of UTC — displaying a time 8 hours off Manila.
                 DateTime.SpecifyKind(a.ChangedAt, DateTimeKind.Utc),
-                a.TableName,
-                a.Action,
-                a.RecordId,
-                a.RecordGuid,
-                a.ChangedBy?.FullName ?? "Unknown"))
+                a.ChangedBy?.FullName ?? "Unknown",
+                descriptions[i]))
             .ToList();
     }
 

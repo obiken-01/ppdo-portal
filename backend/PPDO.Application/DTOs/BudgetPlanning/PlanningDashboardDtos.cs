@@ -21,14 +21,18 @@ public record PlanningDashboardDto(
     AllocationSetupOverviewDto Allocation
 );
 
+/// <summary>
+/// One line of the dashboard's Recent activity band (PPDO-181 / B4). The server sends the sentence,
+/// not the audit row's table name, action code or record id — a reader should never see
+/// "retag_div on aip_activities #18501". <see cref="Description"/> is a verb phrase that follows
+/// <see cref="ActorName"/> ("moved an activity in Rice Project 1 (OPA) from Cash to Admin.").
+/// Kept slim on purpose: ten of these stay well under 2 KB.
+/// </summary>
 public record RecentActivityDto(
     long Id,
     DateTime ChangedAt,
-    string TableName,
-    string Action,
-    int? RecordId,
-    Guid? RecordGuid,
-    string ActorName
+    string ActorName,
+    string Description
 );
 
 // ── Office-scoped dashboard (RAL-60) ────────────────────────────────────────
