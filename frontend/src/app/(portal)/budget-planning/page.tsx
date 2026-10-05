@@ -10,8 +10,9 @@
  *
  * What it replaced: a 2×2 readiness hub shown to everyone, plus two PPDO-only sections bolted
  * underneath. Neither answered the question a person actually arrives with — *what do I have to
- * do, and who am I waiting on?* The rail answers the first by putting the stages in their real
- * order, the action card answers the second by naming the owner.
+ * do, and who am I waiting on?* ↩️ PPDO-178: one status band answers both — a sentence saying where
+ * the AIP is and who has it, the one next step, and a thin step track. It replaced the action card
+ * and the 3–5 pipeline stage cards, which on a phone filled the whole first screen.
  *
  * Three things that are deliberate and easy to "fix" wrongly:
  *
@@ -20,13 +21,9 @@
  *      reporting on it now would teach a model that goes wrong within a release. It keeps its
  *      sidebar link and quick button for PPDO users — the dashboard simply stops reporting on it.
  *   2. **Money comes from the AIP** — "costed", not "planned in WFP". Follows from 1.
- *   3. **A guest office gets three stages, not five with two struck through.** Division allocation
- *      and PPA assignment are host-office-only. An earlier draft struck them through; that was
- *      reversed — a guest office does not need to be told about stages that never apply to it.
- *
- * The pipeline rail's submission stage is still drawn from a constant (spec §7). ↩️ The office
- * table's Submission column is not, since PPDO-78: it is derived server-side from each office's AIP
- * workflow state, because the readiness board beside it reads the same state.
+ *   3. **A guest office's step track has no Division allocation or Program assignment step.** Both
+ *      are host-office-only. An earlier draft struck them through; that was reversed — a guest
+ *      office does not need to be told about stages that never apply to it.
  *
  * **The Offices band has two views** (PPDO-78, `AIP_Review_Spec.md` §6.3) — a readiness board and
  * the table, behind a Board / Table switch, for a cross-office reviewer or SuperAdmin. The budget
@@ -37,8 +34,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
-import ActionCard from "@/components/ui/ActionCard";
-import PipelineRail, { PipelineRailSkeleton, type PipelineStage } from "@/components/ui/PipelineRail";
 import StackedFundBar from "@/components/ui/StackedFundBar";
 import {
   getDashboard,
@@ -48,9 +43,8 @@ import {
   getRecentActivity,
 } from "@/lib/budget-planning";
 import { useMe } from "@/lib/me-cache";
-import { formatMoney } from "@/lib/money";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
-import { submissionCard, submissionStage as describeSubmissionStage } from "@/lib/aip-submission-status";
+import { statusBand, type BandCount } from "@/lib/dashboard-status-band";
 import { useAipNotifications } from "@/lib/aip-notifications";
 import type {
   OfficeDashboard,
@@ -63,9 +57,10 @@ import BulkCeilingModal from "./BulkCeilingModal";
 import ContextBar from "./ContextBar";
 import DivisionTable from "./DivisionTable";
 import MoneyTiles, { MoneyTilesSkeleton, type MoneyTile } from "./MoneyTiles";
-import OfficeBoard, { OfficeBoardSkeleton } from "./OfficeBoard";
+import OfficeBoard, { BOARD_COLUMNS, OfficeBoardSkeleton } from "./OfficeBoard";
 import OfficeTable from "./OfficeTable";
 import RecentActivityList from "./RecentActivityList";
+import StatusBand, { StatusBandSkeleton } from "./StatusBand";
 
 type OfficesView = "board" | "table";
 
@@ -345,15 +340,11 @@ export default function BudgetPlanningPage() {
     : divisions.reduce((n, d) => n + d.totalActivities, 0);
   const remaining = allocatedToDivisions - costedInAip;
 
-  const hasCeiling = officeCeiling != null;
   const hasAip = isHost
     ? divisions.some((d) => d.totalActivities > 0)
     : officeDashboard?.aip.exists === true;
 
-  // ── Pipeline rail ───────────────────────────────────────────────────────
-  // The host office's five stages, a guest office's three. Every stage names its owner: roughly
-  // half the support traffic on this feature is "why can't I edit this?", and the answer is almost
-  // always that the stage belongs to somebody else.
+  // ── Links the status band hands off to ─────────────────────────────────────
 
   // ⚠️ **AIP Entry, not the AIP record list** (PPDO-81). The list creates, finalizes and archives
   // the base record and is now Admin-only; entry is where the reader of this hub actually works, and
@@ -370,84 +361,6 @@ export default function BudgetPlanningPage() {
     officeId != null
       ? `/budget-planning/allocation?officeId=${officeId}${fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""}`
       : "/budget-planning/allocation";
-
-  // PPDO-175 — the office's real place in the review workflow, from /dashboard/office.
-  const submission = useMemo(
-    () => ({
-      workflowStatus: officeDashboard?.aip.workflowStatus,
-      workflowStatusSince: officeDashboard?.aip.workflowStatusSince,
-      lastHandOff: officeDashboard?.aip.lastHandOff,
-      isDepartmentHead: canReview,
-      fiscalYear,
-    }),
-    [officeDashboard, canReview, fiscalYear]
-  );
-
-  const stages = useMemo<PipelineStage[]>(() => {
-    const ceilingStage: PipelineStage = {
-      key: "ceiling",
-      label: "Ceiling",
-      owner: "Provincial Budget Office",
-      stage: hasCeiling ? "Done" : "Todo",
-      detail: hasCeiling ? `₱${formatMoney(officeCeiling!)} published` : "Not published yet",
-      href: canManageOfficeCeilings || canManageAllocation ? allocationHref : undefined,
-    };
-
-    const aipStage: PipelineStage = {
-      key: "aip",
-      label: "AIP",
-      // "Your division" is only true for a division-clamped encoder. A finance caller seeing every
-      // division owns none of them in particular, and a guest office has no division at all.
-      owner: !isHost ? "Your office" : canManageAllocation ? "PPDO divisions" : "Your division",
-      stage: hasAip ? "In progress" : "Todo",
-      detail: `${(isHost ? activityTotal : officeDashboard?.aip.activityCount ?? 0).toLocaleString("en-PH")} activities`,
-      href: aipEntryHref,
-    };
-
-    // PPDO-175 — derived from the office's workflow state. None for FY2027 and earlier (no review
-    // workflow) or before the office has AIP groups; the rail then simply ends at the AIP stage.
-    const described = describeSubmissionStage(submission, FIRST_ENTERED_FISCAL_YEAR);
-    const submissionStages: PipelineStage[] = described
-      ? [{ key: "submission", label: "AIP submission", href: aipEntryHref, ...described }]
-      : [];
-
-    if (!isHost) return [ceilingStage, aipStage, ...submissionStages];
-
-    return [
-      ceilingStage,
-      {
-        key: "allocation",
-        label: "Division allocation",
-        owner: "PPDO finance",
-        stage: allocatedToDivisions > 0 ? "Done" : "Todo",
-        detail:
-          allocatedToDivisions > 0 ? `₱${formatMoney(allocatedToDivisions)} allocated` : "Not started",
-        risk: hasCeiling && allocatedToDivisions > officeCeiling! ? "Over ceiling" : undefined,
-        href: canManageAllocation ? allocationHref : undefined,
-      },
-      {
-        key: "ppa",
-        label: "PPA assignment",
-        owner: "PPDO finance",
-        stage:
-          (officeDashboard?.allocation.assignedProgramCount ?? 0) > 0
-            ? (officeDashboard?.allocation.unassignedProgramCount ?? 0) > 0
-              ? "In progress"
-              : "Done"
-            : "Todo",
-        detail:
-          officeDashboard == null
-            ? undefined
-            : `${officeDashboard.allocation.assignedProgramCount} assigned · ${officeDashboard.allocation.unassignedProgramCount} unassigned`,
-        href: canManageAllocation ? allocationHref : undefined,
-      },
-      aipStage,
-      ...submissionStages,
-    ];
-  }, [
-    isHost, hasCeiling, officeCeiling, hasAip, activityTotal, officeDashboard, allocatedToDivisions,
-    canManageAllocation, canManageOfficeCeilings, aipEntryHref, allocationHref, submission,
-  ]);
 
   // ── Money tiles ─────────────────────────────────────────────────────────
 
@@ -523,95 +436,71 @@ export default function BudgetPlanningPage() {
     allocatedToDivisions, costedInAip, remaining, officeDashboard,
   ]);
 
-  // ── Action card ─────────────────────────────────────────────────────────
-  // The single next thing this person can do. Ordered by what actually blocks what.
+  // ── Status band (PPDO-178) ─────────────────────────────────────────────
+  // One sentence for this reader and this state; every word comes from lib/dashboard-status-band.
+  // It reads only what the page already loads: /dashboard/office (B1), the host dashboard, the
+  // offices list and the sidebar's notification count. No request of its own.
 
-  const actionCard = useMemo(() => {
-    // PPDO-176 — the reviewer's next step is the review queue, whatever PPDO's own AIP is doing.
-    // PPDO's own status still shows on its pipeline rail further down.
-    if (isCrossOfficeReviewer) {
-      const waiting = notifications?.pendingForPpdo ?? null;
-      const year = notifications?.ppdoFiscalYear ?? null;
-      if (waiting == null) {
-        // Loading, or the count failed to load: still send them to the queue rather than guess.
-        return (
-          <ActionCard
-            title="Review offices' AIPs"
-            description="Offices that have sent their AIP to PPDO are listed in the review queue."
-            actionLabel="Open the review queue"
-            href="/budget-planning/aip/review/search?mine=true"
-          />
-        );
-      }
-      if (waiting > 0) {
-        const earliest = year != null && year !== fiscalYear ? `The earliest is for FY ${year}. ` : "";
-        return (
-          <ActionCard
-            title={`${waiting} ${waiting === 1 ? "office is" : "offices are"} waiting for PPDO review`}
-            description={`${earliest}Review each office's AIP, then accept it or return it with comments.`}
-            actionLabel="Open the review queue"
-            href={`/budget-planning/aip/review/search?mine=true${year != null ? `&fiscalYear=${year}` : ""}`}
-          />
-        );
-      }
-      return (
-        <ActionCard
-          tone="waiting"
-          title="No office is waiting for review"
-          description="Offices appear here when their department head sends the AIP to PPDO. The Offices board below shows where each one stands."
-        />
-      );
-    }
+  const officeColumns = useMemo<BandCount[] | null>(
+    () =>
+      canSeeBoard && offices
+        ? BOARD_COLUMNS.map((c) => ({
+            key: c.key,
+            label: c.title,
+            count: offices.filter((o) => o.readinessColumn === c.key).length,
+          }))
+        : null,
+    [canSeeBoard, offices]
+  );
 
-    if (!hasCeiling) {
-      if (canManageOfficeCeilings) {
-        return (
-          <ActionCard
-            tone="blocked"
-            title="Publish this year's ceilings"
-            description={`No FY ${fiscalYear ?? "—"} ceiling is published for ${officeLabel}. Offices cannot submit until one is.`}
-            actionLabel="Set ceilings"
-            href={allocationHref}
-          />
-        );
-      }
-      return (
-        <ActionCard
-          tone="waiting"
-          title="Waiting on the Provincial Budget Office"
-          description={`No FY ${fiscalYear ?? "—"} ceiling has been published for ${officeLabel} yet. You can still draft your AIP — submission opens once the ceiling is set.`}
-          actionLabel="AIP Entry"
-          href={aipEntryHref}
-        />
-      );
-    }
-
-    if (!hasAip) {
-      return (
-        <ActionCard
-          title="Start this year's AIP"
-          description={`The ceiling is published. Enter FY ${fiscalYear ?? "—"} activities for ${officeLabel}.`}
-          actionLabel="AIP Entry"
-          href={aipEntryHref}
-        />
-      );
-    }
-
-    // PPDO-175 — where the AIP is and who has it. Every action is a link to AIP Entry: the
-    // dashboard never submits, so the checklist and its gates stay in one place.
-    const card = submissionCard(submission, FIRST_ENTERED_FISCAL_YEAR);
-    return (
-      <ActionCard
-        tone={card.tone}
-        title={card.title}
-        description={card.description}
-        actionLabel={card.actionLabel}
-        href={aipEntryHref}
-      />
-    );
+  const band = useMemo(() => {
+    const aip = officeDashboard?.aip;
+    // A division-clamped PPDO encoder counts their own division's rows, as the tiles do; everyone
+    // else gets the office's own figure.
+    const uncosted =
+      isHost && !seesEveryDivision
+        ? divisions.reduce((n, d) => n + (d.totalActivities - d.costedActivityCount), 0)
+        : aip?.uncostedActivityCount ?? 0;
+    return statusBand({
+      fiscalYear,
+      firstEnteredYear: FIRST_ENTERED_FISCAL_YEAR,
+      officeCode: (isHost ? dashboard?.officeCode : user?.officeCode) ?? "your office",
+      isCrossOfficeReviewer,
+      canManageOfficeCeilings,
+      isDepartmentHead: canReview,
+      isHost,
+      canManageAllocation,
+      loaded:
+        officeDashboard != null && !officeLoading && (!isHost || (dashboard != null && !dashboardLoading)),
+      ceiling: officeDashboard?.allocation.ceilingAmount ?? null,
+      costedAgainstCeiling: aip?.costedAgainstCeiling ?? 0,
+      hasAip,
+      activityCount: isHost ? activityTotal : aip?.activityCount ?? 0,
+      uncostedActivityCount: uncosted,
+      workflowStatus: aip?.workflowStatus,
+      workflowStatusSince: aip?.workflowStatusSince,
+      lastHandOff: aip?.lastHandOff,
+      divisionsSubmitted: aip?.divisionsSubmitted,
+      divisionsRequired: aip?.divisionsRequired,
+      divisionsWaiting: aip?.divisionsWaiting,
+      unresolvedComments: aip?.unresolvedComments,
+      officeCeilingAllFunds: officeCeiling,
+      allocatedToDivisions,
+      assignedProgramCount: officeDashboard?.allocation.assignedProgramCount ?? 0,
+      unassignedProgramCount: officeDashboard?.allocation.unassignedProgramCount ?? 0,
+      pendingForPpdo: notifications?.pendingForPpdo ?? null,
+      pendingFiscalYear: notifications?.ppdoFiscalYear ?? null,
+      officeColumns,
+      officesWithoutCeiling: offices ? offices.filter((o) => o.ceilingAmount == null).length : null,
+      aipEntryHref,
+      allocationHref,
+      reportHref: "/budget-planning/report",
+    });
   }, [
-    isCrossOfficeReviewer, notifications, hasCeiling, hasAip, canManageOfficeCeilings, fiscalYear,
-    officeLabel, allocationHref, aipEntryHref, submission,
+    officeDashboard, isHost, seesEveryDivision, divisions, fiscalYear, dashboard, user,
+    isCrossOfficeReviewer, canManageOfficeCeilings, canReview, canManageAllocation, officeLoading,
+    dashboardLoading, hasAip, activityTotal, officeCeiling, allocatedToDivisions, notifications,
+    officeColumns, offices, aipEntryHref, allocationHref,
   ]);
 
   // ── Fund bars ───────────────────────────────────────────────────────────
@@ -723,15 +612,11 @@ export default function BudgetPlanningPage() {
           }
         />
 
-        {actionCard}
-
-        {/* PPDO-176 — the reviewer's main work first; PPDO's own office follows below. */}
-        {isCrossOfficeReviewer && officesBand}
-
-        {/* The rail's own error state. It is fed by the office-readiness fetch, so a failure there
-            must not blank the tiles or the tables below — errors are per band, not per page. */}
-        {dashboardLoading || officeLoading ? (
-          <PipelineRailSkeleton stages={isHost ? 5 : 3} />
+        {/* PPDO-178 — the status band. Its own error state: it is fed by the office-readiness fetch,
+            so a failure there must not blank the tiles or the tables below — errors are per band,
+            not per page. The reviewer's band reads the queue count, not that fetch. */}
+        {band ? (
+          <StatusBand band={band} />
         ) : officeError ? (
           <div className="bg-white border border-slate-200 p-4 flex flex-wrap items-center gap-3">
             <p className="text-sm text-danger-500">{officeError}</p>
@@ -744,8 +629,11 @@ export default function BudgetPlanningPage() {
             </button>
           </div>
         ) : (
-          <PipelineRail stages={stages} />
+          <StatusBandSkeleton />
         )}
+
+        {/* PPDO-176 — the reviewer's main work first; PPDO's own office follows below. */}
+        {isCrossOfficeReviewer && officesBand}
 
         {dashboardLoading || officeLoading ? <MoneyTilesSkeleton /> : <MoneyTiles tiles={tiles} />}
 
