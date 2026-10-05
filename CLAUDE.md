@@ -352,6 +352,22 @@ chore(deps): upgrade ClosedXML to 0.104.1
 - Always reference the Linear issue in PR description: e.g. `Closes RAL-24`
 - Branch name should include the issue number: `feature/v0.1-ral-24-scaffold-solution`
 
+**Verification screenshots (Ralph, 2026-10-05):** Ralph tests in bulk after several tickets land, so
+screenshots of the live check are his record of what a ticket looked like when it was built.
+- **Ask first, notable frontend changes only:** a new band, page, layout or state wording. At the
+  start of such a ticket, ask whether he wants screenshots. Skip backend-only, CI and small UI tweaks.
+- **Keep them cheap:** take them during the live run already being done, never as a re-run. Scale
+  0.5–0.7 or crop to the area under test; one per state or role checked, not one per step.
+- ⚠️ **Send them in chat, never post them to GitHub.** The repo is public, and local screenshots show
+  the local database: account names, office ceilings, allocations. List the states checked live in
+  the PR body instead.
+
+**Confidence in every code change (Ralph, 2026-10-05):** every PR description, and the report at the
+end of a ticket, states a **confidence %** that the change is correct, then in a line or two what it
+rests on (tests, red-tested guards, live checks) and what was not verified that would raise it. Be
+honest rather than high: an untested path, unrun migration or unchecked role lowers it, and the
+number should say so.
+
 ---
 
 ## Key Business Logic (Do Not Change Without Checking PPDO_PROJECT_CONTEXT.md)
