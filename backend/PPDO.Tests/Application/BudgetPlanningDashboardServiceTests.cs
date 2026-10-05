@@ -1575,6 +1575,21 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
+    public async Task GetOfficeDashboardAsync_ReturnedByPpdo_ReportsTheDivisionsResubmitting()
+    {
+        // After PPDO's return the divisions resubmit before the head can send it again (PPDO-149),
+        // so the band says how many have. Found on the local PPDO office, returned with 0 of 2 back.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "ReturnedByPpdo")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m), new AipDivisionRollupDto(32, 2, 2, 0m)]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(0, result.Aip.DivisionsSubmitted);
+        Assert.Equal(2, result.Aip.DivisionsRequired);
+        Assert.Equal(["ADMIN", "PLAN"], result.Aip.DivisionsWaiting);
+    }
+
+    [Fact]
     public async Task GetOfficeDashboardAsync_PastDraft_HasNoDivisionProgress_AndNeverReadsIt()
     {
         (BudgetPlanningDashboardService sut, _, Mock<IAipDivisionSubmissionRepository> divisions, _) =

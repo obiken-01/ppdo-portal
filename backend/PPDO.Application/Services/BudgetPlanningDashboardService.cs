@@ -885,7 +885,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         int uncosted = activities.Count(a => a.Total is null or 0m);
 
         DivisionProgress? divisionProgress = null;
-        if (workflowStatus == AipWorkflowStatus.Draft)
+        // Draft, and after PPDO's return: the divisions resubmit before the head can send it again.
+        if (workflowStatus is AipWorkflowStatus.Draft or AipWorkflowStatus.ReturnedByPpdo)
         {
             Dictionary<int, DivisionProgress> byOffice = await BuildDivisionProgressAsync(
                 aipRecord.Id, [office.Id],

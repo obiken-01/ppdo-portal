@@ -98,7 +98,7 @@ public record OfficeAipSummaryDto(
     // same request (design pass B1). Activities whose Total is null or zero: the rollup's "costed"
     // rule, inverted. Counted from the activities this summary already loads, so it costs no query.
     int UncostedActivityCount = 0,
-    // PPDO-178 — "1 of 2 divisions has submitted. Waiting on ADMIN." FY2028+, in Draft, for an
+    // PPDO-178 — "1 of 2 divisions has submitted. Waiting on ADMIN." FY2028+, in Draft or ReturnedByPpdo, for an
     // office in the division flow only (it has an active division); null otherwise. The same
     // "required" rule as the submit gate and the Offices board: a division counts once it has a
     // tagged activity. DivisionsWaiting names the required divisions not yet submitted (code, or
