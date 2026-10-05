@@ -23,6 +23,13 @@ public interface ILdipRepository : IRepository<LdipRecord>
     Task<IReadOnlyList<LdipRecord>> GetListAsync(
         int? officeId, string? status, CancellationToken ct = default);
 
+    /// <summary>
+    /// Program count per LDIP record id, in one grouped SQL <c>COUNT</c> (PPDO-188 / O10). Records
+    /// with no programs are absent from the dictionary — callers treat a missing key as 0.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, int>> GetProgramCountsByRecordIdsAsync(
+        IReadOnlyList<int> recordIds, CancellationToken ct = default);
+
     /// <summary>Sector groups (with their Programs) for one LDIP record, in ref-code order.</summary>
     Task<IReadOnlyList<LdipOffice>> GetOfficeGroupsAsync(
         int ldipRecordId, CancellationToken ct = default);

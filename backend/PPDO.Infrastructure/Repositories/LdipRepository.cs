@@ -37,6 +37,19 @@ public sealed class LdipRepository : Repository<LdipRecord>, ILdipRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, int>> GetProgramCountsByRecordIdsAsync(
+        IReadOnlyList<int> recordIds, CancellationToken ct = default)
+    {
+        if (recordIds.Count == 0) return new Dictionary<int, int>();
+        return await _context.Set<LdipProgram>()
+            .AsNoTracking()
+            .Where(p => recordIds.Contains(p.Office.LdipRecordId))
+            .GroupBy(p => p.Office.LdipRecordId)
+            .Select(g => new { RecordId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.RecordId, x => x.Count, ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<LdipOffice>> GetOfficeGroupsAsync(
         int ldipRecordId, CancellationToken ct = default)
         => await _context.Set<LdipOffice>()

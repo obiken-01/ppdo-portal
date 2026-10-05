@@ -63,15 +63,13 @@ public sealed class LdipService : ILdipService
     {
         IReadOnlyList<LdipRecord> records = await _repo.GetListAsync(officeId, status, ct);
 
-        // Program counts for the list rows — one query per record would be N+1;
-        // load each record's groups only when the list is small (it is: one doc
-        // per office per planning period). Kept simple and correct.
+        // Program counts for the list rows — one grouped COUNT, not each record's full tree (O10).
+        IReadOnlyDictionary<int, int> counts =
+            await _repo.GetProgramCountsByRecordIdsAsync(records.Select(r => r.Id).ToList(), ct);
+
         List<LdipRecordDto> result = [];
         foreach (LdipRecord rec in records)
-        {
-            IReadOnlyList<LdipOffice> groups = await _repo.GetOfficeGroupsAsync(rec.Id, ct);
-            result.Add(MapToDto(rec, groups.Sum(g => g.Programs.Count)));
-        }
+            result.Add(MapToDto(rec, counts.GetValueOrDefault(rec.Id)));
         return result;
     }
 

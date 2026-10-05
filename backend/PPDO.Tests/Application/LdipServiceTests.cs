@@ -77,6 +77,12 @@ public sealed class LdipServiceTests
         repo.Setup(r => r.GetOfficeGroupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int recId, CancellationToken _) =>
                 (IReadOnlyList<LdipOffice>)(groupStore.GetValueOrDefault(recId) ?? []).ToList());
+        repo.Setup(r => r.GetProgramCountsByRecordIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, int>)ids
+                    .Select(id => (id, n: (groupStore.GetValueOrDefault(id) ?? []).Sum(g => g.Programs.Count)))
+                    .Where(x => x.n > 0)
+                    .ToDictionary(x => x.id, x => x.n));
         repo.Setup(r => r.AddAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<LdipRecord, CancellationToken>((e, _) =>
             {
