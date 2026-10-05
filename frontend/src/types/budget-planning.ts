@@ -517,6 +517,33 @@ export interface OfficeSummary {
   divisionsSubmitted: number | null;
   /** PPDO-152 — the "m" of "n of m divisions submitted". Null with `divisionsSubmitted`. */
   divisionsRequired: number | null;
+  /**
+   * PPDO-180 — projects by proposal status, for the reviewer's all-offices card. Cross-office
+   * reviewers only, FY2028+; absent/null otherwise and for an office with no projects.
+   */
+  proposals?: ProposalCounts | null;
+}
+
+/** PPDO-180 — projects by proposal status: a Final proposal, a Draft, or none yet. */
+export interface ProposalCounts {
+  final: number;
+  draft: number;
+  none: number;
+}
+
+/** PPDO-180 — a project still needing a proposal. `proposalId` is null when it has none. */
+export interface ProposalAttention {
+  aipProjectId: number;
+  projectRefCode: string;
+  projectName: string;
+  proposalId: number | null;
+  status: "None" | "Draft";
+}
+
+/** PPDO-180 — the dashboard's Investment proposals band for one office. */
+export interface OfficeProposalSummary {
+  counts: ProposalCounts;
+  needsAttention: ProposalAttention[];
 }
 
 /** One division's share of a fund's office-wide ceiling. */
@@ -670,6 +697,11 @@ export interface OfficeDashboard {
   byDivision: DivisionSummary[];
   /** PPDO-150 — see `PpdoDashboard.noDivision`. Only for a department head's own office. */
   noDivision?: DivisionSummary | null;
+  /**
+   * PPDO-180 — the Investment proposals band, counted in the Investment Proposals list's own scope.
+   * Null for FY2027 and earlier or a year with no AIP record: the band hides.
+   */
+  proposals?: OfficeProposalSummary | null;
 }
 
 // ── WFP ──────────────────────────────────────────────────────────────────────

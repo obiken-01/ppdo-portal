@@ -1,6 +1,7 @@
 ﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Application.DTOs.InvestmentProposal;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -198,6 +199,15 @@ public sealed class BudgetPlanningDashboardServiceTests
         return m;
     }
 
+    /// <summary>PPDO-180 — a proposal service with nothing to count.</summary>
+    private static Mock<IInvestmentProposalService> NoProposals()
+    {
+        Mock<IInvestmentProposalService> m = new();
+        m.Setup(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, ProposalCountsDto>());
+        return m;
+    }
+
     /// <summary>PPDO-178 — no unresolved comments on either side.</summary>
     private static Mock<IAipReviewCommentRepository> NoComments()
     {
@@ -231,7 +241,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         int? defaultFiscalYear = null,
         Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
         Mock<IActivityLabelRepository>? activityLabelsMock = null,
-        Mock<IAipReviewCommentRepository>? commentRepoMock = null)
+        Mock<IAipReviewCommentRepository>? commentRepoMock = null,
+        Mock<IInvestmentProposalService>? proposalServiceMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -385,7 +396,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
             divisionSubmissionRepo.Object,
             new RecentActivityDescriber((activityLabelsMock ?? EmptyLabels()).Object),
-            (commentRepoMock ?? NoComments()).Object);
+            (commentRepoMock ?? NoComments()).Object,
+            (proposalServiceMock ?? NoProposals()).Object);
 
         return (svc, auditRepo);
     }
@@ -1657,6 +1669,89 @@ public sealed class BudgetPlanningDashboardServiceTests
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ── PPDO-180: Investment proposal counts ──────────────────────────────────
+
+    private static Mock<IInvestmentProposalService> ProposalCounts(Dictionary<int, ProposalCountsDto> byOffice)
+    {
+        Mock<IInvestmentProposalService> m = new();
+        m.Setup(p => p.CountByOfficeAsync(2028, It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(byOffice);
+        return m;
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Reviewer_CarriesEachOfficesProposalCounts()
+    {
+        Mock<IInvestmentProposalService> proposals = ProposalCounts(new() { [2] = new ProposalCountsDto(3, 1, 2) });
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canReviewAllOffices: true, aips: [Aip(10, 2028, "Draft")], proposalServiceMock: proposals);
+
+        IReadOnlyList<OfficeSummaryDto> rows = (await sut.GetOfficesAsync(caller, 2028)).Value!;
+
+        Assert.Equal(new ProposalCountsDto(3, 1, 2), rows.Single(r => r.OfficeCode == "GSO").Proposals);
+        Assert.Null(rows.Single(r => r.OfficeCode == "PPDO").Proposals);   // no projects in scope
+        proposals.Verify(p => p.CountByOfficeAsync(2028, caller, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_CeilingOnlyBudgetOfficer_GetsNoProposalCounts_AndNeverCounts()
+    {
+        // The all-offices card is the reviewer's. Red-tested by dropping the canReviewAllOffices gate.
+        Mock<IInvestmentProposalService> proposals = ProposalCounts(new() { [2] = new ProposalCountsDto(3, 1, 2) });
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canManageOfficeCeilings: true, aips: [Aip(10, 2028, "Draft")], proposalServiceMock: proposals);
+
+        IReadOnlyList<OfficeSummaryDto> rows = (await sut.GetOfficesAsync(caller, 2028)).Value!;
+
+        Assert.All(rows, r => Assert.Null(r.Proposals));
+        proposals.Verify(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Fy2027_NeverCountsProposals()
+    {
+        Mock<IInvestmentProposalService> proposals = ProposalCounts([]);
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canReviewAllOffices: true, aips: [Aip(10, 2027, "Draft")], proposalServiceMock: proposals);
+
+        await sut.GetOfficesAsync(caller, 2027);
+
+        proposals.Verify(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_WithCaller_CarriesTheProposalServicesSummaryForThatOffice()
+    {
+        OfficeProposalSummaryDto summary = new(new ProposalCountsDto(5, 4, 3),
+            [new ProposalAttentionDto(300, "001", "Rice Project 1", null, "None")]);
+        User caller = AppUser(Guid.NewGuid(), "Encoder", officeId: 1);
+        Mock<IInvestmentProposalService> proposals = new();
+        proposals.Setup(p => p.GetOfficeSummaryAsync(1, 2028, caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(summary);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(1, "PPDO")], [],
+            proposalServiceMock: proposals);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, true, null, caller);
+
+        Assert.Same(summary, result.Proposals);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NoCaller_HasNoProposals_AndNeverAsks()
+    {
+        Mock<IInvestmentProposalService> proposals = new();
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(1, "PPDO")], [],
+            proposalServiceMock: proposals);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Proposals);
+        proposals.Verify(p => p.GetOfficeSummaryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<User>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────
 
     [Fact]
@@ -2017,7 +2112,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAipRepository>? aipRepoMock = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         List<AipDivisionRollupDto>? divisionRollups = null,
-        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
+        Mock<IInvestmentProposalService>? proposalServiceMock = null)
     {
         // Deliberately a GUEST-office caller in every case: OfficeScope.Resolve would scope them
         // to their own office, so "every office came back" is real evidence the cross-office
@@ -2040,7 +2136,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             officeRollups: officeRollups,
             gfLinesByOffice: gfLinesByOffice,
             divisionRollups: divisionRollups,
-            divisionSubmissionRepoMock: divisionSubmissionRepoMock);
+            divisionSubmissionRepoMock: divisionSubmissionRepoMock,
+            proposalServiceMock: proposalServiceMock);
 
         return (svc, caller);
     }

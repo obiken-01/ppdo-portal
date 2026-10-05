@@ -159,5 +159,8 @@ public record OfficeSummaryDto(
     bool     IsReturned,
     int      AssignedProgramCount,
     int?     DivisionsSubmitted = null,
-    int?     DivisionsRequired  = null
+    int?     DivisionsRequired  = null,
+    // PPDO-180 — projects by proposal status for the all-offices card. Cross-office reviewers only
+    // (a ceiling-only budget officer gets null), FY2028+; one grouped query for every office.
+    PPDO.Application.DTOs.InvestmentProposal.ProposalCountsDto? Proposals = null
 );
