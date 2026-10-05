@@ -107,16 +107,70 @@ public sealed class StockBalanceServiceTests
         Mock<IItemMasterRepository>? itemRepo = null,
         Mock<IUserRepository>? userRepo = null,
         Mock<IExcelService>? excelRepo = null,
-        Mock<IAuditService>? auditService = null)
-        => new(
+        Mock<IAuditService>? auditService = null,
+        bool delegateBatchLookups = true)
+    {
+        itemRepo ??= ItemRepoWithExistingItem();
+        if (delegateBatchLookups) WithBatchLookups(stockRepo, invRepo, itemRepo);
+
+        return new(
             stockRepo.Object,
             invRepo.Object,
-            (itemRepo ?? ItemRepoWithExistingItem()).Object,
+            itemRepo.Object,
             (userRepo ?? UserRepoStub()).Object,
             new PermissionService(),
             (excelRepo ?? new Mock<IExcelService>()).Object,
             (auditService ?? new Mock<IAuditService>()).Object,
             NullLogger<StockBalanceService>.Instance);
+    }
+
+    /// <summary>
+    /// PPDO-189: the bulk import loads item masters, existing balances and on-hand inputs for the
+    /// whole file in batch calls. These tests still describe their data through the single-key
+    /// lookups (GetByStockNoAsync, FindByStockNoAndEffectiveDateAsync, GetItemStockLevelAsync), so
+    /// the batch calls delegate to those setups at call time. A test that sets up a batch call
+    /// itself is unaffected only if it does so after BuildSut — none do.
+    /// </summary>
+    private static void WithBatchLookups(
+        Mock<IStockBalanceRepository> stockRepo,
+        Mock<IInventoryRepository> invRepo,
+        Mock<IItemMasterRepository> itemRepo)
+    {
+        itemRepo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyCollection<string> nos, CancellationToken ct) =>
+            {
+                List<ItemMaster> found = [];
+                foreach (string no in nos)
+                {
+                    ItemMaster? m = await itemRepo.Object.GetByStockNoAsync(no, ct);
+                    if (m is not null) found.Add(m);
+                }
+                return (IReadOnlyList<ItemMaster>)found;
+            });
+
+        stockRepo.Setup(r => r.GetByStockNosAndDatesAsync(
+                It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyCollection<string> nos, IReadOnlyCollection<DateOnly> dates, CancellationToken ct) =>
+            {
+                List<StockBalance> found = [];
+                foreach (string no in nos)
+                    foreach (DateOnly d in dates)
+                    {
+                        StockBalance? b = await stockRepo.Object.FindByStockNoAndEffectiveDateAsync(no, d, ct);
+                        if (b is not null) found.Add(b);
+                    }
+                return (IReadOnlyList<StockBalance>)found;
+            });
+
+        invRepo.Setup(r => r.GetItemStockLevelsByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyCollection<string> nos, CancellationToken ct) =>
+            {
+                Dictionary<string, ItemStockLevel> levels = new(StringComparer.OrdinalIgnoreCase);
+                foreach (string no in nos)
+                    levels[no] = await invRepo.Object.GetItemStockLevelAsync(no, ct) ?? EmptyLevel(no);
+                return (IReadOnlyDictionary<string, ItemStockLevel>)levels;
+            });
+    }
 
     /// <summary>Builds a CreateStockBalanceDto, defaulting the item-fields to null — use named
     /// args (description:, unit:, ...) in tests that exercise the auto-create-item path.</summary>
@@ -916,8 +970,13 @@ public sealed class StockBalanceServiceTests
         public Mock<IItemMasterRepository>   ItemRepo  { get; }
         public Mock<IInventoryRepository>    InvRepo   { get; }
 
+        private readonly decimal _qtyDelivered;
+        private readonly decimal _qtyDistributed;
+
         public FakeImportDb(decimal qtyDelivered, decimal qtyDistributed)
         {
+            _qtyDelivered   = qtyDelivered;
+            _qtyDistributed = qtyDistributed;
             StockRepo = RepoThatSaves();
             StockRepo.Setup(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()))
                 .Callback((StockBalance b, CancellationToken _) => _stagedBalances.Add(b))
@@ -956,7 +1015,26 @@ public sealed class StockBalanceServiceTests
         }
 
         public StockBalanceService Build(Mock<IAuditService>? audit = null)
-            => BuildSut(StockRepo, InvRepo, ItemRepo, auditService: audit);
+        {
+            // The batch calls the import actually makes, answered from the fake's own state — no
+            // delegation to the single-key lookups, so tests can assert those are never used.
+            ItemRepo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<string> nos, CancellationToken _) =>
+                    (IReadOnlyList<ItemMaster>)Items
+                        .Where(i => nos.Contains(i.StockNo, StringComparer.OrdinalIgnoreCase)).ToList());
+            StockRepo.Setup(r => r.GetByStockNosAndDatesAsync(
+                    It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<string> nos, IReadOnlyCollection<DateOnly> dates, CancellationToken _) =>
+                    (IReadOnlyList<StockBalance>)Balances
+                        .Where(b => nos.Contains(b.StockNo, StringComparer.OrdinalIgnoreCase) && dates.Contains(b.EffectiveDate))
+                        .ToList());
+            InvRepo.Setup(r => r.GetItemStockLevelsByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<string> nos, CancellationToken _) =>
+                    (IReadOnlyDictionary<string, ItemStockLevel>)nos.ToDictionary(
+                        n => n, n => new ItemStockLevel(n, 0m, _qtyDelivered, _qtyDistributed), StringComparer.OrdinalIgnoreCase));
+
+            return BuildSut(StockRepo, InvRepo, ItemRepo, auditService: audit, delegateBatchLookups: false);
+        }
     }
 
     [Fact]
@@ -1020,5 +1098,88 @@ public sealed class StockBalanceServiceTests
         // Both result entries are the same row.
         Assert.Equal(result.Value.Entries[0].Id, result.Value.Entries[1].Id);
         Assert.Single(db.Items);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_ManyRows_LoadsInBatchesAndSavesOnce()
+    {
+        FakeImportDb db = new(qtyDelivered: 0m, qtyDistributed: 0m);
+        DateOnly date = new(2026, 9, 1);
+
+        List<CreateStockBalanceDto> rows = [];
+        for (int i = 0; i < 50; i++)
+            rows.Add(MakeCreateDto($"ITEM-{i:D3}", i, date, description: "Test item", unit: "pc"));
+
+        ServiceResult<StockBalanceImportResultDto> result =
+            await db.Build().CommitImportAsync(MakeAdmin(), new CommitStockBalanceImportDto(rows));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(50, result.Value!.Inserted);
+        Assert.Equal(50, db.Items.Count);
+
+        // Every lookup is one call for the whole file...
+        db.ItemRepo.Verify(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Once);
+        db.StockRepo.Verify(r => r.GetByStockNosAndDatesAsync(
+            It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()), Times.Once);
+        db.InvRepo.Verify(r => r.GetItemStockLevelsByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Once);
+        db.StockRepo.Verify(r => r.GetTotalVarianceByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // ...and nothing is looked up row by row any more.
+        db.ItemRepo.Verify(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        db.StockRepo.Verify(r => r.FindByStockNoAndEffectiveDateAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
+        db.InvRepo.Verify(r => r.GetItemStockLevelAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // One flush for the whole file.
+        db.StockRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_ReuploadingTheSameFile_OverwritesRatherThanDuplicates()
+    {
+        DateOnly d1 = new(2026, 9, 1), d2 = new(2026, 9, 2);
+        FakeImportDb db = new(qtyDelivered: 100m, qtyDistributed: 20m);   // movement on hand = 80
+        CommitStockBalanceImportDto file = new(
+        [
+            MakeCreateDto("NEW-1", 10m, d1, description: "Bond paper", unit: "ream"),
+            MakeCreateDto("NEW-1", 25m, d2),
+            MakeCreateDto("NEW-2", 7m,  d1, description: "Folder", unit: "pc"),
+        ]);
+
+        ServiceResult<StockBalanceImportResultDto> first = await db.Build().CommitImportAsync(MakeAdmin(), file);
+        List<Guid> idsAfterFirst = db.Balances.Select(b => b.Id).ToList();
+        ServiceResult<StockBalanceImportResultDto> second = await db.Build().CommitImportAsync(MakeAdmin(), file);
+
+        // Same three rows, overwritten in place: no new balance rows, no new items.
+        Assert.Equal(3, first.Value!.Inserted);
+        Assert.Equal(0, second.Value!.Inserted);
+        Assert.Equal(3, second.Value.Updated);
+        Assert.Equal(3, db.Balances.Count);
+        Assert.Equal(idsAfterFirst, db.Balances.Select(b => b.Id).ToList());
+        Assert.Equal(2, db.Items.Count);
+
+        // First upload: NEW-1/d1 = 10-80 = -70; NEW-1/d2 sees -70 -> 25-10 = +15; NEW-2/d1 = 7-80 = -73.
+        // Re-upload recomputes each row against the OTHER rows' current totals (not a replay of the
+        // file), so NEW-1/d1 now also sees d2's +15: onHand 80+15 = 95 -> -85, then d2 sees d1's new
+        // -85: onHand 80-85 = -5 -> +30. That is how the per-row loop behaved; it is pinned here.
+        StockBalance n1d1 = db.Balances.Single(b => b.StockNo == "NEW-1" && b.EffectiveDate == d1);
+        StockBalance n1d2 = db.Balances.Single(b => b.StockNo == "NEW-1" && b.EffectiveDate == d2);
+        StockBalance n2d1 = db.Balances.Single(b => b.StockNo == "NEW-2");
+        Assert.Equal((95m, -85m), (n1d1.SystemOnHandAtEntry, n1d1.VarianceQty));
+        Assert.Equal((-5m, 30m),  (n1d2.SystemOnHandAtEntry, n1d2.VarianceQty));
+        Assert.Equal((80m, -73m), (n2d1.SystemOnHandAtEntry, n2d1.VarianceQty));
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_TransactionRetried_DropsTheFailedAttemptsTrackedEntities()
+    {
+        FakeImportDb db = new(qtyDelivered: 0m, qtyDistributed: 0m);
+        // The execution strategy re-runs the delegate after a transient fault.
+        db.StockRepo.Setup(r => r.ExecuteInTransactionAsync(It.IsAny<Func<Task>>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Func<Task> operation, CancellationToken _) => { await operation(); await operation(); });
+
+        await db.Build().CommitImportAsync(MakeAdmin(), new CommitStockBalanceImportDto(
+            [MakeCreateDto("NEW-1", 10m, new DateOnly(2026, 9, 1), description: "Bond paper", unit: "ream")]));
+
+        db.StockRepo.Verify(r => r.ResetChangeTracking(), Times.Once);
     }
 }

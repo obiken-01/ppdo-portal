@@ -44,6 +44,15 @@ public interface IInventoryRepository
     /// </summary>
     Task<ItemStockLevel> GetItemStockLevelAsync(
         string stockNo, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <see cref="GetItemStockLevelAsync"/> for many StockNos at once — three grouped queries
+    /// instead of three per StockNo (PPDO-189). Every requested StockNo is present in the result;
+    /// one with no PR activity carries all zeros, exactly as the single-item method returns.
+    /// Keys compare case-insensitively.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, ItemStockLevel>> GetItemStockLevelsByStockNosAsync(
+        IReadOnlyCollection<string> stockNos, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

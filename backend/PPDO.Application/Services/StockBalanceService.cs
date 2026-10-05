@@ -341,20 +341,60 @@ public sealed class StockBalanceService : IStockBalanceService
 
         // The whole file commits or none of it does — a mid-loop failure (bad row, or an
         // infrastructure blip against a cold-resuming DB) must not leave rows 1..n-1 live
-        // while the caller sees a failure and assumes nothing saved (RAL-207). The per-row
-        // SaveChangesAsync below still has to stay: each row must flush before the next
-        // row's ComputeSystemOnHandAsync runs, so multiple rows for the same StockNo in one
-        // file stack correctly. The transaction makes the file atomic without disturbing that.
+        // while the caller sees a failure and assumes nothing saved (RAL-207).
+        //
+        // Set-based (PPDO-189): the loop used to run five queries and a SaveChanges per row, all
+        // inside this transaction. Now everything it needs — the item masters, the existing
+        // (StockNo, EffectiveDate) balances and each StockNo's on-hand inputs — is loaded up front
+        // in a handful of grouped queries, the rows are applied in memory, and the result is saved
+        // once. The "multiple rows for one StockNo stack correctly" guarantee that the per-row
+        // flush used to give is kept by updating the in-memory running totals as each row is applied.
         //
         // ExecuteInTransactionAsync may retry this delegate on a transient fault — reset the
-        // accumulators at the top so a retried run doesn't double up on a partial prior attempt.
+        // accumulators at the top so a retried run doesn't double up on a partial prior attempt,
+        // and drop whatever the failed attempt left in the change tracker (see ResetChangeTracking).
+        int attempt = 0;
         try
         {
             await _stockBalances.ExecuteInTransactionAsync(async () =>
             {
+                if (attempt++ > 0) _stockBalances.ResetChangeTracking();
                 inserted = 0;
                 updated = 0;
                 saved.Clear();
+
+                // Rows with a blank StockNo are left out of the loads; the loop rejects them with
+                // their own row-level message when it reaches them.
+                List<string> stockNos = dto.Rows
+                    .Select(r => r.StockNo?.Trim())
+                    .Where(sn => !string.IsNullOrEmpty(sn))
+                    .Select(sn => sn!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                List<DateOnly> dates = dto.Rows.Select(r => r.EffectiveDate).Distinct().ToList();
+
+                // Sequential awaits — never Task.WhenAll over the shared DbContext (CLAUDE.md).
+                Dictionary<string, ItemMaster> itemsByStockNo =
+                    (await _items.GetByStockNosAsync(stockNos, cancellationToken))
+                        .GroupBy(i => i.StockNo, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                Dictionary<string, StockBalance> balancesByKey =
+                    (await _stockBalances.GetByStockNosAndDatesAsync(stockNos, dates, cancellationToken))
+                        .GroupBy(b => BalanceKey(b.StockNo, b.EffectiveDate))
+                        .ToDictionary(g => g.Key, g => g.First());
+
+                IReadOnlyDictionary<string, ItemStockLevel> levels =
+                    await _inventory.GetItemStockLevelsByStockNosAsync(stockNos, cancellationToken);
+
+                // Running SUM(VarianceQty) per StockNo — what ComputeSystemOnHandAsync used to
+                // re-query after every row. Seeded from the database, then kept current below.
+                Dictionary<string, decimal> runningVariance =
+                    (await _stockBalances.GetTotalVarianceByStockNosAsync(stockNos, cancellationToken))
+                        .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase);
+
+                // Audit entries wait until the rows are saved: the audit service saves on every call.
+                List<(Guid Id, string Action, object? Old, object? New)> auditEntries = new();
 
                 foreach (CreateStockBalanceDto row in dto.Rows)
                 {
@@ -365,21 +405,36 @@ public sealed class StockBalanceService : IStockBalanceService
 
                     string stockNo = row.StockNo.Trim();
 
-                    (bool itemAutoCreated, string? itemError) = await EnsureItemMasterAsync(
-                        stockNo, row.Description, row.Unit, row.UnitCost, row.ItemType, cancellationToken);
-                    if (itemError is not null)
-                        throw new StockBalanceImportRowException($"StockNo '{stockNo}': {itemError}");
+                    // An item staged by an earlier row of this file counts as cataloged for later
+                    // rows — otherwise a repeated unknown StockNo would insert its master twice.
+                    bool itemAutoCreated = false;
+                    if (!itemsByStockNo.ContainsKey(stockNo))
+                    {
+                        (ItemMaster? newItem, string? itemError) = await StageNewItemMasterAsync(
+                            stockNo, row.Description, row.Unit, row.UnitCost, row.ItemType, cancellationToken);
+                        if (itemError is not null)
+                            throw new StockBalanceImportRowException($"StockNo '{stockNo}': {itemError}");
 
-                    // Upsert by StockNo + EffectiveDate — re-uploading the same pair overwrites it.
-                    StockBalance? existing = await _stockBalances.FindByStockNoAndEffectiveDateAsync(
-                        stockNo, row.EffectiveDate, cancellationToken);
+                        itemsByStockNo[stockNo] = newItem!;
+                        itemAutoCreated = true;
+                    }
 
+                    // Upsert by StockNo + EffectiveDate — re-uploading the same pair overwrites it
+                    // (including a pair an earlier row of this same file just inserted).
+                    string key = BalanceKey(stockNo, row.EffectiveDate);
+                    balancesByKey.TryGetValue(key, out StockBalance? existing);
+
+                    decimal movementOnHand = levels.TryGetValue(stockNo, out ItemStockLevel? level)
+                        ? level.QtyDelivered - level.QtyDistributed
+                        : 0m;
                     decimal excludeVariance = existing?.VarianceQty ?? 0m;
-                    decimal systemOnHand = await ComputeSystemOnHandAsync(stockNo, excludeVariance, cancellationToken);
+                    decimal systemOnHand = movementOnHand
+                        + (runningVariance.GetValueOrDefault(stockNo, 0m) - excludeVariance);
 
                     if (existing is not null)
                     {
                         object oldSnapshot = AuditSnapshot(existing);
+                        decimal oldVariance = existing.VarianceQty;
 
                         existing.CountedQty          = row.CountedQty;
                         existing.SystemOnHandAtEntry = systemOnHand;
@@ -387,19 +442,16 @@ public sealed class StockBalanceService : IStockBalanceService
                         existing.Reason              = string.IsNullOrWhiteSpace(row.Reason) ? null : row.Reason.Trim();
 
                         await _stockBalances.UpdateAsync(existing, cancellationToken);
+                        runningVariance[stockNo] = runningVariance.GetValueOrDefault(stockNo, 0m)
+                            + (existing.VarianceQty - oldVariance);
                         saved.Add((existing, itemAutoCreated));
                         updated++;
-
-                        // Persist each row before computing the next one's system-on-hand snapshot, so
-                        // multiple rows for the same StockNo in one file stack correctly.
-                        await _stockBalances.SaveChangesAsync(cancellationToken);
 
                         // Per-row, not one summarized entry for the whole file — a bulk overwrite of
                         // computed on-hand values (no approval step) is exactly the kind of change
                         // that needs individual accountability, not a rollup that hides which rows
                         // actually changed.
-                        await _audit.LogAsync("stock_balances", existing.Id, AuditAction.Update,
-                            oldSnapshot, AuditSnapshot(existing), cancellationToken);
+                        auditEntries.Add((existing.Id, AuditAction.Update, oldSnapshot, AuditSnapshot(existing)));
                     }
                     else
                     {
@@ -415,15 +467,21 @@ public sealed class StockBalanceService : IStockBalanceService
                             RecordedByUserId    = requester.Id,
                         };
                         await _stockBalances.AddAsync(entry, cancellationToken);
+                        balancesByKey[key] = entry;
+                        runningVariance[stockNo] = runningVariance.GetValueOrDefault(stockNo, 0m) + entry.VarianceQty;
                         saved.Add((entry, itemAutoCreated));
                         inserted++;
 
-                        await _stockBalances.SaveChangesAsync(cancellationToken);
-
-                        await _audit.LogAsync("stock_balances", entry.Id, AuditAction.Create,
-                            oldValues: null, newValues: AuditSnapshot(entry), cancellationToken);
+                        auditEntries.Add((entry.Id, AuditAction.Create, null, AuditSnapshot(entry)));
                     }
                 }
+
+                // One flush for the whole file: the new item masters (same shared AppDbContext) and
+                // every inserted/updated balance.
+                await _stockBalances.SaveChangesAsync(cancellationToken);
+
+                foreach ((Guid id, string action, object? oldValues, object? newValues) in auditEntries)
+                    await _audit.LogAsync("stock_balances", id, action, oldValues, newValues, cancellationToken);
             }, cancellationToken);
         }
         catch (StockBalanceImportRowException ex)
@@ -486,10 +544,29 @@ public sealed class StockBalanceService : IStockBalanceService
         if (master is not null)
             return (false, null);
 
+        (ItemMaster? created, string? error) = await StageNewItemMasterAsync(
+            stockNo, description, unit, unitCost, itemType, cancellationToken);
+        return (created is not null, error);
+    }
+
+    /// <summary>
+    /// The "StockNo is not yet in Items Master" half of <see cref="EnsureItemMasterAsync"/>:
+    /// validates Description/Unit and stages a new ItemMaster (IsNewItem = true) on the shared
+    /// context. Returns the staged row, or an error message. Split out so the bulk import, which
+    /// has already loaded the catalogue, can skip the per-row lookup.
+    /// </summary>
+    private async Task<(ItemMaster? Item, string? Error)> StageNewItemMasterAsync(
+        string stockNo,
+        string? description,
+        string? unit,
+        decimal? unitCost,
+        string? itemType,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(description))
-            return (false, "Description is required — StockNo is not yet in Items Master.");
+            return (null, "Description is required — StockNo is not yet in Items Master.");
         if (string.IsNullOrWhiteSpace(unit))
-            return (false, "Unit is required — StockNo is not yet in Items Master.");
+            return (null, "Unit is required — StockNo is not yet in Items Master.");
 
         ItemMaster newMaster = new()
         {
@@ -511,8 +588,12 @@ public sealed class StockBalanceService : IStockBalanceService
             "Unknown StockNo auto-created via warehouse stock input. StockNo: {StockNo}, flagged IsNewItem = true.",
             stockNo);
 
-        return (true, null);
+        return (newMaster, null);
     }
+
+    /// <summary>Case-insensitive (StockNo, EffectiveDate) key — the database collation compares StockNo that way.</summary>
+    private static string BalanceKey(string stockNo, DateOnly effectiveDate)
+        => $"{stockNo.ToUpperInvariant()}|{effectiveDate:yyyy-MM-dd}";
 
     // ── Validation ────────────────────────────────────────────────────────────
 
