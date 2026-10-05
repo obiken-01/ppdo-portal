@@ -76,6 +76,19 @@ public static class Csv
         return rows;
     }
 
+    /// <summary>
+    /// True when the text is clearly not CSV — a zip container (.xlsx/.docx begin "PK\x03\x04")
+    /// or anything carrying NUL bytes. Lets an importer reject a wrongly chosen file up front
+    /// instead of parsing binary/XML noise into columns.
+    /// </summary>
+    public static bool LooksBinary(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        if (text.StartsWith("PK\u0003\u0004", StringComparison.Ordinal)) return true;
+        int sample = Math.Min(text.Length, 4096);
+        return text.AsSpan(0, sample).Contains('\0');
+    }
+
     /// <summary>Writes a header row plus data rows as CSV text (CRLF line endings).</summary>
     public static string Write(IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<string?>> rows)
     {
