@@ -576,16 +576,16 @@ export interface PpdoDashboard {
   noDivision?: DivisionSummary | null;
 }
 
+/**
+ * One line of the Recent activity band (PPDO-181). The server sends the sentence — never the audit
+ * row's table name, action code or record id. `description` is a verb phrase that follows
+ * `actorName`: "moved an activity in Rice Project 1 (OPA) from Cash to Admin."
+ */
 export interface RecentActivity {
   id: number;
-  changedAt: string; // ISO 8601
-  tableName: string;
-  action: string;
-  // Exactly one of recordId/recordGuid is set, depending on the table's PK type
-  // (int-keyed tables like wfp_expenditures vs Guid-keyed tables like users).
-  recordId: number | null;
-  recordGuid: string | null;
+  changedAt: string; // ISO 8601, UTC
   actorName: string;
+  description: string;
 }
 
 // ── Office-scoped dashboard (RAL-60) ─────────────────────────────────────────

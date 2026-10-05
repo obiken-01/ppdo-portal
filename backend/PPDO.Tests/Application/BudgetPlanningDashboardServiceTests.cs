@@ -174,6 +174,30 @@ public sealed class BudgetPlanningDashboardServiceTests
     /// Verify() on it. GetDashboardAsync resolves the office via OfficeCode == "PPDO" — tests that
     /// exercise it must include an office built with the default Off() code ("PPDO").
     /// </summary>
+    /// <summary>
+    /// A label repository that finds nothing — what the real one returns for ids whose records are
+    /// gone. (A bare Moq mock would answer null, which no real repository ever does.)
+    /// </summary>
+    private static Mock<IActivityLabelRepository> EmptyLabels()
+    {
+        Mock<IActivityLabelRepository> m = new();
+        m.Setup(r => r.GetCeilingLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, CeilingLabel>());
+        m.Setup(r => r.GetAipOfficeLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipOfficeLabel>());
+        m.Setup(r => r.GetAipProgramLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipProgramLabel>());
+        m.Setup(r => r.GetAipActivityLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipActivityLabel>());
+        m.Setup(r => r.GetOfficeCodesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        m.Setup(r => r.GetDivisionNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        m.Setup(r => r.GetFundingSourceNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        return m;
+    }
+
     private static (BudgetPlanningDashboardService svc, Mock<IAuditRepository> auditMock) Build(
         List<LdipRecord> ldips,
         List<AipRecord> aips,
@@ -195,7 +219,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipDivisionRollupDto>? divisionRollups = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         int? defaultFiscalYear = null,
-        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
+        Mock<IActivityLabelRepository>? activityLabelsMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -347,7 +372,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object,
             ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
-            divisionSubmissionRepo.Object);
+            divisionSubmissionRepo.Object,
+            new RecentActivityDescriber((activityLabelsMock ?? EmptyLabels()).Object));
 
         return (svc, auditRepo);
     }
@@ -1212,6 +1238,120 @@ public sealed class BudgetPlanningDashboardServiceTests
                     !names.Contains("accounts")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_ScopesToTheReviewHandOffTables_SoSubmitAndReturnCanShow()
+    {
+        // PPDO-181: "OPA sent its AIP to PPDO" is written against aip_offices, and a division's
+        // submit/return against aip_division_submissions. Out of scope, the band could never say it.
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: null);
+
+        auditMock.Verify(
+            r => r.GetRecentAsync(
+                10, null,
+                It.Is<IReadOnlyList<string>?>(names =>
+                    names != null && names.Contains("aip_offices") && names.Contains("aip_division_submissions")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_AsAnOfficeUser_OnlyReturnsAndLabelsThatOfficesEntries()
+    {
+        // The real repository scopes by the ACTOR's office in SQL; this stand-in does the same, so
+        // the test shows the description step adds nothing for entries the scope already excluded.
+        User opaUser = AppUser(Guid.NewGuid(), "OPA Encoder", officeId: 5);
+        User ptoUser = AppUser(Guid.NewGuid(), "PTO Encoder", officeId: 9);
+        List<AuditLog> all =
+        [
+            new() { Id = 1, TableName = "budget_ceilings", RecordId = 101, Action = "UPDATE", NewValues = "{\"amount\":10}", ChangedById = opaUser.Id, ChangedBy = opaUser, ChangedAt = DateTime.UtcNow },
+            new() { Id = 2, TableName = "budget_ceilings", RecordId = 202, Action = "UPDATE", NewValues = "{\"amount\":20}", ChangedById = ptoUser.Id, ChangedBy = ptoUser, ChangedAt = DateTime.UtcNow },
+        ];
+
+        Mock<IActivityLabelRepository> labels = new();
+        labels.Setup(r => r.GetCeilingLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, CeilingLabel>)new Dictionary<int, CeilingLabel>
+                {
+                    [101] = new("OPA", 2028),
+                    [202] = new("PTO", 2028),
+                }.Where(kv => ids.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) =
+            Build([], [], [], [], [], activityLabelsMock: labels);
+        auditMock.Setup(r => r.GetRecentAsync(
+                It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int take, int? officeId, IReadOnlyList<string>? _, CancellationToken __) =>
+                (IReadOnlyList<AuditLog>)all.Where(a => officeId == null || a.ChangedBy!.OfficeId == officeId).Take(take).ToList());
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: 5);
+
+        RecentActivityDto only = Assert.Single(result);
+        Assert.Equal("OPA Encoder", only.ActorName);
+        Assert.Equal("updated OPA's FY 2028 ceiling to ₱10.00.", only.Description);
+        // The other office's record is never even looked up.
+        labels.Verify(r => r.GetCeilingLabelsAsync(
+            It.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 101 })), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain("PTO", only.Description);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_NoEntryExposesATableNameAnActionCodeOrARecordId()
+    {
+        User actor = AppUser(Guid.NewGuid(), "Jose Santos");
+        List<AuditLog> audits =
+        [
+            new() { Id = 1, TableName = "aip_activities", RecordId = 18501, Action = "RETAG_DIV", OldValues = "{\"divisionId\":1}", NewValues = "{\"divisionId\":2}", ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow },
+            new() { Id = 2, TableName = "budget_ceilings", RecordId = 13, Action = "UPDATE", NewValues = "{\"amount\":5}", ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow },
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], audits);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        string json = System.Text.Json.JsonSerializer.Serialize(result);
+        Assert.DoesNotContain("aip_activities", json);
+        Assert.DoesNotContain("budget_ceilings", json);
+        Assert.DoesNotContain("RETAG_DIV", json);
+        Assert.DoesNotContain("18501", json);
+        Assert.DoesNotContain("tableName", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("recordId", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_TenTypicalEntriesStayUnderTwoKilobytes()
+    {
+        // "Typical" = the sentences the local data actually produces: a retag between two real
+        // division names in a real project, by an actor with a full name. The describer clips any
+        // name to 48 characters, so even a pathological one cannot run away — but the budget this
+        // pins is the everyday one (PPDO-181: "stays under ~2 KB").
+        User actor = AppUser(Guid.NewGuid(), "Jose Santos");
+        Mock<IActivityLabelRepository> labels = EmptyLabels();
+        labels.Setup(r => r.GetAipActivityLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, AipActivityLabel>)ids.ToDictionary(
+                    i => i, i => new AipActivityLabel("OPA", "Rice Production Support")));
+        labels.Setup(r => r.GetDivisionNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<int, string>)new Dictionary<int, string>
+            {
+                [1] = "Cash Division", [2] = "Admin Division",
+            });
+        List<AuditLog> audits = Enumerable.Range(1, 10).Select(i => new AuditLog
+        {
+            Id = 1000 + i, TableName = "aip_activities", RecordId = 18000 + i, Action = "RETAG_DIV",
+            OldValues = "{\"divisionId\":1}", NewValues = "{\"divisionId\":2}",
+            ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow,
+        }).ToList();
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], audits, activityLabelsMock: labels);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        int bytes = System.Text.Encoding.UTF8.GetByteCount(System.Text.Json.JsonSerializer.Serialize(
+            result, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        Assert.Equal(10, result.Count);
+        Assert.True(bytes < 2048, $"payload was {bytes} bytes");
     }
 
     [Fact]

@@ -127,6 +127,8 @@ var host = new HostBuilder()
         services.AddScoped<IStockBalanceRepository, StockBalanceRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IActivityLabelRepository, ActivityLabelRepository>();   // PPDO-181
+        services.AddScoped<RecentActivityDescriber>();
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
         services.AddScoped<IAipReviewCommentRepository, AipReviewCommentRepository>();
