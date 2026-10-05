@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import {
   getAnnouncementsManage,
   publishAnnouncement,
@@ -11,9 +11,16 @@ import {
   deleteAnnouncement,
   announcementErrorMessage,
 } from "@/lib/announcements";
-import type { AnnouncementDto, MeResponse } from "@/types";
+import type { AnnouncementDto } from "@/types";
 import DataTable, { type Column } from "@/components/ui/DataTable";
-import AnnouncementEditorModal from "@/components/announcements/AnnouncementEditorModal";
+import dynamic from "next/dynamic";
+import AnnouncementEditorModalSkeleton from "@/components/announcements/AnnouncementEditorModalSkeleton";
+
+// The editor modal carries TipTap + its extensions; fetch it only when someone opens it (PPDO-188 / O14).
+const AnnouncementEditorModal = dynamic(
+  () => import("@/components/announcements/AnnouncementEditorModal"),
+  { ssr: false, loading: () => <AnnouncementEditorModalSkeleton /> },
+);
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
@@ -60,10 +67,8 @@ export default function AnnouncementsPage() {
   // ── Auth guard (Admin / SuperAdmin only) ──────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then((r) => {
-        const me = r.data;
+    fetchMe()
+      .then((me) => {
         if (me?.role !== "Admin" && me?.role !== "SuperAdmin") {
           router.replace("/dashboard");
           return;
@@ -270,15 +275,17 @@ export default function AnnouncementsPage() {
       />
 
       {/* Editor modal */}
-      <AnnouncementEditorModal
-        open={editorOpen}
-        announcement={editing}
-        onClose={() => {
-          setEditorOpen(false);
-          setEditing(null);
-        }}
-        onSaved={load}
-      />
+      {editorOpen && (
+        <AnnouncementEditorModal
+          open={editorOpen}
+          announcement={editing}
+          onClose={() => {
+            setEditorOpen(false);
+            setEditing(null);
+          }}
+          onSaved={load}
+        />
+      )}
 
       {/* Confirmation dialog (Archive / Delete) */}
       {dialog && <ConfirmDialog {...dialog} />}

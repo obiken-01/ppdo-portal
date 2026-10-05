@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
@@ -35,7 +36,6 @@ import LandingPageSelect from "@/components/ui/LandingPageSelect";
 import type {
   CreateUserRequest,
   DivisionResponse,
-  MeResponse,
   OfficeResponse,
   UpdateUserRequest,
   UserCredentialResponse,
@@ -665,7 +665,7 @@ export default function UsersPage() {
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    api.get<MeResponse>("/auth/me").then(({ data }) => {
+    fetchMe().then((data) => {
       if (!data.canManageUsers) {
         router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       } else {
