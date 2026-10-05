@@ -195,6 +195,8 @@ export interface PriceIndexPickerItem {
   unit: string;
   unitPrice: number;
   daysEnabled: boolean;
+  /** Told apart from same-named rows by this — see lib/priceIndexLabel.ts. */
+  stockCardNo: string | null;
 }
 
 /** A page of the price-index management grid plus the total match count (RAL-233). */

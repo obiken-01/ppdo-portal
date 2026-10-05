@@ -32,6 +32,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import { priceIndexItemLabel, priceIndexItemSearchText } from "@/lib/priceIndexLabel";
 import {
   configErrorMessage,
   listProcurementPresetsForEntry,
@@ -60,9 +61,6 @@ function periodLabels(frequency: WfpExpenditureFrequency): string[] {
     case "A": return ["Annual"];
   }
 }
-
-const priceIndexItemLabel = (p: PriceIndexPickerItem) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
-const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
 // ---------------------------------------------------------------------------
 // Props

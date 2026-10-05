@@ -601,7 +601,7 @@ export default function PriceIndexConfigPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
               <p className="mt-1 text-[11px] text-slate-600">
-                Name + unit together must be unique (e.g. &quot;Bond Paper&quot; can exist per ream AND per box).
+                Name + unit + stock card no. together must be unique (e.g. &quot;Bond Paper&quot; can exist per ream AND per box, and the same name can repeat under different stock card numbers).
               </p>
             </div>
 
@@ -695,15 +695,16 @@ export default function PriceIndexConfigPage() {
               Import <span className="font-medium text-slate-800">{pendingCsv.name}</span>?
             </p>
             <p>
-              Rows are matched by <span className="font-mono text-xs">name + unit</span>: new
+              Rows are matched by{" "}
+              <span className="font-mono text-xs">name + unit + stock card no</span>: new
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
             {isExcelFile(pendingCsv) ? (
               <p className="text-xs text-slate-600">
                 PGOM Items export (.xlsx): Description → name, Unit → unit, Price → unit price,
-                Account Name → category, Item Code → stock card no. The same item listed under
-                several accounts is merged into one (the last row wins), and line breaks in
-                descriptions are cleaned up.
+                Account Name → category, Item Code → stock card no. The same name and unit under
+                a different Item Code stays a separate item; an exact repeat is merged (the last
+                row wins). Line breaks in descriptions are cleaned up.
               </p>
             ) : (
               <p className="text-xs text-slate-600">

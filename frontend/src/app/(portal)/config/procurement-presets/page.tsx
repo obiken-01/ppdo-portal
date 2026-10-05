@@ -38,6 +38,7 @@ import {
   updateProcurementPreset,
 } from "@/lib/config";
 import { formatMoney } from "@/lib/money";
+import { priceIndexItemLabel, priceIndexItemSearchText } from "@/lib/priceIndexLabel";
 import Modal from "@/components/ui/Modal";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -70,9 +71,6 @@ const STATUS_TO_ACTIVE: Record<StatusFilter, ActiveFilter> = {
 
 const accountLabel = (a: AccountResponse) => `${a.accountNumber} — ${a.accountTitle}`;
 const accountSearchText = (a: AccountResponse) => `${a.accountNumber} ${a.accountTitle}`;
-
-const priceIndexItemLabel = (p: PriceIndexPickerItem) => `${p.name} (${p.unit}) — ₱${formatMoney(p.unitPrice)}`;
-const priceIndexItemSearchText = (p: PriceIndexPickerItem) => `${p.name} ${p.unit}`;
 
 /** Sum of unitPrice × qty across a set of line items — the preset's full total. */
 function sumItemTotals(items: { unitPrice: number | null; defaultQty: number | null }[]): number {

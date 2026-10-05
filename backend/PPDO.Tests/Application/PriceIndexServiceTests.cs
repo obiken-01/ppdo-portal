@@ -65,7 +65,7 @@ public sealed class PriceIndexServiceTests
                 (IReadOnlyList<PriceIndexPickerItem>)seed
                     .Where(p => !isActive.HasValue || p.IsActive == isActive.Value)
                     .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
+                    .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled, p.StockCardNo))
                     .ToList());
         // RAL-233 — mocks the same whitelist ApplySort implements in SQL, so a service-side
         // mismatch between the two (e.g. a typo'd column key) still shows up here.
@@ -104,12 +104,13 @@ public sealed class PriceIndexServiceTests
         // off the live seed; the duplicate check mirrors the case-insensitive DB collation.
         repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => seed.FirstOrDefault(p => p.Id == id));
-        repo.Setup(r => r.NameAndUnitExistsAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string name, string unit, int? excludeId, CancellationToken _) =>
+        repo.Setup(r => r.ItemExistsAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string name, string unit, string? stockCardNo, int? excludeId, CancellationToken _) =>
                 seed.Any(p => (excludeId == null || p.Id != excludeId.Value)
                            && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
-                           && p.Unit.Equals(unit, StringComparison.OrdinalIgnoreCase)));
+                           && p.Unit.Equals(unit, StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(p.StockCardNo, stockCardNo, StringComparison.OrdinalIgnoreCase)));
         repo.Setup(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()))
             .Callback<PriceIndexItem, CancellationToken>((p, _) => seed.Add(p))
             .Returns(Task.CompletedTask);
@@ -229,6 +230,41 @@ public sealed class PriceIndexServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_SameNameUnitButDifferentStockCardNo_IsAllowed()
+    {
+        (PriceIndexService sut, _) = Build([Item(1, "Garden hose", "roll", 100m, stockCardNo: "S-1")]);
+
+        ServiceResult<PriceIndexItemDto> result = await sut.CreateAsync(
+            new UpsertPriceIndexItemDto("Garden hose", "roll", 100m, null, StockCardNo: "S-2"));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task CreateAsync_SameNameUnitAndStockCardNo_ReturnsConflictNamingTheStockCardNo()
+    {
+        (PriceIndexService sut, _) = Build([Item(1, "Garden hose", "roll", 100m, stockCardNo: "S-1")]);
+
+        ServiceResult<PriceIndexItemDto> result = await sut.CreateAsync(
+            new UpsertPriceIndexItemDto("Garden hose", "roll", 100m, null, StockCardNo: " s-1 "));
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Contains("S-1".ToLowerInvariant(), result.Error!.ToLowerInvariant());
+    }
+
+    [Fact]
+    public async Task CreateAsync_NoStockCardNoWhenAnotherCopyHasOne_IsAllowed_ButNotTwiceWithNone()
+    {
+        (PriceIndexService sut, _) = Build([Item(1, "Garden hose", "roll", 100m, stockCardNo: "S-1")]);
+
+        ServiceResult<PriceIndexItemDto> first = await sut.CreateAsync(new UpsertPriceIndexItemDto("Garden hose", "roll", 100m, null));
+        ServiceResult<PriceIndexItemDto> second = await sut.CreateAsync(new UpsertPriceIndexItemDto("Garden hose", "roll", 100m, null));
+
+        Assert.True(first.IsSuccess);
+        Assert.Equal(ServiceErrorCode.Conflict, second.Code);
+    }
+
+    [Fact]
     public async Task UpdateAsync_KeepingItsOwnNameAndUnit_IsNotADuplicate()
     {
         (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([Item(1, "Bond Paper", "ream", 250m)]);
@@ -237,7 +273,7 @@ public sealed class PriceIndexServiceTests
             await sut.UpdateAsync(1, new UpsertPriceIndexItemDto("Bond Paper", "ream", 275m, null));
 
         Assert.True(result.IsSuccess);
-        repo.Verify(r => r.NameAndUnitExistsAsync("Bond Paper", "ream", 1, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.ItemExistsAsync("Bond Paper", "ream", null, 1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -247,7 +283,7 @@ public sealed class PriceIndexServiceTests
 
         await sut.CreateAsync(new UpsertPriceIndexItemDto("  Bond Paper ", " ream ", 250m, null));
 
-        repo.Verify(r => r.NameAndUnitExistsAsync("Bond Paper", "ream", null, It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.ItemExistsAsync("Bond Paper", "ream", null, null, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -430,27 +466,78 @@ public sealed class PriceIndexServiceTests
     }
 
     [Fact]
-    public async Task ImportPgomAsync_MapsColumns_AndMergesDuplicateNameUnit_LastRowWins()
+    public async Task ImportPgomAsync_SameNameUnitDifferentItemCodes_AreSeparateItems_ExactRepeatsMerge()
     {
         (PriceIndexService sut, _, List<PriceIndexItem> seed) = BuildPgom(
         [
             Pgom(2, "OSAMFD-1", "Garden Hose (20m)", "Other Supplies", "roll", 6553m),
-            Pgom(3, "CMFD-2",   "Garden Hose (20m)", "Construction Materials", "ROLL", 6600.456m),
-            Pgom(4, "X-3",      "Bond paper",        "Office Supplies", "ream", 250m),
+            Pgom(3, "CMFD-2",   "Garden Hose (20m)", "Construction Materials", "ROLL", 6000m),
+            Pgom(4, "CMFD-2",   "Garden Hose (20m)", "Construction Materials", "roll", 6600.456m),
+            Pgom(5, "X-3",      "Bond paper",        "Office Supplies", "ream", 250m),
         ]);
 
         ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(2, result.Value!.New);
-        Assert.Equal(2, seed.Count);
-        PriceIndexItem hose = seed.Single(p => p.Name == "Garden Hose (20m)");
-        Assert.Equal("CMFD-2", hose.StockCardNo);
-        Assert.Equal("Construction Materials", hose.Category);
-        Assert.Equal(6600.46m, hose.UnitPrice);
-        Assert.True(hose.IsActive);
+        Assert.Equal(3, result.Value!.New);
+        Assert.Equal(3, seed.Count);
+        PriceIndexItem cmfd = seed.Single(p => p.StockCardNo == "CMFD-2");
+        Assert.Equal("Construction Materials", cmfd.Category);
+        Assert.Equal(6600.46m, cmfd.UnitPrice);                  // last of the exact repeats wins, rounded to 2 dp
+        Assert.Equal(6553m, seed.Single(p => p.StockCardNo == "OSAMFD-1").UnitPrice);
+        Assert.True(cmfd.IsActive);
         Assert.Contains(result.Value.Notes!, n => n.Contains("1 rows") && n.Contains("merged"));
         Assert.Empty(result.Value.Errors);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_AdoptsACatalogueItemThatHasNoStockCardNo_InsteadOfDuplicatingIt()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper", "ream", 200m, "Old")];   // no stock card yet
+        (PriceIndexService sut, _, _) = BuildPgom(
+        [
+            Pgom(2, "OS-1", "Bond paper", "Office Supplies", "ream", 250m),
+            Pgom(3, "OS-2", "Bond paper", "Office Supplies", "ream", 260m),   // second code -> a new row
+        ], seed);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Updated);
+        Assert.Equal(2, seed.Count);
+        Assert.Equal("OS-1", seed[0].StockCardNo);
+        Assert.Equal(250m, seed[0].UnitPrice);
+        Assert.Equal(1, seed[0].Id);                                   // the original row, not a twin
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_EnDashInItemCode_MatchesTheHyphenatedCodeAlreadyInTheCatalogue()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Roofing nails", "kg", 100m, "Old", stockCardNo: "RAM-BAOS-4100294508")];
+        (PriceIndexService sut, _, _) = BuildPgom(
+            [Pgom(2, "RAM–BAOS-4100294508", "Roofing nails", "Repairs", "kg", 120m)], seed);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(0, result.Value!.New);
+        Assert.Equal(1, result.Value.Updated);
+        Assert.Single(seed);
+        Assert.Equal("RAM-BAOS-4100294508", seed[0].StockCardNo);
+        Assert.Equal(120m, seed[0].UnitPrice);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_ExistingItemWithADifferentStockCardNo_IsNotTouched()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper", "ream", 200m, "Old", stockCardNo: "OS-OLD")];
+        (PriceIndexService sut, _, _) = BuildPgom([Pgom(2, "OS-1", "Bond paper", "Office Supplies", "ream", 250m)], seed);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(2, seed.Count);
+        Assert.Equal(200m, seed[0].UnitPrice);
+        Assert.Equal("OS-OLD", seed[0].StockCardNo);
     }
 
     [Fact]
@@ -735,7 +822,7 @@ public sealed class PriceIndexServiceTests
     }
 
     [Fact]
-    public async Task ImportCsvAsync_StockCardNoChangedOnly_CountsAsUpdated()
+    public async Task ImportCsvAsync_SameNameUnitDifferentStockCardNo_AddsASeparateItem()
     {
         List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000001")];
         (PriceIndexService sut, _) = Build(seed);
@@ -746,8 +833,53 @@ public sealed class PriceIndexServiceTests
 
         ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
 
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(0, result.Value.Updated);
+        Assert.Equal(2, seed.Count);
+        Assert.Equal("OS-PAP-0000001", seed[0].StockCardNo);   // the original is untouched
+        Assert.Contains(seed, p => p.StockCardNo == "OS-PAP-0000004");
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_SameStockCardNo_UpdatesTheMatchingItem()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Garden hose", "roll", 100m, "A", stockCardNo: "S-1"),
+            Item(2, "Garden hose", "roll", 100m, "A", stockCardNo: "S-2"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no",
+            "Garden hose,roll,150,A,true,false,S-2");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
         Assert.Equal(1, result.Value!.Updated);
-        Assert.Equal("OS-PAP-0000004", seed.Single().StockCardNo);
+        Assert.Equal(100m, seed[0].UnitPrice);
+        Assert.Equal(150m, seed[1].UnitPrice);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_LegacySixColumnFile_AmbiguousNameUnit_IsSkippedWithAnError()
+    {
+        List<PriceIndexItem> seed =
+        [
+            Item(1, "Garden hose", "roll", 100m, "A", stockCardNo: "S-1"),
+            Item(2, "Garden hose", "roll", 100m, "A", stockCardNo: "S-2"),
+        ];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv = string.Join("\r\n",
+            "name,unit,unit_price,category,is_active,days_enabled",
+            "Garden hose,roll,150,A,true,false");
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 2") && e.Contains("stock_card_no"));
+        Assert.All(seed, p => Assert.Equal(100m, p.UnitPrice));
     }
 
     /// <summary>
@@ -777,7 +909,7 @@ public sealed class PriceIndexServiceTests
     /// it — matching how category already behaves, so a value can still be removed via CSV.
     /// </summary>
     [Fact]
-    public async Task ImportCsvAsync_BlankStockCardNoInPresentColumn_ClearsIt()
+    public async Task ImportCsvAsync_BlankStockCardNoInPresentColumn_IsAnItemWithNoStockCard()
     {
         List<PriceIndexItem> seed = [Item(1, "Bond paper A4 80gsm", "ream", 494m, "Paper", stockCardNo: "OS-PAP-0000004")];
         (PriceIndexService sut, _) = Build(seed);
@@ -788,8 +920,10 @@ public sealed class PriceIndexServiceTests
 
         ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
 
-        Assert.Equal(1, result.Value!.Updated);
-        Assert.Null(seed.Single().StockCardNo);
+        // A blank stock card is its own identity, not an instruction to clear the existing one.
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(2, seed.Count);
+        Assert.Equal("OS-PAP-0000004", seed[0].StockCardNo);
     }
 
     [Fact]
@@ -951,7 +1085,7 @@ public sealed class PriceIndexServiceTests
         IReadOnlyList<PriceIndexPickerItemDto> items = await sut.GetPickerListAsync(null, ActiveFilter.Active);
 
         PriceIndexPickerItemDto only = Assert.Single(items);
-        Assert.Equal(new PriceIndexPickerItemDto(7, "Bond Paper", "ream", 250m, true), only);
+        Assert.Equal(new PriceIndexPickerItemDto(7, "Bond Paper", "ream", 250m, true, "SC-001"), only);
     }
 
     [Fact]

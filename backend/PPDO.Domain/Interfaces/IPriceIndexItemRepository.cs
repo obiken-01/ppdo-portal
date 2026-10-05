@@ -20,17 +20,20 @@ public interface IPriceIndexItemRepository : IRepository<PriceIndexItem>
     Task<PriceIndexItem?> GetByIntIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>
-    /// Whether another item already has this name and unit (PPDO-186): the create and update
-    /// duplicate checks, as one <c>EXISTS</c> on the <c>(name, unit)</c> index instead of a scan of
-    /// the whole catalogue. <paramref name="excludeId"/> is the item being updated, so it does not
-    /// collide with itself; null on create.
+    /// Whether another item already has this name, unit and stock card no (PPDO-186): the create
+    /// and update duplicate checks, as one <c>EXISTS</c> on the unique index instead of a scan of
+    /// the whole catalogue. A null <paramref name="stockCardNo"/> matches only items that also have
+    /// none. <paramref name="excludeId"/> is the item being updated, so it does not collide with
+    /// itself; null on create.
     ///
     /// ⚠️ Case-insensitive through the database collation — the same answer as the CSV import's
-    /// <c>OrdinalIgnoreCase</c> key and the unique <c>IX_price_index_items_name_unit</c> index. No
-    /// <c>LOWER()</c>, which would stop the index being seeked (the RAL-204 rule, see
-    /// <c>UserRepository.FindByUsernameAsync</c>). Callers pass already-trimmed values.
+    /// <c>OrdinalIgnoreCase</c> key and the unique <c>IX_price_index_items_name_unit_stock_card_no</c>
+    /// index. No <c>LOWER()</c>, which would stop the index being seeked (the RAL-204 rule, see
+    /// <c>UserRepository.FindByUsernameAsync</c>). Callers pass already-trimmed values, with blank
+    /// stock card numbers as null.
     /// </summary>
-    Task<bool> NameAndUnitExistsAsync(string name, string unit, int? excludeId, CancellationToken ct = default);
+    Task<bool> ItemExistsAsync(
+        string name, string unit, string? stockCardNo, int? excludeId, CancellationToken ct = default);
 
     /// <summary>Returns the price index items matching any of the given ids.</summary>
     Task<IReadOnlyList<PriceIndexItem>> GetByIdsAsync(
@@ -101,4 +104,5 @@ public sealed record PriceIndexPickerItem(
     string  Name,
     string  Unit,
     decimal UnitPrice,
-    bool    DaysEnabled);
+    bool    DaysEnabled,
+    string? StockCardNo);

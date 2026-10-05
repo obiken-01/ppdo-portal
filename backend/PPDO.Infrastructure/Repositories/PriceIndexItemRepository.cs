@@ -16,12 +16,13 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
         => await _context.Set<PriceIndexItem>().FirstOrDefaultAsync(p => p.Id == id, ct);
 
     /// <inheritdoc />
-    public async Task<bool> NameAndUnitExistsAsync(
-        string name, string unit, int? excludeId, CancellationToken ct = default)
+    public async Task<bool> ItemExistsAsync(
+        string name, string unit, string? stockCardNo, int? excludeId, CancellationToken ct = default)
         // Plain == on purpose: the collation is case-insensitive, and LOWER() would make the
-        // predicate non-SARGable (RAL-204).
+        // predicate non-SARGable (RAL-204). EF turns == against a null parameter into IS NULL, so
+        // "no stock card" matches only rows that have none.
         => await _context.Set<PriceIndexItem>()
-            .AnyAsync(p => p.Name == name && p.Unit == unit
+            .AnyAsync(p => p.Name == name && p.Unit == unit && p.StockCardNo == stockCardNo
                         && (excludeId == null || p.Id != excludeId.Value), ct);
 
     /// <inheritdoc />
@@ -46,11 +47,12 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
     /// <inheritdoc />
     public async Task<IReadOnlyList<PriceIndexPickerItem>> GetPickerItemsAsync(
         bool? isActive, string? search, CancellationToken ct = default)
-        // Projected before ToListAsync so EF emits SELECT of just these five columns — the wide
-        // Category/StockCardNo free text is never read off the page, not merely dropped later.
+        // Projected before ToListAsync so EF emits SELECT of just these six columns — the wide
+        // Category free text is never read off the page, not merely dropped later. StockCardNo
+        // (50 chars) is in because rows sharing a name and unit are told apart by it.
         => await Filtered(isActive, search)
-            .OrderBy(p => p.Name)
-            .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled))
+            .OrderBy(p => p.Name).ThenBy(p => p.StockCardNo)
+            .Select(p => new PriceIndexPickerItem(p.Id, p.Name, p.Unit, p.UnitPrice, p.DaysEnabled, p.StockCardNo))
             .ToListAsync(ct);
 
     /// <inheritdoc />
