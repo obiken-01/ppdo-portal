@@ -639,6 +639,17 @@ export interface OfficeAipSummary {
    * RETURN_DH). RETURN_DH is what tells a Draft the department head sent back from a fresh one.
    */
   lastHandOff?: string | null;
+  /** PPDO-178 — activities whose total is empty or ₱0 (the rollup's "costed" rule, inverted). */
+  uncostedActivityCount?: number;
+  /**
+   * PPDO-178 — in Draft, for an office with divisions: how many of the divisions with work have
+   * submitted, and which have not (code, or name). Absent/null outside the division flow.
+   */
+  divisionsSubmitted?: number | null;
+  divisionsRequired?: number | null;
+  divisionsWaiting?: string[] | null;
+  /** PPDO-178 — the returning side's open comments, only while the AIP sits returned. */
+  unresolvedComments?: number | null;
 }
 
 export interface OfficeDashboard {

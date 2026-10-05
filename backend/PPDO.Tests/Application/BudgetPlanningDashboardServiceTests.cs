@@ -198,6 +198,16 @@ public sealed class BudgetPlanningDashboardServiceTests
         return m;
     }
 
+    /// <summary>PPDO-178 — no unresolved comments on either side.</summary>
+    private static Mock<IAipReviewCommentRepository> NoComments()
+    {
+        Mock<IAipReviewCommentRepository> m = new();
+        m.Setup(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<PPDO.Domain.Enums.AipCommentSide, int>)
+                new Dictionary<PPDO.Domain.Enums.AipCommentSide, int>());
+        return m;
+    }
+
     private static (BudgetPlanningDashboardService svc, Mock<IAuditRepository> auditMock) Build(
         List<LdipRecord> ldips,
         List<AipRecord> aips,
@@ -220,7 +230,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         int? defaultFiscalYear = null,
         Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
-        Mock<IActivityLabelRepository>? activityLabelsMock = null)
+        Mock<IActivityLabelRepository>? activityLabelsMock = null,
+        Mock<IAipReviewCommentRepository>? commentRepoMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -373,7 +384,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             auditRepo.Object, allocation.Object,
             ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
             divisionSubmissionRepo.Object,
-            new RecentActivityDescriber((activityLabelsMock ?? EmptyLabels()).Object));
+            new RecentActivityDescriber((activityLabelsMock ?? EmptyLabels()).Object),
+            (commentRepoMock ?? NoComments()).Object);
 
         return (svc, auditRepo);
     }
@@ -1473,6 +1485,176 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         Assert.False(result.Aip.Exists);
         Assert.Null(result.Aip.WorkflowStatus);
+    }
+
+    // ── PPDO-178: why the AIP is where it is (the status band's figures) ─────
+
+    /// <summary>
+    /// Office 1 with the given groups and activities, divisions 31 (ADMIN), 32 (PLAN) and 33 (no
+    /// code, "Records"), the given ones submitted, and comment counts per side.
+    /// </summary>
+    private static (BudgetPlanningDashboardService Sut, Mock<IAuditRepository> Audit,
+        Mock<IAipDivisionSubmissionRepository> Divisions, Mock<IAipReviewCommentRepository> Comments)
+        BuildBand(
+            int fiscalYear, AipOffice[] groups, AipActivity[]? activities = null,
+            AipDivisionRollupDto[]? tags = null, int[]? submitted = null, bool divisionsActive = true,
+            Dictionary<PPDO.Domain.Enums.AipCommentSide, int>? unresolved = null)
+    {
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, groups);
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)(activities ?? []));
+
+        Mock<IAipDivisionSubmissionRepository> divisions = new();
+        divisions.Setup(r => r.GetDivisionsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<Division>)
+            [
+                new Division { Id = 31, OfficeId = 1, Code = "ADMIN", Name = "Administrative", IsActive = divisionsActive },
+                new Division { Id = 32, OfficeId = 1, Code = "PLAN", Name = "Planning", IsActive = divisionsActive },
+                new Division { Id = 33, OfficeId = 1, Code = null, Name = "Records", IsActive = divisionsActive },
+            ]);
+        divisions.Setup(r => r.GetForOfficesAsync(10, It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((submitted ?? [])
+                .Select(d => new AipDivisionSubmission
+                {
+                    AipRecordId = 10, OfficeId = 1, DivisionId = d, Status = AipDivisionStatus.Submitted,
+                })
+                .ToList());
+
+        Mock<IAipReviewCommentRepository> comments = new();
+        comments.Setup(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<PPDO.Domain.Enums.AipCommentSide, int>)
+                (unresolved ?? new Dictionary<PPDO.Domain.Enums.AipCommentSide, int>()));
+
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) = Build(
+            [], [Aip(10, fiscalYear, "Draft")], [], [Off(1, "PPDO", refCode: "1-01-010")], [],
+            aipRepoMock: aipRepo,
+            divisionRollups: tags?.ToList(),
+            divisionSubmissionRepoMock: divisions,
+            commentRepoMock: comments);
+        return (sut, audit, divisions, comments);
+    }
+
+    private static void HandOff(Mock<IAuditRepository> audit, string action) =>
+        audit.Setup(a => a.GetLatestActionWithTimeAsync(It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((action, new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc)));
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_CountsActivitiesWithNoCost_NullAndZeroBoth()
+    {
+        // The rollup's "costed" rule inverted: Total null (never costed) and 0 (costing removed or
+        // lines at ₱0) both still need a cost. Red-tested by counting only null.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+        [
+            new AipActivity { Id = 1, ProjectId = 1, RefCode = "A1", Name = "A1", Total = null },
+            new AipActivity { Id = 2, ProjectId = 1, RefCode = "A2", Name = "A2", Total = 0m },
+            new AipActivity { Id = 3, ProjectId = 1, RefCode = "A3", Name = "A3", Total = 1_000m },
+        ]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(2, result.Aip.UncostedActivityCount);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DraftInTheDivisionFlow_ReportsDivisionsSubmittedAndWhoIsLeft()
+    {
+        // 31 and 33 have tagged work, 32 has none (not required). 31 submitted: 1 of 2, waiting on
+        // 33, named by its name because it has no code.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m), new AipDivisionRollupDto(33, 2, 0, 0m),
+                   new AipDivisionRollupDto(32, 0, 0, 0m)],
+            submitted: [31]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(1, result.Aip.DivisionsSubmitted);
+        Assert.Equal(2, result.Aip.DivisionsRequired);
+        Assert.Equal(["Records"], result.Aip.DivisionsWaiting);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_ReturnedByPpdo_ReportsTheDivisionsResubmitting()
+    {
+        // After PPDO's return the divisions resubmit before the head can send it again (PPDO-149),
+        // so the band says how many have. Found on the local PPDO office, returned with 0 of 2 back.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "ReturnedByPpdo")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m), new AipDivisionRollupDto(32, 2, 2, 0m)]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(0, result.Aip.DivisionsSubmitted);
+        Assert.Equal(2, result.Aip.DivisionsRequired);
+        Assert.Equal(["ADMIN", "PLAN"], result.Aip.DivisionsWaiting);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_PastDraft_HasNoDivisionProgress_AndNeverReadsIt()
+    {
+        (BudgetPlanningDashboardService sut, _, Mock<IAipDivisionSubmissionRepository> divisions, _) =
+            BuildBand(2028, [Group(50, "DepartmentReview")],
+                tags: [new AipDivisionRollupDto(31, 4, 4, 0m)], submitted: [31]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.DivisionsRequired);
+        Assert.Null(result.Aip.DivisionsWaiting);
+        divisions.Verify(r => r.GetForOfficesAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NoActiveDivision_IsOutsideTheFlow()
+    {
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m)], divisionsActive: false);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.DivisionsSubmitted);
+        Assert.Null(result.Aip.DivisionsRequired);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_ReturnedByPpdo_CountsPpdosUnresolvedComments()
+    {
+        // PPDO's side only: the department head's own open comments are not what PPDO sent back.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "ReturnedByPpdo")],
+            unresolved: new() { [PPDO.Domain.Enums.AipCommentSide.Ppdo] = 3,
+                                [PPDO.Domain.Enums.AipCommentSide.DepartmentHead] = 1 });
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(3, result.Aip.UnresolvedComments);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DraftReturnedByTheDepartmentHead_CountsTheirComments()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit, _, _) =
+            BuildBand(2028, [Group(50, "Draft")],
+                unresolved: new() { [PPDO.Domain.Enums.AipCommentSide.Ppdo] = 3,
+                                    [PPDO.Domain.Enums.AipCommentSide.DepartmentHead] = 2 });
+        HandOff(audit, AuditAction.ReturnToEncoder);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(2, result.Aip.UnresolvedComments);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NotReturned_HasNoCommentCount_AndNeverCounts()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit, _,
+            Mock<IAipReviewCommentRepository> comments) = BuildBand(2028, [Group(50, "SubmittedToPpdo")]);
+        HandOff(audit, AuditAction.SubmitToPpdo);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.UnresolvedComments);
+        comments.Verify(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────

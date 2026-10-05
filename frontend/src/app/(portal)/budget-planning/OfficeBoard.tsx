@@ -28,7 +28,7 @@ import type { OfficeSummary, ReadinessColumn } from "@/types";
  *      LDIP programs are already in the AIP, so the search has rows to show.
  */
 
-const COLUMNS: { key: ReadinessColumn; title: string }[] = [
+export const BOARD_COLUMNS: { key: ReadinessColumn; title: string }[] = [
   { key: "NotStarted", title: "Not started" },
   { key: "InProgress", title: "In progress" },
   { key: "OfficeReview", title: "Office review" },
@@ -67,7 +67,7 @@ export default function OfficeBoard({
     // Five lanes need room; below that they scroll inside the band rather than the page.
     <div className="overflow-x-auto px-5 py-4">
       <div className="grid min-w-[960px] grid-cols-5 items-start gap-3">
-        {COLUMNS.map((col) => {
+        {BOARD_COLUMNS.map((col) => {
           const items = offices.filter((o) => o.readinessColumn === col.key);
           const compact = col.key === "NotStarted";
           return (
@@ -244,7 +244,7 @@ export function OfficeBoardSkeleton() {
   return (
     <div className="overflow-x-auto px-5 py-4">
       <div className="grid min-w-[960px] grid-cols-5 items-start gap-3">
-        {COLUMNS.map((col, i) => (
+        {BOARD_COLUMNS.map((col, i) => (
           <div key={col.key} className="flex flex-col gap-2">
             <span className={HEADING}>{col.title}</span>
             <div className={col.key === "PpdoReview" ? LANE_PPDO : LANE}>

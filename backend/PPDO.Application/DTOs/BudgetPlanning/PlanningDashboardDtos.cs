@@ -93,7 +93,22 @@ public record OfficeAipSummaryDto(
     // hand-off. LastHandOff is what tells a Draft that was returned by the department head
     // (RETURN_DH) from one that was never submitted.
     DateTime? WorkflowStatusSince = null,
-    string? LastHandOff = null
+    string? LastHandOff = null,
+    // PPDO-178 — what the dashboard's status band needs to say WHY the AIP is where it is, from the
+    // same request (design pass B1). Activities whose Total is null or zero: the rollup's "costed"
+    // rule, inverted. Counted from the activities this summary already loads, so it costs no query.
+    int UncostedActivityCount = 0,
+    // PPDO-178 — "1 of 2 divisions has submitted. Waiting on ADMIN." FY2028+, in Draft or ReturnedByPpdo, for an
+    // office in the division flow only (it has an active division); null otherwise. The same
+    // "required" rule as the submit gate and the Offices board: a division counts once it has a
+    // tagged activity. DivisionsWaiting names the required divisions not yet submitted (code, or
+    // name when there is no code).
+    int? DivisionsSubmitted = null,
+    int? DivisionsRequired = null,
+    IReadOnlyList<string>? DivisionsWaiting = null,
+    // PPDO-178 — unresolved comments from whoever returned the AIP: PPDO's side when PPDO returned
+    // it, the department head's when they did. Null unless the AIP is sitting returned.
+    int? UnresolvedComments = null
 );
 
 /// <param name="ByDivision">
