@@ -19,7 +19,10 @@ import type { OfficeSummary, ReadinessColumn } from "@/types";
  *      nobody knows how many activities an office will create. Column position is the signal and
  *      the counts are context. Do not let a card grow a progress bar.
  *   3. **Not Started is a compact list, not cards.** Early in the season nearly every office sits
- *      there; as cards they would turn the board into one tall column.
+ *      there; as cards they would turn the board into one tall column. PPDO-179 (F10): it is one
+ *      wrapped run of chips, with "N have no reviewer · Assign reviewers" at the TOP — next to the
+ *      red dots it explains, not under fifteen rows. The PPDO review lane is tinted: it is the one
+ *      the reader of this board acts on.
  *   4. **Money is abbreviated** (`₱1.12M of ₱10M`) — the table keeps exact pesos.
  *   5. **Every office opens the AIP Review search filtered to it**, Not Started ones included: their
  *      LDIP programs are already in the AIP, so the search has rows to show.
@@ -36,6 +39,8 @@ const COLUMNS: { key: ReadinessColumn; title: string }[] = [
 const HEADING = "text-xs font-semibold uppercase tracking-wide text-slate-600";
 const COUNT = "rounded-full bg-slate-100 px-2 text-xs font-medium leading-[18px] text-slate-600 tabular-nums";
 const LANE = "flex min-h-[96px] flex-col gap-1.5 border border-slate-100 bg-slate-50 p-2";
+// PPDO-179 (F10) — the reviewer's own column, tinted with the PPDO green tokens.
+const LANE_PPDO = "flex min-h-[96px] flex-col gap-1.5 border border-green-200 bg-green-50 p-2";
 
 function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString("en-PH")} ${n === 1 ? one : many}`;
@@ -44,9 +49,13 @@ function plural(n: number, one: string, many: string): string {
 export default function OfficeBoard({
   offices,
   fiscalYear,
+  canAssignReviewers = false,
 }: {
   offices: OfficeSummary[];
   fiscalYear: number | null;
+  /** Whether the reader may open User Management, where a reviewer is assigned. Without it the
+   *  "no reviewer" line is a statement, not a link. */
+  canAssignReviewers?: boolean;
 }) {
   // The search only offers the entered years; below the break year it opens on its own default.
   const searchHref = (officeId: number) =>
@@ -68,22 +77,16 @@ export default function OfficeBoard({
                 <span className={COUNT}>{items.length}</span>
               </div>
 
-              <div className={LANE}>
+              <div className={col.key === "PpdoReview" ? LANE_PPDO : LANE}>
                 {items.length === 0 ? (
                   // The lane stays, so the board keeps its shape.
                   <p className="my-auto text-center text-xs text-slate-500">No offices</p>
                 ) : compact ? (
-                  <>
-                    {items.map((o) => (
-                      <NotStartedRow key={o.officeId} office={o} href={searchHref(o.officeId)} />
-                    ))}
-                    {items.some((o) => o.reviewerName == null) && (
-                      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-4 text-slate-600">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-danger-500" aria-hidden />
-                        No reviewer — cannot submit
-                      </p>
-                    )}
-                  </>
+                  <NotStartedList
+                    items={items}
+                    searchHref={searchHref}
+                    canAssignReviewers={canAssignReviewers}
+                  />
                 ) : (
                   items.map((o) => (
                     <OfficeCard key={o.officeId} office={o} href={searchHref(o.officeId)} />
@@ -98,26 +101,60 @@ export default function OfficeBoard({
   );
 }
 
-function NotStartedRow({ office, href }: { office: OfficeSummary; href: string }) {
+/** The Not started lane: the no-reviewer line first, then every office as one wrapped run of chips. */
+function NotStartedList({
+  items,
+  searchHref,
+  canAssignReviewers,
+}: {
+  items: OfficeSummary[];
+  searchHref: (officeId: number) => string;
+  canAssignReviewers: boolean;
+}) {
+  const withoutReviewer = items.filter((o) => o.reviewerName == null).length;
+  return (
+    <>
+      {withoutReviewer > 0 && (
+        // One inline run, so the dot stays with the words and the line wraps as text does in a
+        // narrow lane — a flex row left the dot alone on its own line.
+        <p className="text-[11px] leading-4 text-slate-600">
+          <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger-500 align-middle" aria-hidden />
+          {withoutReviewer.toLocaleString("en-PH")} {withoutReviewer === 1 ? "has" : "have"} no reviewer
+          {" — cannot submit"}
+          {canAssignReviewers && (
+            <>
+              {" · "}
+              <Link href="/admin/users" className="whitespace-nowrap font-medium text-green-600 hover:text-green-700">
+                Assign reviewers
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-1">
+        {items.map((o) => (
+          <NotStartedChip key={o.officeId} office={o} href={searchHref(o.officeId)} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function NotStartedChip({ office, href }: { office: OfficeSummary; href: string }) {
   const cannotSubmit = office.reviewerName == null;
   return (
     <Link
       href={href}
-      title={`${office.officeName} — open in AIP Review`}
-      className="flex items-center justify-between gap-1.5 border border-slate-200 bg-white px-2 py-1 hover:border-green-600"
+      title={`${office.officeName} · ${plural(office.assignedProgramCount, "program", "programs")}${
+        cannotSubmit ? " · no reviewer — cannot submit" : ""
+      } — open in AIP Review`}
+      className="inline-flex items-center gap-1.5 border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:border-green-600"
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span className="truncate text-xs font-medium text-slate-800">{office.officeCode}</span>
-        {office.isHostOffice && <HostBadge />}
-      </span>
-      <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] leading-4 text-slate-600 tabular-nums">
-        {office.assignedProgramCount.toLocaleString("en-PH")} prog.
-        {/* Always rendered, so the program counts line up whether or not the dot shows. */}
-        <span
-          className={`inline-block h-1.5 w-1.5 rounded-full ${cannotSubmit ? "bg-danger-500" : ""}`}
-          aria-label={cannotSubmit ? "No reviewer — cannot submit" : undefined}
-        />
-      </span>
+      {office.officeCode}
+      {office.isHostOffice && <HostBadge />}
+      {cannotSubmit && (
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-danger-500" aria-label="No reviewer — cannot submit" />
+      )}
     </Link>
   );
 }
@@ -210,13 +247,22 @@ export function OfficeBoardSkeleton() {
         {COLUMNS.map((col, i) => (
           <div key={col.key} className="flex flex-col gap-2">
             <span className={HEADING}>{col.title}</span>
-            <div className={LANE}>
-              {Array.from({ length: i === 0 ? 4 : 2 }).map((_, r) => (
-                <div
-                  key={r}
-                  className={`${i === 0 ? "h-7" : "h-[118px]"} animate-pulse border border-slate-100 bg-white`}
-                />
-              ))}
+            <div className={col.key === "PpdoReview" ? LANE_PPDO : LANE}>
+              {i === 0 ? (
+                // The wrapped chip run: a no-reviewer line, then a handful of chips.
+                <>
+                  <div className="h-4 w-3/4 animate-pulse bg-white" />
+                  <div className="flex flex-wrap gap-1">
+                    {Array.from({ length: 8 }).map((_, r) => (
+                      <div key={r} className="h-7 w-14 animate-pulse border border-slate-100 bg-white" />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                Array.from({ length: 2 }).map((_, r) => (
+                  <div key={r} className="h-[118px] animate-pulse border border-slate-100 bg-white" />
+                ))
+              )}
             </div>
           </div>
         ))}

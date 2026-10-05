@@ -60,7 +60,7 @@ import type {
 } from "@/types";
 import Band, { BandEmpty, TableBandSkeleton } from "./Band";
 import BulkCeilingModal from "./BulkCeilingModal";
-import ContextBar, { LockedField } from "./ContextBar";
+import ContextBar from "./ContextBar";
 import DivisionTable from "./DivisionTable";
 import MoneyTiles, { MoneyTilesSkeleton, type MoneyTile } from "./MoneyTiles";
 import OfficeBoard, { OfficeBoardSkeleton } from "./OfficeBoard";
@@ -294,6 +294,12 @@ export default function BudgetPlanningPage() {
     : user?.officeCode && user?.officeName
     ? `${user.officeCode} — ${user.officeName}`
     : user?.officeCode ?? user?.officeName ?? "Your office";
+
+  // PPDO-179 (F8) — the header's one context line. A guest office has no division axis, so it names
+  // the office alone; a host-office user also says which divisions they are looking at.
+  const contextLine = isHost
+    ? `${officeLabel} · ${canManageAllocation ? "All divisions" : user?.division ?? "Unassigned"}`
+    : officeLabel;
 
   /** Office-wide ceiling across every fund. Null when nothing is published at all. */
   const officeCeiling = useMemo<number | null>(() => {
@@ -682,7 +688,11 @@ export default function BudgetPlanningPage() {
           }
         />
       ) : officesView === "board" ? (
-        <OfficeBoard offices={offices} fiscalYear={fiscalYear} />
+        <OfficeBoard
+          offices={offices}
+          fiscalYear={fiscalYear}
+          canAssignReviewers={user?.canManageUsers === true}
+        />
       ) : (
         <OfficeTable
           offices={offices}
@@ -696,36 +706,25 @@ export default function BudgetPlanningPage() {
   return (
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
+        {/* PPDO-179 (F8) — the office and division are stated once, in the line under the title; the
+            fiscal-year picker, the only axis a reader can change, sits in the header's action slot.
+            The locked Office/Division fields and the "FY … · office" repeat line are gone. */}
         <ConfigPageHeader
           title="Investment Planning"
-          description={`FY ${fiscalYear ?? "…"} · ${officeLabel}`}
-        />
-
-        <ContextBar
-          fiscalYear={fiscalYear}
-          availableFiscalYears={availableFiscalYears}
-          fiscalYearDisabled={dashboardLoading || officeLoading}
-          onFiscalYearChange={(fy) => {
-            setFiscalYear(fy);
-            // The office-readiness and offices effects re-run off requestedFiscalYear on their own.
-            // A guest office has no host dashboard to reload.
-            setRequestedFiscalYear(fy);
-            if (isHost) loadDashboard(fy);
-          }}
-          officeField={<LockedField label="Office" value={officeLabel} />}
-          // A guest office gets NO division field — division does not narrow them, and an inert
-          // control would imply it might.
-          divisionField={
-            isHost ? (
-              <LockedField
-                label="Division"
-                value={
-                  canManageAllocation
-                    ? "All divisions"
-                    : user?.division ?? "Unassigned"
-                }
-              />
-            ) : undefined
+          description={contextLine}
+          actions={
+            <ContextBar
+              fiscalYear={fiscalYear}
+              availableFiscalYears={availableFiscalYears}
+              fiscalYearDisabled={dashboardLoading || officeLoading}
+              onFiscalYearChange={(fy) => {
+                setFiscalYear(fy);
+                // The office-readiness and offices effects re-run off requestedFiscalYear on their own.
+                // A guest office has no host dashboard to reload.
+                setRequestedFiscalYear(fy);
+                if (isHost) loadDashboard(fy);
+              }}
+            />
           }
         />
 
@@ -761,7 +760,17 @@ export default function BudgetPlanningPage() {
             <h2 className="text-sm font-semibold text-slate-800 mb-2">
               Ceiling and allocation by fund — FY {fiscalYear ?? "…"}
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* PPDO-179 (F9) — one fund takes the whole row, two share it, three or more keep the
+                three-up grid. A lone card in a three-column grid left two thirds of the row empty. */}
+            <div
+              className={`grid grid-cols-1 gap-3 ${
+                setUpFunds.length === 1
+                  ? ""
+                  : setUpFunds.length === 2
+                  ? "sm:grid-cols-2"
+                  : "sm:grid-cols-2 lg:grid-cols-3"
+              }`}
+            >
               {setUpFunds.map((fund) => (
                 <StackedFundBar
                   key={fund.fundingSourceId}
@@ -779,34 +788,33 @@ export default function BudgetPlanningPage() {
           </div>
         )}
 
-        {/* ── Division table — every office (PPDO-127); empty state when none are
-               configured yet, rather than hiding the band entirely. ───────────── */}
-        <Band
-          title={`Divisions — FY ${fiscalYear ?? "…"}`}
-          description="Click a row to see allocation per fund"
-          loading={isHost ? dashboardLoading : officeLoading}
-          error={isHost ? dashboardError : officeError}
-          onRetry={isHost ? () => loadDashboard(fiscalYear ?? undefined) : loadOfficeDashboard}
-          skeleton={<TableBandSkeleton columns={6} />}
-        >
-          {divisionsForBand.length === 0 ? (
-            <BandEmpty
-              message={
-                isHost
-                  ? `No records for FY ${fiscalYear ?? "—"} yet.`
-                  : "No divisions configured for this office yet."
-              }
-            />
-          ) : (
-            <DivisionTable
-              divisions={divisionsForBand}
-              noDivision={isHost ? dashboard?.noDivision : officeDashboard?.noDivision}
-              canManageAllocation={canManageAllocationForBand}
-              officeId={officeId}
-              fiscalYear={fiscalYear}
-            />
-          )}
-        </Band>
+        {/* ── Division table — every office (PPDO-127). PPDO-179 (F6): a guest office with no
+               divisions gets no band at all — an empty "No divisions configured…" card with a
+               "Click a row" description helped nobody. While its data is loading a guest office
+               also draws nothing: most have no divisions, and a skeleton that then vanished would
+               shift everything below it. The host office keeps its band and its empty state. ───── */}
+        {(isHost || (!officeLoading && divisionsForBand.length > 0)) && (
+          <Band
+            title={`Divisions — FY ${fiscalYear ?? "…"}`}
+            description="Click a row to see allocation per fund"
+            loading={isHost ? dashboardLoading : officeLoading}
+            error={isHost ? dashboardError : officeError}
+            onRetry={isHost ? () => loadDashboard(fiscalYear ?? undefined) : loadOfficeDashboard}
+            skeleton={<TableBandSkeleton columns={6} />}
+          >
+            {divisionsForBand.length === 0 ? (
+              <BandEmpty message={`No records for FY ${fiscalYear ?? "—"} yet.`} />
+            ) : (
+              <DivisionTable
+                divisions={divisionsForBand}
+                noDivision={isHost ? dashboard?.noDivision : officeDashboard?.noDivision}
+                canManageAllocation={canManageAllocationForBand}
+                officeId={officeId}
+                fiscalYear={fiscalYear}
+              />
+            )}
+          </Band>
+        )}
 
         {!isCrossOfficeReviewer && officesBand}
 
