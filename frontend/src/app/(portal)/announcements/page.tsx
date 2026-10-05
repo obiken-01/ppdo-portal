@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import {
   getAnnouncementsManage,
   publishAnnouncement,
@@ -11,7 +11,7 @@ import {
   deleteAnnouncement,
   announcementErrorMessage,
 } from "@/lib/announcements";
-import type { AnnouncementDto, MeResponse } from "@/types";
+import type { AnnouncementDto } from "@/types";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import AnnouncementEditorModal from "@/components/announcements/AnnouncementEditorModal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -60,10 +60,8 @@ export default function AnnouncementsPage() {
   // ── Auth guard (Admin / SuperAdmin only) ──────────────────────────────────
 
   useEffect(() => {
-    api
-      .get<MeResponse>("/auth/me")
-      .then((r) => {
-        const me = r.data;
+    fetchMe()
+      .then((me) => {
         if (me?.role !== "Admin" && me?.role !== "SuperAdmin") {
           router.replace("/dashboard");
           return;

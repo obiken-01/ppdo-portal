@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
+import { fetchMe } from "@/lib/me-cache";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateResourceLinkRequest,
@@ -237,11 +238,11 @@ export default function ResourceLinksPage() {
     setLoading(true);
     setFetchError(null);
     try {
-      const [meRes, linksRes] = await Promise.all([
-        api.get<MeResponse>("/auth/me"),
+      const [meData, linksRes] = await Promise.all([
+        fetchMe(),
         api.get<ResourceLinkCategory[]>("/resource-links"),
       ]);
-      setMe(meRes.data);
+      setMe(meData);
       setCategories(linksRes.data);
     } catch {
       setFetchError("Failed to load resource links. Please try again.");
