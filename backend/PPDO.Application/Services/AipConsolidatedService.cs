@@ -60,7 +60,7 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
                 AipSector.All.Select(s => new AipConsolidatedSectorCountDto(s, 0, 0)).ToList(),
                 [], AipPrintedFigures.Zero, scope.Name));
 
-        IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+        IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(record.Id, ct);
 
         // ⚠️ Every count below reads through the SAME two predicates the rows do, so a scoped report's
         // header cannot disagree with its own grid. For one office that yields 1/1 or 0/1 naturally,
@@ -118,7 +118,7 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
         if (record is null)
             return ServiceResult<AipFormExportFileDto>.NotFound($"FY {fiscalYear} has not been opened.");
 
-        IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+        IReadOnlyList<AipOffice> groups = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(record.Id, ct);
 
         // The same two predicates the grid uses — a one-office workbook is the consolidated one with
         // a narrower set of groups, not a second way of building a sheet.
@@ -177,11 +177,11 @@ public sealed class AipConsolidatedService : IAipConsolidatedService
         if (groups.Count == 0) return AipTree.Empty;
 
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(groups.Select(g => g.Id).ToList(), ct);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(groups.Select(g => g.Id).ToList(), ct);
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programs.Select(p => p.Id).ToList(), ct);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programs.Select(p => p.Id).ToList(), ct);
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(j => j.Id).ToList(), ct);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projects.Select(j => j.Id).ToList(), ct);
         IReadOnlyList<AipActivityFundCodeDto> fundRows =
             await _expRepo.GetFundCodesByAipRecordAsync(aipRecordId, ct);
 

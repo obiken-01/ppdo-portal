@@ -157,7 +157,7 @@ public sealed class AipService : IAipService
             return ServiceResult<AipRecordDetailDto>.NotFound($"AIP record {id} not found.");
 
         // Load each hierarchy level scoped to the ids from the level above.
-        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdAsync(id, ct);
+        IReadOnlyList<AipOffice> allOffices = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(id, ct);
 
         // ⚠️ V18-39 — until this ticket, this endpoint returned EVERY office's full AIP hierarchy
         // to any caller with Budget Planning access. No production guest-office accounts existed
@@ -172,13 +172,13 @@ public sealed class AipService : IAipService
             offices = offices.Where(o => o.OfficeId == only).ToList();
 
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct);
+        IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(officeIds, ct);
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
             allPrograms, offices, await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
-        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
+        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
-        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
+        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, ct);
 
         // The form's Funding Source column (7), for every activity in the record, in one query
         // (PPDO-80). Scoped by record rather than by the id list above: it costs the same, and a
@@ -257,17 +257,17 @@ public sealed class AipService : IAipService
         // so leaving it unscoped would defeat scoping the heavier sibling (V18-39).
         AipReadScope scope = AipReadScope.Resolve(caller);
         IReadOnlyList<AipOffice> offices =
-            scope.FilterOffices(await _aipRepo.GetOfficesByAipIdAsync(id, ct));
+            scope.FilterOffices(await _aipRepo.GetOfficesByAipIdNoTrackingAsync(id, ct));
 
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> programs = scope.FilterPrograms(
-            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, ct),
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(officeIds, ct),
             offices,
             await LoadOwnAssignmentsAsync(scope, ct));
         List<int> programIds = programs.Select(p => p.Id).ToList();
-        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
+        IReadOnlyList<AipProject>  projects = await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, ct);
         List<int> projectIds = projects.Select(j => j.Id).ToList();
-        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
+        IReadOnlyList<AipActivity> acts     = await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, ct);
 
         IReadOnlyList<AipOfficeSummaryDto> officeDtos = offices.Select(o =>
         {

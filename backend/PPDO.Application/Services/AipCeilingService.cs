@@ -110,7 +110,7 @@ public sealed class AipCeilingService : IAipCeilingService
         AipRecord? record = await _aipRepo.GetLatestByFiscalYearAsync(fiscalYear, ct);
         if (record is null) return null;
 
-        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdAsync(record.Id, ct);
+        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(record.Id, ct);
 
         // ⚠️ ANY one of the office's group rows gives the office-level answer, because
         // GetStatusAsync sums by CONFIG office across every group row the office owns — that was

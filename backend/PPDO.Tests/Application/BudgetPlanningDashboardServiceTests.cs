@@ -126,15 +126,15 @@ public sealed class BudgetPlanningDashboardServiceTests
     private static Mock<IAipRepository> AipMockWithOffices(int aipRecordId, params AipOffice[] aipOffices)
     {
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(aipRecordId, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(aipRecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)aipOffices);
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         return aipRepo;
@@ -219,13 +219,13 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .FirstOrDefault());
         if (aipRepoMock is null)
         {
-            aipRepo.Setup(r => r.GetOfficesByAipIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipOffice>)[]);
-            aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-            aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipProject>)[]);
-            aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         }
         // Rollups are set up on EVERY aipRepo, caller-supplied or not: a caller-supplied mock is
@@ -1524,7 +1524,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<Office> offices = [Off(1, "PPDO", refCode: "013")];
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(10, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(10, It.IsAny<CancellationToken>()))
             // Unowned since V18-32: "no matching AIP office" is now a null FK, not a ref code that
             // fails to suffix-match. The test name's "RefCode" is kept for continuity with the
             // behaviour it guards — an office with AIP rows that are not its own sees no AIP.
@@ -1543,13 +1543,13 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<Office> offices = [Off(1, "PPDO", refCode: "013")];
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(10, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[AipOff(100, 10, "3000-000-1-01-013", "Social")]);
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 100 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[AipProg(200, 100, "3000-000-1-01-013-001")]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 200 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)
@@ -1557,7 +1557,7 @@ public sealed class BudgetPlanningDashboardServiceTests
                 AipProj(300, 200, "3000-000-1-01-013-001-001"),
                 AipProj(301, 200, "3000-000-1-01-013-001-002"),
             ]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.OrderBy(x => x).SequenceEqual(new[] { 300, 301 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)
@@ -2215,13 +2215,13 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
         // The office's real hierarchy: one program, one project, two activities worth ₱100 total.
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[AipProg(60, 50, "PROG-1")]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[AipProj(70, 60, "PROJ-1")]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)
             [

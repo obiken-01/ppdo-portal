@@ -571,7 +571,7 @@ public sealed class AipCeilingServiceTests
     {
         _aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = FiscalYear });
-        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(AipRecordId, It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(AipRecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AipOffice>
             {
                 new() { Id = 900, OfficeId = 99, AipRecordId = AipRecordId },          // another office
@@ -614,7 +614,7 @@ public sealed class AipCeilingServiceTests
     {
         _aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AipRecord { Id = AipRecordId, FiscalYear = FiscalYear });
-        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(AipRecordId, It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(AipRecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<AipOffice>
             {
                 new() { Id = 900, OfficeId = 99, AipRecordId = AipRecordId },

@@ -112,11 +112,11 @@ public sealed class PpmpReportServiceTests
 
         aipRepo.Setup(r => r.GetLatestByFiscalYearAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((AipRecord?)null);
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         wfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpActivity>)[]);
@@ -155,13 +155,13 @@ public sealed class PpmpReportServiceTests
         f.Offices.Add(MakeOffice(1, "PPDO", "013"));
         f.AipRepo.Setup(r => r.GetLatestByFiscalYearAsync(FiscalYear, It.IsAny<CancellationToken>()))
             .ReturnsAsync(MakeAip(100, PlanningStatus.Draft));
-        f.AipRepo.Setup(r => r.GetOfficesByAipIdAsync(100, It.IsAny<CancellationToken>()))
+        f.AipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[MakeAipOffice(1, 100, "1000-000-1-01-010-013")]);
-        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.AipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[MakeProgram(1, 1, "1000-000-1-01-010-002")]);
-        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.AipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[MakeProject(10, 1, "1000-000-1-01-010-002-001")]);
-        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.AipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)[MakeActivity(100, 10, "1000-000-1-01-010-002-001-001")]);
         f.WfpRepo.Setup(r => r.GetFilteredAsync(100, 1, divisionId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpRecord>)[

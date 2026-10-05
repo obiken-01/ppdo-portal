@@ -58,18 +58,18 @@ public sealed class PpmpReportService : IPpmpReportService
         if (aipRecord is null)
             return ServiceResult<PpmpReportDto>.NotFound($"No AIP found for fiscal year {fiscalYear}.");
 
-        List<AipOffice> aipOffices = (await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken))
+        List<AipOffice> aipOffices = (await _aipRepo.GetOfficesByAipIdNoTrackingAsync(aipRecord.Id, cancellationToken))
             .Where(o => o.OfficeId == office.Id)
             .ToList();
         if (aipOffices.Count == 0)
             return ServiceResult<PpmpReportDto>.NotFound($"No AIP hierarchy found for {office.OfficeName} under FY {fiscalYear}.");
 
         List<int> aipOfficeIds = aipOffices.Select(o => o.Id).ToList();
-        IReadOnlyList<AipProgram> programs = await _aipRepo.GetProgramsByOfficeIdsAsync(aipOfficeIds, cancellationToken);
+        IReadOnlyList<AipProgram> programs = await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(aipOfficeIds, cancellationToken);
         List<int> programIds = programs.Select(p => p.Id).ToList();
-        IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsAsync(programIds, cancellationToken);
+        IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, cancellationToken);
         List<int> projectIds = projects.Select(p => p.Id).ToList();
-        IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
+        IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, cancellationToken);
 
         // AipActivityId -> every wfp_activity row (all divisions when divisionId is null; one
         // division when provided — RAL-136), then every expenditure, in batched queries.

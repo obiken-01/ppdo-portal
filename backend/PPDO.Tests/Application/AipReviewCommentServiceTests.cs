@@ -73,13 +73,13 @@ public sealed class AipReviewCommentServiceTests
         _aipRepo.Setup(r => r.GetOfficeByIdAsync(GroupA, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _groups.FirstOrDefault(g => g.Id == GroupA));
 
-        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)
                 [new AipProgram { Id = ProgramId, OfficeId = GroupA, RefCode = "…-010-001", Name = "Prog" }]);
-        _aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)
                 [new AipProject { Id = ProjectId, ProgramId = ProgramId, RefCode = "…-010-001-001", Name = "Proj" }]);
-        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _activities);
 
         _repo.Setup(r => r.GetByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))

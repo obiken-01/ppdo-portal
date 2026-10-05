@@ -250,7 +250,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         if (entered && primaryAip is not null && officeRefCode is not null)
         {
-            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct))
+            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct))
                 .Where(o => o.OfficeId == officeId)
                 .Select(o => o.Id)
                 .ToList();
@@ -265,7 +265,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         }
         else if (primaryAip is not null && officeRefCode is not null)
         {
-            IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
+            IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct);
             List<int> hostAipOfficeIds = aipOffices
                 .Where(o => o.OfficeId == officeId)
                 .Select(o => o.Id)
@@ -802,7 +802,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         IReadOnlyList<AipOffice> aipOffices =
-            await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
+            await _aipRepo.GetOfficesByAipIdNoTrackingAsync(aipRecord.Id, cancellationToken);
         List<AipOffice> matched = aipOffices
             .Where(o => o.OfficeId == office.Id)
             .ToList();
@@ -811,13 +811,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         List<int> officeIds = matched.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, cancellationToken);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(officeIds, cancellationToken);
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programIds, cancellationToken);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, cancellationToken);
         List<int> projectIds = projects.Select(p => p.Id).ToList();
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, cancellationToken);
 
         // The office's OWN costed total — deliberately NOT the sum of the per-division rows, which
         // counts a PPA shared by several divisions once per division. See the DTO's own remarks.

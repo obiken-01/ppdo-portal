@@ -51,11 +51,11 @@ public sealed class ExternalAipReadService : IExternalAipReadService
             .ToList();
         List<int> releasedGroupIds = releasedGroups.Select(g => g.Id).ToList();
 
-        IReadOnlyList<AipProgram> programs = await _aip.GetProgramsByOfficeIdsAsync(releasedGroupIds, ct);
+        IReadOnlyList<AipProgram> programs = await _aip.GetProgramsByOfficeIdsNoTrackingAsync(releasedGroupIds, ct);
         IReadOnlyList<AipProject> projects =
-            await _aip.GetProjectsByProgramIdsAsync(programs.Select(p => p.Id).ToList(), ct);
+            await _aip.GetProjectsByProgramIdsNoTrackingAsync(programs.Select(p => p.Id).ToList(), ct);
         IReadOnlyList<AipActivity> activities =
-            await _aip.GetActivitiesByProjectIdsAsync(projects.Select(p => p.Id).ToList(), ct);
+            await _aip.GetActivitiesByProjectIdsNoTrackingAsync(projects.Select(p => p.Id).ToList(), ct);
 
         bool isFy2028 = state.AipFormat == ExternalAipConstants.FormatFy2028;
 
@@ -290,7 +290,7 @@ public sealed class ExternalAipReadService : IExternalAipReadService
 
         if (!isEntered && record.Status != PlanningStatus.Final) return null;
 
-        IReadOnlyList<AipOffice> allGroups = await _aip.GetOfficesByAipIdAsync(record.Id, ct);
+        IReadOnlyList<AipOffice> allGroups = await _aip.GetOfficesByAipIdNoTrackingAsync(record.Id, ct);
 
         // Legacy AIP office rows with no config office link have no code to address them by and
         // are excluded entirely (docs/external-api/README.md §6).
