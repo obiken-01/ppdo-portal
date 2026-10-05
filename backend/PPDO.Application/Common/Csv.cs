@@ -89,6 +89,21 @@ public static class Csv
         return text.AsSpan(0, sample).Contains('\0');
     }
 
+    /// <summary>Shared 400 message for <see cref="LooksBinary"/> rejections.</summary>
+    public const string NotCsvMessage =
+        "This file is not a CSV (it looks like an Excel .xlsx or other binary file). " +
+        "Export the list as CSV from this page, or save your sheet as CSV, and upload that.";
+
+    /// <summary>
+    /// Returns "{column} is N characters; the limit is M." when <paramref name="value"/> exceeds
+    /// the database column length, else null. Importers call it per row so one oversized cell
+    /// skips that row with a named column instead of failing the whole batch at SaveChanges.
+    /// </summary>
+    public static string? OverLimit(string column, string? value, int max) =>
+        value is not null && value.Length > max
+            ? $"{column} is {value.Length} characters; the limit is {max}."
+            : null;
+
     /// <summary>Writes a header row plus data rows as CSV text (CRLF line endings).</summary>
     public static string Write(IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<string?>> rows)
     {

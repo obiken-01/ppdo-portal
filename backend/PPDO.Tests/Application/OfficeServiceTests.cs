@@ -120,6 +120,35 @@ public sealed class OfficeServiceTests
     }
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (OfficeService sut, _) = Build([]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (OfficeService sut, _) = Build([]);
+
+        string csv =
+            "office_code,office_name,is_active\n" +
+            "OK,Good Office,true\n" +
+            $"{new string('C', 21)},Bad Office,true\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("office_code") && e.Contains("20"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_NewOfficeWithLandingPage_SetsIt()
     {
         List<Office> seed = [];

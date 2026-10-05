@@ -233,9 +233,7 @@ public sealed class PriceIndexService : IPriceIndexService
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
         if (Csv.LooksBinary(csvText))
-            return ServiceResult<CsvImportResult>.BadRequest(
-                "This file is not a CSV (it looks like an Excel .xlsx or other binary file). " +
-                "Export the price index as CSV from this page, or save your sheet as CSV, and upload that.");
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
 
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
@@ -278,10 +276,10 @@ public sealed class PriceIndexService : IPriceIndexService
             // Mirrors PriceIndexItemConfiguration's HasMaxLength — checked here so one oversized
             // cell skips its row with a named column instead of failing the whole batch at SaveChanges.
             string? tooLong =
-                OverLimit("name", name, NameMax) ??
-                OverLimit("unit", unit, UnitMax) ??
-                OverLimit("category", Blank(category), CategoryMax) ??
-                OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
+                Csv.OverLimit("name", name, NameMax) ??
+                Csv.OverLimit("unit", unit, UnitMax) ??
+                Csv.OverLimit("category", Blank(category), CategoryMax) ??
+                Csv.OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
             if (tooLong is not null)
             {
                 skipped++;
@@ -367,11 +365,6 @@ public sealed class PriceIndexService : IPriceIndexService
     private const int UnitMax = 50;
     private const int CategoryMax = 100;
     private const int StockCardNoMax = 50;
-
-    private static string? OverLimit(string column, string? value, int max) =>
-        value is not null && value.Length > max
-            ? $"{column} is {value.Length} characters; the limit is {max}."
-            : null;
 
     private static string Key(string name, string unit) => $"{name}|{unit}";
 

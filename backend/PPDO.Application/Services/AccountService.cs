@@ -206,6 +206,9 @@ public sealed class AccountService : IAccountService
     /// <inheritdoc />
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -233,6 +236,18 @@ public sealed class AccountService : IAccountService
             {
                 skipped++;
                 errors.Add($"Row {i + 1}: account_title and account_number are required.");
+                continue;
+            }
+
+            string? tooLong =
+                Csv.OverLimit("account_title", title.Trim(), 300) ??
+                Csv.OverLimit("account_number", number, 20) ??
+                Csv.OverLimit("normal_balance", Blank(nb), 10) ??
+                Csv.OverLimit("expense_class", Field(f, 5).Trim(), 20);
+            if (tooLong is not null)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {tooLong}");
                 continue;
             }
 

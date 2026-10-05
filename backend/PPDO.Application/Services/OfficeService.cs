@@ -190,6 +190,9 @@ public sealed class OfficeService : IOfficeService
     /// <inheritdoc />
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -225,6 +228,17 @@ public sealed class OfficeService : IOfficeService
             {
                 skipped++;
                 errors.Add($"Row {i + 1}: office_code and office_name are required.");
+                continue;
+            }
+
+            string? tooLong =
+                Csv.OverLimit("office_code", code, 20) ??
+                Csv.OverLimit("office_name", name.Trim(), 200) ??
+                Csv.OverLimit("office_ref_code", refCode, 50);
+            if (tooLong is not null)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {tooLong}");
                 continue;
             }
 
