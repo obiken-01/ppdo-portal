@@ -28,6 +28,8 @@ public interface IUserRepository : IRepository<User>
     /// <summary>
     /// Returns the user whose <see cref="User.RefreshToken"/> matches exactly,
     /// with <see cref="User.Division"/> included. Returns null if no match.
+    /// ⚠️ <paramref name="refreshToken"/> is compared as given: the column holds the SHA-256 hash of the
+    /// token (PPDO-141), so the caller passes the HASH, never the raw cookie value.
     /// The caller is responsible for checking <see cref="User.RefreshTokenExpiry"/>.
     /// </summary>
     Task<User?> FindByRefreshTokenAsync(string refreshToken, CancellationToken cancellationToken = default);
