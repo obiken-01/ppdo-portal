@@ -139,8 +139,20 @@ public sealed class PurchaseRequestServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        // PPDO-188 / O11: CreateAsync resolves every line's stock number in one batch call. Tests
+        // describe the catalogue through GetByStockNoAsync, so the default batch lookup delegates
+        // to those setups (at call time). A test that sets up GetByStockNosAsync itself overrides it.
         repo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ItemMaster>());
+            .Returns(async (IReadOnlyCollection<string> nos, CancellationToken ct) =>
+            {
+                List<ItemMaster> found = [];
+                foreach (string no in nos)
+                {
+                    ItemMaster? m = await repo.Object.GetByStockNoAsync(no, ct);
+                    if (m is not null) found.Add(m);
+                }
+                return (IReadOnlyList<ItemMaster>)found;
+            });
         return repo;
     }
 
