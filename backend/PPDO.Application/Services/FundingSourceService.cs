@@ -364,6 +364,9 @@ public sealed class FundingSourceService : IFundingSourceService
     /// </remarks>
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -392,6 +395,17 @@ public sealed class FundingSourceService : IFundingSourceService
             {
                 skipped++;
                 errors.Add($"Row {i + 1}: code and name are required.");
+                continue;
+            }
+
+            string? tooLong =
+                Csv.OverLimit("code", code, 20) ??
+                Csv.OverLimit("name", name.Trim(), 100) ??
+                Csv.OverLimit("color", Blank(color), 7);
+            if (tooLong is not null)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {tooLong}");
                 continue;
             }
 

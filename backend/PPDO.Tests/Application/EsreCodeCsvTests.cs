@@ -87,6 +87,35 @@ public sealed class EsreCodeCsvTests
 
     /// <summary>The ticket's headline acceptance case: export then re-import changes nothing.</summary>
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (EsreCodeService sut, _, _) = Build([]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (EsreCodeService sut, _, _) = Build([]);
+
+        string csv =
+            "code,name,description,is_active\n" +
+            "OK,Good,,true\n" +
+            $"BAD,{new string('n', 201)},,true\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("name") && e.Contains("200"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_WithItsOwnExport_IsANoOpAndWritesNoAudit()
     {
         List<EsreCode> seed = [Code(1, "SS"), Code(2, "ES", active: false)];

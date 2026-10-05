@@ -202,6 +202,35 @@ public sealed class DivisionServiceTests
     // ── CSV upsert ─────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (DivisionService sut, _) = Build([], [Office1]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml", [Office1]);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (DivisionService sut, _) = Build([], [Office1]);
+
+        string csv =
+            "office_code,code,name\n" +
+            $"{Office1.OfficeCode},OK,Good Division\n" +
+            $"{Office1.OfficeCode},{new string('D', 21)},Bad Division\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv, [Office1]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("code") && e.Contains("20"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_UpsertByNameWithinOffice_CountsNewUpdatedSkipped()
     {
         List<Division> seed = [Div(1, 1, "Administrative Division"), Div(2, 1, "ICT Division")];

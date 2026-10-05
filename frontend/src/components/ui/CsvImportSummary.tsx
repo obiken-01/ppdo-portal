@@ -31,6 +31,7 @@ export interface CsvImportSummaryProps {
 
 export default function CsvImportSummary({ result, onClose }: CsvImportSummaryProps) {
   const hasErrors = result.errors.length > 0;
+  const notes = result.notes ?? [];
 
   return (
     <MessageDialog
@@ -45,6 +46,13 @@ export default function CsvImportSummary({ result, onClose }: CsvImportSummaryPr
           <Stat label="Updated" value={result.updated} tone="blue" />
           <Stat label="Skipped" value={result.skipped} tone="slate" />
         </div>
+        {notes.length > 0 && (
+          <ul className="text-xs text-slate-600 list-disc pl-4 space-y-0.5">
+            {notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        )}
         {hasErrors && (
           <div>
             <p className="text-xs font-semibold text-amber-500 uppercase tracking-wide mb-1">

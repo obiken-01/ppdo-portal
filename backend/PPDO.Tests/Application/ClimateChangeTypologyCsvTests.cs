@@ -86,6 +86,35 @@ public sealed class ClimateChangeTypologyCsvTests
     // ── ImportCsvAsync ────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (ClimateChangeTypologyService sut, _, _) = Build([]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (ClimateChangeTypologyService sut, _, _) = Build([]);
+
+        string csv =
+            "code,name,category,description,is_active\n" +
+            "M1,Good,Mitigation,,true\n" +
+            $"{new string('Z', 21)},Bad,Mitigation,,true\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("Code") && e.Contains("20"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_WithItsOwnExport_IsANoOpAndWritesNoAudit()
     {
         List<ClimateChangeTypology> seed =

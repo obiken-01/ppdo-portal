@@ -26,6 +26,8 @@ export interface CsvImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+  /** Informational lines (not problems) — e.g. "N duplicate rows were merged". */
+  notes?: string[] | null;
 }
 
 /** Status filter for config list endpoints (?active=true|false|all). */

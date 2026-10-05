@@ -31,12 +31,15 @@ public sealed class PriceIndexService : IPriceIndexService
     private readonly IPriceIndexItemRepository _repo;
     private readonly ILogger<PriceIndexService> _logger;
     private readonly IAuditService _audit;
+    private readonly IExcelService _excel;
 
-    public PriceIndexService(IPriceIndexItemRepository repo, ILogger<PriceIndexService> logger, IAuditService audit)
+    public PriceIndexService(
+        IPriceIndexItemRepository repo, ILogger<PriceIndexService> logger, IAuditService audit, IExcelService excel)
     {
         _repo   = repo;
         _logger = logger;
         _audit  = audit;
+        _excel  = excel;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -233,9 +236,7 @@ public sealed class PriceIndexService : IPriceIndexService
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
         if (Csv.LooksBinary(csvText))
-            return ServiceResult<CsvImportResult>.BadRequest(
-                "This file is not a CSV (it looks like an Excel .xlsx or other binary file). " +
-                "Export the price index as CSV from this page, or save your sheet as CSV, and upload that.");
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
 
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
@@ -278,10 +279,10 @@ public sealed class PriceIndexService : IPriceIndexService
             // Mirrors PriceIndexItemConfiguration's HasMaxLength — checked here so one oversized
             // cell skips its row with a named column instead of failing the whole batch at SaveChanges.
             string? tooLong =
-                OverLimit("name", name, NameMax) ??
-                OverLimit("unit", unit, UnitMax) ??
-                OverLimit("category", Blank(category), CategoryMax) ??
-                OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
+                Csv.OverLimit("name", name, NameMax) ??
+                Csv.OverLimit("unit", unit, UnitMax) ??
+                Csv.OverLimit("category", Blank(category), CategoryMax) ??
+                Csv.OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
             if (tooLong is not null)
             {
                 skipped++;
@@ -353,6 +354,150 @@ public sealed class PriceIndexService : IPriceIndexService
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
 
+    /// <inheritdoc />
+    public async Task<ServiceResult<CsvImportResult>> ImportPgomAsync(
+        Stream workbook, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<PriceIndexImportRow> rows;
+        try
+        {
+            rows = _excel.ParsePriceIndexImport(workbook);
+        }
+        catch (ImportParseException ex)
+        {
+            return ServiceResult<CsvImportResult>.BadRequest(
+                "This does not look like a PGOM Items export. " + string.Join(" ", ex.Errors));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read the PGOM price index workbook.");
+            return ServiceResult<CsvImportResult>.BadRequest(
+                "The uploaded file could not be read. Make sure it is an .xlsx file exported from PGOM.");
+        }
+
+        if (rows.Count == 0)
+            return ServiceResult<CsvImportResult>.BadRequest("The file has no item rows.");
+
+        List<string> errors = new();
+        int skipped = 0, truncated = 0, mergedDuplicates = 0;
+
+        // One entry per (name, unit); the last row in the file wins.
+        Dictionary<string, PgomItem> byKey = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexImportRow row in rows)
+        {
+            if (row.Error is not null)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: {row.Error}"); continue;
+            }
+
+            string name = CleanText(row.Description);
+            string unit = CleanText(row.Unit);
+            if (name.Length == 0 || unit.Length == 0)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: description and unit are required."); continue;
+            }
+
+            if (row.Price is null || row.Price < 0)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: price cannot be negative."); continue;
+            }
+
+            if (name.Length > NameMax)
+            {
+                name = name[..NameMax].TrimEnd();
+                truncated++;
+            }
+
+            string? category    = Blank(CleanText(row.AccountName));
+            string? stockCardNo = Blank(CleanText(row.ItemCode));
+            string? tooLong =
+                Csv.OverLimit("unit", unit, UnitMax) ??
+                Csv.OverLimit("account name", category, CategoryMax) ??
+                Csv.OverLimit("item code", stockCardNo, StockCardNoMax);
+            if (tooLong is not null)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: {tooLong}"); continue;
+            }
+
+            string key = Key(name, unit);
+            if (byKey.ContainsKey(key)) mergedDuplicates++;
+            byKey[key] = new PgomItem(name, unit, Math.Round(row.Price.Value, 2, MidpointRounding.AwayFromZero),
+                category, stockCardNo);
+        }
+
+        List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
+        Dictionary<string, PriceIndexItem> existingByKey = all.ToDictionary(
+            p => Key(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
+
+        int created = 0, updated = 0, unchanged = 0;
+        DateTime now = DateTime.UtcNow;
+
+        foreach (PgomItem item in byKey.Values)
+        {
+            if (existingByKey.TryGetValue(Key(item.Name, item.Unit), out PriceIndexItem? existing))
+            {
+                bool priceChanged = existing.UnitPrice != item.Price;
+                bool changed =
+                    priceChanged ||
+                    Blank(existing.Category) != item.Category ||
+                    Blank(existing.StockCardNo) != item.StockCardNo;
+                if (!changed) { unchanged++; continue; }
+
+                existing.UnitPrice   = item.Price;
+                if (priceChanged) existing.PriceUpdatedAt = now;
+                existing.Category    = item.Category;
+                existing.StockCardNo = item.StockCardNo;
+                existing.UpdatedAt   = now;
+                await _repo.UpdateAsync(existing, cancellationToken);
+                updated++;
+            }
+            else
+            {
+                await _repo.AddAsync(new PriceIndexItem
+                {
+                    Name           = item.Name,
+                    Unit           = item.Unit,
+                    UnitPrice      = item.Price,
+                    Category       = item.Category,
+                    StockCardNo    = item.StockCardNo,
+                    PriceUpdatedAt = now,
+                    IsActive       = true,
+                    DaysEnabled    = false,
+                    CreatedAt      = now,
+                    UpdatedAt      = now,
+                }, cancellationToken);
+                created++;
+            }
+        }
+
+        await _repo.SaveChangesAsync(cancellationToken);
+
+        // Informational lines - not invalid rows, so they stay out of Errors.
+        List<string> notes = new();
+        if (mergedDuplicates > 0)
+            notes.Add($"{mergedDuplicates} rows repeated an item already in the file (same name and unit, usually under another account) and were merged; the last row was used.");
+        if (truncated > 0)
+            notes.Add($"{truncated} names were longer than {NameMax} characters and were shortened.");
+
+        _logger.LogInformation(
+            "Price index PGOM workbook imported. New: {New}, Updated: {Updated}, Unchanged: {Unchanged}, Skipped: {Skipped}, Merged: {Merged}, Truncated: {Truncated}",
+            created, updated, unchanged, skipped, mergedDuplicates, truncated);
+        return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped + unchanged, errors, notes));
+    }
+
+    private sealed record PgomItem(string Name, string Unit, decimal Price, string? Category, string? StockCardNo);
+
+    /// <summary>
+    /// Flattens a spreadsheet cell to one clean line: strips Excel's literal "_x000d_" escapes,
+    /// turns tabs/line breaks into spaces and collapses runs of whitespace.
+    /// </summary>
+    private static string CleanText(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        string noEscapes = System.Text.RegularExpressions.Regex.Replace(value, "_x[0-9A-Fa-f]{4}_", " ");
+        return System.Text.RegularExpressions.Regex.Replace(noEscapes, @"\s+", " ").Trim();
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? ValidateFields(string name, string unit, decimal unitPrice)
@@ -367,11 +512,6 @@ public sealed class PriceIndexService : IPriceIndexService
     private const int UnitMax = 50;
     private const int CategoryMax = 100;
     private const int StockCardNoMax = 50;
-
-    private static string? OverLimit(string column, string? value, int max) =>
-        value is not null && value.Length > max
-            ? $"{column} is {value.Length} characters; the limit is {max}."
-            : null;
 
     private static string Key(string name, string unit) => $"{name}|{unit}";
 

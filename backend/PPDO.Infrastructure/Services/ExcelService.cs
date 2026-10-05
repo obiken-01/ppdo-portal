@@ -917,6 +917,78 @@ public sealed class ExcelService : IExcelService, IWfpExcelService
         };
     }
 
+    // ── ParsePriceIndexImport ─────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public IReadOnlyList<PriceIndexImportRow> ParsePriceIndexImport(Stream stream)
+    {
+        using XLWorkbook wb = new(stream);
+        IXLWorksheet ws = wb.Worksheets.First();
+
+        // Locate columns by header text rather than position — the PGOM export has added and
+        // reordered columns before, and a positional read would silently put prices in the wrong place.
+        Dictionary<string, int> columns = new(StringComparer.OrdinalIgnoreCase);
+        int lastColumn = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+        for (int c = 1; c <= lastColumn; c++)
+        {
+            string header = ws.Cell(1, c).GetString().Trim();
+            if (header.Length > 0) columns.TryAdd(header, c);
+        }
+
+        List<string> missing = new();
+        foreach (string required in new[] { "Description", "Unit", "Price" })
+            if (!columns.ContainsKey(required)) missing.Add($"Missing required column '{required}'.");
+        if (missing.Count > 0)
+            throw new ImportParseException(missing);
+
+        int itemCodeCol    = columns.GetValueOrDefault("Item Code");
+        int accountNameCol = columns.GetValueOrDefault("Account Name");
+        int descriptionCol = columns["Description"];
+        int unitCol        = columns["Unit"];
+        int priceCol       = columns["Price"];
+
+        List<PriceIndexImportRow> rows = new();
+        int lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+        for (int row = 2; row <= lastRow; row++)
+        {
+            string description = ws.Cell(row, descriptionCol).GetString();
+            string unit        = ws.Cell(row, unitCol).GetString();
+            IXLCell priceCell  = ws.Cell(row, priceCol);
+            string priceRaw    = priceCell.GetString().Trim();
+            string itemCode    = itemCodeCol    > 0 ? ws.Cell(row, itemCodeCol).GetString()    : string.Empty;
+            string accountName = accountNameCol > 0 ? ws.Cell(row, accountNameCol).GetString() : string.Empty;
+
+            // Skip fully blank rows (trailing formatting, spacer rows) rather than reporting them.
+            if (string.IsNullOrWhiteSpace(description) && string.IsNullOrWhiteSpace(unit)
+                && priceRaw.Length == 0 && string.IsNullOrWhiteSpace(itemCode))
+                continue;
+
+            decimal? price = null;
+            string? error = null;
+            if (priceCell.TryGetValue(out double numeric))
+                price = (decimal)numeric;
+            else if (priceRaw.Length > 0
+                     && decimal.TryParse(priceRaw, System.Globalization.NumberStyles.Number,
+                            System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
+                price = parsed;
+            else
+                error = priceRaw.Length == 0 ? "Price is required." : $"Price '{priceRaw}' is not a valid number.";
+
+            rows.Add(new PriceIndexImportRow
+            {
+                RowNumber   = row,
+                ItemCode    = itemCode,
+                Description = description,
+                AccountName = accountName,
+                Unit        = unit,
+                Price       = price,
+                Error       = error,
+            });
+        }
+
+        return rows;
+    }
+
     // ── ParseStockBalanceImport ───────────────────────────────────────────────
 
     /// <inheritdoc />
