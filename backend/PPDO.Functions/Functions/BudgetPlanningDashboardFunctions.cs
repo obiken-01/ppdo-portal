@@ -168,7 +168,7 @@ public sealed class BudgetPlanningDashboardFunctions
             await ResolveOfficeDivisionScopeAsync(caller!, officeId, cancellationToken);
 
         OfficeDashboardDto result = await _service.GetOfficeDashboardAsync(
-            officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
+            officeId, fiscalYear, seeAllDivisions, divisionId, caller, cancellationToken);
 
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<OfficeDashboardDto>.Ok(result), cancellationToken);

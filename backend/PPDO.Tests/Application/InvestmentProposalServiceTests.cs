@@ -511,6 +511,52 @@ public sealed class InvestmentProposalServiceTests
     public async Task List_Fy2027_Returns400()
         => Assert.Equal(ServiceErrorCode.BadRequest, (await _sut.ListAsync(2027, null, null, 1, 25, _encoder)).Code);
 
+    // ── Dashboard counts (PPDO-180) ───────────────────────────────────────────
+
+    [Fact]
+    public async Task GetOfficeSummary_GuestCallerAskingForAnotherOffice_GetsTheirOwnOfficesCounts()
+    {
+        // The list's scope exactly: the office pin applies to the counts too. Red-tested by passing
+        // the requested officeId through unclamped, which queries the other office.
+        _store.Counts.AddRange([new(GuestOffice, "Final", 2), new(GuestOffice, "Draft", 1), new(GuestOffice, null, 3)]);
+        _store.Attention.AddRange([new(Project, "001", "Seed Support", null, null), new(OtherProject, "002", "Training", 9, "Draft")]);
+
+        OfficeProposalSummaryDto? summary = await _sut.GetOfficeSummaryAsync(OtherOffice, 2028, _encoder);
+
+        Assert.Equal([AipOfficeId], _store.LastQuery!.AipOfficeIds);
+        Assert.Equal(new ProposalCountsDto(2, 1, 3), summary!.Counts);
+        Assert.Equal(["None", "Draft"], summary.NeedsAttention.Select(a => a.Status).ToList());
+        Assert.Equal(InvestmentProposalService.AttentionCount, _store.LastTake);
+    }
+
+    [Fact]
+    public async Task GetOfficeSummary_Fy2027_IsNull_AndNeverQueries()
+    {
+        Assert.Null(await _sut.GetOfficeSummaryAsync(GuestOffice, 2027, _encoder));
+        Assert.Null(_store.LastQuery);
+    }
+
+    [Fact]
+    public async Task CountByOffice_Reviewer_CountsEveryOffice_KeyedByConfigOffice()
+    {
+        _store.Counts.AddRange([new(GuestOffice, "Final", 2), new(GuestOffice, null, 1),
+                                new(OtherOffice, "Draft", 4), new(null, "Final", 9)]);
+
+        IReadOnlyDictionary<int, ProposalCountsDto> counts = await _sut.CountByOfficeAsync(2028, _reviewer);
+
+        Assert.Null(_store.LastQuery!.AipOfficeIds);   // no office filter: every office
+        Assert.Equal(new ProposalCountsDto(2, 0, 1), counts[GuestOffice]);
+        Assert.Equal(new ProposalCountsDto(0, 4, 0), counts[OtherOffice]);
+        Assert.Equal(2, counts.Count);                 // an unmatched AIP office is no dashboard row
+    }
+
+    [Fact]
+    public async Task CountByOffice_GuestCaller_CountsOnlyTheirOwnOffice()
+    {
+        await _sut.CountByOfficeAsync(2028, _encoder);
+        Assert.Equal([AipOfficeId], _store.LastQuery!.AipOfficeIds);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<int> CreateAsync() => (await _sut.CreateAsync(Project, _encoder)).Value!.Id;
@@ -560,6 +606,26 @@ public sealed class InvestmentProposalServiceTests
         {
             LastQuery = query;
             return Task.FromResult(new ProposalProjectPage([], 0));
+        }
+
+        /// <summary>PPDO-180 — what the next count answers; the query is captured like the list's.</summary>
+        public List<ProposalStatusCount> Counts { get; } = [];
+        public List<ProposalAttentionRow> Attention { get; } = [];
+        public int? LastTake { get; private set; }
+
+        public Task<IReadOnlyList<ProposalStatusCount>> CountByOfficeAndStatusAsync(
+            ProposalProjectQuery query, CancellationToken ct = default)
+        {
+            LastQuery = query;
+            return Task.FromResult<IReadOnlyList<ProposalStatusCount>>(Counts);
+        }
+
+        public Task<IReadOnlyList<ProposalAttentionRow>> ListNeedingAttentionAsync(
+            ProposalProjectQuery query, int take, CancellationToken ct = default)
+        {
+            LastQuery = query;
+            LastTake = take;
+            return Task.FromResult<IReadOnlyList<ProposalAttentionRow>>(Attention.Take(take).ToList());
         }
 
         public Task<bool> ExistsForAnyProjectAsync(IReadOnlyList<int> ids, CancellationToken ct = default)

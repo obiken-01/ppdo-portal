@@ -94,10 +94,10 @@ public sealed class BudgetPlanningDashboardFunctionsTests
     private void ExpectOfficeDashboard(Action<int, bool, int?> capture)
     {
         _service.Setup(s => s.GetOfficeDashboardAsync(
-                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Callback((int officeId, int _, bool seeAll, int? divisionId, CancellationToken _) =>
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()))
+            .Callback((int officeId, int _, bool seeAll, int? divisionId, User? _, CancellationToken _) =>
                 capture(officeId, seeAll, divisionId))
-            .ReturnsAsync((int officeId, int _, bool _, int? _, CancellationToken _) => MakeOfficeDashboard(officeId));
+            .ReturnsAsync((int officeId, int _, bool _, int? _, User? _, CancellationToken _) => MakeOfficeDashboard(officeId));
     }
 
     private void ExpectRecentActivity(Action<int?> captureOfficeId)
@@ -126,7 +126,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Office clamp — GetOfficeDashboard (RAL-229, the IDOR) ──────────────────
@@ -209,7 +209,7 @@ public sealed class BudgetPlanningDashboardFunctionsTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         _service.Verify(s => s.GetOfficeDashboardAsync(
-            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── Division scope — GetOfficeDashboard's per-division breakdown (PPDO-126, PPDO-127) ─────
@@ -471,8 +471,8 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         SetupDefaultFiscalYear();
         int? requestedYear = null;
         _service.Setup(s => s.GetOfficeDashboardAsync(
-                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Callback((int _, int fy, bool _, int? _, CancellationToken _) => requestedYear = fy)
+                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int fy, bool _, int? _, User? _, CancellationToken _) => requestedYear = fy)
             .ReturnsAsync(MakeOfficeDashboard(OwnOffice));
 
         HttpResponseData response = await Sut.GetOfficeDashboard(
@@ -483,6 +483,24 @@ public sealed class BudgetPlanningDashboardFunctionsTests
     }
 
     [Fact]
+    public async Task GetOfficeDashboard_PassesTheCaller_SoTheProposalBandIsCountedInTheirScope()
+    {
+        // PPDO-180 — without the caller the service leaves the proposal band out, silently.
+        User caller = MakeUser(OwnOffice);
+        Authenticate(caller);
+        User? passed = null;
+        _service.Setup(s => s.GetOfficeDashboardAsync(
+                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int _, bool _, int? _, User? u, CancellationToken _) => passed = u)
+            .ReturnsAsync(MakeOfficeDashboard(OwnOffice));
+
+        await Sut.GetOfficeDashboard(
+            OfficeDashboardRequest($"officeId={OwnOffice}&fiscalYear={FiscalYear}"), CancellationToken.None);
+
+        Assert.Same(caller, passed);
+    }
+
+    [Fact]
     public async Task GetOfficeDashboard_ExplicitFiscalYear_WinsAndNeverResolvesTheDefault()
     {
         // The strict mock throws if GetFiscalYearsAsync is called: a year in the URL always wins.
@@ -490,8 +508,8 @@ public sealed class BudgetPlanningDashboardFunctionsTests
         Authenticate(caller);
         int? requestedYear = null;
         _service.Setup(s => s.GetOfficeDashboardAsync(
-                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .Callback((int _, int fy, bool _, int? _, CancellationToken _) => requestedYear = fy)
+                OwnOffice, It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<User?>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int fy, bool _, int? _, User? _, CancellationToken _) => requestedYear = fy)
             .ReturnsAsync(MakeOfficeDashboard(OwnOffice));
 
         await Sut.GetOfficeDashboard(

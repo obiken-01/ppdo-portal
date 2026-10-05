@@ -129,5 +129,9 @@ public record OfficeDashboardDto(
     OfficeAipSummaryDto Aip,
     IReadOnlyList<DivisionSummaryDto> ByDivision,
     // PPDO-150: see PpdoDashboardDto.NoDivision. Same rule, for a department head's own office.
-    DivisionSummaryDto? NoDivision = null
+    DivisionSummaryDto? NoDivision = null,
+    // PPDO-180 — the Investment proposals band, in exactly the Investment Proposals list's scope.
+    // Null for FY2027 and earlier or a year with no AIP record (the band hides), and when no caller
+    // was given.
+    PPDO.Application.DTOs.InvestmentProposal.OfficeProposalSummaryDto? Proposals = null
 );

@@ -54,6 +54,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IAipDivisionSubmissionRepository _divisionSubmissionRepo;
     private readonly RecentActivityDescriber        _activityDescriber;
     private readonly IAipReviewCommentRepository    _commentRepo;
+    private readonly IInvestmentProposalService     _proposalService;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -73,7 +74,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IInvestmentPlanningSettingsRepository settingsRepo,
         IAipDivisionSubmissionRepository divisionSubmissionRepo,
         RecentActivityDescriber        activityDescriber,
-        IAipReviewCommentRepository    commentRepo)
+        IAipReviewCommentRepository    commentRepo,
+        IInvestmentProposalService     proposalService)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -93,6 +95,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _divisionSubmissionRepo = divisionSubmissionRepo;
         _activityDescriber      = activityDescriber;
         _commentRepo            = commentRepo;
+        _proposalService        = proposalService;
     }
 
     /// <inheritdoc />
@@ -548,6 +551,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 aip.Id, officeIds, rollups.Select(r => (r.AipOfficeId, r.OfficeId)).ToList(), ct)
             : [];
 
+        // PPDO-180 — proposal counts for the all-offices card: one grouped query for every office,
+        // only for a cross-office reviewer (it is their card; a ceiling-only budget officer has none).
+        IReadOnlyDictionary<int, PPDO.Application.DTOs.InvestmentProposal.ProposalCountsDto>? proposalCounts =
+            canReviewAllOffices && entered
+                ? await _proposalService.CountByOfficeAsync(fiscalYear, caller, ct)
+                : null;
+
         // One grouped query for every office (not the per-office ceiling read in a loop).
         Dictionary<int, decimal> gfCostedByOffice = [];
         if (entered && aip is not null && gfId is int generalFundId)
@@ -592,7 +602,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
                 figures.ProgramCount,
                 divisionProgress.TryGetValue(office.Id, out DivisionProgress p) ? p.Submitted : null,
-                divisionProgress.TryGetValue(office.Id, out DivisionProgress q) ? q.Required : null));
+                divisionProgress.TryGetValue(office.Id, out DivisionProgress q) ? q.Required : null,
+                // PPDO-180 — reviewers only; an office with no projects in scope has no entry.
+                proposalCounts?.GetValueOrDefault(office.Id)));
         }
 
         return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(rows);
@@ -699,7 +711,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// <inheritdoc />
     public async Task<OfficeDashboardDto> GetOfficeDashboardAsync(
         int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
-        CancellationToken cancellationToken = default)
+        User? caller = null, CancellationToken cancellationToken = default)
     {
         AllocationSetupSummaryDto allocation =
             await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
@@ -710,7 +722,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         (IReadOnlyList<DivisionSummaryDto> byDivision, DivisionSummaryDto? noDivision) =
             await BuildOfficeDivisionsAsync(officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
-        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision, noDivision);
+        // PPDO-180 — the proposal band, counted by the proposal service in the list's own scope so
+        // the band and the Investment Proposals list can never disagree.
+        PPDO.Application.DTOs.InvestmentProposal.OfficeProposalSummaryDto? proposals = caller is null
+            ? null
+            : await _proposalService.GetOfficeSummaryAsync(officeId, fiscalYear, caller, cancellationToken);
+
+        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision, noDivision, proposals);
     }
 
     /// <summary>
