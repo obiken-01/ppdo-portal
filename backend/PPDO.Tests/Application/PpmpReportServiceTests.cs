@@ -94,8 +94,8 @@ public sealed class PpmpReportServiceTests
         Mock<IAipRepository> aipRepo = new();
         Mock<IWfpRepository> wfpRepo = new();
         Mock<IWfpExpenditureService> expenditures = new();
-        Mock<IRepository<Office>> officeRepo = new();
-        Mock<IRepository<Division>> divisionRepo = new();
+        Mock<IOfficeRepository> officeRepo = new();
+        Mock<IDivisionRepository> divisionRepo = new();
         Mock<IPriceIndexItemRepository> priceRepo = new();
 
         List<Office> offices = [];
@@ -104,8 +104,12 @@ public sealed class PpmpReportServiceTests
 
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (IReadOnlyList<Office>)offices);
+        officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await officeRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (IReadOnlyList<Division>)divisions);
+        divisionRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await divisionRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         priceRepo.Setup(r => r.GetByIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .Returns((IReadOnlyList<int> ids, CancellationToken _) =>
                 Task.FromResult((IReadOnlyList<PriceIndexItem>)priceItems.Where(p => ids.Contains(p.Id)).ToList()));

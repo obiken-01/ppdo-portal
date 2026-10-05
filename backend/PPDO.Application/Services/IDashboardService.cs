@@ -5,7 +5,7 @@ using PPDO.Domain.Entities;
 namespace PPDO.Application.Services;
 
 /// <summary>
-/// Dashboard data — calendar events and stat card counts.
+/// Dashboard data — calendar events.
 /// Implemented in <c>DashboardService.cs</c>.
 /// </summary>
 public interface IDashboardService
@@ -81,11 +81,4 @@ public interface IDashboardService
         Guid id,
         UpdateCalendarEventDto dto,
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Returns grouped stat card counts for the Main Dashboard:
-    ///   - PR counts by status
-    ///   - Item master counts
-    /// </summary>
-    Task<DashboardStatsDto> GetStatsAsync(CancellationToken cancellationToken = default);
 }

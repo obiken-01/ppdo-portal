@@ -136,7 +136,7 @@ public sealed class AipRefCodeConcurrencyTests
                 return 1;
             });
 
-        Mock<IRepository<FundingSource>> fsRepo = new();
+        Mock<IFundingSourceRepository> fsRepo = new();
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<FundingSource>)[]);
 

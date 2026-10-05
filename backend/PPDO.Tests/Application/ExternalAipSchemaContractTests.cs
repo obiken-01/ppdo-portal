@@ -92,7 +92,7 @@ public sealed class ExternalAipSchemaContractTests
         Mock<IAipExpenditureRepository> expenditures = new();
         Mock<IAuditRepository> audit = new();
         Mock<IOfficeRepository> offices = new();
-        Mock<IRepository<FundingSource>> fundingSources = new();
+        Mock<IFundingSourceRepository> fundingSources = new();
         Mock<IPriceIndexItemRepository> priceIndexItems = new();
 
         AipRecord record = new() { Id = 1, FiscalYear = 2028, Status = PlanningStatus.Draft, EntrySource = "Manual", UploadedAt = DateTime.UtcNow };
@@ -159,7 +159,7 @@ public sealed class ExternalAipSchemaContractTests
         Mock<IAipExpenditureRepository> expenditures = new();
         Mock<IAuditRepository> audit = new();
         Mock<IOfficeRepository> offices = new();
-        Mock<IRepository<FundingSource>> fundingSources = new();
+        Mock<IFundingSourceRepository> fundingSources = new();
         Mock<IPriceIndexItemRepository> priceIndexItems = new();
 
         AipRecord record = new() { Id = 2, FiscalYear = 2027, Status = PlanningStatus.Final, EntrySource = "Upload", UploadedAt = DateTime.UtcNow };

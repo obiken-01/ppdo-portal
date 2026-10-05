@@ -65,9 +65,9 @@ public sealed class PurchaseRequestServiceTests
     };
 
     // Divisions repo for name → id resolution during create/update.
-    private static Mock<IRepository<Division>> DivisionsRepo()
+    private static Mock<IDivisionRepository> DivisionsRepo()
     {
-        Mock<IRepository<Division>> repo = new();
+        Mock<IDivisionRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -139,8 +139,20 @@ public sealed class PurchaseRequestServiceTests
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
+        // PPDO-188 / O11: CreateAsync resolves every line's stock number in one batch call. Tests
+        // describe the catalogue through GetByStockNoAsync, so the default batch lookup delegates
+        // to those setups (at call time). A test that sets up GetByStockNosAsync itself overrides it.
         repo.Setup(r => r.GetByStockNosAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ItemMaster>());
+            .Returns(async (IReadOnlyCollection<string> nos, CancellationToken ct) =>
+            {
+                List<ItemMaster> found = [];
+                foreach (string no in nos)
+                {
+                    ItemMaster? m = await repo.Object.GetByStockNoAsync(no, ct);
+                    if (m is not null) found.Add(m);
+                }
+                return (IReadOnlyList<ItemMaster>)found;
+            });
         return repo;
     }
 
@@ -161,7 +173,7 @@ public sealed class PurchaseRequestServiceTests
         Mock<IExcelService>? excelService = null,
         Mock<IPdfService>? pdfService = null,
         Mock<IAccountService>? accountService = null,
-        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IDivisionRepository>? divisionRepo = null,
         Mock<IOfficeRepository>? officeRepo = null,
         Mock<IAuditService>? auditService = null)
         => new(
@@ -842,7 +854,7 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task CreateAsync_DivisionNameOwnedByAnotherOffice_IsNotResolved()
     {
-        Mock<IRepository<Division>> divisions = new();
+        Mock<IDivisionRepository> divisions = new();
         divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -875,7 +887,7 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task CreateAsync_InactiveDivision_IsNotResolved()
     {
-        Mock<IRepository<Division>> divisions = new();
+        Mock<IDivisionRepository> divisions = new();
         divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {

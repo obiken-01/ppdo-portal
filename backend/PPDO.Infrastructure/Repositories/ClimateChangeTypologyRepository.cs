@@ -26,4 +26,8 @@ public sealed class ClimateChangeTypologyRepository
 
         return await q.CountAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<ClimateChangeTypology?> GetByIntIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<ClimateChangeTypology>().FirstOrDefaultAsync(x => x.Id == id, ct);
 }

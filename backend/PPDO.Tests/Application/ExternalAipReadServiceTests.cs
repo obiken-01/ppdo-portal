@@ -52,7 +52,7 @@ public sealed class ExternalAipReadServiceTests
         public Mock<IAipExpenditureRepository> Expenditures { get; } = new();
         public Mock<IAuditRepository> Audit { get; } = new();
         public Mock<IOfficeRepository> Offices { get; } = new();
-        public Mock<IRepository<FundingSource>> FundingSources { get; } = new();
+        public Mock<IFundingSourceRepository> FundingSources { get; } = new();
         public Mock<IPriceIndexItemRepository> PriceIndexItems { get; } = new();
 
         public Fixture()

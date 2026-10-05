@@ -24,16 +24,16 @@ public sealed class PpmpReportService : IPpmpReportService
     private readonly IAipRepository            _aipRepo;
     private readonly IWfpRepository            _wfpRepo;
     private readonly IWfpExpenditureService    _expenditures;
-    private readonly IRepository<Office>       _officeRepo;
-    private readonly IRepository<Division>     _divisionRepo;
+    private readonly IOfficeRepository       _officeRepo;
+    private readonly IDivisionRepository     _divisionRepo;
     private readonly IPriceIndexItemRepository _priceIndexRepo;
 
     public PpmpReportService(
         IAipRepository            aipRepo,
         IWfpRepository            wfpRepo,
         IWfpExpenditureService    expenditures,
-        IRepository<Office>       officeRepo,
-        IRepository<Division>     divisionRepo,
+        IOfficeRepository       officeRepo,
+        IDivisionRepository     divisionRepo,
         IPriceIndexItemRepository priceIndexRepo)
     {
         _aipRepo        = aipRepo;
@@ -48,7 +48,7 @@ public sealed class PpmpReportService : IPpmpReportService
     public async Task<ServiceResult<PpmpReportDto>> GetReportAsync(
         int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default)
     {
-        Office? office = (await _officeRepo.GetAllAsync(cancellationToken)).FirstOrDefault(o => o.Id == officeId);
+        Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office is null)
             return ServiceResult<PpmpReportDto>.NotFound($"Office {officeId} not found.");
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))
@@ -113,8 +113,7 @@ public sealed class PpmpReportService : IPpmpReportService
 
         string? divisionName = null;
         if (divisionId is int did)
-            divisionName = (await _divisionRepo.GetAllAsync(cancellationToken))
-                .FirstOrDefault(d => d.Id == did)?.Name;
+            divisionName = (await _divisionRepo.GetByIntIdAsync(did, cancellationToken))?.Name;
 
         return ServiceResult<PpmpReportDto>.Ok(new PpmpReportDto(
             fiscalYear, office.OfficeCode, office.OfficeName, divisionName, fundSourceReports));

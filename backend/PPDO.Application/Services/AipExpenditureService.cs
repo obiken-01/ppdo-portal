@@ -14,7 +14,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private readonly IAipExpenditureRepository  _expRepo;
     private readonly IAipActivityTotalsService  _totals;
     private readonly IAipCeilingService         _ceiling;
-    private readonly IRepository<Account>       _accountRepo;
+    private readonly IAccountRepository       _accountRepo;
     private readonly IRepository<FundingSource> _fsRepo;
     private readonly IAuditService              _audit;
     private readonly IPermissionService         _permissions;
@@ -27,7 +27,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IAipExpenditureRepository  expRepo,
         IAipActivityTotalsService  totals,
         IAipCeilingService         ceiling,
-        IRepository<Account>       accountRepo,
+        IAccountRepository       accountRepo,
         IRepository<FundingSource> fsRepo,
         IAuditService              audit,
         IPermissionService         permissions,
@@ -343,7 +343,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         line.AccountId = accountId;
         if (accountId is int aid)
         {
-            Account? account = (await _accountRepo.GetAllAsync(ct)).FirstOrDefault(a => a.Id == aid);
+            Account? account = await _accountRepo.GetByIntIdAsync(aid, ct);
             line.AccountNumberSnapshot = account?.AccountNumber;
             line.AccountTitleSnapshot  = account?.AccountTitle;
         }
@@ -441,7 +441,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         AipExpenditure line, int? accountId, decimal total, CancellationToken ct)
     {
         Account? account = accountId is int aid
-            ? (await _accountRepo.GetAllAsync(ct)).FirstOrDefault(a => a.Id == aid)
+            ? await _accountRepo.GetByIntIdAsync(aid, ct)
             : null;
 
         if (account is null)

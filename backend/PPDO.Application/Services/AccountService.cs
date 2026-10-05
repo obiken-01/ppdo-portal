@@ -28,11 +28,11 @@ public sealed class AccountService : IAccountService
     /// <summary>The only 3 values <c>default_nature</c> may hold (case-insensitive on input, canonicalized on save).</summary>
     private static readonly string[] AllowedNatures = { "Procurement", "Non-Procurement", "Combined" };
 
-    private readonly IRepository<Account> _repo;
+    private readonly IAccountRepository _repo;
     private readonly ILogger<AccountService> _logger;
     private readonly IAuditService _audit;
 
-    public AccountService(IRepository<Account> repo, ILogger<AccountService> logger, IAuditService audit)
+    public AccountService(IAccountRepository repo, ILogger<AccountService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
@@ -73,7 +73,7 @@ public sealed class AccountService : IAccountService
     /// <inheritdoc />
     public async Task<ServiceResult<AccountDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        Account? a = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+        Account? a = await _repo.GetByIntIdAsync(id, cancellationToken);
         return a is null
             ? ServiceResult<AccountDto>.NotFound($"Account {id} not found.")
             : ServiceResult<AccountDto>.Ok(MapToDto(a));
@@ -169,7 +169,7 @@ public sealed class AccountService : IAccountService
     /// <inheritdoc />
     public async Task<ServiceResult<AccountDto>> DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
-        Account? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(a => a.Id == id);
+        Account? entity = await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<AccountDto>.NotFound($"Account {id} not found.");
 

@@ -53,7 +53,7 @@ public sealed class ProcurementPresetServiceTests
 
         Mock<IProcurementPresetRepository> repo = new();
         Mock<IRepository<ProcurementPresetItem>> itemRepo = new();
-        Mock<IRepository<Account>> accountRepo = new();
+        Mock<IAccountRepository> accountRepo = new();
         Mock<IPriceIndexItemRepository> priceIndexRepo = new();
         Mock<IAuditService> audit = new();
 

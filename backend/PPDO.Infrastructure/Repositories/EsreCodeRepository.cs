@@ -25,4 +25,8 @@ public sealed class EsreCodeRepository : Repository<EsreCode>, IEsreCodeReposito
 
         return await q.CountAsync(ct);
     }
+
+    /// <inheritdoc />
+    public async Task<EsreCode?> GetByIntIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<EsreCode>().FirstOrDefaultAsync(x => x.Id == id, ct);
 }

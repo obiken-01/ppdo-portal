@@ -879,6 +879,19 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         List<PRItem> items = new(dtoItems.Count);
 
+        // One IN query for every line's stock number, not one lookup per line (O11). Keyed
+        // case-insensitively to match the database collation the per-line lookup used.
+        // Masters auto-created below are deliberately NOT added back: the old per-line lookup
+        // could not see them either (they are unsaved), so behaviour is unchanged.
+        List<string> stockNos = dtoItems
+            .Select(x => x.StockNo?.Trim() ?? string.Empty)
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        Dictionary<string, ItemMaster> mastersByStockNo = (await _items.GetByStockNosAsync(stockNos, cancellationToken))
+            .GroupBy(m => m.StockNo, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
         for (int i = 0; i < dtoItems.Count; i++)
         {
             CreatePRItemDto d = dtoItems[i];
@@ -889,7 +902,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
             if (!string.IsNullOrEmpty(stockNo))
             {
-                ItemMaster? master = await _items.GetByStockNoAsync(stockNo, cancellationToken);
+                mastersByStockNo.TryGetValue(stockNo, out ItemMaster? master);
 
                 if (master is null)
                 {
