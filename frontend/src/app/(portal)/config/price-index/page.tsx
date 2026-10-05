@@ -42,6 +42,7 @@ import {
   deactivatePriceIndexItem,
   exportPriceIndexCsv,
   importPriceIndexCsv,
+  importPriceIndexPgom,
   getPriceIndexPage,
   updatePriceIndexItem,
 } from "@/lib/config";
@@ -68,6 +69,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 type StatusFilter = "Active" | "Inactive" | "All";
+
+/** The picker takes the portal's own CSV and the .xlsx Items export downloaded from PGOM. */
+const IMPORT_ACCEPT =
+  ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function isExcelFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".xlsx");
+}
 
 const STATUS_OPTIONS: StatusFilter[] = ["Active", "Inactive", "All"];
 
@@ -342,8 +351,10 @@ export default function PriceIndexConfigPage() {
     if (!pendingCsv) return;
     setImporting(true);
     try {
-      const text = await pendingCsv.text();
-      const result = await importPriceIndexCsv(text);
+      // PGOM Items exports are .xlsx; everything else is the portal's own CSV.
+      const result = isExcelFile(pendingCsv)
+        ? await importPriceIndexPgom(pendingCsv)
+        : await importPriceIndexCsv(await pendingCsv.text());
       setPendingCsv(null);
       setImportResult(result);
       toast.success(
@@ -353,7 +364,7 @@ export default function PriceIndexConfigPage() {
       await load();
     } catch (err) {
       setPendingCsv(null);
-      toast.error("Import failed", configErrorMessage(err, "The CSV could not be imported."));
+      toast.error("Import failed", configErrorMessage(err, "The file could not be imported."));
     } finally {
       setImporting(false);
     }
@@ -469,7 +480,11 @@ export default function PriceIndexConfigPage() {
                 fetchCsv={exportPriceIndexCsv}
                 onError={(msg) => toast.error("Export failed", msg)}
               />
-              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              <CsvUploadButton
+                label="Upload CSV / Excel"
+                accept={IMPORT_ACCEPT}
+                onSelect={(file) => setPendingCsv(file)}
+              />
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
@@ -661,7 +676,7 @@ export default function PriceIndexConfigPage() {
       {/* ── CSV import confirm ─────────────────────────────────────────────────── */}
       {pendingCsv && (
         <Modal
-          title="Import price index from CSV"
+          title={isExcelFile(pendingCsv) ? "Import price index from PGOM export" : "Import price index from CSV"}
           size="sm"
           onClose={() => !importing && setPendingCsv(null)}
           footer={
@@ -683,11 +698,20 @@ export default function PriceIndexConfigPage() {
               Rows are matched by <span className="font-mono text-xs">name + unit</span>: new
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-600">
-              Expected columns: name, unit, unit_price, category, is_active, days_enabled,
-              stock_card_no. A file without the last column still imports — existing stock card
-              numbers are left untouched.
-            </p>
+            {isExcelFile(pendingCsv) ? (
+              <p className="text-xs text-slate-600">
+                PGOM Items export (.xlsx): Description → name, Unit → unit, Price → unit price,
+                Account Name → category, Item Code → stock card no. The same item listed under
+                several accounts is merged into one (the last row wins), and line breaks in
+                descriptions are cleaned up.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-600">
+                Expected columns: name, unit, unit_price, category, is_active, days_enabled,
+                stock_card_no. A file without the last column still imports — existing stock card
+                numbers are left untouched.
+              </p>
+            )}
           </div>
         </Modal>
       )}

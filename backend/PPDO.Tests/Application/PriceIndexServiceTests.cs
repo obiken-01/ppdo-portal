@@ -30,7 +30,7 @@ public sealed class PriceIndexServiceTests
     };
 
     private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) Build(
-        List<PriceIndexItem> seed, IAuditService? audit = null)
+        List<PriceIndexItem> seed, IAuditService? audit = null, IExcelService? excel = null)
     {
         Mock<IPriceIndexItemRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -116,7 +116,7 @@ public sealed class PriceIndexServiceTests
         repo.Setup(r => r.UpdateAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         return (new PriceIndexService(repo.Object, NullLogger<PriceIndexService>.Instance,
-            audit ?? Mock.Of<IAuditService>()), repo);
+            audit ?? Mock.Of<IAuditService>(), excel ?? Mock.Of<IExcelService>()), repo);
     }
 
     private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo, Mock<IAuditService> audit)
@@ -407,6 +407,160 @@ public sealed class PriceIndexServiceTests
         Assert.Equal(0, result.Value!.New);
         Assert.Equal(1, result.Value.Skipped);
         Assert.Contains("Row 2", result.Value.Errors[0]);
+    }
+
+    // ── PGOM workbook import ──────────────────────────────────────────────────
+
+    private static PriceIndexImportRow Pgom(
+        int row, string code, string description, string account, string unit, decimal? price, string? error = null) =>
+        new()
+        {
+            RowNumber = row, ItemCode = code, Description = description,
+            AccountName = account, Unit = unit, Price = price, Error = error,
+        };
+
+    private static (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo, List<PriceIndexItem> seed) BuildPgom(
+        IReadOnlyList<PriceIndexImportRow> rows, List<PriceIndexItem>? seed = null)
+    {
+        seed ??= [];
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePriceIndexImport(It.IsAny<Stream>())).Returns(rows);
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build(seed, excel: excel.Object);
+        return (sut, repo, seed);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_MapsColumns_AndMergesDuplicateNameUnit_LastRowWins()
+    {
+        (PriceIndexService sut, _, List<PriceIndexItem> seed) = BuildPgom(
+        [
+            Pgom(2, "OSAMFD-1", "Garden Hose (20m)", "Other Supplies", "roll", 6553m),
+            Pgom(3, "CMFD-2",   "Garden Hose (20m)", "Construction Materials", "ROLL", 6600.456m),
+            Pgom(4, "X-3",      "Bond paper",        "Office Supplies", "ream", 250m),
+        ]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.New);
+        Assert.Equal(2, seed.Count);
+        PriceIndexItem hose = seed.Single(p => p.Name == "Garden Hose (20m)");
+        Assert.Equal("CMFD-2", hose.StockCardNo);
+        Assert.Equal("Construction Materials", hose.Category);
+        Assert.Equal(6600.46m, hose.UnitPrice);
+        Assert.True(hose.IsActive);
+        Assert.Contains(result.Value.Notes!, n => n.Contains("1 rows") && n.Contains("merged"));
+        Assert.Empty(result.Value.Errors);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_CleansLineBreaksAndExcelEscapes_FromName()
+    {
+        (PriceIndexService sut, _, List<PriceIndexItem> seed) = BuildPgom(
+        [
+            Pgom(2, "NFE-1", "Certificate of Marriage_x000d__x000d_\nRev. 2016", "Forms", "pad", 240m),
+            Pgom(3, "T-2", "Trauma Bag \t\t\n\tCapacity: 26L", "Medical", "pc", 100m),
+        ]);
+
+        await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Contains(seed, p => p.Name == "Certificate of Marriage Rev. 2016");
+        Assert.Contains(seed, p => p.Name == "Trauma Bag Capacity: 26L");
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_NameOver300_IsTruncatedAndNoted()
+    {
+        (PriceIndexService sut, _, List<PriceIndexItem> seed) = BuildPgom(
+            [Pgom(2, "L-1", new string('a', 500), "Cat", "pc", 10m)]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(300, seed.Single().Name.Length);
+        Assert.Contains(result.Value!.Notes!, n => n.Contains("1 names") && n.Contains("300"));
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_ExistingItem_UpdatesPriceAndKeepsActiveFlags()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper", "ream", 200m, "Old", daysEnabled: true)];
+        seed[0].IsActive = false;
+        (PriceIndexService sut, _, _) = BuildPgom([Pgom(2, "X-3", "bond PAPER", "Office Supplies", "Ream", 250m)], seed);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(1, result.Value!.Updated);
+        Assert.Equal(0, result.Value.New);
+        Assert.Equal(250m, seed.Single().UnitPrice);
+        Assert.Equal("Office Supplies", seed.Single().Category);
+        Assert.False(seed.Single().IsActive);       // the export has no flags — leave them alone
+        Assert.True(seed.Single().DaysEnabled);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_ReimportOfSameFile_ChangesNothing()
+    {
+        List<PriceIndexImportRow> rows = [Pgom(2, "X-3", "Bond paper", "Office Supplies", "ream", 250m)];
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo, _) = BuildPgom(rows);
+        await sut.ImportPgomAsync(new MemoryStream());
+
+        ServiceResult<CsvImportResult> second = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(0, second.Value!.New);
+        Assert.Equal(0, second.Value.Updated);
+        Assert.Equal(1, second.Value.Skipped);
+        repo.Verify(r => r.UpdateAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_BadRows_AreSkippedWithRowNumber_GoodRowsStillImport()
+    {
+        (PriceIndexService sut, _, List<PriceIndexItem> seed) = BuildPgom(
+        [
+            Pgom(2, "A-1", "Good", "Cat", "pc", 5m),
+            Pgom(3, "A-2", "Bad price", "Cat", "pc", null, error: "Price 'abc' is not a valid number."),
+            Pgom(4, "A-3", "Negative", "Cat", "pc", -1m),
+            Pgom(5, "A-4", "", "Cat", "pc", 5m),
+            Pgom(6, new string('c', 51), "Long code", "Cat", "pc", 5m),
+        ]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(4, result.Value.Skipped);
+        Assert.Single(seed);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 4") && e.Contains("negative"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 5"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 6") && e.Contains("item code"));
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_MissingRequiredColumn_ReturnsBadRequestAndWritesNothing()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePriceIndexImport(It.IsAny<Stream>()))
+            .Throws(new ImportParseException(["Missing required column 'Price'."]));
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([], excel: excel.Object);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Price", result.Error!);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ImportPgomAsync_UnreadableFile_ReturnsBadRequest()
+    {
+        Mock<IExcelService> excel = new();
+        excel.Setup(e => e.ParsePriceIndexImport(It.IsAny<Stream>())).Throws(new InvalidDataException("not a zip"));
+        (PriceIndexService sut, _) = Build([], excel: excel.Object);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains(".xlsx", result.Error!);
     }
 
     [Fact]

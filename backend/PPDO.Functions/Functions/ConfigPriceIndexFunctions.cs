@@ -176,6 +176,27 @@ public sealed class ConfigPriceIndexFunctions
         return await ConfigHttp.FromResultAsync(req, result, ct, message: message);
     }
 
+    // ── POST /api/config/price-index/pgom  (upsert from a PGOM Items export, .xlsx) ──
+    [Function("PriceIndexPgomImport")]
+    public async Task<HttpResponseData> ImportPgom(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "config/price-index/pgom")] HttpRequestData req,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
+        if (denied is not null) return denied;
+
+        // ClosedXML needs a seekable stream; the request body is not (same buffering as AIP/LDIP upload).
+        using MemoryStream buffer = new();
+        await req.Body.CopyToAsync(buffer, ct);
+        buffer.Position = 0;
+
+        ServiceResult<CsvImportResult> result = await _priceIndex.ImportPgomAsync(buffer, ct);
+        string? message = result.IsSuccess
+            ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} unchanged or skipped."
+            : null;
+        return await ConfigHttp.FromResultAsync(req, result, ct, message: message);
+    }
+
     // ── PUT /api/config/price-index/{id} ──
     [Function("PriceIndexUpdate")]
     public async Task<HttpResponseData> Update(

@@ -126,6 +126,90 @@ public sealed class ExcelServiceTests
         Assert.NotEmpty(result);
     }
 
+    // ── ParsePriceIndexImport (PGOM Items export) ─────────────────────────────
+
+    private static MemoryStream PgomWorkbook(string[] headers, params object?[][] rows)
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.AddWorksheet("Items");
+        for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
+        for (int r = 0; r < rows.Length; r++)
+            for (int c = 0; c < rows[r].Length; c++)
+            {
+                object? v = rows[r][c];
+                if (v is string s) ws.Cell(r + 2, c + 1).Value = s;
+                else if (v is double d) ws.Cell(r + 2, c + 1).Value = d;
+                else if (v is int i) ws.Cell(r + 2, c + 1).Value = i;
+            }
+        MemoryStream ms = new();
+        wb.SaveAs(ms);
+        ms.Position = 0;
+        return ms;
+    }
+
+    private static readonly string[] PgomHeaders =
+        ["Item Code", "Description", "Account Code", "Account Name", "Unit", "Price"];
+
+    [Fact]
+    public void ParsePriceIndexImport_ReadsPgomColumnsByHeaderName()
+    {
+        using MemoryStream file = PgomWorkbook(PgomHeaders,
+            ["NFE-1", "Ballpen", "5 02 03 010", "Office Supplies", "pc", 12.5],
+            ["NFE-2", "Bond paper", "5 02 03 010", "Office Supplies", "ream", 250]);
+
+        IReadOnlyList<PriceIndexImportRow> rows = _sut.ParsePriceIndexImport(file);
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(2, rows[0].RowNumber);
+        Assert.Equal("NFE-1", rows[0].ItemCode);
+        Assert.Equal("Ballpen", rows[0].Description);
+        Assert.Equal("Office Supplies", rows[0].AccountName);
+        Assert.Equal("pc", rows[0].Unit);
+        Assert.Equal(12.5m, rows[0].Price);
+        Assert.Equal(250m, rows[1].Price);
+        Assert.All(rows, r => Assert.Null(r.Error));
+    }
+
+    [Fact]
+    public void ParsePriceIndexImport_ColumnOrderDoesNotMatter()
+    {
+        using MemoryStream file = PgomWorkbook(["Price", "Unit", "Description"], [99, "box", "Staples"]);
+
+        IReadOnlyList<PriceIndexImportRow> rows = _sut.ParsePriceIndexImport(file);
+
+        Assert.Equal("Staples", rows.Single().Description);
+        Assert.Equal("box", rows.Single().Unit);
+        Assert.Equal(99m, rows.Single().Price);
+    }
+
+    [Fact]
+    public void ParsePriceIndexImport_MissingRequiredColumn_Throws()
+    {
+        using MemoryStream file = PgomWorkbook(["Item Code", "Description", "Unit"], ["A", "Ballpen", "pc"]);
+
+        ImportParseException ex = Assert.Throws<ImportParseException>(() => _sut.ParsePriceIndexImport(file));
+
+        Assert.Contains(ex.Errors, e => e.Contains("Price"));
+    }
+
+    [Fact]
+    public void ParsePriceIndexImport_UnreadablePrice_FlagsRowButKeepsGoingAndSkipsBlankRows()
+    {
+        using MemoryStream file = PgomWorkbook(PgomHeaders,
+            ["A", "Good", "1", "Cat", "pc", 5],
+            ["B", "Bad price", "1", "Cat", "pc", "abc"],
+            [null, null, null, null, null, null],
+            ["C", "After blank", "1", "Cat", "pc", 7]);
+
+        IReadOnlyList<PriceIndexImportRow> rows = _sut.ParsePriceIndexImport(file);
+
+        Assert.Equal(3, rows.Count);
+        Assert.Null(rows[0].Error);
+        Assert.NotNull(rows[1].Error);
+        Assert.Equal(5, rows[2].RowNumber);
+        Assert.Null(rows[2].Error);
+    }
+
     [Fact]
     public void GenerateStockBalanceImportTemplate_ContainsInstructionsSheet()
     {
