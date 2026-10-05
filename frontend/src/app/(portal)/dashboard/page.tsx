@@ -5,7 +5,14 @@ import api from "@/lib/api";
 import { useMe } from "@/lib/me-cache";
 import { getPendingEvents, deleteCalendarEvent } from "@/lib/dashboard";
 import type { CalendarEventResponse } from "@/types";
-import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
+import dynamic from "next/dynamic";
+import DashboardCalendarSkeleton from "@/components/dashboard/DashboardCalendarSkeleton";
+
+// FullCalendar is ~80 kB of this page; load it after first paint behind a same-size skeleton (PPDO-188 / O14).
+const DashboardCalendar = dynamic(() => import("@/components/dashboard/DashboardCalendar"), {
+  ssr: false,
+  loading: () => <DashboardCalendarSkeleton />,
+});
 import ResourceLinksWidget from "@/components/dashboard/ResourceLinksWidget";
 import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel";
 import CreateEventModal from "@/components/dashboard/CreateEventModal";
