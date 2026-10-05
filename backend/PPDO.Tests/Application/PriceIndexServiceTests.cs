@@ -527,6 +527,20 @@ public sealed class PriceIndexServiceTests
     }
 
     [Fact]
+    public async Task ImportPgomAsync_CatalogueItemAlreadyHoldingAnEnDashCode_IsMatchedAndTidied_NotDuplicated()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Roofing nails", "kg", 100m, "Old", stockCardNo: "RAM–BAOS-4100294508")];
+        (PriceIndexService sut, _, _) = BuildPgom(
+            [Pgom(2, "RAM–BAOS-4100294508", "Roofing nails", "Repairs", "kg", 100m)], seed);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportPgomAsync(new MemoryStream());
+
+        Assert.Equal(0, result.Value!.New);
+        Assert.Single(seed);
+        Assert.Equal("RAM-BAOS-4100294508", seed[0].StockCardNo);   // the legacy spelling is corrected in place
+    }
+
+    [Fact]
     public async Task ImportPgomAsync_ExistingItemWithADifferentStockCardNo_IsNotTouched()
     {
         List<PriceIndexItem> seed = [Item(1, "Bond paper", "ream", 200m, "Old", stockCardNo: "OS-OLD")];
