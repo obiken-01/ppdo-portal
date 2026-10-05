@@ -34,6 +34,15 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .ToListAsync(ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdNoTrackingAsync(
+        int aipRecordId, CancellationToken ct = default)
+        => await _context.Set<AipOffice>()
+            .AsNoTracking()
+            .Where(o => o.AipRecordId == aipRecordId)
+            .OrderBy(o => o.RefCode)
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<AipOffice?> GetOfficeByIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<AipOffice>().FirstOrDefaultAsync(o => o.Id == id, ct);
 
@@ -60,6 +69,18 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipProgram>> GetProgramsByOfficeIdsNoTrackingAsync(
+        IReadOnlyList<int> officeIds, CancellationToken ct = default)
+    {
+        if (officeIds.Count == 0) return [];
+        return await _context.Set<AipProgram>()
+            .AsNoTracking()
+            .Where(p => officeIds.Contains(p.OfficeId))
+            .OrderBy(p => p.RefCode)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<AipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<AipProgram>().FirstOrDefaultAsync(p => p.Id == id, ct);
 
@@ -75,6 +96,18 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsNoTrackingAsync(
+        IReadOnlyList<int> programIds, CancellationToken ct = default)
+    {
+        if (programIds.Count == 0) return [];
+        return await _context.Set<AipProject>()
+            .AsNoTracking()
+            .Where(j => programIds.Contains(j.ProgramId))
+            .OrderBy(j => j.RefCode)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<AipProject?> GetProjectByIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<AipProject>().FirstOrDefaultAsync(j => j.Id == id, ct);
 
@@ -84,6 +117,18 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
     {
         if (projectIds.Count == 0) return [];
         return await _context.Set<AipActivity>()
+            .Where(a => projectIds.Contains(a.ProjectId))
+            .OrderBy(a => a.RefCode)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsNoTrackingAsync(
+        IReadOnlyList<int> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0) return [];
+        return await _context.Set<AipActivity>()
+            .AsNoTracking()
             .Where(a => projectIds.Contains(a.ProjectId))
             .OrderBy(a => a.RefCode)
             .ToListAsync(ct);

@@ -220,6 +220,23 @@ public sealed partial class AipServiceTests
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 (IReadOnlyList<AipActivity>)actList.Where(a => ids.Contains(a.ProjectId)).ToList());
 
+        // PPDO-187 — untracked twins of the reads above; same data, used by the read endpoints
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                (IReadOnlyList<AipOffice>)officeList.Where(o => o.AipRecordId == id).ToList());
+
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipProgram>)programList.Where(p => ids.Contains(p.OfficeId)).ToList());
+
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipProject>)projectList.Where(j => ids.Contains(j.ProgramId)).ToList());
+
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipActivity>)actList.Where(a => ids.Contains(a.ProjectId)).ToList());
+
         aipRepo.Setup(r => r.GetOfficeByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => officeList.FirstOrDefault(o => o.Id == id));
 
@@ -418,7 +435,7 @@ public sealed partial class AipServiceTests
     }
 
     [Fact]
-    public async Task GetById_UsesGetOfficesByAipIdAsync_NotGetAllAsync()
+    public async Task GetById_UsesGetOfficesByAipIdNoTrackingAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(7);
         List<AipOffice> offices = [new() { Id = 1, AipRecordId = 7, RefCode = "X", Name = "O", Sector = "GENERAL" }];
@@ -426,7 +443,7 @@ public sealed partial class AipServiceTests
 
         await sut.GetByIdAsync(7, HostCaller(), CancellationToken.None);
 
-        aipRepo.Verify(r => r.GetOfficesByAipIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetOfficesByAipIdNoTrackingAsync(7, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── Record shape: office-owned vs legacy multi-office (V18-40 / PPDO-39) ──
@@ -592,7 +609,7 @@ public sealed partial class AipServiceTests
 
         Assert.Equal("PPDO", Assert.Single(result.Value!.Offices).Name);
         // The other office's programs are never read, not merely dropped from the DTO.
-        aipRepo.Verify(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Verify(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
             It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 1 })), It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -373,17 +373,17 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         CommentContext ctx, AipCommentNodeType type, CancellationToken ct)
     {
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(ctx.GroupIds, ct);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(ctx.GroupIds, ct);
         if (type == AipCommentNodeType.Program)
             return programs.ToDictionary(p => p.Id, p => p.RefCode);
 
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programs.Select(p => p.Id).ToList(), ct);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programs.Select(p => p.Id).ToList(), ct);
         if (type == AipCommentNodeType.Project)
             return projects.ToDictionary(p => p.Id, p => p.RefCode);
 
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(p => p.Id).ToList(), ct);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projects.Select(p => p.Id).ToList(), ct);
         return activities.ToDictionary(a => a.Id, a => a.RefCode);
     }
 
@@ -397,7 +397,7 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         if (ctx.Groups.Count == 1) return ctx.Groups[0].Id;
 
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(ctx.GroupIds, ct);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(ctx.GroupIds, ct);
 
         int programId = type switch
         {
@@ -413,13 +413,13 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         CancellationToken ct)
     {
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programs.Select(p => p.Id).ToList(), ct);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programs.Select(p => p.Id).ToList(), ct);
 
         if (type == AipCommentNodeType.Project)
             return projects.FirstOrDefault(p => p.Id == nodeId)?.ProgramId ?? 0;
 
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projects.Select(p => p.Id).ToList(), ct);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projects.Select(p => p.Id).ToList(), ct);
         int projectId = activities.FirstOrDefault(a => a.Id == nodeId)?.ProjectId ?? 0;
         return projects.FirstOrDefault(p => p.Id == projectId)?.ProgramId ?? 0;
     }
