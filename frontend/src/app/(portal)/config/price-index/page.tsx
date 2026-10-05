@@ -42,6 +42,7 @@ import {
   deactivatePriceIndexItem,
   exportPriceIndexCsv,
   importPriceIndexCsv,
+  importPriceIndexPgom,
   getPriceIndexPage,
   updatePriceIndexItem,
 } from "@/lib/config";
@@ -68,6 +69,14 @@ import type {
 // ---------------------------------------------------------------------------
 
 type StatusFilter = "Active" | "Inactive" | "All";
+
+/** The picker takes the portal's own CSV and the .xlsx Items export downloaded from PGOM. */
+const IMPORT_ACCEPT =
+  ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function isExcelFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith(".xlsx");
+}
 
 const STATUS_OPTIONS: StatusFilter[] = ["Active", "Inactive", "All"];
 
@@ -342,8 +351,10 @@ export default function PriceIndexConfigPage() {
     if (!pendingCsv) return;
     setImporting(true);
     try {
-      const text = await pendingCsv.text();
-      const result = await importPriceIndexCsv(text);
+      // PGOM Items exports are .xlsx; everything else is the portal's own CSV.
+      const result = isExcelFile(pendingCsv)
+        ? await importPriceIndexPgom(pendingCsv)
+        : await importPriceIndexCsv(await pendingCsv.text());
       setPendingCsv(null);
       setImportResult(result);
       toast.success(
@@ -353,7 +364,7 @@ export default function PriceIndexConfigPage() {
       await load();
     } catch (err) {
       setPendingCsv(null);
-      toast.error("Import failed", configErrorMessage(err, "The CSV could not be imported."));
+      toast.error("Import failed", configErrorMessage(err, "The file could not be imported."));
     } finally {
       setImporting(false);
     }
@@ -469,7 +480,11 @@ export default function PriceIndexConfigPage() {
                 fetchCsv={exportPriceIndexCsv}
                 onError={(msg) => toast.error("Export failed", msg)}
               />
-              <CsvUploadButton onSelect={(file) => setPendingCsv(file)} />
+              <CsvUploadButton
+                label="Upload CSV / Excel"
+                accept={IMPORT_ACCEPT}
+                onSelect={(file) => setPendingCsv(file)}
+              />
               <button
                 onClick={openAdd}
                 className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shrink-0"
@@ -586,7 +601,7 @@ export default function PriceIndexConfigPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
               <p className="mt-1 text-[11px] text-slate-600">
-                Name + unit together must be unique (e.g. &quot;Bond Paper&quot; can exist per ream AND per box).
+                Name + unit + stock card no. together must be unique (e.g. &quot;Bond Paper&quot; can exist per ream AND per box, and the same name can repeat under different stock card numbers).
               </p>
             </div>
 
@@ -661,7 +676,7 @@ export default function PriceIndexConfigPage() {
       {/* ── CSV import confirm ─────────────────────────────────────────────────── */}
       {pendingCsv && (
         <Modal
-          title="Import price index from CSV"
+          title={isExcelFile(pendingCsv) ? "Import price index from PGOM export" : "Import price index from CSV"}
           size="sm"
           onClose={() => !importing && setPendingCsv(null)}
           footer={
@@ -680,14 +695,24 @@ export default function PriceIndexConfigPage() {
               Import <span className="font-medium text-slate-800">{pendingCsv.name}</span>?
             </p>
             <p>
-              Rows are matched by <span className="font-mono text-xs">name + unit</span>: new
+              Rows are matched by{" "}
+              <span className="font-mono text-xs">name + unit + stock card no</span>: new
               combinations are added and existing ones are updated. Nothing is deleted.
             </p>
-            <p className="text-xs text-slate-600">
-              Expected columns: name, unit, unit_price, category, is_active, days_enabled,
-              stock_card_no. A file without the last column still imports — existing stock card
-              numbers are left untouched.
-            </p>
+            {isExcelFile(pendingCsv) ? (
+              <p className="text-xs text-slate-600">
+                PGOM Items export (.xlsx): Description → name, Unit → unit, Price → unit price,
+                Account Name → category, Item Code → stock card no. The same name and unit under
+                a different Item Code stays a separate item; an exact repeat is merged (the last
+                row wins). Line breaks in descriptions are cleaned up.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-600">
+                Expected columns: name, unit, unit_price, category, is_active, days_enabled,
+                stock_card_no. A file without the last column still imports — existing stock card
+                numbers are left untouched.
+              </p>
+            )}
           </div>
         </Modal>
       )}

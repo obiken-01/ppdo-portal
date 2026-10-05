@@ -267,6 +267,9 @@ public sealed class DivisionService : IDivisionService
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(
         string csvText, IReadOnlyList<Office> offices, CancellationToken cancellationToken = default)
     {
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -325,6 +328,16 @@ public sealed class DivisionService : IDivisionService
             {
                 skipped++;
                 errors.Add($"Row {i + 1}: office_code and name are required.");
+                continue;
+            }
+
+            string? tooLong =
+                Csv.OverLimit("code", code, 20) ??
+                Csv.OverLimit("name", name, 200);
+            if (tooLong is not null)
+            {
+                skipped++;
+                errors.Add($"Row {i + 1}: {tooLong}");
                 continue;
             }
 

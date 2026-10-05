@@ -117,6 +117,35 @@ public sealed class FundingSourceServiceTests
     }
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (FundingSourceService sut, _) = Build([]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (FundingSourceService sut, _) = Build([]);
+
+        string csv =
+            "code,name,description,color,is_active\n" +
+            "GF,General Fund,,#112233,true\n" +
+            "XX,Bad Color,,#112233445566,true\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("color") && e.Contains("7"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_UpsertByCode_CountsNewUpdatedSkipped()
     {
         List<FundingSource> seed = [Fs(1, "GF", "General Fund"), Fs(2, "GAD", "Old GAD Name")];

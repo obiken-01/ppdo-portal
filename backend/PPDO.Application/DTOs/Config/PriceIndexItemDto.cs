@@ -24,7 +24,8 @@ public sealed record PriceIndexPickerItemDto(
     string  Name,
     string  Unit,
     decimal UnitPrice,
-    bool    DaysEnabled);
+    bool    DaysEnabled,
+    string? StockCardNo);
 
 /// <summary>
 /// A page of price-index management-grid rows plus the total match count (RAL-233) — same
@@ -36,7 +37,7 @@ public sealed record PriceIndexPageDto(
     int Page,
     int PageSize);
 
-/// <summary>Create/update body for a price index item. (Name, Unit) is the unique key.</summary>
+/// <summary>Create/update body for a price index item. (Name, Unit, StockCardNo) is the unique key.</summary>
 public sealed record UpsertPriceIndexItemDto(
     string  Name,
     string  Unit,

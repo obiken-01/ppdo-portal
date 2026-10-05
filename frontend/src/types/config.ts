@@ -26,6 +26,8 @@ export interface CsvImportResult {
   updated: number;
   skipped: number;
   errors: string[];
+  /** Informational lines (not problems) — e.g. "N duplicate rows were merged". */
+  notes?: string[] | null;
 }
 
 /** Status filter for config list endpoints (?active=true|false|all). */
@@ -193,6 +195,8 @@ export interface PriceIndexPickerItem {
   unit: string;
   unitPrice: number;
   daysEnabled: boolean;
+  /** Told apart from same-named rows by this — see lib/priceIndexLabel.ts. */
+  stockCardNo: string | null;
 }
 
 /** A page of the price-index management grid plus the total match count (RAL-233). */

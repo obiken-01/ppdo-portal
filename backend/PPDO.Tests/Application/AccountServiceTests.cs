@@ -182,6 +182,35 @@ public sealed class AccountServiceTests
     // ── CSV upsert counts ──────────────────────────────────────────────────────
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequest()
+    {
+        (AccountService sut, _) = Build([]);
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongCell_SkipsRowWithNamedColumn_KeepsGoodRows()
+    {
+        (AccountService sut, _) = Build([]);
+
+        string csv =
+            "account_title,account_number,normal_balance,description,is_active\n" +
+            "Good,5-01-01,Debit,,true\n" +
+            $"Bad,{new string('9', 21)},Debit,,true\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(1, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("account_number") && e.Contains("20"));
+    }
+
+    [Fact]
     public async Task ImportCsvAsync_CountsNewUpdatedSkipped()
     {
         // Existing: 5-01-01-010 "Salaries" (will be unchanged → skipped),

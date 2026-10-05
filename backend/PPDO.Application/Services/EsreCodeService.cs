@@ -198,6 +198,9 @@ namespace PPDO.Application.Services
             if (string.IsNullOrWhiteSpace(csvText))
                 return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
 
+            if (Csv.LooksBinary(csvText))
+                return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
             List<string[]> parsed = Csv.Parse(csvText);
             if (parsed.Count == 0)
                 return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -222,7 +225,9 @@ namespace PPDO.Application.Services
                 string?  desc = Blank(Field(f, 2));
                 bool   active = Csv.ParseBool(Field(f, 3), fallback: true);
 
-                string? invalid = Validate(new UpsertEsreCodeDto(code, name, desc, active));
+                string? invalid = Validate(new UpsertEsreCodeDto(code, name, desc, active))
+                    ?? Csv.OverLimit("code", code, 20)
+                    ?? Csv.OverLimit("name", name, 200);
                 if (invalid is not null)
                 {
                     skipped++;

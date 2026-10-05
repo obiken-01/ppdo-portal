@@ -84,6 +84,17 @@ public interface IExcelService
     /// instruction rows above it. Sheet 2 ("Instructions") is ignored during import.
     /// </summary>
     byte[] GenerateStockBalanceImportTemplate();
+
+    /// <summary>
+    /// Parses an Items export from PGOM (the provincial price list) — single sheet, row 1 is
+    /// the header. Columns are located by header name (case-insensitive): Item Code | Description |
+    /// Account Code | Account Name | Unit | Price. Description, Unit and Price are required
+    /// columns; Item Code and Account Name are optional. Pure parsing — no DB, no cleaning of
+    /// text (the caller normalises names). Every non-blank row is returned, each carrying its
+    /// own optional <see cref="PriceIndexImportRow.Error"/>, so one bad row never rejects the
+    /// file. Throws <see cref="ImportParseException"/> when a required column is missing.
+    /// </summary>
+    IReadOnlyList<PriceIndexImportRow> ParsePriceIndexImport(Stream stream);
 }
 
 // ── Import data models ────────────────────────────────────────────────────────
@@ -196,6 +207,23 @@ public sealed record StockBalanceImportRow
 
     /// <summary>Set when this row is unusable (missing StockNo, unparseable quantity/date).
     /// Null means the row parsed cleanly.</summary>
+    public string? Error { get; init; }
+}
+
+/// <summary>
+/// Raw data for one row of a PGOM Items export (see <see cref="IExcelService.ParsePriceIndexImport"/>).
+/// <see cref="RowNumber"/> is the 1-based Excel row, so an error can point back at the sheet.
+/// </summary>
+public sealed record PriceIndexImportRow
+{
+    public required int RowNumber { get; init; }
+    public string? ItemCode { get; init; }
+    public string? Description { get; init; }
+    public string? AccountName { get; init; }
+    public string? Unit { get; init; }
+    public decimal? Price { get; init; }
+
+    /// <summary>Set when the row is unusable (e.g. unreadable price). Null means it parsed cleanly.</summary>
     public string? Error { get; init; }
 }
 

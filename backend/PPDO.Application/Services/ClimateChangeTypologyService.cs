@@ -204,6 +204,9 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
         if (string.IsNullOrWhiteSpace(csvText))
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
 
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");

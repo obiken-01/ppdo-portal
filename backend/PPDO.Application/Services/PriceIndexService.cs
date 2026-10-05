@@ -31,12 +31,15 @@ public sealed class PriceIndexService : IPriceIndexService
     private readonly IPriceIndexItemRepository _repo;
     private readonly ILogger<PriceIndexService> _logger;
     private readonly IAuditService _audit;
+    private readonly IExcelService _excel;
 
-    public PriceIndexService(IPriceIndexItemRepository repo, ILogger<PriceIndexService> logger, IAuditService audit)
+    public PriceIndexService(
+        IPriceIndexItemRepository repo, ILogger<PriceIndexService> logger, IAuditService audit, IExcelService excel)
     {
         _repo   = repo;
         _logger = logger;
         _audit  = audit;
+        _excel  = excel;
     }
 
     // ── Queries ────────────────────────────────────────────────────────────────
@@ -63,7 +66,7 @@ public sealed class PriceIndexService : IPriceIndexService
             await _repo.GetPickerItemsAsync(ToIsActive(active), search, cancellationToken);
 
         return items
-            .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled))
+            .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled, i.StockCardNo))
             .ToList();
     }
 
@@ -71,7 +74,7 @@ public sealed class PriceIndexService : IPriceIndexService
     /// Bump when <see cref="PriceIndexPickerItemDto"/>'s shape changes, so browsers holding the old
     /// shape refetch even though no row changed.
     /// </summary>
-    public const string PickerShapeVersion = "1";
+    public const string PickerShapeVersion = "2";
 
     /// <inheritdoc />
     public async Task<string> GetPickerETagAsync(CancellationToken cancellationToken = default)
@@ -121,9 +124,10 @@ public sealed class PriceIndexService : IPriceIndexService
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        // PPDO-186: one EXISTS on the (name, unit) index, not the whole ~6,400-row catalogue.
-        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: null, cancellationToken))
-            return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
+        string? stockCardNo = Blank(dto.StockCardNo);
+        // PPDO-186: one EXISTS on the unique index, not the whole ~6,400-row catalogue.
+        if (await _repo.ItemExistsAsync(name, unit, stockCardNo, excludeId: null, cancellationToken))
+            return ServiceResult<PriceIndexItemDto>.Conflict(DuplicateMessage(name, unit, stockCardNo));
 
         DateTime now = DateTime.UtcNow;
         PriceIndexItem entity = new()
@@ -132,7 +136,7 @@ public sealed class PriceIndexService : IPriceIndexService
             Unit           = unit,
             UnitPrice      = dto.UnitPrice,
             Category       = Blank(dto.Category),
-            StockCardNo    = Blank(dto.StockCardNo),
+            StockCardNo    = stockCardNo,
             PriceUpdatedAt = now,
             IsActive       = dto.IsActive,
             DaysEnabled    = dto.DaysEnabled,
@@ -164,8 +168,9 @@ public sealed class PriceIndexService : IPriceIndexService
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: id, cancellationToken))
-            return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
+        string? stockCardNo = Blank(dto.StockCardNo);
+        if (await _repo.ItemExistsAsync(name, unit, stockCardNo, excludeId: id, cancellationToken))
+            return ServiceResult<PriceIndexItemDto>.Conflict(DuplicateMessage(name, unit, stockCardNo));
 
         var oldSnapshot = new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo };
         DateTime now = DateTime.UtcNow;
@@ -173,7 +178,7 @@ public sealed class PriceIndexService : IPriceIndexService
         entity.Name        = name;
         entity.Unit        = unit;
         entity.Category    = Blank(dto.Category);
-        entity.StockCardNo = Blank(dto.StockCardNo);
+        entity.StockCardNo = stockCardNo;
         entity.IsActive    = dto.IsActive;
         entity.DaysEnabled = dto.DaysEnabled;
         entity.UpdatedAt   = now;
@@ -233,9 +238,7 @@ public sealed class PriceIndexService : IPriceIndexService
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
         if (Csv.LooksBinary(csvText))
-            return ServiceResult<CsvImportResult>.BadRequest(
-                "This file is not a CSV (it looks like an Excel .xlsx or other binary file). " +
-                "Export the price index as CSV from this page, or save your sheet as CSV, and upload that.");
+            return ServiceResult<CsvImportResult>.BadRequest(Csv.NotCsvMessage);
 
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
@@ -245,7 +248,12 @@ public sealed class PriceIndexService : IPriceIndexService
 
         List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
         Dictionary<string, PriceIndexItem> byKey = all.ToDictionary(
-            p => Key(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
+            p => Key(p.Name, p.Unit, p.StockCardNo), p => p, StringComparer.OrdinalIgnoreCase);
+        // Only used for a 6-column (pre-stock_card_no) file, which cannot say WHICH of several
+        // same-name items a row means.
+        Dictionary<string, List<PriceIndexItem>> byNameUnit = all
+            .GroupBy(p => NameUnitKey(p.Name, p.Unit), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         int created = 0, updated = 0, skipped = 0;
         List<string> errors = new();
@@ -278,10 +286,10 @@ public sealed class PriceIndexService : IPriceIndexService
             // Mirrors PriceIndexItemConfiguration's HasMaxLength — checked here so one oversized
             // cell skips its row with a named column instead of failing the whole batch at SaveChanges.
             string? tooLong =
-                OverLimit("name", name, NameMax) ??
-                OverLimit("unit", unit, UnitMax) ??
-                OverLimit("category", Blank(category), CategoryMax) ??
-                OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
+                Csv.OverLimit("name", name, NameMax) ??
+                Csv.OverLimit("unit", unit, UnitMax) ??
+                Csv.OverLimit("category", Blank(category), CategoryMax) ??
+                Csv.OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
             if (tooLong is not null)
             {
                 skipped++;
@@ -303,8 +311,24 @@ public sealed class PriceIndexService : IPriceIndexService
                 continue;
             }
 
-            string key = Key(name, unit);
-            if (byKey.TryGetValue(key, out PriceIndexItem? existing))
+            string key = Key(name, unit, stockCardNo);
+            PriceIndexItem? existing = null;
+            if (hasStockCardNoColumn)
+            {
+                byKey.TryGetValue(key, out existing);
+            }
+            else if (byNameUnit.TryGetValue(NameUnitKey(name, unit), out List<PriceIndexItem>? sameName))
+            {
+                if (sameName.Count > 1)
+                {
+                    skipped++;
+                    errors.Add($"Row {rowNumber}: '{name}' ({unit}) exists with {sameName.Count} different stock card numbers and this file has no stock_card_no column to say which one.");
+                    continue;
+                }
+                existing = sameName[0];
+            }
+
+            if (existing is not null)
             {
                 bool priceChanged = existing.UnitPrice != price;
                 bool changed =
@@ -343,6 +367,10 @@ public sealed class PriceIndexService : IPriceIndexService
                 };
                 await _repo.AddAsync(entity, cancellationToken);
                 byKey[key] = entity;   // guard against duplicate keys within the same file
+                string nameUnit = NameUnitKey(name, unit);
+                if (!byNameUnit.TryGetValue(nameUnit, out List<PriceIndexItem>? bucket))
+                    byNameUnit[nameUnit] = bucket = new List<PriceIndexItem>();
+                bucket.Add(entity);
                 created++;
             }
         }
@@ -352,6 +380,176 @@ public sealed class PriceIndexService : IPriceIndexService
             "Price index CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}", created, updated, skipped);
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));
     }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult<CsvImportResult>> ImportPgomAsync(
+        Stream workbook, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<PriceIndexImportRow> rows;
+        try
+        {
+            rows = _excel.ParsePriceIndexImport(workbook);
+        }
+        catch (ImportParseException ex)
+        {
+            return ServiceResult<CsvImportResult>.BadRequest(
+                "This does not look like a PGOM Items export. " + string.Join(" ", ex.Errors));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read the PGOM price index workbook.");
+            return ServiceResult<CsvImportResult>.BadRequest(
+                "The uploaded file could not be read. Make sure it is an .xlsx file exported from PGOM.");
+        }
+
+        if (rows.Count == 0)
+            return ServiceResult<CsvImportResult>.BadRequest("The file has no item rows.");
+
+        List<string> errors = new();
+        int skipped = 0, truncated = 0, mergedDuplicates = 0;
+
+        // One entry per (name, unit); the last row in the file wins.
+        Dictionary<string, PgomItem> byKey = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexImportRow row in rows)
+        {
+            if (row.Error is not null)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: {row.Error}"); continue;
+            }
+
+            string name = CleanText(row.Description);
+            string unit = CleanText(row.Unit);
+            if (name.Length == 0 || unit.Length == 0)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: description and unit are required."); continue;
+            }
+
+            if (row.Price is null || row.Price < 0)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: price cannot be negative."); continue;
+            }
+
+            if (name.Length > NameMax)
+            {
+                name = name[..NameMax].TrimEnd();
+                truncated++;
+            }
+
+            string? category    = Blank(CleanText(row.AccountName));
+            string? stockCardNo = Blank(NormalizeItemCode(row.ItemCode));
+            string? tooLong =
+                Csv.OverLimit("unit", unit, UnitMax) ??
+                Csv.OverLimit("account name", category, CategoryMax) ??
+                Csv.OverLimit("item code", stockCardNo, StockCardNoMax);
+            if (tooLong is not null)
+            {
+                skipped++; errors.Add($"Row {row.RowNumber}: {tooLong}"); continue;
+            }
+
+            string key = Key(name, unit, stockCardNo);
+            if (byKey.ContainsKey(key)) mergedDuplicates++;
+            byKey[key] = new PgomItem(name, unit, Math.Round(row.Price.Value, 2, MidpointRounding.AwayFromZero),
+                category, stockCardNo);
+        }
+
+        List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
+        // Existing codes are normalised too: an earlier raw PGOM load left en-dash codes in the
+        // catalogue ("RAM–BAOS-…"), and matching only the incoming side would add a hyphen twin of
+        // each. A matched row is rewritten to the normalised code below. TryAdd, not ToDictionary:
+        // a catalogue holding both spellings of one code must not abort the import.
+        Dictionary<string, PriceIndexItem> existingByKey = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexItem p in all)
+            existingByKey.TryAdd(Key(p.Name, p.Unit, NormalizeItemCode(p.StockCardNo)), p);
+        // Catalogue items with no stock card number yet. The first PGOM row for such an item
+        // adopts it (sets its stock card no) instead of leaving a stock-card-less twin behind.
+        Dictionary<string, PriceIndexItem> adoptable = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexItem p in all.Where(p => Blank(p.StockCardNo) is null))
+            adoptable.TryAdd(NameUnitKey(p.Name, p.Unit), p);
+
+        int created = 0, updated = 0, unchanged = 0;
+        DateTime now = DateTime.UtcNow;
+
+        foreach (PgomItem item in byKey.Values)
+        {
+            if (!existingByKey.TryGetValue(Key(item.Name, item.Unit, item.StockCardNo), out PriceIndexItem? existing)
+                && item.StockCardNo is not null
+                && adoptable.Remove(NameUnitKey(item.Name, item.Unit), out PriceIndexItem? adopted))
+            {
+                existing = adopted;
+            }
+
+            if (existing is not null)
+            {
+                bool priceChanged = existing.UnitPrice != item.Price;
+                bool changed =
+                    priceChanged ||
+                    Blank(existing.Category) != item.Category ||
+                    Blank(existing.StockCardNo) != item.StockCardNo;
+                if (!changed) { unchanged++; continue; }
+
+                existing.UnitPrice   = item.Price;
+                if (priceChanged) existing.PriceUpdatedAt = now;
+                existing.Category    = item.Category;
+                existing.StockCardNo = item.StockCardNo;
+                existing.UpdatedAt   = now;
+                await _repo.UpdateAsync(existing, cancellationToken);
+                updated++;
+            }
+            else
+            {
+                await _repo.AddAsync(new PriceIndexItem
+                {
+                    Name           = item.Name,
+                    Unit           = item.Unit,
+                    UnitPrice      = item.Price,
+                    Category       = item.Category,
+                    StockCardNo    = item.StockCardNo,
+                    PriceUpdatedAt = now,
+                    IsActive       = true,
+                    DaysEnabled    = false,
+                    CreatedAt      = now,
+                    UpdatedAt      = now,
+                }, cancellationToken);
+                created++;
+            }
+        }
+
+        await _repo.SaveChangesAsync(cancellationToken);
+
+        // Informational lines - not invalid rows, so they stay out of Errors.
+        List<string> notes = new();
+        if (mergedDuplicates > 0)
+            notes.Add($"{mergedDuplicates} rows repeated an item already in the file (same name, unit and item code) and were merged; the last row was used.");
+        if (truncated > 0)
+            notes.Add($"{truncated} names were longer than {NameMax} characters and were shortened.");
+
+        _logger.LogInformation(
+            "Price index PGOM workbook imported. New: {New}, Updated: {Updated}, Unchanged: {Unchanged}, Skipped: {Skipped}, Merged: {Merged}, Truncated: {Truncated}",
+            created, updated, unchanged, skipped, mergedDuplicates, truncated);
+        return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped + unchanged, errors, notes));
+    }
+
+    private sealed record PgomItem(string Name, string Unit, decimal Price, string? Category, string? StockCardNo);
+
+    /// <summary>
+    /// Flattens a spreadsheet cell to one clean line: strips Excel's literal "_x000d_" escapes,
+    /// turns tabs/line breaks into spaces and collapses runs of whitespace.
+    /// </summary>
+    private static string CleanText(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        string noEscapes = System.Text.RegularExpressions.Regex.Replace(value, "_x[0-9A-Fa-f]{4}_", " ");
+        return System.Text.RegularExpressions.Regex.Replace(noEscapes, @"\s+", " ").Trim();
+    }
+
+    /// <summary>
+    /// PGOM writes some item codes with an en dash ("RAM–BAOS-4100294508") where the codes already
+    /// in the catalogue use a plain hyphen. Left alone, every such row would import as a near-twin of
+    /// the item it duplicates. Dash look-alikes become "-", then the usual whitespace clean-up.
+    /// </summary>
+    private static string NormalizeItemCode(string? code)
+        => CleanText(code?.Replace('‐', '-').Replace('‑', '-').Replace('‒', '-')
+                         .Replace('–', '-').Replace('—', '-').Replace('−', '-'));
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -368,12 +566,17 @@ public sealed class PriceIndexService : IPriceIndexService
     private const int CategoryMax = 100;
     private const int StockCardNoMax = 50;
 
-    private static string? OverLimit(string column, string? value, int max) =>
-        value is not null && value.Length > max
-            ? $"{column} is {value.Length} characters; the limit is {max}."
-            : null;
+    /// <summary>The unique key as a dictionary key: name, unit and stock card no (blank = none).</summary>
+    private static string Key(string name, string unit, string? stockCardNo)
+        => $"{name}|{unit}|{Blank(stockCardNo)}";
 
-    private static string Key(string name, string unit) => $"{name}|{unit}";
+    /// <summary>Name + unit only — for files that carry no stock card column to tell items apart.</summary>
+    private static string NameUnitKey(string name, string unit) => $"{name}|{unit}";
+
+    private static string DuplicateMessage(string name, string unit, string? stockCardNo)
+        => stockCardNo is null
+            ? $"A price index item named '{name}' ({unit}) with no stock card no already exists."
+            : $"A price index item named '{name}' ({unit}) with stock card no '{stockCardNo}' already exists.";
 
     private static PriceIndexItemDto MapToDto(PriceIndexItem p) =>
         new(p.Id, p.Name, p.Unit, p.UnitPrice, p.Category, p.PriceUpdatedAt, p.IsActive, p.DaysEnabled, p.StockCardNo);

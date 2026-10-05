@@ -58,8 +58,15 @@ public sealed class PriceIndexItemConfiguration : IEntityTypeConfiguration<Price
             .HasColumnName("updated_at")
             .HasDefaultValueSql("GETUTCDATE()");
 
-        builder.HasIndex(p => new { p.Name, p.Unit })
+        // PGOM lists the same item under several stock card numbers; each is its own price index
+        // row, so the identity is (name, unit, stock card no). SQL Server's unique index treats
+        // NULL as a value, so two rows with the same name and unit and no stock card still collide.
+        // ⚠️ HasFilter(null) is load-bearing: for a unique index over a nullable column the EF
+        // SQL Server provider otherwise adds "WHERE stock_card_no IS NOT NULL", which would exempt
+        // every row without a stock card from the uniqueness check altogether.
+        builder.HasIndex(p => new { p.Name, p.Unit, p.StockCardNo })
             .IsUnique()
-            .HasDatabaseName("IX_price_index_items_name_unit");
+            .HasFilter(null)
+            .HasDatabaseName("IX_price_index_items_name_unit_stock_card_no");
     }
 }

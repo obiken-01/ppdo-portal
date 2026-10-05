@@ -279,6 +279,19 @@ export async function importPriceIndexCsv(csvText: string): Promise<CsvImportRes
   return unwrap(data);
 }
 
+/**
+ * POST /api/config/price-index/pgom — upsert from an Items export downloaded from PGOM (.xlsx).
+ * Body is the raw workbook; duplicates (same name + unit) are merged server-side.
+ */
+export async function importPriceIndexPgom(file: File): Promise<CsvImportResult> {
+  const { data } = await api.post<ApiResponse<CsvImportResult>>(
+    "/config/price-index/pgom",
+    await file.arrayBuffer(),
+    { headers: { "Content-Type": "application/octet-stream" } },
+  );
+  return unwrap(data);
+}
+
 // ---------------------------------------------------------------------------
 // Divisions — RAL-97
 // ---------------------------------------------------------------------------
