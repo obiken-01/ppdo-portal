@@ -78,7 +78,7 @@ public sealed partial class AipServiceTests
     private static (
         AipService sut,
         Mock<IAipRepository>           aipRepo,
-        Mock<IRepository<FundingSource>> fsRepo,
+        Mock<IFundingSourceRepository> fsRepo,
         Mock<IUserRepository>           userRepo,
         Mock<IAipXlsmParser> parser,
         Mock<IAuditService>  audit,
@@ -111,7 +111,7 @@ public sealed partial class AipServiceTests
             Mock<IInvestmentProposalRepository>? proposals = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
-        Mock<IRepository<FundingSource>> fsRepo   = new();
+        Mock<IFundingSourceRepository> fsRepo   = new();
         Mock<IUserRepository>            userRepo = new();
         Mock<IAipXlsmParser>  parser = new();
         Mock<IAuditService>   audit  = new();

@@ -207,6 +207,9 @@ var host = new HostBuilder()
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IDivisionRepository, DivisionRepository>();
+        services.AddScoped<IFundingSourceRepository, FundingSourceRepository>();
         services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         services.AddScoped<IInvestmentProposalRepository, InvestmentProposalRepository>();

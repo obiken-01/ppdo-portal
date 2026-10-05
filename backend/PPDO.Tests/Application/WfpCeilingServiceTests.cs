@@ -51,8 +51,8 @@ public sealed class WfpCeilingServiceTests
         Mock<IWfpAllocationLedgerRepository> ledgerRepo,
         Mock<IAipRepository>                 aipRepo,
         Mock<IAllocationService>             allocation,
-        Mock<IRepository<Division>>          divisionRepo,
-        Mock<IRepository<FundingSource>>     fundingSourceRepo)
+        Mock<IDivisionRepository>          divisionRepo,
+        Mock<IFundingSourceRepository>     fundingSourceRepo)
         Build(
             WfpExpenditureContext? context = null,
             decimal aipTotalPesos = 1_000_000m,
@@ -65,8 +65,8 @@ public sealed class WfpCeilingServiceTests
         Mock<IWfpAllocationLedgerRepository> ledgerRepo   = new();
         Mock<IAipRepository>                 aipRepo      = new();
         Mock<IAllocationService>             allocation   = new();
-        Mock<IRepository<Division>>          divisionRepo = new();
-        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IDivisionRepository>          divisionRepo = new();
+        Mock<IFundingSourceRepository>     fundingSourceRepo = new();
 
         context ??= new WfpExpenditureContext(WfpRecordId, DivisionId, OfficeId, FiscalYear, AipActivityId);
         wfpExpRepo.Setup(r => r.GetActivityContextAsync(WfpActivityId, It.IsAny<CancellationToken>()))
@@ -77,9 +77,13 @@ public sealed class WfpCeilingServiceTests
 
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(divisions ?? [MakeDivision()]);
+        divisionRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await divisionRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         List<FundingSource> fundList = fundingSources ?? [MakeFundingSource(GfFundId, "GF", "General Fund")];
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundList);
+        fundingSourceRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await fundingSourceRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
 

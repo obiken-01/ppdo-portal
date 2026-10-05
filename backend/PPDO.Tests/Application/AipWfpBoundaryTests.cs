@@ -76,8 +76,8 @@ public sealed class AipWfpBoundaryTests
         Mock<IWfpAllocationLedgerRepository> ledgerRepo        = new();
         Mock<IAipRepository>                 aipRepo           = new();
         Mock<IAllocationService>             allocation        = new();
-        Mock<IRepository<Division>>          divisionRepo      = new();
-        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IDivisionRepository>          divisionRepo      = new();
+        Mock<IFundingSourceRepository>     fundingSourceRepo = new();
 
         AipActivity activity = new()
         {
@@ -104,6 +104,8 @@ public sealed class AipWfpBoundaryTests
                 Id = DivisionId, OfficeId = OfficeId, Name = "Planning Division",
                 IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             }]);
+        divisionRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await divisionRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([new FundingSource
@@ -111,6 +113,8 @@ public sealed class AipWfpBoundaryTests
                 Id = GfFundId, Code = "GF", Name = "General Fund", IsActive = true,
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             }]);
+        fundingSourceRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await fundingSourceRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(GfFundId);

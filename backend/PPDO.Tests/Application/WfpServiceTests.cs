@@ -100,8 +100,8 @@ public sealed class WfpServiceTests
         Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
         Mock<IRepository<WfpExpenditureLine>> lineRepo    = new();
-        Mock<IRepository<Account>>            accountRepo = new();
-        Mock<IRepository<FundingSource>>      fsRepo      = new();
+        Mock<IAccountRepository>            accountRepo = new();
+        Mock<IFundingSourceRepository>      fsRepo      = new();
         Mock<IAuditService>                   audit       = new();
         Mock<IWfpExpenditureRepository>       expenditureRepo = new();
 
@@ -962,8 +962,8 @@ public sealed class WfpServiceTests
         Mock<IWfpRepository>                  wfpRepo     = new();
         Mock<IRepository<WfpActivity>>        actRepo     = new();
         Mock<IRepository<WfpExpenditureLine>> lineRepo    = new();
-        Mock<IRepository<Account>>            accountRepo = new();
-        Mock<IRepository<FundingSource>>      fsRepo      = new();
+        Mock<IAccountRepository>            accountRepo = new();
+        Mock<IFundingSourceRepository>      fsRepo      = new();
         Mock<IAuditService>                   audit       = new();
 
         wfpRepo.Setup(r => r.GetByIntIdAsync(42, It.IsAny<CancellationToken>()))

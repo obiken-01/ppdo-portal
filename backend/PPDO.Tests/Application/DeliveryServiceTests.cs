@@ -30,9 +30,9 @@ public sealed class DeliveryServiceTests
         CanAccessInventory = inventory,
     };
 
-    private static Mock<IRepository<Division>> DivisionsRepo()
+    private static Mock<IDivisionRepository> DivisionsRepo()
     {
-        Mock<IRepository<Division>> repo = new();
+        Mock<IDivisionRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -124,7 +124,7 @@ public sealed class DeliveryServiceTests
     private static DeliveryService BuildSut(
         Mock<IDeliveryRepository> deliveryRepo,
         Mock<IPurchaseRequestRepository> prRepo,
-        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IDivisionRepository>? divisionRepo = null,
         Mock<IAuditService>? auditService = null)
         => new(
             deliveryRepo.Object,

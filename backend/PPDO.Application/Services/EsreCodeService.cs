@@ -76,7 +76,7 @@ namespace PPDO.Application.Services
             int id, CancellationToken cancellationToken = default)
         {
             EsreCode? entity =
-                (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(t => t.Id == id);
+                await _repo.GetByIntIdAsync(id, cancellationToken);
             if (entity is null)
                 return ServiceResult<EsreCodeDto>.NotFound($"eSRE code {id} not found.");
 
@@ -132,7 +132,7 @@ namespace PPDO.Application.Services
             int id, CancellationToken cancellationToken = default)
         {
             EsreCode? t =
-                (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+                await _repo.GetByIntIdAsync(id, cancellationToken);
             return t is null
                 ? ServiceResult<EsreCodeDto>.NotFound($"eSRE code {id} not found.")
                 : ServiceResult<EsreCodeDto>.Ok(MapToDto(t));

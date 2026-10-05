@@ -34,7 +34,7 @@ public sealed class LdipService : ILdipService
         };
 
     private readonly ILdipRepository _repo;
-    private readonly IRepository<Office> _officeRepo;
+    private readonly IOfficeRepository _officeRepo;
     private readonly IAuditService _audit;
     private readonly CallerContext _caller;
     private readonly ILdipXlsmParser _parser;
@@ -42,7 +42,7 @@ public sealed class LdipService : ILdipService
 
     public LdipService(
         ILdipRepository repo,
-        IRepository<Office> officeRepo,
+        IOfficeRepository officeRepo,
         IAuditService audit,
         CallerContext caller,
         ILdipXlsmParser parser,
@@ -354,7 +354,7 @@ public sealed class LdipService : ILdipService
         if (officeId is null)
             return ServiceResult<Office>.BadRequest("Office is required.");
 
-        Office? office = (await _officeRepo.GetAllAsync(ct)).FirstOrDefault(o => o.Id == officeId);
+        Office? office = await _officeRepo.GetByIdAsync(officeId.Value, ct);
         if (office is null)
             return ServiceResult<Office>.NotFound($"Office {officeId} not found.");
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))

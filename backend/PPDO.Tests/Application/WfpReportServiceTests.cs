@@ -86,16 +86,20 @@ public sealed class WfpReportServiceTests
         Mock<IAipRepository> aipRepo = new();
         Mock<IWfpRepository> wfpRepo = new();
         Mock<IWfpExpenditureService> expenditures = new();
-        Mock<IRepository<Office>> officeRepo = new();
-        Mock<IRepository<Account>> accountRepo = new();
+        Mock<IOfficeRepository> officeRepo = new();
+        Mock<IAccountRepository> accountRepo = new();
 
         List<Office> offices = [];
         List<Account> accounts = [];
 
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (IReadOnlyList<Office>)offices);
+        officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await officeRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => (IReadOnlyList<Account>)accounts);
+        accountRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await accountRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         // Defaults so tests only need to stub the hierarchy levels they actually populate.
         // RAL-165: GetReportAsync resolves its AipRecord via GetLatestByFiscalYearAsync

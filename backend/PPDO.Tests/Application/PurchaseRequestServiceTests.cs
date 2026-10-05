@@ -65,9 +65,9 @@ public sealed class PurchaseRequestServiceTests
     };
 
     // Divisions repo for name → id resolution during create/update.
-    private static Mock<IRepository<Division>> DivisionsRepo()
+    private static Mock<IDivisionRepository> DivisionsRepo()
     {
-        Mock<IRepository<Division>> repo = new();
+        Mock<IDivisionRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -161,7 +161,7 @@ public sealed class PurchaseRequestServiceTests
         Mock<IExcelService>? excelService = null,
         Mock<IPdfService>? pdfService = null,
         Mock<IAccountService>? accountService = null,
-        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IDivisionRepository>? divisionRepo = null,
         Mock<IOfficeRepository>? officeRepo = null,
         Mock<IAuditService>? auditService = null)
         => new(
@@ -842,7 +842,7 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task CreateAsync_DivisionNameOwnedByAnotherOffice_IsNotResolved()
     {
-        Mock<IRepository<Division>> divisions = new();
+        Mock<IDivisionRepository> divisions = new();
         divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -875,7 +875,7 @@ public sealed class PurchaseRequestServiceTests
     [Fact]
     public async Task CreateAsync_InactiveDivision_IsNotResolved()
     {
-        Mock<IRepository<Division>> divisions = new();
+        Mock<IDivisionRepository> divisions = new();
         divisions.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {

@@ -56,14 +56,14 @@ public sealed class WfpReportService : IWfpReportService
     private readonly IAipRepository          _aipRepo;
     private readonly IWfpRepository          _wfpRepo;
     private readonly IWfpExpenditureService  _expenditures;
-    private readonly IRepository<Office>     _officeRepo;
+    private readonly IOfficeRepository     _officeRepo;
     private readonly IRepository<Account>    _accountRepo;
 
     public WfpReportService(
         IAipRepository          aipRepo,
         IWfpRepository          wfpRepo,
         IWfpExpenditureService  expenditures,
-        IRepository<Office>     officeRepo,
+        IOfficeRepository     officeRepo,
         IRepository<Account>    accountRepo)
     {
         _aipRepo      = aipRepo;
@@ -111,8 +111,7 @@ public sealed class WfpReportService : IWfpReportService
     public async Task<ServiceResult<WfpReportDto>> GetReportAsync(
         int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default)
     {
-        Office? office = (await _officeRepo.GetAllAsync(cancellationToken))
-            .FirstOrDefault(o => o.Id == officeId);
+        Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office is null)
             return ServiceResult<WfpReportDto>.NotFound($"Office {officeId} not found.");
         if (string.IsNullOrWhiteSpace(office.OfficeRefCode))

@@ -68,8 +68,8 @@ public sealed class WfpExpenditureServiceTests
         Mock<IWfpRepository> wfpRepo = new();
         Mock<IRepository<WfpExpenditurePeriod>> periodRepo = new();
         Mock<IRepository<WfpProcurementItem>> itemRepo = new();
-        Mock<IRepository<Account>> accountRepo = new();
-        Mock<IRepository<FundingSource>> fsRepo = new();
+        Mock<IAccountRepository> accountRepo = new();
+        Mock<IFundingSourceRepository> fsRepo = new();
         Mock<IAuditService> audit = new();
         Mock<IWfpCeilingService> ceiling = ceilingMock ?? new();
 
@@ -143,7 +143,11 @@ public sealed class WfpExpenditureServiceTests
         itemRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         accountRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(accountSeed);
+        accountRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await accountRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fsSeed);
+        fsRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await fsRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         audit.Setup(a => a.LogAsync(
                 It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),

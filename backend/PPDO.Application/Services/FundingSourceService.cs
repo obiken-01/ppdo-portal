@@ -24,16 +24,16 @@ public sealed class FundingSourceService : IFundingSourceService
     private static readonly string[] CsvHeaders =
         { "code", "name", "description", "color", "is_active", "aliases", "office_code" };
 
-    private readonly IRepository<FundingSource>     _repo;
-    private readonly IRepository<Office>             _officeRepo;
+    private readonly IFundingSourceRepository     _repo;
+    private readonly IOfficeRepository             _officeRepo;
     private readonly IWfpExpenditureRepository       _wfpExpRepo;
     private readonly IAipExpenditureRepository       _aipExpRepo;
     private readonly ILogger<FundingSourceService>   _logger;
     private readonly IAuditService                   _audit;
 
     public FundingSourceService(
-        IRepository<FundingSource>   repo,
-        IRepository<Office>          officeRepo,
+        IFundingSourceRepository   repo,
+        IOfficeRepository          officeRepo,
         IWfpExpenditureRepository    wfpExpRepo,
         IAipExpenditureRepository    aipExpRepo,
         ILogger<FundingSourceService> logger,
@@ -108,7 +108,7 @@ public sealed class FundingSourceService : IFundingSourceService
     /// <inheritdoc />
     public async Task<ServiceResult<FundingSourceDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        FundingSource? f = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+        FundingSource? f = await _repo.GetByIntIdAsync(id, cancellationToken);
         return f is null
             ? ServiceResult<FundingSourceDto>.NotFound($"Funding source {id} not found.")
             : ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(f, cancellationToken));
@@ -130,7 +130,7 @@ public sealed class FundingSourceService : IFundingSourceService
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
 
         if (dto.OfficeId is int newOfficeId
-            && (await _officeRepo.GetAllAsync(cancellationToken)).All(o => o.Id != newOfficeId))
+            && await _officeRepo.GetByIdAsync(newOfficeId, cancellationToken) is null)
             return ServiceResult<FundingSourceDto>.BadRequest($"Office {newOfficeId} not found.");
 
         DateTime now = DateTime.UtcNow;
@@ -189,7 +189,7 @@ public sealed class FundingSourceService : IFundingSourceService
             // BadRequest, as in CreateAsync — the office is a bad value in the body, not the
             // resource the request is addressed to.
             if (newOfficeId is int targetOfficeId
-                && (await _officeRepo.GetAllAsync(cancellationToken)).All(o => o.Id != targetOfficeId))
+                && await _officeRepo.GetByIdAsync(targetOfficeId, cancellationToken) is null)
                 return ServiceResult<FundingSourceDto>.BadRequest($"Office {targetOfficeId} not found.");
 
             // ⚠️ Only NARROWING is guarded — shared → an office, or one office → another. That hides
@@ -262,7 +262,7 @@ public sealed class FundingSourceService : IFundingSourceService
     public async Task<ServiceResult<FundOwnershipImpactDto>> GetOwnershipImpactAsync(
         int id, int? targetOfficeId, CancellationToken cancellationToken = default)
     {
-        FundingSource? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(f => f.Id == id);
+        FundingSource? entity = await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<FundOwnershipImpactDto>.NotFound($"Funding source {id} not found.");
 
@@ -300,7 +300,7 @@ public sealed class FundingSourceService : IFundingSourceService
     public async Task<ServiceResult<FundingSourceDto>> DeleteAsync(
         int id, bool blockWhenInUse = false, CancellationToken cancellationToken = default)
     {
-        FundingSource? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(f => f.Id == id);
+        FundingSource? entity = await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<FundingSourceDto>.NotFound($"Funding source {id} not found.");
 

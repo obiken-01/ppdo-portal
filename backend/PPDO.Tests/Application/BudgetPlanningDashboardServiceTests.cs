@@ -261,10 +261,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => offices.FirstOrDefault(o => o.Id == id));
 
-        Mock<IRepository<Division>> divisionRepo = new();
+        Mock<IDivisionRepository> divisionRepo = new();
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divisions);
 
-        Mock<IRepository<FundingSource>> fundingSourceRepo = new();
+        Mock<IFundingSourceRepository> fundingSourceRepo = new();
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundingSources);
 
         Mock<IWfpExpenditureRepository> wfpExpRepo = wfpExpRepoMock ?? new Mock<IWfpExpenditureRepository>();

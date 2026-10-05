@@ -22,9 +22,9 @@ public sealed class DistributionServiceTests
     private const int AdminDiv    = 1;
     private const int PlanningDiv = 2;
 
-    private static Mock<IRepository<Division>> DivisionsRepo()
+    private static Mock<IDivisionRepository> DivisionsRepo()
     {
-        Mock<IRepository<Division>> repo = new();
+        Mock<IDivisionRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -142,7 +142,7 @@ public sealed class DistributionServiceTests
         Mock<IDeliveryRepository> deliveryRepo,
         Mock<IItemMasterRepository> itemsRepo,
         Mock<IRepository<Distribution>> distributionsRepo,
-        Mock<IRepository<Division>>? divisionRepo = null,
+        Mock<IDivisionRepository>? divisionRepo = null,
         Mock<IAuditService>? auditService = null,
         Mock<IStockBalanceRepository>? stockBalanceRepo = null)
         => new(
