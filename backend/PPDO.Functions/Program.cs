@@ -150,6 +150,10 @@ var host = new HostBuilder()
         services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>(c =>
             c.Timeout = TimeSpan.FromSeconds(3));
 
+        // PPDO-142 — GET /api/health: the SELECT 1 probe (Infrastructure) behind a service that logs.
+        services.AddScoped<IDatabaseProbe, SqlDatabaseProbe>();
+        services.AddScoped<IHealthService, HealthService>();
+
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<ILandingPageResolver, LandingPageResolver>();
