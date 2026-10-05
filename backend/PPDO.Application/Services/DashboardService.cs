@@ -17,19 +17,13 @@ public sealed class DashboardService : IDashboardService
 
     private readonly ICalendarEventRepository      _events;
     private readonly IHolidayProvider              _holidays;
-    private readonly IRepository<PurchaseRequest>  _prs;
-    private readonly IRepository<ItemMaster>       _items;
 
     public DashboardService(
-        ICalendarEventRepository     events,
-        IHolidayProvider             holidays,
-        IRepository<PurchaseRequest> prs,
-        IRepository<ItemMaster>      items)
+        ICalendarEventRepository events,
+        IHolidayProvider         holidays)
     {
         _events   = events;
         _holidays = holidays;
-        _prs      = prs;
-        _items    = items;
     }
 
     /// <inheritdoc />
@@ -150,11 +144,9 @@ public sealed class DashboardService : IDashboardService
             return ServiceResult<IReadOnlyList<PendingCalendarEventDto>>.Forbidden(
                 "Admin or SuperAdmin role required.");
 
-        IReadOnlyList<CalendarEvent> all = await _events.GetAllAsync(cancellationToken);
+        IReadOnlyList<CalendarEvent> all = await _events.GetPendingOfficeEventsAsync(cancellationToken);
 
         IReadOnlyList<PendingCalendarEventDto> pending = all
-            .Where(e => e.Status == CalendarEventStatus.Pending && e.EventType == "Office")
-            .OrderBy(e => e.CreatedAt)
             .Select(e => new PendingCalendarEventDto(
                 e.Id,
                 e.Title,
@@ -270,23 +262,6 @@ public sealed class DashboardService : IDashboardService
         await _events.SaveChangesAsync(cancellationToken);
 
         return ServiceResult<CalendarEventDto>.Ok(MapToDto(entity));
-    }
-
-    /// <inheritdoc />
-    public async Task<DashboardStatsDto> GetStatsAsync(CancellationToken cancellationToken = default)
-    {
-        IReadOnlyList<PurchaseRequest> prs   = await _prs.GetAllAsync(cancellationToken);
-        IReadOnlyList<ItemMaster>      items = await _items.GetAllAsync(cancellationToken);
-
-        return new DashboardStatsDto
-        {
-            TotalPRs               = prs.Count,
-            OpenPRs                = prs.Count(p => p.Status == PRStatus.Open),
-            PartiallyDeliveredPRs  = prs.Count(p => p.Status == PRStatus.PartiallyDelivered),
-            FullyDeliveredPRs      = prs.Count(p => p.Status == PRStatus.FullyDelivered),
-            TotalItems             = items.Count,
-            NewItemsPendingReview  = items.Count(i => i.IsNewItem),
-        };
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
