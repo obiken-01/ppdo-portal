@@ -61,6 +61,8 @@ import OfficeBoard, { BOARD_COLUMNS, OfficeBoardSkeleton } from "./OfficeBoard";
 import OfficeTable from "./OfficeTable";
 import RecentActivityList from "./RecentActivityList";
 import StatusBand, { StatusBandSkeleton } from "./StatusBand";
+import { AllOfficesProposals, OfficeProposals, ProposalsSkeleton } from "./ProposalsBand";
+import { isCommentOnlyReviewer } from "@/lib/budget-planning-access";
 
 type OfficesView = "board" | "table";
 
@@ -513,6 +515,58 @@ export default function BudgetPlanningPage() {
   const officesWithoutCeiling = (offices ?? []).filter((o) => o.ceilingAmount == null);
   const priorFiscalYear = fiscalYear != null ? fiscalYear - 1 : null;
 
+  // ── Investment proposals (PPDO-180) ───────────────────────────────────
+  // FY2028+ only: earlier years have no proposals, so the band and the card are left out entirely.
+  // Both read what /dashboard/office and /dashboard/offices already return; no request of their own.
+
+  const proposalsYear = fiscalYear != null && fiscalYear >= FIRST_ENTERED_FISCAL_YEAR;
+  const proposalsListHref = `/budget-planning/proposals${fiscalYear != null ? `?fiscalYear=${fiscalYear}` : ""}`;
+  const openProposalsLink = (
+    <Link href={proposalsListHref} className="text-xs font-medium text-green-600 hover:text-green-700">
+      Open Investment Proposals →
+    </Link>
+  );
+
+  // The own-office band: shown while it loads (FY2028+), then only if the server sent a summary.
+  const showOwnProposals = proposalsYear && (officeLoading || officeDashboard?.proposals != null);
+  const ownProposalsBand = showOwnProposals ? (
+    <Band
+      title="Investment proposals"
+      description={officeLabel}
+      actions={openProposalsLink}
+      loading={officeLoading}
+      error={officeError}
+      onRetry={loadOfficeDashboard}
+      skeleton={<ProposalsSkeleton />}
+    >
+      {officeDashboard?.proposals && fiscalYear != null && (
+        <OfficeProposals
+          summary={officeDashboard.proposals}
+          fiscalYear={fiscalYear}
+          officeId={officeId}
+          listHref={proposalsListHref}
+          canCreate={user != null && !isCommentOnlyReviewer(user)}
+        />
+      )}
+    </Band>
+  ) : null;
+
+  // The reviewer's all-offices card, right after the Offices band it summarises.
+  const allOfficesProposalsBand =
+    isCrossOfficeReviewer && proposalsYear && fiscalYear != null ? (
+      <Band
+        title={`Investment proposals, all offices — FY ${fiscalYear}`}
+        description="Across every office in the AIP"
+        actions={openProposalsLink}
+        loading={officesLoading}
+        error={officesError}
+        onRetry={loadOffices}
+        skeleton={<ProposalsSkeleton />}
+      >
+        <AllOfficesProposals offices={offices ?? []} fiscalYear={fiscalYear} />
+      </Band>
+    ) : null;
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   // ── Offices band ────────────────────────────────────────────────────────
@@ -634,6 +688,7 @@ export default function BudgetPlanningPage() {
 
         {/* PPDO-176 — the reviewer's main work first; PPDO's own office follows below. */}
         {isCrossOfficeReviewer && officesBand}
+        {allOfficesProposalsBand}
 
         {dashboardLoading || officeLoading ? <MoneyTilesSkeleton /> : <MoneyTiles tiles={tiles} />}
 
@@ -701,37 +756,42 @@ export default function BudgetPlanningPage() {
 
         {!isCrossOfficeReviewer && officesBand}
 
-        {/* ── Recent activity ────────────────────────────────────────────── */}
-        <Band
-          title="Recent activity"
-          description={officeLabel}
-          // PPDO-181 — the audit log is SuperAdmin-only (the sidebar gates it the same way), so the
-          // link is only offered to someone it will open for.
-          actions={
-            canSeeAuditLog ? (
-              <Link href="/config/audit-log" className="text-xs font-medium text-green-600 hover:text-green-700">
-                Full history →
-              </Link>
-            ) : undefined
-          }
-          loading={activityLoading}
-          error={activityError}
-          onRetry={() => {
-            setActivityLoading(true);
-            setActivityError(null);
-            getRecentActivity(user?.officeId ?? undefined)
-              .then(setActivity)
-              .catch(() => setActivityError("Could not load recent activity."))
-              .finally(() => setActivityLoading(false));
-          }}
-          skeleton={<TableBandSkeleton rows={4} columns={2} />}
-        >
-          {activity.length === 0 ? (
-            <BandEmpty message="No recent activity yet." />
-          ) : (
-            <RecentActivityList entries={activity} />
-          )}
-        </Band>
+        {/* PPDO-180 — Investment proposals beside Recent activity (wireframe board 1); Recent
+            activity takes the full width when there is no proposals band (FY2027 and earlier). */}
+        <div className={ownProposalsBand ? "grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start" : ""}>
+          {ownProposalsBand}
+          {/* ── Recent activity ────────────────────────────────────────────── */}
+          <Band
+            title="Recent activity"
+            description={officeLabel}
+            // PPDO-181 — the audit log is SuperAdmin-only (the sidebar gates it the same way), so the
+            // link is only offered to someone it will open for.
+            actions={
+              canSeeAuditLog ? (
+                <Link href="/config/audit-log" className="text-xs font-medium text-green-600 hover:text-green-700">
+                  Full history →
+                </Link>
+              ) : undefined
+            }
+            loading={activityLoading}
+            error={activityError}
+            onRetry={() => {
+              setActivityLoading(true);
+              setActivityError(null);
+              getRecentActivity(user?.officeId ?? undefined)
+                .then(setActivity)
+                .catch(() => setActivityError("Could not load recent activity."))
+                .finally(() => setActivityLoading(false));
+            }}
+            skeleton={<TableBandSkeleton rows={4} columns={2} />}
+          >
+            {activity.length === 0 ? (
+              <BandEmpty message="No recent activity yet." />
+            ) : (
+              <RecentActivityList entries={activity} />
+            )}
+          </Band>
+        </div>
       </div>
 
       {bulkOpen && fiscalYear != null && priorFiscalYear != null && (
