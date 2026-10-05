@@ -893,4 +893,132 @@ public sealed class StockBalanceServiceTests
             "stock_balances", It.IsAny<Guid>(), AuditAction.Create,
             null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
+
+    // ── CommitImportAsync — repeated StockNo within one file (PPDO-189) ───────
+    //
+    // These pin what the per-row loop does today, with a stateful fake standing in for the
+    // database: a row's writes are visible to every later row of the same file. They have to
+    // keep passing when the loop is rewritten to load everything up front.
+
+    /// <summary>
+    /// Minimal stateful stand-in for the shared AppDbContext. Writes are staged by AddAsync and
+    /// become visible (to lookups, to the variance total) only on SaveChangesAsync — exactly the
+    /// behaviour the import relies on.
+    /// </summary>
+    private sealed class FakeImportDb
+    {
+        public List<StockBalance> Balances { get; } = [];
+        public List<ItemMaster>   Items    { get; } = [];
+        private readonly List<StockBalance> _stagedBalances = [];
+        private readonly List<ItemMaster>   _stagedItems    = [];
+
+        public Mock<IStockBalanceRepository> StockRepo { get; }
+        public Mock<IItemMasterRepository>   ItemRepo  { get; }
+        public Mock<IInventoryRepository>    InvRepo   { get; }
+
+        public FakeImportDb(decimal qtyDelivered, decimal qtyDistributed)
+        {
+            StockRepo = RepoThatSaves();
+            StockRepo.Setup(r => r.AddAsync(It.IsAny<StockBalance>(), It.IsAny<CancellationToken>()))
+                .Callback((StockBalance b, CancellationToken _) => _stagedBalances.Add(b))
+                .Returns(Task.CompletedTask);
+            StockRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() =>
+                {
+                    Balances.AddRange(_stagedBalances); _stagedBalances.Clear();
+                    Items.AddRange(_stagedItems);       _stagedItems.Clear();
+                    return 1;
+                });
+            StockRepo.Setup(r => r.FindByStockNoAndEffectiveDateAsync(
+                    It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string sn, DateOnly d, CancellationToken _) =>
+                    Balances.FirstOrDefault(b =>
+                        string.Equals(b.StockNo, sn, StringComparison.OrdinalIgnoreCase) && b.EffectiveDate == d));
+            StockRepo.Setup(r => r.GetTotalVarianceByStockNosAsync(
+                    It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<string> nos, CancellationToken _) =>
+                    (IReadOnlyDictionary<string, decimal>)Balances
+                        .Where(b => nos.Contains(b.StockNo, StringComparer.OrdinalIgnoreCase))
+                        .GroupBy(b => b.StockNo)
+                        .ToDictionary(g => g.Key, g => g.Sum(b => b.VarianceQty)));
+
+            ItemRepo = new Mock<IItemMasterRepository>();
+            ItemRepo.Setup(r => r.GetByStockNoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string sn, CancellationToken _) =>
+                    Items.FirstOrDefault(i => string.Equals(i.StockNo, sn, StringComparison.OrdinalIgnoreCase)));
+            ItemRepo.Setup(r => r.AddAsync(It.IsAny<ItemMaster>(), It.IsAny<CancellationToken>()))
+                .Callback((ItemMaster m, CancellationToken _) => _stagedItems.Add(m))
+                .Returns(Task.CompletedTask);
+
+            InvRepo = new Mock<IInventoryRepository>();
+            InvRepo.Setup(r => r.GetItemStockLevelAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string sn, CancellationToken _) => new ItemStockLevel(sn, 0m, qtyDelivered, qtyDistributed));
+        }
+
+        public StockBalanceService Build(Mock<IAuditService>? audit = null)
+            => BuildSut(StockRepo, InvRepo, ItemRepo, auditService: audit);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_SameStockNoOnTwoDates_StacksTheVarianceAndCreatesTheItemOnce()
+    {
+        DateOnly d1 = new(2026, 9, 1), d2 = new(2026, 9, 15);
+        FakeImportDb db = new(qtyDelivered: 100m, qtyDistributed: 0m);
+
+        CommitStockBalanceImportDto dto = new(
+        [
+            MakeCreateDto("NEW-1", 10m, d1, description: "Bond paper", unit: "ream", unitCost: 250m),
+            MakeCreateDto("NEW-1", 25m, d2, description: "Bond paper", unit: "ream", unitCost: 250m),
+        ]);
+
+        ServiceResult<StockBalanceImportResultDto> result = await db.Build().CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Inserted);
+        Assert.Equal(0, result.Value.Updated);
+
+        // Row 1: on hand = 100 delivered -> variance 10 - 100 = -90.
+        // Row 2 sees row 1's -90: on hand = 100 - 90 = 10 -> variance 25 - 10 = +15.
+        Assert.Equal(100m, result.Value.Entries[0].SystemOnHandAtEntry);
+        Assert.Equal(-90m, result.Value.Entries[0].VarianceQty);
+        Assert.Equal(10m,  result.Value.Entries[1].SystemOnHandAtEntry);
+        Assert.Equal(15m,  result.Value.Entries[1].VarianceQty);
+
+        // The catalogue gets ONE new item, and only the first row reports having created it.
+        Assert.Single(db.Items);
+        Assert.True(result.Value.Entries[0].ItemWasAutoCreated);
+        Assert.False(result.Value.Entries[1].ItemWasAutoCreated);
+        Assert.Equal(2, db.Balances.Count);
+    }
+
+    [Fact]
+    public async Task CommitImportAsync_SameStockNoAndDateTwice_SecondRowOverwritesTheFirst()
+    {
+        DateOnly date = new(2026, 9, 1);
+        FakeImportDb db = new(qtyDelivered: 100m, qtyDistributed: 0m);
+
+        CommitStockBalanceImportDto dto = new(
+        [
+            MakeCreateDto("NEW-1", 10m, date, description: "Bond paper", unit: "ream"),
+            MakeCreateDto("NEW-1", 30m, date, reason: "second count"),
+        ]);
+
+        ServiceResult<StockBalanceImportResultDto> result = await db.Build().CommitImportAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.Inserted);
+        Assert.Equal(1, result.Value.Updated);
+
+        // One balance row survives, holding the second count. Its own earlier -90 is excluded
+        // from the on-hand it is compared against: 100 + (-90) - (-90) = 100 -> variance -70.
+        StockBalance only = Assert.Single(db.Balances);
+        Assert.Equal(30m, only.CountedQty);
+        Assert.Equal(100m, only.SystemOnHandAtEntry);
+        Assert.Equal(-70m, only.VarianceQty);
+        Assert.Equal("second count", only.Reason);
+
+        // Both result entries are the same row.
+        Assert.Equal(result.Value.Entries[0].Id, result.Value.Entries[1].Id);
+        Assert.Single(db.Items);
+    }
 }
