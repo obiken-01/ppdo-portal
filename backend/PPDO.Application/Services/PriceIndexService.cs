@@ -453,13 +453,18 @@ public sealed class PriceIndexService : IPriceIndexService
         }
 
         List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
-        Dictionary<string, PriceIndexItem> existingByKey = all.ToDictionary(
-            p => Key(p.Name, p.Unit, p.StockCardNo), p => p, StringComparer.OrdinalIgnoreCase);
+        // Existing codes are normalised too: an earlier raw PGOM load left en-dash codes in the
+        // catalogue ("RAM–BAOS-…"), and matching only the incoming side would add a hyphen twin of
+        // each. A matched row is rewritten to the normalised code below. TryAdd, not ToDictionary:
+        // a catalogue holding both spellings of one code must not abort the import.
+        Dictionary<string, PriceIndexItem> existingByKey = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexItem p in all)
+            existingByKey.TryAdd(Key(p.Name, p.Unit, NormalizeItemCode(p.StockCardNo)), p);
         // Catalogue items with no stock card number yet. The first PGOM row for such an item
         // adopts it (sets its stock card no) instead of leaving a stock-card-less twin behind.
-        Dictionary<string, PriceIndexItem> adoptable = all
-            .Where(p => Blank(p.StockCardNo) is null)
-            .ToDictionary(p => NameUnitKey(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, PriceIndexItem> adoptable = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PriceIndexItem p in all.Where(p => Blank(p.StockCardNo) is null))
+            adoptable.TryAdd(NameUnitKey(p.Name, p.Unit), p);
 
         int created = 0, updated = 0, unchanged = 0;
         DateTime now = DateTime.UtcNow;
