@@ -418,6 +418,62 @@ public sealed class PriceIndexServiceTests
     }
 
     [Fact]
+    public async Task ImportCsvAsync_XlsxUploadedAsCsv_ReturnsBadRequestAndWritesNothing()
+    {
+        (PriceIndexService sut, Mock<IPriceIndexItemRepository> repo) = Build([]);
+
+        // An .xlsx is a zip: it begins "PK\x03\x04" and carries NUL bytes once decoded as text.
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync("PK\u0003\u0004\0\0\0 xl/worksheets/sheet1.xml");
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("CSV", result.Error!);
+        repo.Verify(r => r.AddAsync(It.IsAny<PriceIndexItem>(), It.IsAny<CancellationToken>()), Times.Never);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongFields_SkipsRowWithColumnNamedError_KeepsGoodRows()
+    {
+        (PriceIndexService sut, _) = Build([]);
+
+        string longStock = new('x', 51);
+        string csv =
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no\n" +
+            "Good item,piece,10,Cat,true,false,OS-1\n" +
+            $"Bad stock,piece,10,Cat,true,false,{longStock}\n" +
+            $"{new string('n', 301)},piece,10,Cat,true,false,\n" +
+            $"Bad unit,{new string('u', 51)},10,Cat,true,false,\n" +
+            $"Bad cat,piece,10,{new string('c', 101)},true,false,\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, result.Value!.New);
+        Assert.Equal(4, result.Value.Skipped);
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 3") && e.Contains("stock_card_no") && e.Contains("50"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 4") && e.Contains("name") && e.Contains("300"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 5") && e.Contains("unit") && e.Contains("50"));
+        Assert.Contains(result.Value.Errors, e => e.StartsWith("Row 6") && e.Contains("category") && e.Contains("100"));
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_OverlongStockCardNoOnExistingRow_SkipsWithoutMutating()
+    {
+        List<PriceIndexItem> seed = [Item(1, "Bond paper", "ream", 494m, "Paper", stockCardNo: "OS-1")];
+        (PriceIndexService sut, _) = Build(seed);
+
+        string csv =
+            "name,unit,unit_price,category,is_active,days_enabled,stock_card_no\n" +
+            $"Bond paper,ream,600,Paper,true,false,{new string('x', 60)}\n";
+
+        ServiceResult<CsvImportResult> result = await sut.ImportCsvAsync(csv);
+
+        Assert.Equal(1, result.Value!.Skipped);
+        Assert.Equal(494m, seed.Single().UnitPrice);
+        Assert.Equal("OS-1", seed.Single().StockCardNo);
+    }
+
+    [Fact]
     public async Task ExportCsvAsync_IncludesExpectedColumns()
     {
         (PriceIndexService sut, _) = Build([Item(1, "Ballpen", "piece", 15m, "Office Supplies")]);

@@ -232,6 +232,11 @@ public sealed class PriceIndexService : IPriceIndexService
     /// <inheritdoc />
     public async Task<ServiceResult<CsvImportResult>> ImportCsvAsync(string csvText, CancellationToken cancellationToken = default)
     {
+        if (Csv.LooksBinary(csvText))
+            return ServiceResult<CsvImportResult>.BadRequest(
+                "This file is not a CSV (it looks like an Excel .xlsx or other binary file). " +
+                "Export the price index as CSV from this page, or save your sheet as CSV, and upload that.");
+
         List<string[]> parsed = Csv.Parse(csvText);
         if (parsed.Count == 0)
             return ServiceResult<CsvImportResult>.BadRequest("The CSV file is empty.");
@@ -267,6 +272,20 @@ public sealed class PriceIndexService : IPriceIndexService
             {
                 skipped++;
                 errors.Add($"Row {rowNumber}: name and unit are required.");
+                continue;
+            }
+
+            // Mirrors PriceIndexItemConfiguration's HasMaxLength — checked here so one oversized
+            // cell skips its row with a named column instead of failing the whole batch at SaveChanges.
+            string? tooLong =
+                OverLimit("name", name, NameMax) ??
+                OverLimit("unit", unit, UnitMax) ??
+                OverLimit("category", Blank(category), CategoryMax) ??
+                OverLimit("stock_card_no", Blank(stockCardNo), StockCardNoMax);
+            if (tooLong is not null)
+            {
+                skipped++;
+                errors.Add($"Row {rowNumber}: {tooLong}");
                 continue;
             }
 
@@ -343,6 +362,16 @@ public sealed class PriceIndexService : IPriceIndexService
         if (unitPrice < 0) return "Unit price cannot be negative.";
         return null;
     }
+
+    private const int NameMax = 300;
+    private const int UnitMax = 50;
+    private const int CategoryMax = 100;
+    private const int StockCardNoMax = 50;
+
+    private static string? OverLimit(string column, string? value, int max) =>
+        value is not null && value.Length > max
+            ? $"{column} is {value.Length} characters; the limit is {max}."
+            : null;
 
     private static string Key(string name, string unit) => $"{name}|{unit}";
 
