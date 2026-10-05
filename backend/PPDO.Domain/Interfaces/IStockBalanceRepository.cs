@@ -61,6 +61,25 @@ public interface IStockBalanceRepository : IRepository<StockBalance>
         string stockNo, DateOnly effectiveDate, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every entry whose StockNo is in <paramref name="stockNos"/> AND whose EffectiveDate is in
+    /// <paramref name="effectiveDates"/>, in one query (PPDO-189) — the bulk-import upsert keys
+    /// for a whole file. A superset of the exact (StockNo, date) pairs; callers index it. Tracked,
+    /// because the import edits the rows it matches.
+    /// </summary>
+    Task<IReadOnlyList<StockBalance>> GetByStockNosAndDatesAsync(
+        IReadOnlyCollection<string> stockNos,
+        IReadOnlyCollection<DateOnly> effectiveDates,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Drops every entity the change tracker holds. Used by the bulk import when the
+    /// execution strategy retries its transaction: the failed attempt rolled back in the
+    /// database, so entities it added or edited in memory no longer describe what is stored
+    /// and would be re-saved by the retry.
+    /// </summary>
+    void ResetChangeTracking();
+
+    /// <summary>
     /// Returns the warehouse-count "pool" for one StockNo (RAL-223) — the most recent entry's
     /// Id/EffectiveDate (used as this pool's provenance/FIFO sort key when Distribution picks
     /// from it), the gross SUM(VarianceQty), and the total already distributed against it.
