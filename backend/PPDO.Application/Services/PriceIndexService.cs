@@ -66,7 +66,7 @@ public sealed class PriceIndexService : IPriceIndexService
             await _repo.GetPickerItemsAsync(ToIsActive(active), search, cancellationToken);
 
         return items
-            .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled))
+            .Select(i => new PriceIndexPickerItemDto(i.Id, i.Name, i.Unit, i.UnitPrice, i.DaysEnabled, i.StockCardNo))
             .ToList();
     }
 
@@ -74,7 +74,7 @@ public sealed class PriceIndexService : IPriceIndexService
     /// Bump when <see cref="PriceIndexPickerItemDto"/>'s shape changes, so browsers holding the old
     /// shape refetch even though no row changed.
     /// </summary>
-    public const string PickerShapeVersion = "1";
+    public const string PickerShapeVersion = "2";
 
     /// <inheritdoc />
     public async Task<string> GetPickerETagAsync(CancellationToken cancellationToken = default)
@@ -124,9 +124,10 @@ public sealed class PriceIndexService : IPriceIndexService
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        // PPDO-186: one EXISTS on the (name, unit) index, not the whole ~6,400-row catalogue.
-        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: null, cancellationToken))
-            return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
+        string? stockCardNo = Blank(dto.StockCardNo);
+        // PPDO-186: one EXISTS on the unique index, not the whole ~6,400-row catalogue.
+        if (await _repo.ItemExistsAsync(name, unit, stockCardNo, excludeId: null, cancellationToken))
+            return ServiceResult<PriceIndexItemDto>.Conflict(DuplicateMessage(name, unit, stockCardNo));
 
         DateTime now = DateTime.UtcNow;
         PriceIndexItem entity = new()
@@ -135,7 +136,7 @@ public sealed class PriceIndexService : IPriceIndexService
             Unit           = unit,
             UnitPrice      = dto.UnitPrice,
             Category       = Blank(dto.Category),
-            StockCardNo    = Blank(dto.StockCardNo),
+            StockCardNo    = stockCardNo,
             PriceUpdatedAt = now,
             IsActive       = dto.IsActive,
             DaysEnabled    = dto.DaysEnabled,
@@ -167,8 +168,9 @@ public sealed class PriceIndexService : IPriceIndexService
 
         string name = dto.Name.Trim();
         string unit = dto.Unit.Trim();
-        if (await _repo.NameAndUnitExistsAsync(name, unit, excludeId: id, cancellationToken))
-            return ServiceResult<PriceIndexItemDto>.Conflict($"A price index item named '{name}' ({unit}) already exists.");
+        string? stockCardNo = Blank(dto.StockCardNo);
+        if (await _repo.ItemExistsAsync(name, unit, stockCardNo, excludeId: id, cancellationToken))
+            return ServiceResult<PriceIndexItemDto>.Conflict(DuplicateMessage(name, unit, stockCardNo));
 
         var oldSnapshot = new { entity.Name, entity.Unit, entity.UnitPrice, entity.IsActive, entity.DaysEnabled, entity.StockCardNo };
         DateTime now = DateTime.UtcNow;
@@ -176,7 +178,7 @@ public sealed class PriceIndexService : IPriceIndexService
         entity.Name        = name;
         entity.Unit        = unit;
         entity.Category    = Blank(dto.Category);
-        entity.StockCardNo = Blank(dto.StockCardNo);
+        entity.StockCardNo = stockCardNo;
         entity.IsActive    = dto.IsActive;
         entity.DaysEnabled = dto.DaysEnabled;
         entity.UpdatedAt   = now;
@@ -246,7 +248,12 @@ public sealed class PriceIndexService : IPriceIndexService
 
         List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
         Dictionary<string, PriceIndexItem> byKey = all.ToDictionary(
-            p => Key(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
+            p => Key(p.Name, p.Unit, p.StockCardNo), p => p, StringComparer.OrdinalIgnoreCase);
+        // Only used for a 6-column (pre-stock_card_no) file, which cannot say WHICH of several
+        // same-name items a row means.
+        Dictionary<string, List<PriceIndexItem>> byNameUnit = all
+            .GroupBy(p => NameUnitKey(p.Name, p.Unit), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
         int created = 0, updated = 0, skipped = 0;
         List<string> errors = new();
@@ -304,8 +311,24 @@ public sealed class PriceIndexService : IPriceIndexService
                 continue;
             }
 
-            string key = Key(name, unit);
-            if (byKey.TryGetValue(key, out PriceIndexItem? existing))
+            string key = Key(name, unit, stockCardNo);
+            PriceIndexItem? existing = null;
+            if (hasStockCardNoColumn)
+            {
+                byKey.TryGetValue(key, out existing);
+            }
+            else if (byNameUnit.TryGetValue(NameUnitKey(name, unit), out List<PriceIndexItem>? sameName))
+            {
+                if (sameName.Count > 1)
+                {
+                    skipped++;
+                    errors.Add($"Row {rowNumber}: '{name}' ({unit}) exists with {sameName.Count} different stock card numbers and this file has no stock_card_no column to say which one.");
+                    continue;
+                }
+                existing = sameName[0];
+            }
+
+            if (existing is not null)
             {
                 bool priceChanged = existing.UnitPrice != price;
                 bool changed =
@@ -344,6 +367,10 @@ public sealed class PriceIndexService : IPriceIndexService
                 };
                 await _repo.AddAsync(entity, cancellationToken);
                 byKey[key] = entity;   // guard against duplicate keys within the same file
+                string nameUnit = NameUnitKey(name, unit);
+                if (!byNameUnit.TryGetValue(nameUnit, out List<PriceIndexItem>? bucket))
+                    byNameUnit[nameUnit] = bucket = new List<PriceIndexItem>();
+                bucket.Add(entity);
                 created++;
             }
         }
@@ -419,7 +446,7 @@ public sealed class PriceIndexService : IPriceIndexService
                 skipped++; errors.Add($"Row {row.RowNumber}: {tooLong}"); continue;
             }
 
-            string key = Key(name, unit);
+            string key = Key(name, unit, stockCardNo);
             if (byKey.ContainsKey(key)) mergedDuplicates++;
             byKey[key] = new PgomItem(name, unit, Math.Round(row.Price.Value, 2, MidpointRounding.AwayFromZero),
                 category, stockCardNo);
@@ -427,14 +454,26 @@ public sealed class PriceIndexService : IPriceIndexService
 
         List<PriceIndexItem> all = (await _repo.GetAllAsync(cancellationToken)).ToList();
         Dictionary<string, PriceIndexItem> existingByKey = all.ToDictionary(
-            p => Key(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
+            p => Key(p.Name, p.Unit, p.StockCardNo), p => p, StringComparer.OrdinalIgnoreCase);
+        // Catalogue items with no stock card number yet. The first PGOM row for such an item
+        // adopts it (sets its stock card no) instead of leaving a stock-card-less twin behind.
+        Dictionary<string, PriceIndexItem> adoptable = all
+            .Where(p => Blank(p.StockCardNo) is null)
+            .ToDictionary(p => NameUnitKey(p.Name, p.Unit), p => p, StringComparer.OrdinalIgnoreCase);
 
         int created = 0, updated = 0, unchanged = 0;
         DateTime now = DateTime.UtcNow;
 
         foreach (PgomItem item in byKey.Values)
         {
-            if (existingByKey.TryGetValue(Key(item.Name, item.Unit), out PriceIndexItem? existing))
+            if (!existingByKey.TryGetValue(Key(item.Name, item.Unit, item.StockCardNo), out PriceIndexItem? existing)
+                && item.StockCardNo is not null
+                && adoptable.Remove(NameUnitKey(item.Name, item.Unit), out PriceIndexItem? adopted))
+            {
+                existing = adopted;
+            }
+
+            if (existing is not null)
             {
                 bool priceChanged = existing.UnitPrice != item.Price;
                 bool changed =
@@ -475,7 +514,7 @@ public sealed class PriceIndexService : IPriceIndexService
         // Informational lines - not invalid rows, so they stay out of Errors.
         List<string> notes = new();
         if (mergedDuplicates > 0)
-            notes.Add($"{mergedDuplicates} rows repeated an item already in the file (same name and unit, usually under another account) and were merged; the last row was used.");
+            notes.Add($"{mergedDuplicates} rows repeated an item already in the file (same name, unit and item code) and were merged; the last row was used.");
         if (truncated > 0)
             notes.Add($"{truncated} names were longer than {NameMax} characters and were shortened.");
 
@@ -513,7 +552,17 @@ public sealed class PriceIndexService : IPriceIndexService
     private const int CategoryMax = 100;
     private const int StockCardNoMax = 50;
 
-    private static string Key(string name, string unit) => $"{name}|{unit}";
+    /// <summary>The unique key as a dictionary key: name, unit and stock card no (blank = none).</summary>
+    private static string Key(string name, string unit, string? stockCardNo)
+        => $"{name}|{unit}|{Blank(stockCardNo)}";
+
+    /// <summary>Name + unit only — for files that carry no stock card column to tell items apart.</summary>
+    private static string NameUnitKey(string name, string unit) => $"{name}|{unit}";
+
+    private static string DuplicateMessage(string name, string unit, string? stockCardNo)
+        => stockCardNo is null
+            ? $"A price index item named '{name}' ({unit}) with no stock card no already exists."
+            : $"A price index item named '{name}' ({unit}) with stock card no '{stockCardNo}' already exists.";
 
     private static PriceIndexItemDto MapToDto(PriceIndexItem p) =>
         new(p.Id, p.Name, p.Unit, p.UnitPrice, p.Category, p.PriceUpdatedAt, p.IsActive, p.DaysEnabled, p.StockCardNo);

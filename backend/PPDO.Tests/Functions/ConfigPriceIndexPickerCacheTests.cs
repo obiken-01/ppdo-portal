@@ -51,7 +51,7 @@ public sealed class ConfigPriceIndexPickerCacheTests
 
     private void SetupList() => _priceIndex
         .Setup(p => p.GetPickerListAsync(It.IsAny<string?>(), ActiveFilter.Active, It.IsAny<CancellationToken>()))
-        .ReturnsAsync([new PriceIndexPickerItemDto(1, "Bond paper", "ream", 250m, false)]);
+        .ReturnsAsync([new PriceIndexPickerItemDto(1, "Bond paper", "ream", 250m, false, null)]);
 
     /// <summary>Both directives, in any order: the header collection normalises the order.</summary>
     private static void AssertRevalidatePolicy(HttpResponseData res)

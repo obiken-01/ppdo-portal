@@ -59,8 +59,9 @@ public interface IPriceIndexService
 
     /// <summary>
     /// Upserts price index items from an Items export downloaded from PGOM (.xlsx). The export
-    /// lists one row per item per expense account, so the same name + unit repeats; rows are
-    /// collapsed to one per (name, unit) with the LAST row winning. Description -> name (line breaks
+    /// lists one row per item per expense account, so the same name + unit can repeat under
+    /// different item codes; each (name, unit, item code) is its own price index row, and an exact
+    /// repeat collapses with the LAST row winning. Description -> name (line breaks
     /// cleaned, cut to the 300-char column limit), Unit -> unit, Price -> unit_price, Account Name ->
     /// category, Item Code -> stock_card_no. Active / days-enabled flags are left as they are on
     /// existing items (the export has no such columns). Nothing is deleted.

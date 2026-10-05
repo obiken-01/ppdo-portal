@@ -9,14 +9,14 @@ namespace PPDO.Tests.Infrastructure;
 /// <summary>
 /// The two single-item reads PPDO-186 added to <see cref="PriceIndexItemRepository"/>:
 /// <see cref="PriceIndexItemRepository.GetByIntIdAsync"/> and
-/// <see cref="PriceIndexItemRepository.NameAndUnitExistsAsync"/>.
+/// <see cref="PriceIndexItemRepository.ItemExistsAsync"/>.
 ///
 /// <para>The service tests mock the repository, so nothing exercised these queries against a
 /// database. The risk is in the <c>excludeId</c> branch (an item must not collide with itself on
 /// update, but must collide with any other row) and in case-insensitivity, which the service no
 /// longer does in C#: it now relies on the column's collation.</para>
 ///
-/// <para>⚠️ Sqlite stands in for SQL Server here, so <c>name</c> and <c>unit</c> are declared
+/// <para>⚠️ Sqlite stands in for SQL Server here, so <c>name</c>, <c>unit</c> and <c>stock_card_no</c> are declared
 /// <c>COLLATE NOCASE</c> to match production's <c>SQL_Latin1_General_CP1_CI_AS</c> (checked on
 /// the local database, 2026-10-04). These tests prove the query shape, not SQL Server's collation.</para>
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class PriceIndexItemLookupTests : IDisposable
                 unit TEXT NOT NULL COLLATE NOCASE,
                 unit_price TEXT NOT NULL DEFAULT '0',
                 category TEXT NULL,
-                stock_card_no TEXT NULL,
+                stock_card_no TEXT NULL COLLATE NOCASE,
                 price_updated_at TEXT NOT NULL DEFAULT '2026-01-01 00:00:00',
                 is_active INTEGER NOT NULL DEFAULT 1,
                 days_enabled INTEGER NOT NULL DEFAULT 0,
@@ -50,6 +50,9 @@ public sealed class PriceIndexItemLookupTests : IDisposable
                 (1, 'Bond paper, A4', 'ream', '250.00', 1),
                 (2, 'Ballpen, black', 'box',  '120.00', 1),
                 (3, 'Old stapler',    'pc',   '80.00',  0);
+            INSERT INTO price_index_items (id, name, unit, unit_price, stock_card_no, is_active) VALUES
+                (4, 'Garden hose', 'roll', '6553.00', 'OSAMFD-1', 1),
+                (5, 'Garden hose', 'roll', '6553.00', 'CMFD-2',   1);
             """);
     }
 
@@ -102,23 +105,58 @@ public sealed class PriceIndexItemLookupTests : IDisposable
     [InlineData("Bond paper, A4", "ream")]
     [InlineData("BOND PAPER, A4", "REAM")] // the old C# check was OrdinalIgnoreCase
     [InlineData("bond paper, a4", "Ream")]
-    public async Task NameAndUnitExistsAsync_OnCreate_FindsAnExistingPairInAnyCase(string name, string unit)
-        => Assert.True(await WithRepo(r => r.NameAndUnitExistsAsync(name, unit, excludeId: null)));
+    public async Task ItemExistsAsync_OnCreate_FindsAnExistingPairInAnyCase(string name, string unit)
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync(name, unit, stockCardNo: null, excludeId: null)));
 
     [Fact]
-    public async Task NameAndUnitExistsAsync_SameNameDifferentUnit_IsNotADuplicate()
-        => Assert.False(await WithRepo(r => r.NameAndUnitExistsAsync("Bond paper, A4", "box", excludeId: null)));
+    public async Task ItemExistsAsync_SameNameDifferentUnit_IsNotADuplicate()
+        => Assert.False(await WithRepo(r => r.ItemExistsAsync("Bond paper, A4", "box", null, excludeId: null)));
 
     [Fact]
-    public async Task NameAndUnitExistsAsync_InactiveRow_StillCounts()
+    public async Task ItemExistsAsync_InactiveRow_StillCounts()
         // The unique index covers inactive rows too, so the check must, or the save would 500.
-        => Assert.True(await WithRepo(r => r.NameAndUnitExistsAsync("Old stapler", "pc", excludeId: null)));
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync("Old stapler", "pc", null, excludeId: null)));
 
     [Fact]
-    public async Task NameAndUnitExistsAsync_OnUpdate_AnItemDoesNotCollideWithItself()
-        => Assert.False(await WithRepo(r => r.NameAndUnitExistsAsync("Bond paper, A4", "ream", excludeId: 1)));
+    public async Task ItemExistsAsync_OnUpdate_AnItemDoesNotCollideWithItself()
+        => Assert.False(await WithRepo(r => r.ItemExistsAsync("Bond paper, A4", "ream", null, excludeId: 1)));
 
     [Fact]
-    public async Task NameAndUnitExistsAsync_OnUpdate_RenamingOntoAnotherItem_Collides()
-        => Assert.True(await WithRepo(r => r.NameAndUnitExistsAsync("ballpen, BLACK", "Box", excludeId: 1)));
+    public async Task ItemExistsAsync_OnUpdate_RenamingOntoAnotherItem_Collides()
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync("ballpen, BLACK", "Box", null, excludeId: 1)));
+
+    // ── Stock card no is part of the key ──────────────────────────────────────
+
+    [Fact]
+    public async Task ItemExistsAsync_SameNameUnitAndStockCardNo_Collides()
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync("Garden hose", "roll", "OSAMFD-1", excludeId: null)));
+
+    [Fact]
+    public async Task ItemExistsAsync_StockCardNoIsCaseInsensitive()
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync("garden HOSE", "roll", "osamfd-1", excludeId: null)));
+
+    [Fact]
+    public async Task ItemExistsAsync_SameNameUnitDifferentStockCardNo_IsNotADuplicate()
+        => Assert.False(await WithRepo(r => r.ItemExistsAsync("Garden hose", "roll", "NEW-9", excludeId: null)));
+
+    [Fact]
+    public async Task ItemExistsAsync_NoStockCardNo_DoesNotMatchRowsThatHaveOne()
+        => Assert.False(await WithRepo(r => r.ItemExistsAsync("Garden hose", "roll", null, excludeId: null)));
+
+    [Fact]
+    public async Task ItemExistsAsync_NoStockCardNo_MatchesARowWithNone()
+        => Assert.True(await WithRepo(r => r.ItemExistsAsync("Ballpen, black", "box", null, excludeId: null)));
+
+    [Fact]
+    public async Task ItemExistsAsync_AStockCardNoDoesNotMatchARowWithNone()
+        => Assert.False(await WithRepo(r => r.ItemExistsAsync("Ballpen, black", "box", "X-1", excludeId: null)));
+
+    [Fact]
+    public async Task GetPickerItemsAsync_CarriesTheStockCardNo_SoSameNamedRowsCanBeToldApart()
+    {
+        IReadOnlyList<PPDO.Domain.Interfaces.PriceIndexPickerItem> items =
+            await WithRepo(r => r.GetPickerItemsAsync(isActive: true, search: "Garden hose"));
+
+        Assert.Equal(new[] { "CMFD-2", "OSAMFD-1" }, items.Select(i => i.StockCardNo!).ToArray());
+    }
 }
