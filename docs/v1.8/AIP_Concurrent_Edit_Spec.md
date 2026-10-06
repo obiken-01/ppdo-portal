@@ -255,6 +255,43 @@ discipline across that many sites will be wrong within a release.
 `UpdatedAt` / `UpdatedById` are still added — but for the **message**, not the detection.
 `rowversion` tells you *that* it changed; only these tell you *who*.
 
+### If the database moves to PostgreSQL
+
+*Added 2026-10-06, while MIS hosting the database is still only a possibility
+([MIS migration notes](../external-api/README.md)). Nothing here is planned work.*
+
+The mechanism carries over; only the column behind it changes. PostgreSQL has no `rowversion`
+type, but every PostgreSQL row has the system column **`xmin`**, which the database changes on
+every update. The EF Core PostgreSQL provider (Npgsql) maps a `uint` property marked
+`.IsRowVersion()` to it:
+
+```csharp
+public uint RowVersion { get; set; }                  // was byte[] on SQL Server
+builder.Property(a => a.RowVersion).IsRowVersion();   // Npgsql maps this to xmin
+```
+
+So the property stays **database-maintained**, which is the reason `rowversion` was chosen over
+`UpdatedAt` above. There is no column to add: the `row_version` columns are simply not carried over.
+
+| Piece | Change on PostgreSQL |
+|---|---|
+| `AipActivity`, `AipExpenditure` | `byte[] RowVersion` → `uint RowVersion` |
+| Entity configuration | Keep `.IsRowVersion()`; drop the `row_version` column mapping |
+| Encoding the token | Every place that encodes or decodes it (`Convert.ToBase64String` on the way out, `ConfigHttp.DecodeRowVersion` on the way in; find them with a search for `RowVersion`) goes through one helper that turns the `uint` into a string and back |
+| Sqlite test tables | Drop the `row_version` column; those tests do not exercise concurrency |
+| Frontend | **None.** It holds the version as an opaque string and sends it back |
+| Conflict detection, the 409 payload | **None.** EF raises the same `DbUpdateConcurrencyException` on both databases |
+
+Fallbacks, if `xmin` were ever unsuitable: a trigger that increments an integer `version` column on
+every update (still database-maintained, but one more object to deploy), or an EF-incremented
+concurrency token set in `SaveChanges` (works, but relies on every write going through EF, the
+weakness this design avoided).
+
+⚠️ This guard is one of the smaller parts of such a move. The larger ones are elsewhere:
+case-insensitive matching that relies on SQL Server's `CI_AS` collation (usernames, price-index
+names), raw SQL, the migration history (regenerated for PostgreSQL) and the hand-applied production
+data steps. Assess those first.
+
 ---
 
 ## 6. UI states
