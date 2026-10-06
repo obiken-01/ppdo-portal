@@ -38,6 +38,7 @@ import {
   updateAipProgramFunctionBand,
   updateAipActivityIsCreation,
   aipErrorMessage,
+  aipConflict,
 } from "@/lib/aip";
 import { findGeneralFund, findHostOffice, listAccounts, listDivisions, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
 import { getAllocations, getCeilingStatus, getPrograms, getSetupStatus } from "@/lib/allocation";
@@ -1156,26 +1157,9 @@ function WfpEntryPageInner() {
   }, [selectedProgram?.id, selectedProgram?.functionBand]);
 
   async function handleIsCreationChange(activityId: number, checked: boolean) {
-    setAipDetail((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        offices: prev.offices.map((o) => ({
-          ...o,
-          programs: o.programs.map((p) => ({
-            ...p,
-            projects: p.projects.map((j) => ({
-              ...j,
-              activities: j.activities.map((a) => (a.id === activityId ? { ...a, isCreation: checked } : a)),
-            })),
-          })),
-        })),
-      };
-    });
-    setSavingActivityId(activityId);
-    try {
-      await updateAipActivityIsCreation(activityId, checked);
-    } catch (err) {
+    // ↩️ PPDO-191 (V18-71) — the toggle sends the activity's version and stores the new one, so a
+    // second toggle never conflicts with the first. Only this handler changed; the page is untouched.
+    const patchActivity = (patch: Partial<AipActivitySummary>) =>
       setAipDetail((prev) => {
         if (!prev) return prev;
         return {
@@ -1186,12 +1170,31 @@ function WfpEntryPageInner() {
               ...p,
               projects: p.projects.map((j) => ({
                 ...j,
-                activities: j.activities.map((a) => (a.id === activityId ? { ...a, isCreation: !checked } : a)),
+                activities: j.activities.map((a) => (a.id === activityId ? { ...a, ...patch } : a)),
               })),
             })),
           })),
         };
       });
+    const held = aipDetail?.offices
+      .flatMap((o) => o.programs).flatMap((p) => p.projects).flatMap((j) => j.activities)
+      .find((a) => a.id === activityId);
+
+    patchActivity({ isCreation: checked });
+    setSavingActivityId(activityId);
+    try {
+      const updated = await updateAipActivityIsCreation(activityId, checked, held?.rowVersion ?? null);
+      patchActivity({ isCreation: updated.isCreation, rowVersion: updated.rowVersion ?? null });
+    } catch (err) {
+      // Someone else saved this activity since it loaded: show what it is now, and hold the new
+      // version so the encoder can toggle again on purpose. A plain revert would leave the old one.
+      const clash = aipConflict<AipActivitySummary>(err);
+      if (clash) {
+        patchActivity({ isCreation: clash.current.isCreation, rowVersion: clash.currentRowVersion });
+        toast.error("Changed by someone else", aipErrorMessage(err, "This activity was changed while you were editing it."));
+        return;
+      }
+      patchActivity({ isCreation: !checked });
       toast.error("Failed", aipErrorMessage(err, "Could not update creation flag."));
     } finally {
       setSavingActivityId(null);

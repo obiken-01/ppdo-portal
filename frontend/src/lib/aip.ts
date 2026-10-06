@@ -309,6 +309,7 @@ const ACTIVITY_NULLS = {
 const SUMMARY_PROGRAM_NULLS = { functionBand: true } satisfies Record<NullableKeys<AipProgramSummary>, true>;
 const SUMMARY_ACTIVITY_NULLS = {
   ps: true, mooe: true, co: true, total: true, fundingSourceId: true, fundingSourceSnapshot: true,
+  rowVersion: true,
 } satisfies Record<NullableKeys<AipActivitySummary>, true>;
 
 function restoreDetailNulls(record: AipRecordDetail): AipRecordDetail {
@@ -405,15 +406,21 @@ export async function retagAipActivityDivision(
   return unwrap(data);
 }
 
+/**
+ * ↩️ PPDO-191 — sends the activity's `rowVersion` and returns the updated activity, so the caller
+ * can store its new version: toggling twice in a row must not 409 against the first toggle. A 409
+ * is a conflict (`aipConflict`), not an ordinary error.
+ */
 export async function updateAipActivityIsCreation(
   activityId: number,
-  isCreation: boolean
-): Promise<void> {
-  const { data } = await api.put<ApiResponse<unknown>>(
+  isCreation: boolean,
+  rowVersion: string | null
+): Promise<AipActivityDetail> {
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
     `/budget-planning/aip/activities/${activityId}/is-creation`,
-    { isCreation }
+    { isCreation, rowVersion }
   );
-  unwrap(data);
+  return unwrap(data);
 }
 
 // ---------------------------------------------------------------------------

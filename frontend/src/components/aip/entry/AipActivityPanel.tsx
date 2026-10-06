@@ -191,10 +191,25 @@ export default function AipActivityPanel({
             // The id is re-checked on arrival instead, so a response that outlives the selection
             // cannot paint one activity's expenditures under another's name.
             const forActivity = activity.id;
+            // PPDO-191 — the written line, with its new version, goes in straight away: editing it
+            // again before the refetch lands must not send the version it was loaded with.
+            if (result.line) {
+              const written = result.line;
+              setLines((prev) => prev && (prev.some((l) => l.id === written.id)
+                ? prev.map((l) => (l.id === written.id ? written : l))
+                : [...prev, written]));
+            }
             void listAipExpenditures(forActivity)
               .then((l) => { if (showing.current === forActivity) setLines(l); })
               .catch(() => undefined);
             onTotals(result);
+          }}
+          onReload={() => {
+            // A conflict's Discard: the lines as they now stand on the server.
+            const forActivity = activity.id;
+            void listAipExpenditures(forActivity)
+              .then((l) => { if (showing.current === forActivity) setLines(l); })
+              .catch(() => undefined);
           }} />
       )}
 

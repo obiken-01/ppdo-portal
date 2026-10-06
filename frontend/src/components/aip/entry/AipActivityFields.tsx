@@ -36,7 +36,8 @@ import { useState } from "react";
 import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
-import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
+import { updateAipActivityDetails, aipConflict, aipErrorMessage } from "@/lib/aip";
+import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
 import { fmtThousands } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
@@ -47,7 +48,7 @@ import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import MultiLookup, {
   joinCodes, withProponent, withoutProponent,
 } from "@/components/ui/MultiLookup";
-import type { AipActivityDetail, OfficeResponse } from "@/types";
+import type { AipActivityDetail, AipConflict, OfficeResponse } from "@/types";
 
 export default function AipActivityFields({
   activity, canEdit, onSaved, offices, proponentOfficeCode,
@@ -97,6 +98,10 @@ export default function AipActivityFields({
 
   const nameRef = useAutoGrowTextarea(name);
 
+  // PPDO-191 (V18-71) — set when the save was refused because someone else saved this activity
+  // after it was loaded. Same flow as AipActivityRow, the detail page's inline editor.
+  const [conflict, setConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+
   function beginEdit() {
     setName(activity.name);
     setEsreCode(activity.esreCode ?? "");
@@ -108,10 +113,17 @@ export default function AipActivityFields({
     setCcAdaptation(activity.ccAdaptation);
     setCcMitigation(activity.ccMitigation);
     setError(null);
+    setConflict(null);
     setEditing(true);
   }
 
-  async function save() {
+  /**
+   * @param rowVersion the version to save against: the activity as this page holds it, or, for an
+   *   Overwrite, the version from the conflict payload, so the retry is one request.
+   *   ⚠️ The page must hold the activity's CURRENT version: an expenditure write bumps it (the
+   *   totals recompute), and the page stores the new one from that write's result.
+   */
+  async function save(rowVersion: string | null = activity.rowVersion ?? null) {
     if (!name.trim()) { setError("The activity description is required."); return; }
     setSaving(true);
     setError(null);
@@ -126,14 +138,45 @@ export default function AipActivityFields({
         ccAdaptation,
         ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
+        rowVersion,
       });
+      setConflict(null);
       onSaved(updated);
       setEditing(false);
     } catch (e) {
+      // ⚠️ Conflict first, and never as an ordinary error: the panel is the only way to Overwrite
+      // or Discard. The form is NOT cleared; what the user typed is what this protects.
+      const clash = aipConflict<AipActivityDetail>(e);
+      if (clash) {
+        setConflict(clash);
+        return;
+      }
       setError(aipErrorMessage(e, "Could not save the activity details."));
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Only the fields that differ, as the user sees them on this form. */
+  function conflictFields(theirs: AipActivityDetail): AipConflictField[] {
+    const rows: AipConflictField[] = [];
+    const add = (label: string, mine: string | null, that: string | null | undefined) => {
+      const a = mine?.trim() || "—";
+      const b = that?.trim() || "—";
+      if (a !== b) rows.push({ label, mine: a, theirs: b });
+    };
+    const pesos = (v: number | null | undefined) => (v == null ? null : fmtThousands(v));
+    add("Description", name, theirs.name);
+    add("eSRE code", esreCode, theirs.esreCode);
+    add("Implementing office", joinCodes(withProponent(implementingOffices, proponentOfficeCode)),
+      theirs.implementingOffice);
+    add("Start", startDate, theirs.startDate);
+    add("End", endDate, theirs.endDate);
+    add("Expected outputs", expectedOutputs, theirs.expectedOutputs);
+    add("CC typology", ccTypologyCode, theirs.ccTypologyCode);
+    add("CC adaptation", pesos(ccAdaptation), pesos(theirs.ccAdaptation));
+    add("CC mitigation", pesos(ccMitigation), pesos(theirs.ccMitigation));
+    return rows;
   }
 
   // PPDO-166 — unsaved = the open form differs from the saved activity (what `beginEdit` loaded).
@@ -312,12 +355,31 @@ export default function AipActivityFields({
         <p className="mt-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
       )}
 
+      {/* PPDO-191 — in place, below the form the user is comparing against (spec §6). */}
+      {conflict && (
+        <div className="mt-3">
+          <AipConflictPanel
+            conflict={conflict}
+            noun="activity"
+            fields={conflictFields(conflict.current)}
+            busy={saving}
+            onOverwrite={() => save(conflict.currentRowVersion)}
+            onDiscard={() => {
+              // Their values win, by the user's choice. `current` is the row as it now stands.
+              setConflict(null);
+              onSaved(conflict.current);
+              setEditing(false);
+            }}
+          />
+        </div>
+      )}
+
       <div className="mt-3 flex justify-end gap-2">
-        <button type="button" onClick={() => setEditing(false)} disabled={saving}
+        <button type="button" onClick={() => { setConflict(null); setEditing(false); }} disabled={saving}
           className="border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
           Cancel
         </button>
-        <button type="button" onClick={save} disabled={saving}
+        <button type="button" onClick={() => save()} disabled={saving}
           className="bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
           {saving ? "Saving…" : "Save details"}
         </button>

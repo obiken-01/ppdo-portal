@@ -30,10 +30,11 @@ import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/e
 import Lookup from "@/components/ui/Lookup";
 import { fmtThousands, fmtPesos } from "@/lib/aip-units";
 import {
-  addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipErrorMessage,
+  addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipConflict, aipErrorMessage,
 } from "@/lib/aip";
+import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
 import type {
-  AipExpenditure, AipExpenditureWriteResult, AccountResponse, FundingSourceResponse,
+  AipConflict, AipExpenditure, AipExpenditureWriteResult, AccountResponse, FundingSourceResponse,
   PriceIndexPickerItem, SaveAipProcurementItemRequest,
 } from "@/types";
 
@@ -247,7 +248,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
 
 export default function AipExpenditureTable({
   activityId, lines, accounts, fundingSources, canEdit, generalFundId,
-  priceIndex, priceIndexLoading, onChanged,
+  priceIndex, priceIndexLoading, onChanged, onReload,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -259,7 +260,13 @@ export default function AipExpenditureTable({
   /** The ~6,400-row catalogue, fetched off the page's critical path (RAL-231). */
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
+  /**
+   * Called with EVERY write's result, including each line of a fund change (PPDO-191): each result
+   * carries that line's new version and the activity's, and the page must store all of them.
+   */
   onChanged: (result: AipExpenditureWriteResult) => void;
+  /** PPDO-191 — re-read the lines from the server: a conflict's Discard. */
+  onReload?: () => void;
 }) {
   const [adding, setAdding]       = useState(false);
   const [draft, setDraft]         = useState<Draft>(EMPTY);
@@ -269,6 +276,20 @@ export default function AipExpenditureTable({
   // Which saved lines have their procurement items expanded. Collapsed by default: an activity with
   // several itemised lines would otherwise open as a wall of item rows.
   const [expanded, setExpanded]   = useState<Set<number>>(new Set());
+  // PPDO-191 (V18-71) — a write refused because someone else saved the line after it was loaded.
+  // `fund` also remembers the loop's targets and where it stopped, so Overwrite can resume it.
+  const [lineConflict, setLineConflict] = useState<
+    | { kind: "save" | "delete"; lineId: number; conflict: AipConflict<AipExpenditure> }
+    | {
+        kind: "fund"; lineId: number; conflict: AipConflict<AipExpenditure>;
+        next: string; previous: string; targets: AipExpenditure[]; stoppedAt: number;
+      }
+    | null
+  >(null);
+
+  /** The version this page holds for a line: what to send with a write to it. */
+  const versionOf = (id: number) => lines.find((l) => l.id === id)?.rowVersion ?? null;
+
   // PPDO-166 — the draft as the editor opened, so "unsaved" means "changed", not merely "open".
   const openedDraft = useRef(JSON.stringify(EMPTY));
 
@@ -319,7 +340,11 @@ export default function AipExpenditureTable({
    */
   const legacyMulti = !MULTI_FUND_ENTRY_ENABLED && lockedToMulti;
 
-  async function save(existingId: number | null) {
+  /**
+   * @param rowVersion for an existing line: the version to save against. Defaults to the one the
+   *   page holds; an Overwrite passes the conflict payload's, so the retry is one request.
+   */
+  async function save(existingId: number | null, rowVersion: string | null = null) {
     setBusy(true);
     setError(null);
     try {
@@ -345,15 +370,23 @@ export default function AipExpenditureTable({
         // returns an itemised line to a typed amount.
         procurementItems: draft.procurementItems,
       };
+      // A new line has no version: a row that does not exist yet cannot conflict (spec §4).
       const result = existingId === null
         ? await addAipExpenditure(activityId, body)
-        : await updateAipExpenditure(existingId, body);
+        : await updateAipExpenditure(existingId, { ...body, rowVersion: rowVersion ?? versionOf(existingId) });
 
+      setLineConflict(null);
       onChanged(result);
       setAdding(false);
       setEditingId(null);
       setDraft(EMPTY);
     } catch (e) {
+      // ⚠️ Conflict first, never as an ordinary error, and the draft stays open and filled.
+      const clash = existingId === null ? null : aipConflict<AipExpenditure>(e);
+      if (clash && existingId !== null) {
+        setLineConflict({ kind: "save", lineId: existingId, conflict: clash });
+        return;
+      }
       setError(aipErrorMessage(e, "Could not save the expenditure line."));
     } finally {
       setBusy(false);
@@ -372,42 +405,115 @@ export default function AipExpenditureTable({
     const previous = activityFund;
     setActivityFund(next);
     if (lines.length === 0 || next === previous) return;
+    await runFundChange(next, previous, [...lines], 0, null);
+  }
 
+  /**
+   * Rewrites the fund of `targets[startAt…]`, one request per line.
+   *
+   * ⚠️ PPDO-191 — every line's result goes to `onChanged`, not just the last: each carries that
+   * line's new version and the activity's. Storing only the last left the earlier lines on stale
+   * versions, so editing one of them right after would 409 against the encoder's own fund change.
+   *
+   * ⚠️ A conflict on line k STOPS the loop and shows the panel for line k. Lines before it are
+   * already saved and are NOT rolled back (there is no transaction across requests, and undoing
+   * them would be a second set of writes that can fail too). The panel's note says how many changed;
+   * Overwrite resumes from line k with the version the conflict reported.
+   */
+  async function runFundChange(
+    next: string, previous: string, targets: AipExpenditure[], startAt: number,
+    firstVersion: string | null,
+  ) {
     setBusy(true);
     setError(null);
+    setLineConflict(null);
+    let i = startAt;
     try {
-      let last: AipExpenditureWriteResult | null = null;
-      for (const line of lines) {
-        last = await updateAipExpenditure(line.id, {
+      for (; i < targets.length; i++) {
+        const line = targets[i];
+        const result = await updateAipExpenditure(line.id, {
           accountId: line.accountId,
           fundingSourceId: next ? Number(next) : null,
           ps: line.ps, mooe: line.mooe, co: line.co,
+          rowVersion: i === startAt && firstVersion ? firstVersion : line.rowVersion ?? null,
           // ⚠️ `procurementItems` is deliberately ABSENT, not empty. Omitting it leaves each line's
           // items untouched; an empty array here would silently delete every itemised line's costing
           // just because the encoder changed the activity's fund.
         });
+        onChanged(result);
       }
-      if (last) onChanged(last);
     } catch (e) {
-      setActivityFund(previous);
-      setError(aipErrorMessage(e, "Could not change this activity's funding source."));
+      const clash = aipConflict<AipExpenditure>(e);
+      if (clash) {
+        setLineConflict({
+          kind: "fund", lineId: targets[i].id, conflict: clash, next, previous, targets, stoppedAt: i,
+        });
+        return;
+      }
+      // Nothing after the failure was written; say how much before it was.
+      if (i === 0) setActivityFund(previous);
+      setError(aipErrorMessage(e, i === 0
+        ? "Could not change this activity's funding source."
+        : `Changed the funding source on ${i} of ${targets.length} lines, then stopped.`));
     } finally {
       setBusy(false);
     }
   }
 
-  async function remove(id: number) {
+  async function remove(id: number, rowVersion: string | null = null) {
     setBusy(true);
     setError(null);
     try {
       // ⚠️ The result is used, not discarded. Deleting the last line takes the activity's total to
       // 0, and the parent must render that rather than keep showing the pre-delete figure.
-      onChanged(await deleteAipExpenditure(id));
+      onChanged(await deleteAipExpenditure(id, rowVersion ?? versionOf(id)));
+      setLineConflict(null);
     } catch (e) {
+      // PPDO-191 — someone edited the line since it was loaded: ask before deleting their work.
+      const clash = aipConflict<AipExpenditure>(e);
+      if (clash) {
+        setLineConflict({ kind: "delete", lineId: id, conflict: clash });
+        return;
+      }
       setError(aipErrorMessage(e, "Could not delete the expenditure line."));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** The differing fields for the open conflict, as this table labels them. */
+  function lineConflictFields(): AipConflictField[] {
+    if (!lineConflict) return [];
+    const theirs = lineConflict.conflict.current;
+    const rows: AipConflictField[] = [];
+    const add = (label: string, mine: string, that: string) => {
+      if (mine !== that) rows.push({ label, mine, theirs: that });
+    };
+    const accountName = (id: number | null) =>
+      id == null ? "—" : accounts.find((a) => a.id === id)?.accountTitle ?? `#${id}`;
+    const fundName = (id: number | null) =>
+      id == null ? "—" : fundingSources.find((f) => f.id === id)?.name ?? `#${id}`;
+    const theirAccount = theirs.accountTitle ?? accountName(theirs.accountId);
+    const theirFund = theirs.fundingSourceName ?? fundName(theirs.fundingSourceId);
+
+    if (lineConflict.kind === "delete") {
+      rows.push({ label: "This line", mine: "Delete it", theirs: `Keep it (${fmtPesos(theirs.total)})` });
+      add("Account", theirAccount, theirAccount);
+      return rows;
+    }
+    if (lineConflict.kind === "fund") {
+      add("Funding source", fundName(lineConflict.next ? Number(lineConflict.next) : null), theirFund);
+      return rows;
+    }
+    add("Account", accountName(draft.accountId ? Number(draft.accountId) : null), theirAccount);
+    add("Funding source",
+      fundName(multiFund ? (draft.fundingSourceId ? Number(draft.fundingSourceId) : null)
+                         : (activityFund ? Number(activityFund) : null)),
+      theirFund);
+    add("PS",   fmtPesos(draft.ps ?? 0),   fmtPesos(theirs.ps));
+    add("MOOE", fmtPesos(draft.mooe ?? 0), fmtPesos(theirs.mooe));
+    add("CO",   fmtPesos(draft.co ?? 0),   fmtPesos(theirs.co));
+    return rows;
   }
 
   function beginAdd() {
@@ -609,6 +715,38 @@ export default function AipExpenditureTable({
 
       {error && (
         <p className="mt-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+      )}
+
+      {/* PPDO-191 (V18-71) — the refused line's conflict, in place above the lines (spec §6). The
+          draft or the lines stay as they were; the user decides here. */}
+      {lineConflict && (
+        <div className="mt-2">
+          {lineConflict.kind === "fund" && lineConflict.stoppedAt > 0 && (
+            <p className="mb-1 text-xs text-amber-700">
+              The funding source was already changed on {lineConflict.stoppedAt} of{" "}
+              {lineConflict.targets.length} lines. Those stay changed whichever you choose.
+            </p>
+          )}
+          <AipConflictPanel
+            conflict={lineConflict.conflict}
+            noun="expenditure line"
+            fields={lineConflictFields()}
+            busy={busy}
+            onOverwrite={() => {
+              const c = lineConflict;
+              if (c.kind === "save") void save(c.lineId, c.conflict.currentRowVersion);
+              else if (c.kind === "delete") void remove(c.lineId, c.conflict.currentRowVersion);
+              else if (c.kind === "fund") void runFundChange(c.next, c.previous, c.targets, c.stoppedAt, c.conflict.currentRowVersion);
+            }}
+            onDiscard={() => {
+              const c = lineConflict;
+              setLineConflict(null);
+              if (c.kind === "save") { setEditingId(null); setDraft(EMPTY); }
+              if (c.kind === "fund" && c.stoppedAt === 0) setActivityFund(c.previous);
+              onReload?.();
+            }}
+          />
+        </div>
       )}
 
       {lines.length === 0 && !adding ? (

@@ -156,6 +156,15 @@ Verified against the endpoint list 2026-09-22.
 > this spec exists to close, reintroduced one level down. **If procurement items ever get their own
 > endpoints, they need their own `rowversion`.**
 
+> ⚠️ **An expenditure write also changes the activity row's version** (PPDO-191, found 2026-10-05).
+> Every line add, update or delete recomputes the activity's PS / MOOE / CO
+> (`AipActivityTotalsService`), which rewrites the activity row and bumps its `rowversion`. So the
+> expenditure write result (`AipExpenditureWriteResultDto`) returns **`activityRowVersion`**, the
+> activity's version after the write, and the page stores it. Without it, "save a line, then save the
+> activity's details" would 409 against the encoder's own line, with no other editor involved. The same
+> holds for a multi-line loop (changing the fund of every line): each line's own result carries its new
+> version, and the page stores every one, not just the last.
+
 **Not covered, by decision** (§2 open follow-ups): program, project and office **renames**
 (`PUT .../programs/{id}`, `.../projects/{id}`, `.../offices/{officeId}`, `.../function-band`).
 Rare, and low-stakes next to amounts. Adding them later is the same three columns and the same
@@ -245,6 +254,43 @@ discipline across that many sites will be wrong within a release.
 
 `UpdatedAt` / `UpdatedById` are still added — but for the **message**, not the detection.
 `rowversion` tells you *that* it changed; only these tell you *who*.
+
+### If the database moves to PostgreSQL
+
+*Added 2026-10-06, while MIS hosting the database is still only a possibility
+([MIS migration notes](../external-api/README.md)). Nothing here is planned work.*
+
+The mechanism carries over; only the column behind it changes. PostgreSQL has no `rowversion`
+type, but every PostgreSQL row has the system column **`xmin`**, which the database changes on
+every update. The EF Core PostgreSQL provider (Npgsql) maps a `uint` property marked
+`.IsRowVersion()` to it:
+
+```csharp
+public uint RowVersion { get; set; }                  // was byte[] on SQL Server
+builder.Property(a => a.RowVersion).IsRowVersion();   // Npgsql maps this to xmin
+```
+
+So the property stays **database-maintained**, which is the reason `rowversion` was chosen over
+`UpdatedAt` above. There is no column to add: the `row_version` columns are simply not carried over.
+
+| Piece | Change on PostgreSQL |
+|---|---|
+| `AipActivity`, `AipExpenditure` | `byte[] RowVersion` → `uint RowVersion` |
+| Entity configuration | Keep `.IsRowVersion()`; drop the `row_version` column mapping |
+| Encoding the token | Every place that encodes or decodes it (`Convert.ToBase64String` on the way out, `ConfigHttp.DecodeRowVersion` on the way in; find them with a search for `RowVersion`) goes through one helper that turns the `uint` into a string and back |
+| Sqlite test tables | Drop the `row_version` column; those tests do not exercise concurrency |
+| Frontend | **None.** It holds the version as an opaque string and sends it back |
+| Conflict detection, the 409 payload | **None.** EF raises the same `DbUpdateConcurrencyException` on both databases |
+
+Fallbacks, if `xmin` were ever unsuitable: a trigger that increments an integer `version` column on
+every update (still database-maintained, but one more object to deploy), or an EF-incremented
+concurrency token set in `SaveChanges` (works, but relies on every write going through EF, the
+weakness this design avoided).
+
+⚠️ This guard is one of the smaller parts of such a move. The larger ones are elsewhere:
+case-insensitive matching that relies on SQL Server's `CI_AS` collation (usernames, price-index
+names), raw SQL, the migration history (regenerated for PostgreSQL) and the hand-applied production
+data steps. Assess those first.
 
 ---
 
@@ -350,6 +396,7 @@ Verifiable against the running app by a person, two browsers, one office:
 - [ ] Two encoders open the same activity and edit **details** (dates, ESRE, outputs) rather than amounts → the second is stopped. Same row, same guard.
 - [ ] Deleting the row in one browser, then saving in the other → "deleted", not a conflict panel.
 - [ ] A submitted (`SubmittedToPpdo`) record still returns PPDO-70's 403, not a 409.
+- [ ] **Self-conflict:** one encoder saves an expenditure line, then edits that activity's details and saves → succeeds, no panel. Same for changing an activity's fund across several lines, then editing any of those lines. *(PPDO-191 — the totals recompute bumps the activity's version.)*
 - [ ] After Deploy 3, a request with no `rowVersion` gets 400.
 
 ---

@@ -150,4 +150,12 @@ public sealed record AipExpenditureWriteResultDto(
     /// without this the fund cell would go stale the moment a line naming a new fund was added —
     /// or keep naming a fund whose only line was just deleted.
     /// </summary>
-    IReadOnlyList<string> ActivityFundCodes);
+    IReadOnlyList<string> ActivityFundCodes,
+    /// <summary>
+    /// PPDO-191 — the activity's base64 <c>rowversion</c> <b>after</b> this write. Every line write
+    /// recomputes the activity's PS/MOOE/CO, which bumps the activity row's version. Without this the
+    /// page would keep the old version, and the encoder's next activity-details save would 409
+    /// against their own line (AIP_Concurrent_Edit_Spec.md §4, totals-recompute rule). Null only when
+    /// the activity cannot be read back.
+    /// </summary>
+    string? ActivityRowVersion = null);

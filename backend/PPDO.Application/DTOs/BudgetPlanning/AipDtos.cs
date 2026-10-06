@@ -499,7 +499,10 @@ public record AipActivitySummaryDto(
     decimal? Total,
     int?     FundingSourceId,
     string?  FundingSourceSnapshot,
-    bool     IsCreation);
+    bool     IsCreation,
+    // PPDO-191 — base64 rowversion: the WFP page's new/continuing toggle writes this activity, so
+    // the slim summary carries the concurrency token too (V18-71). Null only for a row without one.
+    string?  RowVersion = null);
 
 public record AipProjectSummaryDto(
     int    Id,
