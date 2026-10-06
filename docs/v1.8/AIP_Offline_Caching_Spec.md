@@ -189,8 +189,14 @@ migration and no `dotnet ef database update` step.
   Value = `{ data: T[], fetchedAt: string (ISO) }`
 - **Object store `ceiling-cache`:** key = `<aipId>`, value = `{ status: AipCeilingStatus,
   fetchedAt: string (ISO) }`
-- **Object store `activity-drafts`:** key = `<activityId>`, value =
-  `{ name, esreCode, implementingOffice, startDate, endDate, expectedOutputs, savedAt: string (ISO) }`
+- **Object store `activity-drafts`:** key = `<userId>:<activityId>`, value =
+  `{ fields: { name, esreCode, implementingOffices, startDate, endDate, expectedOutputs,
+  ccAdaptation, ccMitigation, ccTypologyCode }, baseRowVersion, savedAt: string (ISO) }`
+  ↩️ **As built in PPDO-112** (was `<activityId>` and six fields): the key carries the user
+  (decision 8 — shared office PCs), the fields are every one the activity form edits, and "is the
+  draft newer" is decided by `baseRowVersion` against the row's current version, not by comparing
+  `savedAt` to a server time — no activity DTO carries `updatedAt`. Added at database **version 2**;
+  the upgrade keeps `reference-data`. See `frontend/src/lib/activity-drafts.ts`.
 
 ## 6. UI states
 
