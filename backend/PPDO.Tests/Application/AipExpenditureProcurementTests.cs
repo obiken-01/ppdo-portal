@@ -49,6 +49,7 @@ public sealed class AipExpenditureProcurementTests
     private readonly Mock<IFundingSourceRepository> _funds   = new();
     private readonly Mock<IAuditService>             _audit    = new();
     private readonly Mock<IPermissionService>        _permissions = new();
+    private readonly Mock<IUserRepository>     _users       = new(MockBehavior.Loose);
 
     private readonly List<AipProcurementItem> _saved = [];
 
@@ -118,7 +119,7 @@ public sealed class AipExpenditureProcurementTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
         AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
-        NullLogger<AipExpenditureService>.Instance);
+        _users.Object, NullLogger<AipExpenditureService>.Instance);
 
     private AipExpenditure? Written()
     {

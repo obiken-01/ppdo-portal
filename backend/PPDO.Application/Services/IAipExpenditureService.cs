@@ -46,12 +46,14 @@ public interface IAipExpenditureService
 
     /// <summary>Replaces a line's values, then recomputes and upserts the ledger.</summary>
     Task<ServiceResult<AipExpenditureWriteResultDto>> UpdateAsync(
-        int expenditureId, UpdateAipExpenditureDto dto, User caller, CancellationToken ct = default);
+        int expenditureId, UpdateAipExpenditureDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes a line, then recomputes <b>with the delete-aware pass</b> and upserts the ledger.
     /// Removing the activity's last line leaves its total at 0, not null.
     /// </summary>
     Task<ServiceResult<AipExpenditureWriteResultDto>> DeleteAsync(
-        int expenditureId, User caller, CancellationToken ct = default);
+        int expenditureId, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 }

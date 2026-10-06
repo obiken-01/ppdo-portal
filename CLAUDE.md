@@ -850,8 +850,13 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 - **Production:** `release/1.8.1` → `main`, after the pre-deployment checklist.
 - **What v1.8.1 ships:** PPDO-182/183/184 (compression, picker cache, AIP Entry), PPDO-185/186, PPDO-177
   (dashboard parallel load), PPDO-175/176 (submission stage, reviewer top). **No migrations.**
-- ⚠️ **V18-71** (concurrent-edit guard) is unscheduled. It adds the migration `AddAipConcurrencyTokens`:
-  when it lands in a release, add it to the hand-applied migration list.
+- ⚠️ **V18-71** (concurrent-edit guard) is in **v1.8.2**. Its finished half (PPDO-117…120) was merged into
+  `release/1.8.2` on 2026-10-06, carrying the migration **`20261005235915_AddAipConcurrencyTokens`**
+  (regenerated with a fresh timestamp; same operations as the 2026-09-22 original). ⚠️ **v1.8.2 therefore
+  needs a hand-applied migration** in UAT and production before its code deploys, and its own
+  pre-deployment checklist. A database that ran the old `20260922022444_` ID (only local dev ones) needs that
+  `__EFMigrationsHistory` row renamed, not the migration re-run. The guard stays optional on each save
+  until PPDO-121.
 
 #### What was deliberately NOT built
 
