@@ -397,7 +397,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
             activityId,
             activity?.Ps, activity?.Mooe, activity?.Co, activity?.Total,
             totals.LineCount,
-            fundCodes));
+            fundCodes,
+            // PPDO-191 — read AFTER the recompute above: EF reads the activity's new rowversion back
+            // onto the tracked instance when it saves the totals, so this is the post-write value.
+            activity?.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null));
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────

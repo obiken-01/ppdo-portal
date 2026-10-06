@@ -156,6 +156,15 @@ Verified against the endpoint list 2026-09-22.
 > this spec exists to close, reintroduced one level down. **If procurement items ever get their own
 > endpoints, they need their own `rowversion`.**
 
+> ⚠️ **An expenditure write also changes the activity row's version** (PPDO-191, found 2026-10-05).
+> Every line add, update or delete recomputes the activity's PS / MOOE / CO
+> (`AipActivityTotalsService`), which rewrites the activity row and bumps its `rowversion`. So the
+> expenditure write result (`AipExpenditureWriteResultDto`) returns **`activityRowVersion`**, the
+> activity's version after the write, and the page stores it. Without it, "save a line, then save the
+> activity's details" would 409 against the encoder's own line, with no other editor involved. The same
+> holds for a multi-line loop (changing the fund of every line): each line's own result carries its new
+> version, and the page stores every one, not just the last.
+
 **Not covered, by decision** (§2 open follow-ups): program, project and office **renames**
 (`PUT .../programs/{id}`, `.../projects/{id}`, `.../offices/{officeId}`, `.../function-band`).
 Rare, and low-stakes next to amounts. Adding them later is the same three columns and the same
@@ -350,6 +359,7 @@ Verifiable against the running app by a person, two browsers, one office:
 - [ ] Two encoders open the same activity and edit **details** (dates, ESRE, outputs) rather than amounts → the second is stopped. Same row, same guard.
 - [ ] Deleting the row in one browser, then saving in the other → "deleted", not a conflict panel.
 - [ ] A submitted (`SubmittedToPpdo`) record still returns PPDO-70's 403, not a 409.
+- [ ] **Self-conflict:** one encoder saves an expenditure line, then edits that activity's details and saves → succeeds, no panel. Same for changing an activity's fund across several lines, then editing any of those lines. *(PPDO-191 — the totals recompute bumps the activity's version.)*
 - [ ] After Deploy 3, a request with no `rowVersion` gets 400.
 
 ---

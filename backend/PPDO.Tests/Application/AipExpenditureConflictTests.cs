@@ -134,6 +134,66 @@ public sealed class AipExpenditureConflictTests
         IReadOnlyList<SaveAipProcurementItemDto>? items = null, string? rowVersion = null) =>
         new(AccountId, null, 0m, 2_000m, 0m, items, rowVersion);
 
+    // ── The activity's own version after a line write (PPDO-191, ticket §0B) ───
+
+    private static readonly byte[] ActivityBefore = [0, 0, 0, 0, 0, 0, 0, 20];
+    private static readonly byte[] ActivityAfter  = [0, 0, 0, 0, 0, 0, 0, 21];
+
+    /// <summary>
+    /// The activity as EF tracks it, at <see cref="ActivityBefore"/>. The totals recompute bumps its
+    /// version the way EF reads a new <c>rowversion</c> back after an UPDATE, so a result built from
+    /// a read taken BEFORE the recompute would carry the old one.
+    /// </summary>
+    private AipActivity ArrangeActivityVersionBump()
+    {
+        AipActivity activity = new() { Id = ActivityId, ProjectId = ProjectId, RowVersion = ActivityBefore };
+        _aipRepo.Setup(r => r.GetActivityByIdAsync(ActivityId, It.IsAny<CancellationToken>())).ReturnsAsync(activity);
+        _totals.Setup(t => t.RecalculateAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .Callback(() => activity.RowVersion = ActivityAfter).ReturnsAsync(true);
+        _totals.Setup(t => t.RecalculateAfterLineDeleteAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .Callback(() => activity.RowVersion = ActivityAfter).ReturnsAsync(true);
+        _expRepo.Setup(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()))
+            .Callback<AipExpenditure, CancellationToken>((e, _) => e.Id = LineId)
+            .Returns(Task.CompletedTask);
+        return activity;
+    }
+
+    [Fact]
+    public async Task Add_ReturnsTheActivitysVersionAfterTheTotalsRecompute()
+    {
+        // Without it the page keeps the old activity version, and the encoder's next details save
+        // 409s against their own line. Red-tested by taking its version before the recompute.
+        ArrangeActivityVersionBump();
+
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().AddAsync(
+            ActivityId, new CreateAipExpenditureDto(AccountId, null, 0m, 1_000m, 0m, []), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(Convert.ToBase64String(ActivityAfter), result.Value!.ActivityRowVersion);
+    }
+
+    [Fact]
+    public async Task Update_ReturnsTheActivitysVersionAfterTheTotalsRecompute()
+    {
+        ArrangeActivityVersionBump();
+
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(LineId, Dto(), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(Convert.ToBase64String(ActivityAfter), result.Value!.ActivityRowVersion);
+    }
+
+    [Fact]
+    public async Task Delete_ReturnsTheActivitysVersionAfterTheTotalsRecompute()
+    {
+        ArrangeActivityVersionBump();
+
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().DeleteAsync(LineId, Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(Convert.ToBase64String(ActivityAfter), result.Value!.ActivityRowVersion);
+    }
+
     // ── Update ────────────────────────────────────────────────────────────────
 
     [Fact]
