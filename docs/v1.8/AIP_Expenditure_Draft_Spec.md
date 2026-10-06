@@ -1,5 +1,5 @@
 ---
-status: draft — defaults proposed, awaiting Ralph's review of §2 and the open follow-ups
+status: ready — §2 confirmed by Ralph 2026-10-06
 version: v1.8.2 (or later — milestone not yet chosen)
 tickets: PPDO-192 (expenditure-line draft mirror)
 supersedes: nothing — extends PPDO-112 (V18-64), whose non-goals listed expenditure lines
@@ -21,7 +21,7 @@ items included) is mirrored to the same IndexedDB database PPDO-112 created. The
 activity is opened, the encoder is offered it back. This is the same crash and accidental-close
 safety net as PPDO-112, applied to the part of AIP Entry where the most typing happens.
 
-## 2. Decisions (settled — defaults proposed 2026-10-06, Ralph to confirm)
+## 2. Decisions (settled — confirmed by Ralph 2026-10-06)
 
 1. **One draft slot per user per activity, not one per line.** `AipExpenditureTable` allows exactly
    one open editor at a time (`adding` or `editingId`, never both), so there is only ever one line's
@@ -46,7 +46,11 @@ safety net as PPDO-112, applied to the part of AIP Entry where the most typing h
      silently**. Offering it would create a duplicate line.
    - **Existing line that no longer exists** (deleted since) → **offer it as a new line**, worded
      so. The typed amounts and items are the encoder's work; silently dropping them is the failure
-     this feature exists to prevent.
+     this feature exists to prevent. Resurrecting a line a colleague deleted on purpose takes two
+     deliberate acts: the banner says plainly that the line "has since been deleted", Restore only
+     opens the add row, and nothing exists until Save. A read-only view with a "copy" control was
+     considered and rejected: a new component for a rare case, after which the encoder retypes
+     everything anyway.
 5. **Restoring onto a line that moved on saves against the draft's base version**, so the overlap
    reaches the existing line conflict panel (`lineConflict.kind = "save"`) instead of silently
    overwriting. This is the same as PPDO-112 decision A, and it costs the same: an activity-wide
@@ -61,18 +65,24 @@ safety net as PPDO-112, applied to the part of AIP Entry where the most typing h
    shared `lib/local-drafts.ts` with the activity API kept as it is). The key builder and the
    decision function are per feature. The "a broken store never breaks the page" guarantee applies
    unchanged.
-8. **AIP Entry only.** Same as PPDO-112: only `AipActivityPanel` turns the mirror on (it already has
+8. **Restored procurement items keep the prices stored in the draft: no re-read from the price
+   index, no "price changed" warning.** Checked 2026-10-06: the server does not re-read prices on
+   save. `AipExpenditureService.BuildItems` stores the `UnitPrice` it is sent and computes
+   `LineTotal` from it; `PriceIndexItemId` is only a reference. Picking an item only seeds its price,
+   and the Unit Price input stays editable (`AipProcurementItemTable.tsx`), so encoders do override
+   it. A stored price is therefore the encoder's figure, not a live link to the index. A saved line
+   keeps its price when the index changes, and a restored draft behaves the same. Re-reading on
+   restore would overwrite deliberate overrides. A "price changed since" warning would have to cover
+   every saved line, not only restored drafts, so it is its own ticket if PPDO ever wants it.
+9. **AIP Entry only.** Same as PPDO-112: only `AipActivityPanel` turns the mirror on (it already has
    the user id). The review modal renders `AipExpenditureTable` too, and stays without drafts.
 
 ### Open follow-ups (not blocking)
 
-- **Restoring a deleted line as a new line (decision 4b)** — the proposed default. The alternative
-  is to show the text read-only with a "copy" affordance. Ralph to confirm.
-- **Price-index prices in a restored draft.** Items carry the `unitPrice` they were picked at. If
-  the price index changed between the draft and the restore, the restored line shows the old price,
-  exactly as an editor left open overnight would today. Does the server re-read prices from
-  `priceIndexItemId` on save? Confirm while reading `AipExpenditureService` at ticket time. If it
-  does not, say so in the PR; it is not this ticket's to change.
+- ~~Restoring a deleted line as a new line~~ → settled as decision 4 (2026-10-06).
+- ~~Price-index prices in a restored draft~~ → settled as decision 8 (2026-10-06).
+- **A "price changed since it was picked" warning**, for saved lines as well as drafts — not this
+  ticket; raise separately if PPDO asks for it.
 - **Procurement presets** (Load/Save preset dialogs) are not mirrored. They are their own short
   flows and save immediately.
 
@@ -147,7 +157,7 @@ Components: the PPDO-112 banner, lifted from `AipActivityFields.tsx` into a smal
 - **Procurement preset dialogs**, the activity-fund picker and the multi-fund question. Each
   saves immediately or is a single click.
 - **Cross-tab or cross-device sync.**
-- **The review modal's expenditure table** (decision 8).
+- **The review modal's expenditure table** (decision 9).
 - **WFP's localStorage draft** — still a separate, later decision.
 
 ## 8. Deployment notes
