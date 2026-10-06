@@ -282,7 +282,8 @@ public sealed class AipService : IAipService
                                 .Select(a => new AipActivitySummaryDto(
                                     a.Id, a.RefCode, a.Name,
                                     a.Ps, a.Mooe, a.Co, a.Total,
-                                    a.FundingSourceId, a.FundingSourceSnapshot, a.IsCreation))
+                                    a.FundingSourceId, a.FundingSourceSnapshot, a.IsCreation,
+                                    a.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null))
                                 .ToList()))
                         .ToList();
                     return new AipProgramSummaryDto(p.Id, p.RefCode, p.Name, projDtos, p.FunctionBand);

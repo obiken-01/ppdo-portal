@@ -385,6 +385,8 @@ export interface AipActivitySummary {
   fundingSourceId: number | null;
   fundingSourceSnapshot: string | null;
   isCreation: boolean;
+  /** PPDO-191 — base64 rowversion; the WFP new/continuing toggle sends it back (V18-71). */
+  rowVersion?: string | null;
 }
 
 export interface AipProjectSummary {
@@ -1439,6 +1441,12 @@ export interface AipExpenditureWriteResult {
    * line was just deleted.
    */
   activityFundCodes: string[];
+  /**
+   * PPDO-191 — the activity's version AFTER this write. Every line write recomputes the activity's
+   * totals, which bumps its version; store this, or the encoder's next details save 409s against
+   * their own line. Absent from an older backend.
+   */
+  activityRowVersion?: string | null;
 }
 
 /**

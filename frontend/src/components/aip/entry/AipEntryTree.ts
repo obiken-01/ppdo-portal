@@ -117,5 +117,9 @@ export function applyActivityTotals(
     // one can remove the last line naming a fund — neither is visible from the amounts, and the
     // tree is never reloaded, so leaving this out strands the row's fund pill on a stale value.
     fundCodes: r.activityFundCodes,
+    // ⚠️ PPDO-191 — the line write bumped the activity's version (its totals were recomputed).
+    // Storing it is what lets the encoder's next details save go through instead of 409ing
+    // against their own line. Left alone when an older backend does not send it.
+    ...(r.activityRowVersion !== undefined ? { rowVersion: r.activityRowVersion } : {}),
   });
 }

@@ -715,6 +715,27 @@ public sealed partial class AipServiceTests
     }
 
     [Fact]
+    public async Task GetSummaryById_CarriesEachActivitysRowVersion()
+    {
+        // PPDO-191 — the WFP page toggles new/continuing from the summary tree, so the slim DTO must
+        // carry the concurrency token or that write can never be guarded. Red-tested by omitting it.
+        AipRecord rec = Rec(34);
+        byte[] version = [0, 0, 0, 0, 0, 0, 0, 7];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [],
+            officeSeed:  [new AipOffice { Id = 340, AipRecordId = 34, RefCode = "1000", Name = "GSO", OfficeId = 2 }],
+            programSeed: [new AipProgram { Id = 341, OfficeId = 340, RefCode = "001", Name = "P" }],
+            projectSeed: [new AipProject { Id = 342, ProgramId = 341, RefCode = "001", Name = "J" }],
+            actSeed:     [new AipActivity { Id = 343, ProjectId = 342, RefCode = "001", Name = "A", RowVersion = version }]);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(34, HostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        AipActivitySummaryDto activity =
+            Assert.Single(Assert.Single(Assert.Single(Assert.Single(result.Value!.Offices).Programs).Projects).Activities);
+        Assert.Equal(Convert.ToBase64String(version), activity.RowVersion);
+    }
+
+    [Fact]
     public async Task GetSummaryById_UsesGetByIntIdAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(9);
