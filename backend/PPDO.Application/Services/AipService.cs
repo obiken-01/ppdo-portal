@@ -1374,7 +1374,8 @@ public sealed class AipService : IAipService
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default)
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1445,7 +1446,9 @@ public sealed class AipService : IAipService
         activity.CcMitigation          = dto.CcMitigation;
         activity.CcTypologyCode        = dto.CcTypologyCode;
 
-        await _aipRepo.SaveChangesAsync(ct);
+        ServiceResult<AipActivityDto>? conflict =
+            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+        if (conflict is not null) return conflict;
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old,
             new
             {
@@ -1460,7 +1463,8 @@ public sealed class AipService : IAipService
 
     /// <inheritdoc />
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
-        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default)
+        int activityId, UpdateAipActivityDetailsDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1508,7 +1512,9 @@ public sealed class AipService : IAipService
         // ⚠️ Ps/Mooe/Co/Total/FundingSourceId are NOT assigned, and that is the whole point of this
         // method rather than a reuse of UpdateActivityAsync. They belong to the expenditure lines.
 
-        await _aipRepo.SaveChangesAsync(ct);
+        ServiceResult<AipActivityDto>? conflict =
+            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+        if (conflict is not null) return conflict;
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old, new
         {
             activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
@@ -2253,7 +2259,8 @@ public sealed class AipService : IAipService
     }
 
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, User caller, CancellationToken ct = default)
+        int activityId, bool isCreation, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -2275,12 +2282,103 @@ public sealed class AipService : IAipService
 
         bool oldValue = activity.IsCreation;
         activity.IsCreation = isCreation;
-        await _aipRepo.SaveChangesAsync(ct);
+        ServiceResult<AipActivityDto>? conflict =
+            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+        if (conflict is not null) return conflict;
+
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update,
             new { IsCreation = oldValue }, new { IsCreation = isCreation }, ct);
 
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div));
     }
+
+    // ── Concurrent-edit guard (V18-71 / PPDO-118) ─────────────────────────────
+
+    /// <summary>
+    /// Stamps the actor, declares the version the caller was working from, and saves.
+    /// Returns <c>null</c> when the save succeeded, or the failure to return when it did not.
+    ///
+    /// <para>
+    /// The null-means-success shape matches this file's existing <c>statusError</c> convention, so
+    /// a caller reads as <c>if (x is not null) return x;</c> either way.
+    /// </para>
+    /// </summary>
+    private async Task<ServiceResult<AipActivityDto>?> SaveActivityAsync(
+        AipActivity activity, byte[]? expectedRowVersion, User caller, CancellationToken ct)
+    {
+        // Stamped on EVERY activity write, not only the ones that can conflict — the 409 message
+        // is only as good as the last writer it can name, and a path that skips this leaves a
+        // future conflict reporting "changed by (unknown)".
+        activity.UpdatedAt   = DateTime.UtcNow;
+        activity.UpdatedById = caller.Id;
+
+        _aipRepo.ExpectRowVersion(activity, expectedRowVersion);
+
+        try
+        {
+            await _aipRepo.SaveChangesAsync(ct);
+            return null;
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return await ActivityConflictAsync(activity, caller, ct);
+        }
+    }
+
+    /// <summary>
+    /// Builds the 409 payload after a rejected activity save: who saved last, when, and what the
+    /// row says now.
+    /// </summary>
+    private async Task<ServiceResult<AipActivityDto>> ActivityConflictAsync(
+        AipActivity activity, User caller, CancellationToken ct)
+    {
+        int activityId = activity.Id;
+
+        // ⚠️ Reload, not re-query. The change tracker still holds this entity with the caller's
+        // rejected values; a fresh query identity-resolves straight back to it and would hand the
+        // user their own edit back, labelled as somebody else's.
+        try
+        {
+            await _aipRepo.ReloadAsync(activity, ct);
+        }
+        catch (Exception ex)
+        {
+            // A conflict we cannot describe is still a conflict. Failing to a 500 here would turn
+            // "someone else edited this" into "the app broke", which is strictly worse.
+            _logger.LogError(ex,
+                "Could not reload AIP activity after a concurrency conflict. ActivityId: {ActivityId}", activityId);
+            return ServiceResult<AipActivityDto>.Conflict(
+                AipConflictNarration.Message(ActivityNoun, null, sameUser: false));
+        }
+
+        // Reload on a deleted row detaches it — the other user deleted rather than edited, which
+        // is a different answer and a different recovery (spec §3).
+        if (activity.Id == 0 || await _aipRepo.GetActivityByIdAsync(activityId, ct) is null)
+            return ServiceResult<AipActivityDto>.NotFound(
+                AipConflictNarration.DeletedMessage(ActivityNoun));
+
+        // GetNamesByIdsAsync, not GetByIdWithDivisionAsync — this file's existing idiom for
+        // resolving a display name (see GetAllAsync). It projects the name in SQL instead of
+        // materialising the user and its division for one string, which matters more here than
+        // elsewhere: this runs on a failure path that fires while somebody is waiting.
+        // ⚠️ Resolved only AFTER the reload above — see AipConflictNarration.ResolveEditorAsync.
+        (string? changedByName, bool sameUser) = await AipConflictNarration.ResolveEditorAsync(
+            activity.UpdatedById, caller.Id, _userRepo, ct);
+
+        _logger.LogWarning(
+            "AIP concurrent edit rejected. ActivityId: {ActivityId}, AttemptedByUserId: {AttemptedByUserId}, ChangedByUserId: {ChangedByUserId}",
+            activityId, caller.Id, activity.UpdatedById);
+
+        return ServiceResult<AipActivityDto>.Conflict(
+            AipConflictNarration.Message(ActivityNoun, changedByName, sameUser),
+            new AipConflictDto<AipActivityDto>(
+                changedByName,
+                activity.UpdatedAt,
+                Convert.ToBase64String(activity.RowVersion),
+                MapActivityToDto(activity)));
+    }
+
+    private const string ActivityNoun = "activity";
 
     // ── Purge (dev/test only) ─────────────────────────────────────────────────
 
