@@ -24,11 +24,9 @@
  * Nothing is evicted: the largest list is the price index (~6,400 rows).
  */
 
-import { openDB, type IDBPDatabase } from "idb";
-
-export const CACHE_DB = "ppdo-aip-cache";
-export const REFERENCE_STORE = "reference-data";
-const DB_VERSION = 1;
+// ↩️ The database was opened here, at version 1, until PPDO-112 added the draft store. The open now
+// lives in `aip-cache-db.ts`, shared with the draft mirror, so the two cannot block each other.
+import { REFERENCE_STORE, getAipCacheDb } from "./aip-cache-db";
 
 /** The lists this cache holds. A new one must have its scope axes checked before it is added. */
 export type ReferenceKind = "accounts" | "offices" | "funding-sources" | "price-index" | "esre-codes" | "cc-typologies";
@@ -136,29 +134,17 @@ export async function loadThroughCache<T>(
 
 // ── The IndexedDB store ─────────────────────────────────────────────────────
 
-let dbPromise: Promise<IDBPDatabase | null> | null = null;
-
-function openDatabase(): Promise<IDBPDatabase | null> {
-  if (typeof window === "undefined" || typeof indexedDB === "undefined") return Promise.resolve(null);
-  dbPromise ??= openDB(CACHE_DB, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains(REFERENCE_STORE)) db.createObjectStore(REFERENCE_STORE);
-    },
-  }).catch(() => null); // private browsing, storage disabled, a blocked upgrade: no cache
-  return dbPromise;
-}
-
 const idbStore: CacheStore = {
   async get<T>(key: string) {
-    const db = await openDatabase();
+    const db = await getAipCacheDb();
     return db ? ((await db.get(REFERENCE_STORE, key)) as CacheEntry<T> | undefined) : undefined;
   },
   async set<T>(key: string, entry: CacheEntry<T>) {
-    const db = await openDatabase();
+    const db = await getAipCacheDb();
     if (db) await db.put(REFERENCE_STORE, entry, key);
   },
 };
 
 async function defaultStore(): Promise<CacheStore | null> {
-  return (await openDatabase()) ? idbStore : null;
+  return (await getAipCacheDb()) ? idbStore : null;
 }
