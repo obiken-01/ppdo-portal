@@ -56,6 +56,17 @@ will sit on top of.
    not silently as current. The actual submit-time block already lives entirely server-side
    (DECISION C, `AipSubmitService`) and stays there — this cache is informational only, never a
    gate.
+
+   ↩️ **As built in PPDO-113 (Ralph, 2026-10-07): an in-session staleness label, no IndexedDB
+   store.** The ceiling reaches AIP Entry inside the submit readiness, which loads together with
+   the AIP tree; the tree is not cached (decision 6), so a load that cannot reach the server fails
+   before any ceiling is shown, and a cross-session ceiling cache would have nothing to feed. The
+   case that does happen is a readiness **refresh** failing mid-session, where the page already kept
+   the last figures (so it stays usable) but showed them as current. Those figures now carry an
+   amber caption, "As of `<Manila time>`. These figures could not be refreshed and may be out of
+   date." with a Try again link, until the next successful read. Labelled however recent the last
+   good read was: the caption only appears after a failure, so it is never noise (the open
+   threshold question, settled). See `frontend/src/lib/ceiling-staleness.ts`.
 4. **V18-67 narrows to one concrete fix: source eSRE codes from the existing config API instead of
    the hardcoded `AIP_ESRE_OPTIONS` array in `lib/aipConstants.ts`.** Investigation for this spec
    found eSRE already has a real config table and API (`GET /config/esre-codes`, RAL-248, already
@@ -187,8 +198,9 @@ migration and no `dotnet ef database update` step.
 - **Object store `reference-data`:** key = `<kind>` (e.g. `"accounts"`, `"esre-codes"`) — or
   `<kind>:<scope>` for a scoped list, currently only `funding-sources:<officeId>` (decision 8).
   Value = `{ data: T[], fetchedAt: string (ISO) }`
-- **Object store `ceiling-cache`:** key = `<aipId>`, value = `{ status: AipCeilingStatus,
-  fetchedAt: string (ISO) }`
+- ~~**Object store `ceiling-cache`:** key = `<aipId>`, value = `{ status: AipCeilingStatus,
+  fetchedAt: string (ISO) }`~~ ↩️ **Not built** (PPDO-113, decision 3): the staleness label is held in
+  page state, not IndexedDB.
 - **Object store `activity-drafts`:** key = `<userId>:<activityId>`, value =
   `{ fields: { name, esreCode, implementingOffices, startDate, endDate, expectedOutputs,
   ccAdaptation, ccMitigation, ccTypologyCode }, baseRowVersion, savedAt: string (ISO) }`
@@ -218,7 +230,7 @@ migration and no `dotnet ef database update` step.
 |---|---|
 | Loading | Unchanged — existing skeleton |
 | Live figure available | Current behaviour, no change |
-| Cached figure shown (live fetch failed or offline) | **New**: figure renders as today, plus a small caption "as of `<relative time>`" in `text-amber-700`, matching the existing amber-caution token used elsewhere for non-blocking staleness/warning copy (e.g. `AipActivityNameCounter`) |
+| Cached figure shown (live fetch failed or offline) | **New**: figure renders as today, plus a small caption "as of `<relative time>`" in `text-amber-700`, matching the existing amber-caution token used elsewhere for non-blocking staleness/warning copy (e.g. `AipActivityNameCounter`). ↩️ As built (PPDO-113): shown when a readiness **refresh** fails mid-session; the time is Manila clock time, not relative, plus a Try again link. Cleared by the next successful read. |
 | No figure available at all (cold cache + fetch failed) | Unchanged — existing empty/error state |
 
 ### AIP Entry — draft restore prompt
