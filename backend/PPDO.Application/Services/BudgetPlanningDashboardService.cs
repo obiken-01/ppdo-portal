@@ -28,6 +28,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private static readonly string[] BudgetPlanningTableNames =
     [
         "aip_records", "aip_programs", "aip_activities",
+        // PPDO-110 — project adds, edits and deletes (Ralph, 2026-10-07); audited all along, but
+        // filtered out, so the band skipped the level between program and activity.
+        "aip_projects",
         "ldip_records",
         "wfp_records", "wfp_expenditures",
         "budget_ceilings", "division_allocations", "program_divisions",

@@ -1321,12 +1321,14 @@ public sealed class AipService : IAipService
             functionBand = canonical!;
         }
 
-        object old = new { program.Name, program.FunctionBand };
+        // PPDO-110 — RefCode on BOTH sides: it names the row for the Audit Log, and being equal it
+        // never reads as a change in the description's diff.
+        object old = new { program.RefCode, program.Name, program.FunctionBand };
         program.Name         = dto.Name.Trim();
         program.FunctionBand = functionBand;
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_programs", program.Id, AuditAction.Update,
-            old, new { program.Name, program.FunctionBand }, ct);
+            old, new { program.RefCode, program.Name, program.FunctionBand }, ct);
 
         // Field-update response — Projects intentionally omitted, same convention as
         // UpdateProgramFunctionBandAsync (callers patch their own local state by field).
@@ -1355,7 +1357,7 @@ public sealed class AipService : IAipService
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipProjectDto>.BadRequest("Project name is required.");
 
-        var before = new { project.Name, project.Description, project.Objective };
+        var before = new { project.RefCode, project.Name, project.Description, project.Objective };
 
         project.Name = dto.Name.Trim();
         // ⚠️ Blank collapses to null, so "cleared" and "never filled in" are one state rather than
@@ -1365,7 +1367,7 @@ public sealed class AipService : IAipService
 
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_projects", project.Id, AuditAction.Update,
-            before, new { project.Name, project.Description, project.Objective }, ct);
+            before, new { project.RefCode, project.Name, project.Description, project.Objective }, ct);
 
         return ServiceResult<AipProjectDto>.Ok(
             new AipProjectDto(project.Id, project.ProgramId, project.RefCode, project.Name,
@@ -1425,6 +1427,7 @@ public sealed class AipService : IAipService
 
         object old = new
         {
+            activity.RefCode,
             activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate, activity.EndDate,
             activity.ExpectedOutputs, activity.FundingSourceId, activity.FundingSourceSnapshot,
             activity.Ps, activity.Mooe, activity.Co, activity.Total,
@@ -1453,6 +1456,7 @@ public sealed class AipService : IAipService
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old,
             new
             {
+                activity.RefCode,
                 activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate, activity.EndDate,
                 activity.ExpectedOutputs, activity.FundingSourceId, activity.FundingSourceSnapshot,
                 activity.Ps, activity.Mooe, activity.Co, activity.Total,
@@ -1495,6 +1499,7 @@ public sealed class AipService : IAipService
 
         object old = new
         {
+            activity.RefCode,
             activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
             activity.EndDate, activity.ExpectedOutputs,
             activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
@@ -1518,6 +1523,7 @@ public sealed class AipService : IAipService
         if (conflict is not null) return conflict;
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old, new
         {
+            activity.RefCode,
             activity.Name, activity.EsreCode, activity.ImplementingOffice, activity.StartDate,
             activity.EndDate, activity.ExpectedOutputs,
             activity.CcAdaptation, activity.CcMitigation, activity.CcTypologyCode,
@@ -1569,7 +1575,7 @@ public sealed class AipService : IAipService
             activity.DivisionId = divisionId;
             await _aipRepo.SaveChangesAsync(ct);
             await _audit.LogAsync("aip_activities", activity.Id, AuditAction.RetagActivityDivision,
-                new { DivisionId = oldDivisionId }, new { DivisionId = divisionId }, ct);
+                new { activity.RefCode, DivisionId = oldDivisionId }, new { activity.RefCode, DivisionId = divisionId }, ct);
             // The reservation follows the tag (PPDO-150): re-posted under the new division, and
             // the rows it left under the old one are removed by the upsert itself.
             await _ceiling.UpsertLedgerForActivityAsync(activity.Id, ct);
@@ -2272,7 +2278,7 @@ public sealed class AipService : IAipService
         program.FunctionBand = canonical;
         await _aipRepo.SaveChangesAsync(ct);
         await _audit.LogAsync("aip_programs", program.Id, AuditAction.Update,
-            new { FunctionBand = oldValue }, new { FunctionBand = canonical }, ct);
+            new { program.RefCode, FunctionBand = oldValue }, new { program.RefCode, FunctionBand = canonical }, ct);
 
         // Field-update response — Projects intentionally omitted (not re-fetched here); callers
         // must patch their own local state by field, not by replacing the whole program node.
@@ -2310,7 +2316,7 @@ public sealed class AipService : IAipService
         if (conflict is not null) return conflict;
 
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update,
-            new { IsCreation = oldValue }, new { IsCreation = isCreation }, ct);
+            new { activity.RefCode, IsCreation = oldValue }, new { activity.RefCode, IsCreation = isCreation }, ct);
 
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div));
     }
