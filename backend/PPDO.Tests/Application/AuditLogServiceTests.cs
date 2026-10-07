@@ -25,14 +25,24 @@ public sealed class AuditLogServiceTests
     };
 
     private static (AuditLogService sut, Mock<IAuditRepository> repo) Build(
-        IReadOnlyList<AuditLog>? items = null, int totalCount = 0)
+        IReadOnlyList<AuditLog>? items = null, int totalCount = 0,
+        Dictionary<int, AipRecordLabel>? liveActivities = null)
     {
+        // PPDO-110 — the ref-code resolver, over a label repository that knows these activities.
+        Mock<IActivityLabelRepository> labels = new();
+        labels.Setup(r => r.GetAipRecordLabelsAsync(
+                It.IsAny<AipRecordKind>(), It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AipRecordKind kind, IReadOnlyCollection<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, AipRecordLabel>)(kind == AipRecordKind.Activity && liveActivities is not null
+                    ? liveActivities.Where(kv => ids.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value)
+                    : new Dictionary<int, AipRecordLabel>()));
+
         Mock<IAuditRepository> repo = new();
         repo.Setup(r => r.GetPagedAsync(
                 It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string?>(),
                 It.IsAny<string?>(), It.IsAny<DateTime?>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((items ?? [], totalCount));
-        return (new AuditLogService(repo.Object), repo);
+        return (new AuditLogService(repo.Object, new AuditRecordCodeResolver(labels.Object)), repo);
     }
 
     [Fact]
@@ -124,10 +134,37 @@ public sealed class AuditLogServiceTests
         Mock<IAuditRepository> repo = new();
         repo.Setup(r => r.GetDistinctTableNamesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(["accounts", "users", "wfp_expenditures"]);
-        AuditLogService sut = new(repo.Object);
+        AuditLogService sut = new(repo.Object, new AuditRecordCodeResolver(new Mock<IActivityLabelRepository>().Object));
 
         IReadOnlyList<string> result = await sut.GetTableNamesAsync();
 
         Assert.Equal(["accounts", "users", "wfp_expenditures"], result);
+    }
+
+    // ── PPDO-110: ref codes instead of #id ────────────────────────────────────
+
+    [Fact]
+    public async Task GetPagedAsync_AipActivityRow_CarriesItsRefCodeAndName()
+    {
+        (AuditLogService sut, _) = Build(
+            [MakeLog(5, table: "aip_activities", action: "UPDATE")], totalCount: 1,
+            liveActivities: new() { [5] = new AipRecordLabel("1000-000-1-01-010-001-001-001", "Conduct of LDC meetings", "PPDO") });
+
+        AuditLogEntryDto entry = Assert.Single((await sut.GetPagedAsync(new AuditLogFilterDto(1, 50, null, null, null, null, null))).Items);
+
+        Assert.Equal("1000-000-1-01-010-001-001-001", entry.RecordCode);
+        Assert.Equal("Conduct of LDC meetings", entry.RecordName);
+        Assert.Equal(5, entry.RecordId);
+    }
+
+    [Fact]
+    public async Task GetPagedAsync_OtherTables_HaveNoRecordCode_SoThePageKeepsTheId()
+    {
+        (AuditLogService sut, _) = Build([MakeLog(1, table: "accounts")], totalCount: 1);
+
+        AuditLogEntryDto entry = Assert.Single((await sut.GetPagedAsync(new AuditLogFilterDto(1, 50, null, null, null, null, null))).Items);
+
+        Assert.Null(entry.RecordCode);
+        Assert.Null(entry.RecordName);
     }
 }

@@ -77,6 +77,38 @@ public sealed class ActivityLabelRepository : IActivityLabelRepository
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, AipRecordLabel>> GetAipRecordLabelsAsync(
+        AipRecordKind kind, IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
+    {
+        if (ids.Count == 0) return new Dictionary<int, AipRecordLabel>();
+
+        // One untracked query per kind: id, ref code, name and the office code — no entity graphs.
+        var rows = kind switch
+        {
+            AipRecordKind.Program => await _context.Set<AipProgram>().AsNoTracking()
+                .Where(p => ids.Contains(p.Id))
+                .Select(p => new LabelRow(p.Id, p.RefCode, p.Name,
+                    p.Office.Office != null ? p.Office.Office.OfficeCode : null))
+                .ToListAsync(cancellationToken),
+            AipRecordKind.Project => await _context.Set<AipProject>().AsNoTracking()
+                .Where(j => ids.Contains(j.Id))
+                .Select(j => new LabelRow(j.Id, j.RefCode, j.Name,
+                    j.Program.Office.Office != null ? j.Program.Office.Office.OfficeCode : null))
+                .ToListAsync(cancellationToken),
+            AipRecordKind.Activity => await _context.Set<AipActivity>().AsNoTracking()
+                .Where(a => ids.Contains(a.Id))
+                .Select(a => new LabelRow(a.Id, a.RefCode, a.Name,
+                    a.Project.Program.Office.Office != null ? a.Project.Program.Office.Office.OfficeCode : null))
+                .ToListAsync(cancellationToken),
+            _ => [],
+        };
+
+        return rows.ToDictionary(r => r.Id, r => new AipRecordLabel(r.RefCode, r.Name, r.OfficeCode));
+    }
+
+    private sealed record LabelRow(int Id, string RefCode, string Name, string? OfficeCode);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<int, string>> GetOfficeCodesAsync(
         IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default)
     {

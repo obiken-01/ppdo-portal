@@ -33,6 +33,8 @@ public sealed class RecentActivityDescriberTests
         public Dictionary<int, string>           OfficeCodes { get; } = [];
         public Dictionary<int, string>           Divisions   { get; } = [];
         public Dictionary<int, string>           Funds       { get; } = [];
+        /// <summary>PPDO-110 — aip_projects by id (the only kind the describer asks for).</summary>
+        public Dictionary<int, AipRecordLabel>   Projects    { get; } = [];
 
         public Mock<IActivityLabelRepository> Repo { get; } = new();
 
@@ -59,6 +61,9 @@ public sealed class RecentActivityDescriberTests
             Repo.Setup(r => r.GetFundingSourceNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyCollection<int> ids, CancellationToken _) =>
                     (IReadOnlyDictionary<int, string>)Funds.Where(kv => ids.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+            Repo.Setup(r => r.GetAipRecordLabelsAsync(AipRecordKind.Project, It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((AipRecordKind _, IReadOnlyCollection<int> ids, CancellationToken _) =>
+                    (IReadOnlyDictionary<int, AipRecordLabel>)Projects.Where(kv => ids.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
             return new RecentActivityDescriber(Repo.Object);
         }
     }
@@ -374,5 +379,76 @@ public sealed class RecentActivityDescriberTests
 
         Assert.Equal("updated a work and financial plan.", text[0]);
         Assert.Equal("updated PTO's FY 2028 ceiling to ₱5.00.", text[1]);
+    }
+
+    // ── AIP projects (PPDO-110: projects now reach the feed) ─────────────────
+
+    [Fact]
+    public async Task ProjectCreate_NamesTheProjectAndItsProgramsOffice()
+    {
+        Labels labels = new();
+        labels.Programs[30] = new AipProgramLabel("OPA", "Agricultural Production Program");
+
+        string text = await One(labels, Row(1, "aip_projects", "CREATE", 40, null,
+            """{"programId":30,"refCode":"8000-000-1-01-016-001-002","name":"Rice Project"}"""));
+
+        Assert.Equal("added the project \"Rice Project\" to OPA.", text);
+    }
+
+    [Fact]
+    public async Task ProjectEdit_NamesTheProjectAndItsOffice()
+    {
+        Labels labels = new();
+        labels.Projects[40] = new AipRecordLabel("8000-000-1-01-016-001-002", "Rice Project", "OPA");
+
+        string text = await One(labels, Row(1, "aip_projects", "UPDATE", 40,
+            """{"name":"Rice"}""", """{"name":"Rice Project"}"""));
+
+        Assert.Equal("edited the project \"Rice Project\" (OPA).", text);
+    }
+
+    [Fact]
+    public async Task ProjectDelete_NamesItFromItsSnapshot()
+    {
+        // The row is gone; the delete snapshot (PPDO-88's DeleteNodeAsync) still carries its name
+        // and its sector group.
+        Labels labels = new();
+        labels.AipOffices[559] = new AipOfficeLabel("OPA", 2028);
+
+        string text = await One(labels, Row(1, "aip_projects", "DELETE", 40,
+            """{"nodeType":"Project","refCode":"8000-000-1-01-016-001-002","name":"Rice Project","aipOfficeId":559}"""));
+
+        Assert.Equal("deleted the project \"Rice Project\" (OPA).", text);
+    }
+
+    [Theory]
+    [InlineData("CREATE", null, "{}", "added a project.")]
+    [InlineData("UPDATE", null, null, "edited a project.")]
+    [InlineData("DELETE", "{}", null, "deleted a project.")]
+    public async Task Project_WithNothingToNameItBy_StillReadsAsASentence(
+        string action, string? oldValues, string? newValues, string expected)
+    {
+        string text = await One(new Labels(), Row(1, "aip_projects", action, 40, oldValues, newValues));
+
+        Assert.Equal(expected, text);
+    }
+
+    [Fact]
+    public async Task ProjectEdits_AreLabelledInOneQuery()
+    {
+        Labels labels = new();
+        labels.Projects[40] = new AipRecordLabel("P-1", "Rice Project", "OPA");
+        labels.Projects[41] = new AipRecordLabel("P-2", "Corn Project", "OPA");
+
+        await labels.Build().DescribeAsync(
+        [
+            Row(1, "aip_projects", "UPDATE", 40),
+            Row(2, "aip_projects", "UPDATE", 41),
+            Row(3, "aip_projects", "UPDATE", 40),
+        ]);
+
+        labels.Repo.Verify(r => r.GetAipRecordLabelsAsync(AipRecordKind.Project,
+            It.Is<IReadOnlyCollection<int>>(ids => ids.OrderBy(x => x).SequenceEqual(new[] { 40, 41 })),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }

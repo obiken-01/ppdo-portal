@@ -15,10 +15,12 @@ public sealed class AuditLogService : IAuditLogService
     private const int MaxPageSize = 200;
 
     private readonly IAuditRepository _audit;
+    private readonly AuditRecordCodeResolver _codes;
 
-    public AuditLogService(IAuditRepository audit)
+    public AuditLogService(IAuditRepository audit, AuditRecordCodeResolver codes)
     {
         _audit = audit;
+        _codes = codes;
     }
 
     /// <inheritdoc />
@@ -32,8 +34,11 @@ public sealed class AuditLogService : IAuditLogService
             page, pageSize, filter.TableName, filter.Action, filter.ActorSearch, filter.From, filter.To,
             cancellationToken);
 
+        // PPDO-110 — ref codes for the AIP rows on this page, in at most three queries.
+        IReadOnlyList<AuditRecordCode> codes = await _codes.ResolveAsync(items, cancellationToken);
+
         List<AuditLogEntryDto> dtos = items
-            .Select(a => new AuditLogEntryDto(
+            .Select((a, i) => new AuditLogEntryDto(
                 a.Id,
                 // EF Core loses DateTimeKind on the SQL Server round-trip (RAL-172) — re-stamp
                 // Utc so System.Text.Json emits the "Z" suffix and the browser parses it correctly.
@@ -43,7 +48,9 @@ public sealed class AuditLogService : IAuditLogService
                 a.RecordId,
                 a.RecordGuid,
                 a.ChangedBy?.FullName ?? "Unknown",
-                AuditDescriptionBuilder.Build(a.Action, a.OldValues, a.NewValues)))
+                AuditDescriptionBuilder.Build(a.Action, a.OldValues, a.NewValues),
+                codes[i].Code,
+                codes[i].Name))
             .ToList();
 
         return new AuditLogPageDto(dtos, total, page, pageSize);

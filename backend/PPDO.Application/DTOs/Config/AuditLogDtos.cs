@@ -9,7 +9,12 @@ public sealed record AuditLogEntryDto(
     int? RecordId,
     Guid? RecordGuid,
     string ActorName,
-    string Description
+    string Description,
+    // PPDO-110 — for an AIP program, project or activity: its ref code and name, shown instead of
+    // #RecordId. Null for every other table, or when neither the row nor the audit snapshot has
+    // one; the page then falls back to #RecordId, as before.
+    string? RecordCode = null,
+    string? RecordName = null
 );
 
 /// <summary>A page of Audit Log entries plus the total count for pagination controls.</summary>

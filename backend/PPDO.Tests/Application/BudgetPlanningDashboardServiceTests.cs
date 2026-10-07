@@ -1283,6 +1283,24 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
+    public async Task GetRecentActivityAsync_ScopesToAipProjects_SoProjectChangesShow()
+    {
+        // PPDO-110 (Ralph, 2026-10-07): project adds, edits and deletes were audited but filtered
+        // out, so the band showed program and activity changes and silently skipped the level
+        // between them.
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: null);
+
+        auditMock.Verify(
+            r => r.GetRecentAsync(
+                10, null,
+                It.Is<IReadOnlyList<string>?>(names => names != null && names.Contains("aip_projects")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task GetRecentActivityAsync_AsAnOfficeUser_OnlyReturnsAndLabelsThatOfficesEntries()
     {
         // The real repository scopes by the ACTOR's office in SQL; this stand-in does the same, so
