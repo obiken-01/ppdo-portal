@@ -12,4 +12,4 @@
  * as the first commit on its `release/X.Y.Z` branch — so the displayed version
  * always reflects what is actually running, including on preview and local builds.
  */
-export const APP_VERSION = "v1.8.1";
+export const APP_VERSION = "v1.8.2";

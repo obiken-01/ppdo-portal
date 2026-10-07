@@ -36,11 +36,13 @@ public sealed class AccountServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (AccountService sut, Mock<IRepository<Account>> repo) Build(
+    private static (AccountService sut, Mock<IAccountRepository> repo) Build(
         List<Account> seed, IAuditService? audit = null)
     {
-        Mock<IRepository<Account>> repo = new();
+        Mock<IAccountRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.AddAsync(It.IsAny<Account>(), It.IsAny<CancellationToken>()))
             .Callback<Account, CancellationToken>((a, _) => seed.Add(a))
             .Returns(Task.CompletedTask);
@@ -50,7 +52,7 @@ public sealed class AccountServiceTests
             audit ?? Mock.Of<IAuditService>()), repo);
     }
 
-    private static (AccountService sut, Mock<IRepository<Account>> repo, Mock<IAuditService> audit)
+    private static (AccountService sut, Mock<IAccountRepository> repo, Mock<IAuditService> audit)
         BuildWithAudit(List<Account> seed)
     {
         Mock<IAuditService> audit = new();
@@ -58,7 +60,7 @@ public sealed class AccountServiceTests
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        (AccountService sut, Mock<IRepository<Account>> repo) = Build(seed, audit.Object);
+        (AccountService sut, Mock<IAccountRepository> repo) = Build(seed, audit.Object);
         return (sut, repo, audit);
     }
 
@@ -168,7 +170,7 @@ public sealed class AccountServiceTests
     {
         Account target = Acct(1, "5-01-01-010", "A", active: true);
         List<Account> seed = [target];
-        (AccountService sut, Mock<IRepository<Account>> repo) = Build(seed);
+        (AccountService sut, Mock<IAccountRepository> repo) = Build(seed);
 
         ServiceResult<AccountDto> result = await sut.DeleteAsync(1);
 

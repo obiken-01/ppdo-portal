@@ -12,7 +12,15 @@
 import { useState } from "react";
 import Lookup from "@/components/ui/Lookup";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import RichTextEditor, { RichTextView } from "@/components/ui/RichTextEditor";
+import dynamic from "next/dynamic";
+import { RichTextView } from "@/components/ui/RichTextView";
+import RichTextEditorSkeleton from "@/components/ui/RichTextEditorSkeleton";
+
+// TipTap is ~80 kB of the editor page; load it as the editor mounts, behind a same-size skeleton (PPDO-188 / O14).
+const RichTextEditor = dynamic(() => import("@/components/ui/RichTextEditor"), {
+  ssr: false,
+  loading: () => <RichTextEditorSkeleton />,
+});
 import {
   HGDG_CHECKLISTS, attributedGadBudget, beneficiaryTotals, copySummaryToDirect, money, rowTotal,
 } from "@/lib/proposal-editor";

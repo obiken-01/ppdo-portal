@@ -29,7 +29,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
     private readonly IWfpAllocationLedgerRepository _ledgerRepo;
     private readonly IAipRepository               _aipRepo;
     private readonly IAllocationService           _allocation;
-    private readonly IRepository<Division>        _divisionRepo;
+    private readonly IDivisionRepository        _divisionRepo;
     private readonly IRepository<FundingSource>   _fundingSourceRepo;
 
     public WfpCeilingService(
@@ -38,7 +38,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         IWfpAllocationLedgerRepository ledgerRepo,
         IAipRepository                 aipRepo,
         IAllocationService             allocation,
-        IRepository<Division>          divisionRepo,
+        IDivisionRepository          divisionRepo,
         IRepository<FundingSource>     fundingSourceRepo)
     {
         _wfpExpRepo        = wfpExpRepo;
@@ -55,7 +55,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
     public async Task<WfpCeilingStatusDto> GetStatusAsync(
         int aipActivityId, int divisionId, int fiscalYear, CancellationToken ct = default)
     {
-        Division? division = (await _divisionRepo.GetAllAsync(ct)).FirstOrDefault(d => d.Id == divisionId);
+        Division? division = await _divisionRepo.GetByIntIdAsync(divisionId, ct);
         int officeId = division?.OfficeId ?? 0;
 
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(aipActivityId, ct);
@@ -129,7 +129,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
                 return "Cannot validate the division allocation: no funding source is selected " +
                        "and General Fund is not configured.";
 
-            Division? division = (await _divisionRepo.GetAllAsync(ct)).FirstOrDefault(d => d.Id == divisionId);
+            Division? division = await _divisionRepo.GetByIntIdAsync(divisionId, ct);
             decimal allocation = await GetDivisionAllocationAsync(division, context.FiscalYear, resolvedFundId.Value, ct);
 
             decimal otherRecordsUsed = await _ledgerRepo.SumUsedAmountAsync(
@@ -174,7 +174,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         foreach (int existingFundId in existingLedgerFundIds)
             fundIds.Add(existingFundId);
 
-        Division? division = (await _divisionRepo.GetAllAsync(ct)).FirstOrDefault(d => d.Id == divisionId);
+        Division? division = await _divisionRepo.GetByIntIdAsync(divisionId, ct);
 
         foreach (int fundId in fundIds)
         {
@@ -235,7 +235,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
 
         if (record.DivisionId is int divisionId)
         {
-            Division? division = (await _divisionRepo.GetAllAsync(ct)).FirstOrDefault(d => d.Id == divisionId);
+            Division? division = await _divisionRepo.GetByIntIdAsync(divisionId, ct);
             IReadOnlyList<int> fundIds = await _ledgerRepo.GetFundingSourceIdsForRecordAsync(wfpRecordId, ct);
 
             foreach (int fundId in fundIds)

@@ -14,4 +14,7 @@ public interface IClimateChangeTypologyRepository : IRepository<ClimateChangeTyp
     /// <paramref name="isActive"/> null means "no status filter".
     /// </summary>
     Task<int> CountAsync(bool? isActive, string? search, CancellationToken ct = default);
+
+    /// <summary>Returns the row whose integer PK equals <paramref name="id"/>, or null. Tracked (PPDO-188 / O9).</summary>
+    Task<ClimateChangeTypology?> GetByIntIdAsync(int id, CancellationToken ct = default);
 }

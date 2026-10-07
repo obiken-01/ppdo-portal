@@ -84,7 +84,8 @@ public interface IAipService
     /// Only allowed while the parent AipRecord is Draft. <paramref name="aipRecordId"/> is a
     /// defensive cross-check that the activity actually belongs to that record.</summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
-        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller, CancellationToken ct = default);
+        int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// PPDO-52 — updates an entered-year activity's <b>descriptive</b> fields, leaving its money
@@ -100,7 +101,8 @@ public interface IAipService
     /// </para>
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
-        int activityId, UpdateAipActivityDetailsDto dto, User caller, CancellationToken ct = default);
+        int activityId, UpdateAipActivityDetailsDto dto, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// PPDO-148 — the department head moves an activity to another division of the same office
@@ -144,8 +146,15 @@ public interface IAipService
     /// <summary>
     /// Deletes an activity with its ledger rows and comments; on an entered year later activities
     /// renumber (PPDO-88). Conflict when the renumber loses a race.
+    /// <para>
+    /// PPDO-193 (V18-71): <paramref name="expectedRowVersion"/> is the version the caller loaded.
+    /// When the row has moved on since, nothing is deleted and the result is a Conflict carrying
+    /// the standard <see cref="AipConflictDto{T}"/> payload; NotFound when it was already deleted.
+    /// Null deletes unguarded (the staged rollout until PPDO-121).
+    /// </para>
     /// </summary>
-    Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
+    Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(
+        int activityId, User caller, byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from
@@ -220,7 +229,8 @@ public interface IAipService
     /// Sets an activity's "…-CREATION" PS flag (v1.4 Q2). No validation beyond existence.
     /// </summary>
     Task<ServiceResult<AipActivityDto>> UpdateActivityIsCreationAsync(
-        int activityId, bool isCreation, User caller, CancellationToken ct = default);
+        int activityId, bool isCreation, User caller,
+        byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>Wipes all AIP records (cascade removes hierarchy). Returns deleted AipRecord count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

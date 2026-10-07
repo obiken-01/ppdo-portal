@@ -19,6 +19,7 @@
 import { useState } from "react";
 import type { AipDivisionStatus, AipReadiness, AipReadinessIssue, AipUnresolvedCounts } from "@/types";
 import { fmtThousandsReadout } from "@/lib/aip-units";
+import { ceilingStaleCaption } from "@/lib/ceiling-staleness";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useUnresolvedCounts } from "./AipComments";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
@@ -136,6 +137,8 @@ export default function AipSubmitChecklist({
   history,
   onSelectActivity,
   proposalCheck,
+  staleSince = null,
+  onRefresh,
 }: {
   readiness: AipReadiness;
   stage: AipSubmitStage;
@@ -160,6 +163,13 @@ export default function AipSubmitChecklist({
    * Omitted before FY 2028, where there are no proposals.
    */
   proposalCheck?: { fiscalYear: number; officeId: number };
+  /**
+   * PPDO-113 — ISO time of the last successful readiness read, set only when a later refresh
+   * failed. The figures on screen are then that old, and say so. Null while they are current.
+   */
+  staleSince?: string | null;
+  /** Re-reads the readiness; offered beside the stale caption. */
+  onRefresh?: () => void;
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -382,6 +392,19 @@ export default function AipSubmitChecklist({
             hint={ceiling.remaining < 0 ? "Over ceiling — blocks sending to PPDO" : undefined}
           />
         </div>
+      )}
+
+      {/* PPDO-113 — the figures above are from the last good read, not now. Amber caution, the
+          token AipActivityNameCounter uses for non-blocking warnings. Never presented as current. */}
+      {ceiling && staleSince && (
+        <p role="status" className="flex flex-wrap items-center gap-x-3 border-b border-slate-200 px-4 py-2 text-xs text-amber-700">
+          <span>{ceilingStaleCaption(staleSince)}</span>
+          {onRefresh && (
+            <button type="button" onClick={onRefresh} className="font-medium underline">
+              Try again
+            </button>
+          )}
+        </p>
       )}
 
       {/* ── Ceiling warning (PPDO-146) ───────────────────────────────────── */}

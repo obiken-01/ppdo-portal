@@ -7,7 +7,8 @@
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
 import { useState } from "react";
-import { aipErrorMessage, deleteAipActivity, updateAipActivity } from "@/lib/aip";
+import { aipConflict, aipErrorMessage, deleteAipActivity, updateAipActivity } from "@/lib/aip";
+import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
 import { fmtPesos } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
@@ -16,7 +17,7 @@ import AipCodeLookup from "@/components/aip/AipCodeLookup";
 import { useAutoGrowTextarea } from "@/lib/useAutoGrowTextarea";
 import { AmtTD, inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import type { ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
-import type { AipActivityDetail, FundingSourceResponse } from "@/types";
+import type { AipActivityDetail, AipConflict, FundingSourceResponse } from "@/types";
 
 // ── Activity row (RAL-179 — inline edit) ─────────────────────────────────────
 // A read-only row that swaps to an edit form in place when the user clicks Edit — no whole-page
@@ -36,6 +37,14 @@ export default function ActivityRow({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  // Someone else saved this row while it was open (V18-71 / PPDO-120). Held separately from
+  // `error` because it is a choice, not a message — and because the edit form must stay mounted
+  // and populated underneath it.
+  const [conflict, setConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+  // PPDO-193 — a delete refused because the row changed since it was loaded. Shown under the
+  // read-only row, which is where the Delete button is.
+  const [deleteConflict, setDeleteConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [name, setName]                             = useState(act.name);
   const [esreCode, setEsreCode]                     = useState(act.esreCode ?? "");
@@ -74,10 +83,16 @@ export default function ActivityRow({
     setCcMitigation(act.ccMitigation);
     setCcTypologyCode(act.ccTypologyCode ?? "");
     setError(null);
+    setConflict(null);
     setEditing(true);
   }
 
-  async function handleSave() {
+  /**
+   * @param rowVersion which version to save against. Defaults to the one this row was loaded
+   *   with; an Overwrite passes the version from the conflict payload instead, which is what
+   *   makes it one request rather than reload-then-save.
+   */
+  async function handleSave(rowVersion: string | null = act.rowVersion ?? null) {
     if (!name.trim()) { setError("Name is required."); return; }
     setSaving(true);
     setError(null);
@@ -92,13 +107,60 @@ export default function ActivityRow({
         fundingSourceId: fundingSourceId ? Number(fundingSourceId) : null,
         ps, mooe, co, ccAdaptation, ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
+        rowVersion,
       });
+      setConflict(null);
       onSaved(updated);
       setEditing(false);
     } catch (err) {
+      // ⚠️ Conflict first, and it must NOT fall through to setError. Showing it as an ordinary
+      // message would leave the user with a dead end: no Overwrite, no Discard, and no hint that
+      // what they typed is still recoverable.
+      const clash = aipConflict<AipActivityDetail>(err);
+      if (clash) {
+        setConflict(clash);
+        // ⚠️ Deliberately does NOT clear the form. Their input is the thing this protects.
+        return;
+      }
       setError(aipErrorMessage(err, "Could not save changes."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Only the fields that actually differ — a compare listing unchanged rows buries the change. */
+  function conflictFields(theirs: AipActivityDetail): AipConflictField[] {
+    const rows: AipConflictField[] = [];
+    const add = (label: string, mine: string, that: string) => {
+      if (mine !== that) rows.push({ label, mine, theirs: that });
+    };
+    const money = (v: number | null | undefined) => (v == null ? "—" : fmtPesos(v));
+
+    add("Name", name.trim(), theirs.name);
+    add("PS",   money(ps),   money(theirs.ps));
+    add("MOOE", money(mooe), money(theirs.mooe));
+    add("CO",   money(co),   money(theirs.co));
+    return rows;
+  }
+
+  /**
+   * @param rowVersion the version to delete against (PPDO-193). Defaults to the one this row was
+   *   loaded with; "Delete it" on the conflict panel passes the payload's.
+   */
+  async function handleDelete(rowVersion: string | null = act.rowVersion ?? null) {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteAipActivity(act.id, rowVersion);
+      setDeleteConflict(null);
+      onDeleted(act.id);
+    } catch (err) {
+      // Conflict first, never as an ordinary error: the user has a choice to make.
+      const clash = aipConflict<AipActivityDetail>(err);
+      if (clash) { setDeleteConflict(clash); return; }
+      setError(aipErrorMessage(err, "Could not delete activity."));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -108,20 +170,14 @@ export default function ActivityRow({
       message: `This removes "${act.name}". This cannot be undone.`,
       confirmLabel: "Delete",
       variant: "danger",
-      onConfirm: async () => {
-        try {
-          await deleteAipActivity(act.id);
-          onDeleted(act.id);
-        } catch (err) {
-          setError(aipErrorMessage(err, "Could not delete activity."));
-        }
-      },
+      onConfirm: () => handleDelete(),
       onClose: () => {},
     });
   }
 
   if (!editing) {
     return (
+      <>
       <tr className="bg-white border-t border-slate-100 hover:bg-green-50 transition-colors">
         <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600 align-top border-l-4 border-transparent">
           {act.refCode}
@@ -154,15 +210,44 @@ export default function ActivityRow({
           {canEdit && (
             <span className="inline-flex gap-2">
               <button onClick={startEdit} className="text-xs text-green-700 hover:underline">Edit</button>
-              <button onClick={confirmDelete} className="text-xs text-danger-500 hover:underline">Delete</button>
+              <button onClick={confirmDelete} disabled={deleting}
+                className="text-xs text-danger-500 hover:underline disabled:opacity-50">
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
             </span>
           )}
+          {error && <p className="text-[10px] text-danger-600 max-w-[110px] leading-snug">{error}</p>}
         </td>
       </tr>
+      {deleteConflict && (
+        <tr className="bg-amber-50 border-t border-amber-200">
+          <td colSpan={16} className="px-2 pb-2 pl-12">
+            <AipConflictPanel
+              conflict={deleteConflict}
+              noun="activity"
+              fields={[{
+                label: "This activity",
+                mine: "Delete it",
+                theirs: deleteConflict.current.total ? `Keep it (${fmtPesos(deleteConflict.current.total)})` : "Keep it",
+              }]}
+              busy={deleting}
+              onOverwrite={() => void handleDelete(deleteConflict.currentRowVersion)}
+              onDiscard={() => {
+                // Keep it: splice the row as it now stands, as the edit conflict's Discard does.
+                const current = deleteConflict.current;
+                setDeleteConflict(null);
+                onSaved(current);
+              }}
+            />
+          </td>
+        </tr>
+      )}
+      </>
     );
   }
 
   return (
+    <>
     <tr className="bg-amber-50 border-t border-amber-200 align-top">
       <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600">{act.refCode}</td>
       <td className="px-2 py-1.5">
@@ -224,7 +309,7 @@ export default function ActivityRow({
         <div className="flex flex-col items-center gap-1">
           <div className="flex gap-2">
             <button
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={saving}
               className={`text-xs font-medium ${saving ? "text-green-300" : "text-green-700 hover:underline"}`}
             >
@@ -242,5 +327,32 @@ export default function ActivityRow({
         </div>
       </td>
     </tr>
+
+    {/*
+      ⚠️ A row BELOW the editor, not a toast and not a modal — spec §6. It pushes content down so
+      the form stays visible and populated above it, which is the point: the user is comparing
+      their own values against the stored ones and must be able to see both.
+    */}
+    {conflict && (
+      <tr className="bg-amber-50 border-t border-amber-200">
+        <td colSpan={16} className="px-2 pb-2 pl-12">
+          <AipConflictPanel
+            conflict={conflict}
+            noun="activity"
+            fields={conflictFields(conflict.current)}
+            busy={saving}
+            onOverwrite={() => handleSave(conflict.currentRowVersion)}
+            onDiscard={() => {
+              // Their values win, by the user's own choice. Splicing the payload's `current`
+              // into the tree avoids a refetch — it is already the row as it now stands.
+              setConflict(null);
+              onSaved(conflict.current);
+              setEditing(false);
+            }}
+          />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }

@@ -94,6 +94,10 @@ const SECTIONS: Section[] = [
       { prefix: "/budget-planning/wfp",        label: "WFP"        },
       { prefix: "/budget-planning/office-ceilings", label: "Office Ceilings" },
       { prefix: "/budget-planning/report",     label: "Report"     },
+      // ↩️ Missing since the proposals pages were added (PPDO-159), so both fell back to the bare
+      // root. `proposals/edit` is listed first for the same longer-prefix reason as `aip/entry`.
+      { prefix: "/budget-planning/proposals/edit", label: "Edit", parent: { label: "Investment Proposals", href: "/budget-planning/proposals" } },
+      { prefix: "/budget-planning/proposals",  label: "Investment Proposals" },
     ],
   },
 ];

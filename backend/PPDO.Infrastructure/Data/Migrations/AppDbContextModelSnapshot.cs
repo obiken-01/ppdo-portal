@@ -190,6 +190,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("ref_code");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
+
                     b.Property<string>("StartDate")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)")
@@ -198,6 +205,14 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Property<decimal?>("Total")
                         .HasColumnType("decimal(18,2)")
                         .HasColumnName("total");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_id");
 
                     b.HasKey("Id");
 
@@ -211,6 +226,8 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasIndex("RefCode")
                         .HasDatabaseName("IX_aip_activities_ref_code");
+
+                    b.HasIndex("UpdatedById");
 
                     b.HasIndex("ProjectId", "RefCode")
                         .IsUnique()
@@ -400,6 +417,13 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDefaultValue(0m)
                         .HasColumnName("ps");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion")
+                        .HasColumnName("row_version");
+
                     b.Property<decimal>("Total")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("decimal(18,2)")
@@ -410,6 +434,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("updated_at");
 
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("updated_by_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
@@ -418,6 +446,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_aip_expenditures_activity_id");
 
                     b.HasIndex("FundingSourceId");
+
+                    b.HasIndex("UpdatedById");
 
                     b.ToTable("aip_expenditures", (string)null);
                 });
@@ -4039,11 +4069,19 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_aip_activities_aip_projects_project_id");
 
+                    b.HasOne("PPDO.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_activities_users_updated_by_id");
+
                     b.Navigation("Division");
 
                     b.Navigation("FundingSource");
 
                     b.Navigation("Project");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipDivisionAllocationLedger", b =>
@@ -4140,11 +4178,19 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasForeignKey("FundingSourceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PPDO.Domain.Entities.User", "UpdatedBy")
+                        .WithMany()
+                        .HasForeignKey("UpdatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_expenditures_users_updated_by_id");
+
                     b.Navigation("Account");
 
                     b.Navigation("Activity");
 
                     b.Navigation("FundingSource");
+
+                    b.Navigation("UpdatedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipOffice", b =>

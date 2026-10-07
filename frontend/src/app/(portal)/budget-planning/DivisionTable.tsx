@@ -31,6 +31,25 @@ function divisionLabel(division: DivisionSummary): string {
   return division.divisionCode ?? division.divisionName;
 }
 
+/**
+ * PPDO-179 (F7) — a zero amount prints as a dash. "₱0.00" four times in a row says "somebody
+ * entered zero"; a dash says "nothing here", which is what an untouched division is.
+ */
+function amount(value: number): string {
+  return value === 0 ? "—" : `₱${formatMoney(value)}`;
+}
+
+/** A division with nothing in it: no allocation, no activities, no costed money. */
+function isEmptyDivision(d: DivisionSummary): boolean {
+  return (
+    d.allocated === 0 &&
+    d.costedInAip === 0 &&
+    d.totalActivities === 0 &&
+    d.costedActivityCount === 0 &&
+    d.allocationByFund.every((f) => f.amount === 0 && f.used === 0)
+  );
+}
+
 function DivisionRow({
   division,
   canManageAllocation,
@@ -92,19 +111,25 @@ function DivisionRow({
           {division.costedActivityCount} / {division.totalActivities}
         </td>
         <td className="px-4 py-2.5 text-sm text-right text-slate-600 tabular-nums">
-          {unassigned ? "—" : `₱${formatMoney(division.allocated)}`}
+          {unassigned ? "—" : amount(division.allocated)}
         </td>
         <td className="px-4 py-2.5 text-sm text-right text-slate-600 tabular-nums">
-          ₱{formatMoney(division.costedInAip)}
+          {amount(division.costedInAip)}
         </td>
         <td
           className={`px-4 py-2.5 text-sm text-right font-medium tabular-nums ${
             isOver ? "text-danger-500" : "text-slate-600"
           }`}
         >
-          {unassigned ? "—" : `₱${formatMoney(division.remaining)}`}
+          {/* Remaining is a dash only when there is nothing allocated or costed. A genuine
+              ₱0.00 — everything allocated is spent — is information and keeps printing. */}
+          {unassigned
+            ? "—"
+            : division.allocated === 0 && division.costedInAip === 0
+            ? "—"
+            : `₱${formatMoney(division.remaining)}`}
         </td>
-        <td className="px-4 py-2.5 text-right">
+        <td className="px-4 py-2.5 text-right whitespace-nowrap">
           {/* Hidden, not disabled: a division-scoped encoder can never edit an allocation, and a
               greyed control just invites clicking. Disabled is reserved for state, not permission. */}
           {canManageAllocation && officeId != null && !unassigned && (
@@ -112,7 +137,7 @@ function DivisionRow({
               href={`/budget-planning/allocation?officeId=${officeId}${
                 fiscalYear != null ? `&fiscalYear=${fiscalYear}` : ""
               }`}
-              className="text-xs font-medium text-green-600 hover:text-green-700"
+              className="whitespace-nowrap text-xs font-medium text-green-600 hover:text-green-700"
               onClick={(e) => e.stopPropagation()}
             >
               Allocation →
@@ -137,13 +162,15 @@ function DivisionRow({
                       <td className="px-4 py-1.5 text-slate-500">{usedLabel}</td>
                       <td className="px-4 py-1.5" />
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
-                        {unassigned ? "—" : `₱${formatMoney(fund.amount)}`}
+                        {unassigned ? "—" : amount(fund.amount)}
                       </td>
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
-                        ₱{formatMoney(fund.used)}
+                        {amount(fund.used)}
                       </td>
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
-                        {unassigned ? "—" : `₱${formatMoney(fund.remaining)}`}
+                        {unassigned || (fund.amount === 0 && fund.used === 0)
+                          ? "—"
+                          : `₱${formatMoney(fund.remaining)}`}
                       </td>
                       <td className="px-4 py-1.5" />
                     </tr>
@@ -175,6 +202,13 @@ export default function DivisionTable({
   officeId: number | null;
   fiscalYear: number | null;
 }) {
+  // PPDO-179 (F7) — divisions with nothing in them fold into one line instead of repeating
+  // "Todo · 0/0 · ₱0.00 · ₱0.00 · ₱0.00" once each. "Show them" unfolds the rows again.
+  const [showEmpty, setShowEmpty] = useState(false);
+  const empty = divisions.filter(isEmptyDivision);
+  const active = divisions.filter((d) => !isEmptyDivision(d));
+  const visible = showEmpty ? divisions : active;
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[860px]">
@@ -190,7 +224,7 @@ export default function DivisionTable({
           </tr>
         </thead>
         <tbody>
-          {divisions.map((division) => (
+          {visible.map((division) => (
             <DivisionRow
               key={division.divisionId}
               division={division}
@@ -199,6 +233,30 @@ export default function DivisionTable({
               fiscalYear={fiscalYear}
             />
           ))}
+          {empty.length > 0 && (
+            <tr className="border-t border-slate-100">
+              <td colSpan={7} className="px-4 py-2.5 text-sm text-slate-600">
+                {showEmpty ? (
+                  <>
+                    Showing the {empty.length} {empty.length === 1 ? "division" : "divisions"} with no
+                    allocation or activities yet.{" "}
+                  </>
+                ) : (
+                  <>
+                    {empty.length} {empty.length === 1 ? "division has" : "divisions have"} no allocation or
+                    activities yet: {empty.map(divisionLabel).join(", ")}.{" "}
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowEmpty((v) => !v)}
+                  className="whitespace-nowrap text-xs font-medium text-green-600 hover:text-green-700"
+                >
+                  {showEmpty ? "Hide them" : "Show them"}
+                </button>
+              </td>
+            </tr>
+          )}
           {noDivision && (
             <DivisionRow
               key="no-division"

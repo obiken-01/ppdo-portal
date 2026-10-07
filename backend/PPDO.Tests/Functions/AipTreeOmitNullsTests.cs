@@ -26,7 +26,7 @@ public sealed class AipTreeOmitNullsTests
     private readonly Mock<IAipService>                _aip         = new(MockBehavior.Strict);
     private readonly Mock<IJwtValidator>              _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>         _permissions = new(MockBehavior.Loose);
-    private readonly Mock<IRepository<FundingSource>> _fsRepo      = new(MockBehavior.Strict);
+    private readonly Mock<IFundingSourceRepository> _fsRepo      = new(MockBehavior.Strict);
 
     private AipFunctions Sut => new(_aip.Object, _jwt.Object, _permissions.Object, _fsRepo.Object);
 

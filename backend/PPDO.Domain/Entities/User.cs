@@ -256,8 +256,9 @@ public sealed class User
     // ── Refresh token (JWT rotation) ─────────────────────────────────────────
 
     /// <summary>
-    /// Opaque random token used to obtain a new access token when the current one expires.
-    /// Stored as a BCrypt-free base64 string (64 random bytes, 88-char base64).
+    /// SHA-256 hash (lower-case hex, 64 chars) of the opaque random token the browser holds in its
+    /// httpOnly cookie (PPDO-141). The raw token is never stored: a reader of this column cannot
+    /// replay it. Looked up by hashing the cookie value first.
     /// Null when the user is not logged in or has logged out.
     /// Cleared on logout and rotated on every successful refresh.
     /// </summary>

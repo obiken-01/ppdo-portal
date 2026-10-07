@@ -2,29 +2,33 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
-using Microsoft.EntityFrameworkCore;
-using PPDO.Infrastructure.Data;
+using PPDO.Application.Services;
 
 namespace PPDO.Functions.Functions;
 
 /// <summary>
-/// GET /api/health — lightweight liveness probe.
+/// GET /api/health — lightweight liveness probe. Public: no JWT (login warm-up, the deploy smoke
+/// test and external probes all call it without one).
 ///
 /// Purpose:
 ///   1. Wakes up the Azure Functions instance (Consumption plan scales to zero
 ///      after ~10 min of no traffic).
-///   2. Wakes up Azure SQL (Free tier auto-pauses after 1 hour of inactivity).
+///   2. Confirms the database is reachable (Azure SQL Basic tier — always provisioned, no
+///      auto-pause since 2026-08-12) with a bare SELECT 1.
 ///   3. Returns a status payload so the login page can show a live indicator.
 ///
-/// The DB check is intentionally a bare SELECT 1 — no joins, no auth, minimal load.
+/// ⚠️ **The body never carries exception text.** The endpoint is anonymous, and a SqlClient message can
+/// include the server, database or login name. The failure is logged by <see cref="IHealthService"/>
+/// (Application Insights); the response says only <c>database: "unavailable"</c> (PPDO-142). This handler
+/// holds no <c>AppDbContext</c> and no logging — it asks the service and shapes the response.
 /// </summary>
 public sealed class HealthFunctions
 {
-    private readonly AppDbContext _db;
+    private readonly IHealthService _health;
 
-    public HealthFunctions(AppDbContext db)
+    public HealthFunctions(IHealthService health)
     {
-        _db = db;
+        _health = health;
     }
 
     [Function("Health")]
@@ -33,27 +37,13 @@ public sealed class HealthFunctions
         HttpRequestData req,
         CancellationToken cancellationToken)
     {
-        bool dbOk = false;
-        string? dbError = null;
-
-        try
-        {
-            // SELECT 1 — wakes up Azure SQL and confirms connectivity.
-            dbOk = await _db.Database
-                .ExecuteSqlRawAsync("SELECT 1", cancellationToken)
-                .ContinueWith(t => !t.IsFaulted, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            dbError = ex.Message;
-        }
+        bool dbOk = await _health.CheckDatabaseAsync(cancellationToken);
 
         var payload = new
         {
             status   = dbOk ? "ok" : "degraded",
             api      = "ok",
             database = dbOk ? "ok" : "unavailable",
-            error    = dbError,
             utc      = DateTime.UtcNow,
         };
 
@@ -63,8 +53,7 @@ public sealed class HealthFunctions
         await response.WriteStringAsync(
             JsonSerializer.Serialize(payload, new JsonSerializerOptions
             {
-                PropertyNamingPolicy        = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition      = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             }),
             cancellationToken);
 

@@ -123,7 +123,7 @@ public sealed class AipReviewServiceTests
                 IsActive = true, IsHostOffice = false,
             });
 
-        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 ids.Contains(GroupA)
@@ -134,7 +134,7 @@ public sealed class AipReviewServiceTests
                         }]
                     : []);
 
-        _aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        _aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 ids.Contains(ProgramId)
@@ -145,7 +145,7 @@ public sealed class AipReviewServiceTests
                         }]
                     : []);
 
-        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 ids.Contains(ProjectId)

@@ -387,7 +387,7 @@ public sealed partial class AipServiceTests
     /// would therefore prove nothing about the rule this file exists to defend.
     /// </para>
     /// </summary>
-    private static (AipService, Mock<IAipRepository>, Mock<IRepository<FundingSource>>,
+    private static (AipService, Mock<IAipRepository>, Mock<IFundingSourceRepository>,
                     Mock<IUserRepository>, Mock<IAipXlsmParser>, Mock<IAuditService>,
                     Mock<IRepository<AipOffice>>, Mock<IWfpRepository>, Mock<IOfficeRepository>,
                     Mock<IRepository<AipProgram>>, Mock<IRepository<AipProject>>,

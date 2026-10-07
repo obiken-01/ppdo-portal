@@ -59,9 +59,9 @@ public sealed class UserServiceTests
     private const int NoInventoryDivisionId = 1;
 
     // Default divisions repo: two active PPDO divisions (1, 2) plus an office division (5 → office 7).
-    private static Mock<IRepository<Division>> DefaultDivisions()
+    private static Mock<IDivisionRepository> DefaultDivisions()
     {
-        Mock<IRepository<Division>> divisions = new();
+        Mock<IDivisionRepository> divisions = new();
         divisions.Setup(d => d.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Division>
             {
@@ -97,7 +97,7 @@ public sealed class UserServiceTests
     private static UserService BuildSut(
         Mock<IUserRepository> repoMock,
         Mock<IOfficeRepository>? officeMock = null,
-        Mock<IRepository<Division>>? divisionMock = null,
+        Mock<IDivisionRepository>? divisionMock = null,
         Mock<IAuditService>? auditMock = null) =>
         new(repoMock.Object,
             (officeMock ?? DefaultOffices()).Object,

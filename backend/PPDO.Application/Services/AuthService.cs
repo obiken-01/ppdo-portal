@@ -113,7 +113,9 @@ public sealed class AuthService : IAuthService
         string accessToken = GenerateAccessToken(user);
         string refreshToken = GenerateRefreshToken();
 
-        user.RefreshToken = refreshToken;
+        // PPDO-141 — the database keeps only SHA-256(token); the raw value goes to the cookie (the
+        // caller) and nowhere else. A reader of Users.RefreshToken cannot replay what it finds there.
+        user.RefreshToken = RefreshTokenHasher.Hash(refreshToken);
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(_jwt.RefreshTokenExpiryDays);
 
         await _users.UpdateAsync(user, cancellationToken);
@@ -130,11 +132,14 @@ public sealed class AuthService : IAuthService
         string refreshToken,
         CancellationToken cancellationToken = default)
     {
-        User? user = await _users.FindByRefreshTokenAsync(refreshToken, cancellationToken);
+        // PPDO-141 — the cookie holds the raw token; the column holds its hash, so look up by the hash.
+        // Presenting the stored hash itself therefore finds nothing (it hashes to something else).
+        User? user = await _users.FindByRefreshTokenAsync(
+            RefreshTokenHasher.Hash(refreshToken), cancellationToken);
 
         if (user is null)
         {
-            // No row has this exact token — it was overwritten by a later login/refresh
+            // No row has this token's hash — it was overwritten by a later login/refresh
             // (rotation-on-use). Distinct from expiry so the client can explain why (RAL-198).
             _logger.LogWarning("Refresh failed — token superseded (no matching row).");
             return RefreshResult.Superseded();
@@ -161,7 +166,7 @@ public sealed class AuthService : IAuthService
         string newAccessToken = GenerateAccessToken(user);
         string newRefreshToken = GenerateRefreshToken();
 
-        user.RefreshToken = newRefreshToken;
+        user.RefreshToken = RefreshTokenHasher.Hash(newRefreshToken);   // PPDO-141 — hash stored, raw returned
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(_jwt.RefreshTokenExpiryDays);
 
         await _users.UpdateAsync(user, cancellationToken);
@@ -452,8 +457,9 @@ public sealed class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Returns a cryptographically random, URL-safe base64 string (64 random bytes → 88 chars).
-    /// Never reuses values — safe to store directly in the database.
+    /// Returns a cryptographically random base64 string (64 random bytes → 88 chars). This is the RAW
+    /// token, for the cookie. ⚠️ It must never be stored as-is — persist
+    /// <see cref="RefreshTokenHasher.Hash"/> of it (PPDO-141).
     /// </summary>
     private static string GenerateRefreshToken()
     {

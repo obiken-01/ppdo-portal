@@ -21,11 +21,13 @@ public sealed class OfficeServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (OfficeService sut, Mock<IRepository<Office>> repo) Build(
+    private static (OfficeService sut, Mock<IOfficeRepository> repo) Build(
         List<Office> seed, IAuditService? audit = null)
     {
-        Mock<IRepository<Office>> repo = new();
+        Mock<IOfficeRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.AddAsync(It.IsAny<Office>(), It.IsAny<CancellationToken>()))
             .Callback<Office, CancellationToken>((o, _) => seed.Add(o))
             .Returns(Task.CompletedTask);
@@ -35,7 +37,7 @@ public sealed class OfficeServiceTests
             audit ?? Mock.Of<IAuditService>()), repo);
     }
 
-    private static (OfficeService sut, Mock<IRepository<Office>> repo, Mock<IAuditService> audit)
+    private static (OfficeService sut, Mock<IOfficeRepository> repo, Mock<IAuditService> audit)
         BuildWithAudit(List<Office> seed)
     {
         Mock<IAuditService> audit = new();
@@ -43,7 +45,7 @@ public sealed class OfficeServiceTests
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        (OfficeService sut, Mock<IRepository<Office>> repo) = Build(seed, audit.Object);
+        (OfficeService sut, Mock<IOfficeRepository> repo) = Build(seed, audit.Object);
         return (sut, repo, audit);
     }
 
@@ -81,7 +83,7 @@ public sealed class OfficeServiceTests
     public async Task DeleteAsync_SoftDeletes()
     {
         Office target = Off(1, "PPDO", "Planning");
-        (OfficeService sut, Mock<IRepository<Office>> repo) = Build([target]);
+        (OfficeService sut, Mock<IOfficeRepository> repo) = Build([target]);
 
         ServiceResult<OfficeDto> result = await sut.DeleteAsync(1);
 

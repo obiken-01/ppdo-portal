@@ -33,8 +33,8 @@ public sealed class AipExpenditureDivisionLockTests
     private readonly Mock<IAipExpenditureRepository>  _expRepo     = new();
     private readonly Mock<IAipActivityTotalsService>  _totals      = new();
     private readonly Mock<IAipCeilingService>         _ceiling     = new();
-    private readonly Mock<IRepository<Account>>       _accounts    = new();
-    private readonly Mock<IRepository<FundingSource>> _funds       = new();
+    private readonly Mock<IAccountRepository>       _accounts    = new();
+    private readonly Mock<IFundingSourceRepository> _funds       = new();
     private readonly Mock<IAuditService>              _audit       = new();
     private readonly AipDivisionLockFixture           _divisions   = new();
     private readonly AipOffice                        _office;
@@ -89,7 +89,7 @@ public sealed class AipExpenditureDivisionLockTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, new PermissionService(),
         _divisions.Build(_aipRepo.Object, new PermissionService()),
-        NullLogger<AipExpenditureService>.Instance);
+        new Mock<IUserRepository>().Object, NullLogger<AipExpenditureService>.Instance);
 
     private static User Staff(int? divisionId, bool departmentHead = false) => new()
     {

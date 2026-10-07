@@ -2,6 +2,7 @@
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
+using PPDO.Domain.Enums;
 
 namespace PPDO.Application.Services;
 
@@ -30,6 +31,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         "ldip_records",
         "wfp_records", "wfp_expenditures",
         "budget_ceilings", "division_allocations", "program_divisions",
+        // PPDO-181 — the review hand-offs (submit, return, accept) are written against these two.
+        // Without them the band could never say "OPA sent its AIP to PPDO".
+        "aip_offices", "aip_division_submissions",
     ];
 
     private readonly ILdipRepository                _ldipRepo;
@@ -48,6 +52,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IPermissionService             _permissions;
     private readonly IInvestmentPlanningSettingsRepository _settingsRepo;
     private readonly IAipDivisionSubmissionRepository _divisionSubmissionRepo;
+    private readonly RecentActivityDescriber        _activityDescriber;
+    private readonly IAipReviewCommentRepository    _commentRepo;
+    private readonly IInvestmentProposalService     _proposalService;
 
     public BudgetPlanningDashboardService(
         ILdipRepository                ldipRepo,
@@ -65,7 +72,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IUserRepository                userRepo,
         IPermissionService             permissions,
         IInvestmentPlanningSettingsRepository settingsRepo,
-        IAipDivisionSubmissionRepository divisionSubmissionRepo)
+        IAipDivisionSubmissionRepository divisionSubmissionRepo,
+        RecentActivityDescriber        activityDescriber,
+        IAipReviewCommentRepository    commentRepo,
+        IInvestmentProposalService     proposalService)
     {
         _ldipRepo          = ldipRepo;
         _aipRepo           = aipRepo;
@@ -83,6 +93,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _permissions       = permissions;
         _settingsRepo      = settingsRepo;
         _divisionSubmissionRepo = divisionSubmissionRepo;
+        _activityDescriber      = activityDescriber;
+        _commentRepo            = commentRepo;
+        _proposalService        = proposalService;
     }
 
     /// <inheritdoc />
@@ -250,7 +263,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         if (entered && primaryAip is not null && officeRefCode is not null)
         {
-            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct))
+            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct))
                 .Where(o => o.OfficeId == officeId)
                 .Select(o => o.Id)
                 .ToList();
@@ -265,7 +278,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         }
         else if (primaryAip is not null && officeRefCode is not null)
         {
-            IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdAsync(primaryAip.Id, ct);
+            IReadOnlyList<AipOffice> aipOffices = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct);
             List<int> hostAipOfficeIds = aipOffices
                 .Where(o => o.OfficeId == officeId)
                 .Select(o => o.Id)
@@ -461,8 +474,11 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IReadOnlyList<AuditLog> audits = await _auditRepo.GetRecentAsync(
             10, officeId, BudgetPlanningTableNames, cancellationToken);
 
+        // PPDO-181 — the sentences, with every label resolved in at most one query per table.
+        IReadOnlyList<string> descriptions = await _activityDescriber.DescribeAsync(audits, cancellationToken);
+
         return audits
-            .Select(a => new RecentActivityDto(
+            .Select((a, i) => new RecentActivityDto(
                 a.Id,
                 // EF Core loses DateTimeKind on the SQL Server round-trip (datetime2 columns don't
                 // store it), so a.ChangedAt reads back as Kind=Unspecified even though AuditService
@@ -470,11 +486,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 // serializes it without a trailing "Z", and the browser's `new Date(...)` then
                 // misparses it as local time instead of UTC — displaying a time 8 hours off Manila.
                 DateTime.SpecifyKind(a.ChangedAt, DateTimeKind.Utc),
-                a.TableName,
-                a.Action,
-                a.RecordId,
-                a.RecordGuid,
-                a.ChangedBy?.FullName ?? "Unknown"))
+                a.ChangedBy?.FullName ?? "Unknown",
+                descriptions[i]))
             .ToList();
     }
 
@@ -534,8 +547,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             aip is null ? [] : await _aipRepo.GetOfficeRollupsAsync(aip.Id, ct);
         Dictionary<int, OfficeAipFigures> aipByOffice = BuildAipRollupByOffice(rollups, offices);
         Dictionary<int, DivisionProgress> divisionProgress = entered && aip is not null
-            ? await BuildDivisionProgressAsync(aip.Id, officeIds, rollups, ct)
+            ? await BuildDivisionProgressAsync(
+                aip.Id, officeIds, rollups.Select(r => (r.AipOfficeId, r.OfficeId)).ToList(), ct)
             : [];
+
+        // PPDO-180 — proposal counts for the all-offices card: one grouped query for every office,
+        // only for a cross-office reviewer (it is their card; a ceiling-only budget officer has none).
+        IReadOnlyDictionary<int, PPDO.Application.DTOs.InvestmentProposal.ProposalCountsDto>? proposalCounts =
+            canReviewAllOffices && entered
+                ? await _proposalService.CountByOfficeAsync(fiscalYear, caller, ct)
+                : null;
 
         // One grouped query for every office (not the per-office ceiling read in a loop).
         Dictionary<int, decimal> gfCostedByOffice = [];
@@ -581,7 +602,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 figures.WorkflowStatus == AipWorkflowStatus.ReturnedByPpdo,
                 figures.ProgramCount,
                 divisionProgress.TryGetValue(office.Id, out DivisionProgress p) ? p.Submitted : null,
-                divisionProgress.TryGetValue(office.Id, out DivisionProgress q) ? q.Required : null));
+                divisionProgress.TryGetValue(office.Id, out DivisionProgress q) ? q.Required : null,
+                // PPDO-180 — reviewers only; an office with no projects in scope has no entry.
+                proposalCounts?.GetValueOrDefault(office.Id)));
         }
 
         return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Ok(rows);
@@ -631,7 +654,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     }
 
     /// <summary>How many of an office's required divisions have submitted (PPDO-152).</summary>
-    private readonly record struct DivisionProgress(int Submitted, int Required);
+    /// <param name="Waiting">PPDO-178 — the required divisions not yet submitted, by code (or name).</param>
+    private readonly record struct DivisionProgress(int Submitted, int Required, IReadOnlyList<string> Waiting);
 
     /// <summary>
     /// OfficeId → "n of m divisions submitted" for every office in the division flow (PPDO-152, spec
@@ -644,17 +668,17 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// entry, so the board shows nothing rather than "0 of 0".
     /// </summary>
     private async Task<Dictionary<int, DivisionProgress>> BuildDivisionProgressAsync(
-        int aipRecordId, IReadOnlyList<int> officeIds, IReadOnlyList<AipOfficeRollupDto> rollups,
-        CancellationToken ct)
+        int aipRecordId, IReadOnlyList<int> officeIds,
+        IReadOnlyList<(int AipOfficeId, int? OfficeId)> groups, CancellationToken ct)
     {
         IReadOnlyList<Division> divisions =
             await _divisionSubmissionRepo.GetDivisionsByOfficeIdsAsync(officeIds, ct);
         HashSet<int> flowOffices = divisions.Where(d => d.IsActive).Select(d => d.OfficeId).ToHashSet();
         if (flowOffices.Count == 0) return [];
 
-        List<int> groupIds = rollups
-            .Where(r => r.OfficeId is int o && flowOffices.Contains(o))
-            .Select(r => r.AipOfficeId)
+        List<int> groupIds = groups
+            .Where(g => g.OfficeId is int o && flowOffices.Contains(o))
+            .Select(g => g.AipOfficeId)
             .ToList();
         HashSet<int> withWork = groupIds.Count == 0
             ? []
@@ -671,11 +695,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         Dictionary<int, DivisionProgress> byOffice = [];
         foreach (int officeId in flowOffices)
         {
-            List<int> required = divisions
+            List<Division> required = divisions
                 .Where(d => d.OfficeId == officeId && withWork.Contains(d.Id))
-                .Select(d => d.Id)
                 .ToList();
-            byOffice[officeId] = new DivisionProgress(required.Count(submitted.Contains), required.Count);
+            byOffice[officeId] = new DivisionProgress(
+                required.Count(d => submitted.Contains(d.Id)),
+                required.Count,
+                required.Where(d => !submitted.Contains(d.Id))
+                    .Select(d => string.IsNullOrWhiteSpace(d.Code) ? d.Name : d.Code!)
+                    .ToList());
         }
         return byOffice;
     }
@@ -683,7 +711,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// <inheritdoc />
     public async Task<OfficeDashboardDto> GetOfficeDashboardAsync(
         int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
-        CancellationToken cancellationToken = default)
+        User? caller = null, CancellationToken cancellationToken = default)
     {
         AllocationSetupSummaryDto allocation =
             await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
@@ -694,7 +722,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         (IReadOnlyList<DivisionSummaryDto> byDivision, DivisionSummaryDto? noDivision) =
             await BuildOfficeDivisionsAsync(officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
-        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision, noDivision);
+        // PPDO-180 — the proposal band, counted by the proposal service in the list's own scope so
+        // the band and the Investment Proposals list can never disagree.
+        PPDO.Application.DTOs.InvestmentProposal.OfficeProposalSummaryDto? proposals = caller is null
+            ? null
+            : await _proposalService.GetOfficeSummaryAsync(officeId, fiscalYear, caller, cancellationToken);
+
+        return new OfficeDashboardDto(officeId, fiscalYear, allocation, ldip, aip, byDivision, noDivision, proposals);
     }
 
     /// <summary>
@@ -802,7 +836,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
         IReadOnlyList<AipOffice> aipOffices =
-            await _aipRepo.GetOfficesByAipIdAsync(aipRecord.Id, cancellationToken);
+            await _aipRepo.GetOfficesByAipIdNoTrackingAsync(aipRecord.Id, cancellationToken);
         List<AipOffice> matched = aipOffices
             .Where(o => o.OfficeId == office.Id)
             .ToList();
@@ -811,13 +845,13 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         List<int> officeIds = matched.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(officeIds, cancellationToken);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(officeIds, cancellationToken);
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programIds, cancellationToken);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, cancellationToken);
         List<int> projectIds = projects.Select(p => p.Id).ToList();
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, cancellationToken);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, cancellationToken);
 
         // The office's OWN costed total — deliberately NOT the sum of the per-division rows, which
         // counts a PPA shared by several divisions once per division. See the DTO's own remarks.
@@ -865,9 +899,40 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 "aip_offices", officeIds, AuditAction.AipHandOffs, cancellationToken);
         }
 
+        // PPDO-178 — the status band's "why". Each read runs only in the state that shows it.
+        int uncosted = activities.Count(a => a.Total is null or 0m);
+
+        DivisionProgress? divisionProgress = null;
+        // Draft, and after PPDO's return: the divisions resubmit before the head can send it again.
+        if (workflowStatus is AipWorkflowStatus.Draft or AipWorkflowStatus.ReturnedByPpdo)
+        {
+            Dictionary<int, DivisionProgress> byOffice = await BuildDivisionProgressAsync(
+                aipRecord.Id, [office.Id],
+                matched.Select(g => (g.Id, (int?)office.Id)).ToList(), cancellationToken);
+            if (byOffice.TryGetValue(office.Id, out DivisionProgress p)) divisionProgress = p;
+        }
+
+        // Whose comments the office has to answer: PPDO's when PPDO sent it back, the department
+        // head's when they did. A Draft after PPDO's return (the head passed it on) is still PPDO's.
+        AipCommentSide? returnedBy =
+            workflowStatus == AipWorkflowStatus.ReturnedByPpdo ? AipCommentSide.Ppdo
+            : workflowStatus == AipWorkflowStatus.Draft && handOff?.Action == AuditAction.ReturnByPpdo ? AipCommentSide.Ppdo
+            : workflowStatus == AipWorkflowStatus.Draft && handOff?.Action == AuditAction.ReturnToEncoder ? AipCommentSide.DepartmentHead
+            : null;
+        int? unresolved = null;
+        if (returnedBy is AipCommentSide side)
+        {
+            IReadOnlyDictionary<AipCommentSide, int> bySide =
+                await _commentRepo.CountUnresolvedBySideAsync(officeIds, cancellationToken);
+            unresolved = bySide.GetValueOrDefault(side);
+        }
+
         return new OfficeAipSummaryDto(
             true, aipRecord.Status, programs.Count, projects.Count, activities.Count, costed,
             costedAgainstCeiling,
-            workflowStatus, handOff?.ChangedAt, handOff?.Action);
+            workflowStatus, handOff?.ChangedAt, handOff?.Action,
+            uncosted,
+            divisionProgress?.Submitted, divisionProgress?.Required, divisionProgress?.Waiting,
+            unresolved);
     }
 }

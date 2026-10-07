@@ -21,11 +21,11 @@ public sealed class OfficeService : IOfficeService
     /// <summary>Column index of <c>landing_page</c> in <see cref="CsvHeaders"/> (RAL-258).</summary>
     private const int LandingPageIndex = 4;
 
-    private readonly IRepository<Office> _repo;
+    private readonly IOfficeRepository _repo;
     private readonly ILogger<OfficeService> _logger;
     private readonly IAuditService _audit;
 
-    public OfficeService(IRepository<Office> repo, ILogger<OfficeService> logger, IAuditService audit)
+    public OfficeService(IOfficeRepository repo, ILogger<OfficeService> logger, IAuditService audit)
     {
         _repo   = repo;
         _logger = logger;
@@ -61,7 +61,7 @@ public sealed class OfficeService : IOfficeService
     /// <inheritdoc />
     public async Task<ServiceResult<OfficeDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        Office? o = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+        Office? o = await _repo.GetByIdAsync(id, cancellationToken);
         return o is null
             ? ServiceResult<OfficeDto>.NotFound($"Office {id} not found.")
             : ServiceResult<OfficeDto>.Ok(MapToDto(o));
@@ -151,7 +151,7 @@ public sealed class OfficeService : IOfficeService
     /// <inheritdoc />
     public async Task<ServiceResult<OfficeDto>> DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
-        Office? entity = (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(o => o.Id == id);
+        Office? entity = await _repo.GetByIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<OfficeDto>.NotFound($"Office {id} not found.");
 

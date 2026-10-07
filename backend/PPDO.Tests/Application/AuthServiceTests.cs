@@ -238,11 +238,11 @@ public sealed class AuthServiceTests
     {
         User user = MakeActiveUser("hash");
         user.IsActive = false;
-        user.RefreshToken = "some-token";
+        user.RefreshToken = RefreshTokenHasher.Hash("some-token");
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByRefreshTokenAsync("some-token", It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByRefreshTokenAsync(RefreshTokenHasher.Hash("some-token"), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
 
         RefreshResult result = await BuildSut(repo).RefreshAsync("some-token");
@@ -254,11 +254,11 @@ public sealed class AuthServiceTests
     public async Task RefreshAsync_ExpiredToken_ReturnsExpired_AndClearsToken()
     {
         User user = MakeActiveUser("hash");
-        user.RefreshToken = "expired-token";
+        user.RefreshToken = RefreshTokenHasher.Hash("expired-token");
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(-1); // already expired
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByRefreshTokenAsync("expired-token", It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByRefreshTokenAsync(RefreshTokenHasher.Hash("expired-token"), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -277,11 +277,11 @@ public sealed class AuthServiceTests
     {
         User user = MakeActiveUser("hash");
         string oldRefreshToken = "valid-token";
-        user.RefreshToken = oldRefreshToken;
+        user.RefreshToken = RefreshTokenHasher.Hash(oldRefreshToken);
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByRefreshTokenAsync(oldRefreshToken, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByRefreshTokenAsync(RefreshTokenHasher.Hash(oldRefreshToken), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -303,11 +303,11 @@ public sealed class AuthServiceTests
         // R2. Session A's next refresh presents R1, which no row matches any more —
         // this must surface as "superseded", not the generic "expired" reason.
         User user = MakeActiveUser("hash");
-        user.RefreshToken = "R2-current"; // overwritten by the second login
+        user.RefreshToken = RefreshTokenHasher.Hash("R2-current"); // overwritten by the second login
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7); // still well within validity
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByRefreshTokenAsync("R1-stale", It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByRefreshTokenAsync(RefreshTokenHasher.Hash("R1-stale"), It.IsAny<CancellationToken>()))
             .ReturnsAsync((User?)null); // R1 no longer matches any row
 
         RefreshResult result = await BuildSut(repo).RefreshAsync("R1-stale");
@@ -320,11 +320,12 @@ public sealed class AuthServiceTests
     {
         User user = MakeActiveUser("hash");
         string oldToken = "old-refresh-token";
-        user.RefreshToken = oldToken;
+        string oldStored = RefreshTokenHasher.Hash(oldToken);
+        user.RefreshToken = oldStored;
         user.RefreshTokenExpiry = DateTime.UtcNow.AddDays(7);
 
         Mock<IUserRepository> repo = new();
-        repo.Setup(r => r.FindByRefreshTokenAsync(oldToken, It.IsAny<CancellationToken>()))
+        repo.Setup(r => r.FindByRefreshTokenAsync(RefreshTokenHasher.Hash(oldToken), It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -333,7 +334,151 @@ public sealed class AuthServiceTests
 
         await BuildSut(repo).RefreshAsync(oldToken);
 
-        Assert.NotEqual(oldToken, user.RefreshToken);
+        Assert.NotEqual(oldStored, user.RefreshToken);
+    }
+
+    // ── Refresh tokens are stored hashed (PPDO-141) ───────────────────────────
+    //
+    // The cookie carries the RAW token; Users.RefreshToken must hold only SHA-256(token). A person
+    // who can read the table (a DBA, a read-only login, a leaked backup) must not be able to lift a
+    // live session out of it. These use a stateful repository that matches the way the real one
+    // does — exact string equality on the stored column — so "can the stored value be replayed?" is
+    // answered by the same comparison production makes.
+
+    /// <summary>SHA-256 hex computed independently of the production helper.</summary>
+    private static string Sha256Hex(string value)
+        => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static (Mock<IUserRepository> Repo, User User, string Password) StatefulLoginRepo()
+    {
+        string password = "Test-Password1!";
+        User user = MakeActiveUser(BCrypt.Net.BCrypt.HashPassword(password));
+
+        Mock<IUserRepository> repo = new();
+        repo.Setup(r => r.FindByUsernameAsync(user.Username, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        // Exactly what UserRepository.FindByRefreshTokenAsync does: equality on the stored column.
+        repo.Setup(r => r.FindByRefreshTokenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string presented, CancellationToken _) => user.RefreshToken == presented ? user : null);
+        repo.Setup(r => r.GetByIdAsync(user.Id, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        repo.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
+        return (repo, user, password);
+    }
+
+    [Fact]
+    public async Task LoginAsync_StoresTheSha256HashOfTheRefreshToken_NotTheTokenItself()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+
+        LoginResult result = await BuildSut(repo).LoginAsync(user.Username, password);
+
+        string raw = result.RefreshToken!;
+        Assert.NotEqual(raw, user.RefreshToken);                 // the cookie value is never what is stored
+        Assert.Equal(Sha256Hex(raw), user.RefreshToken);         // what is stored is its SHA-256, lower-case hex
+        Assert.Equal(64, user.RefreshToken!.Length);
+        Assert.Matches("^[0-9a-f]{64}$", user.RefreshToken);
+    }
+
+    [Fact]
+    public async Task LoginAsync_StillHandsTheRawTokenToTheCaller_ForTheCookie()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+
+        LoginResult result = await BuildSut(repo).LoginAsync(user.Username, password);
+
+        // Same token shape as before (64 random bytes, base64 → 88 chars) — not a 64-char hash.
+        Assert.Equal(88, result.RefreshToken!.Length);
+        Assert.DoesNotMatch("^[0-9a-f]{64}$", result.RefreshToken);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WithTheRawTokenFromLogin_Succeeds()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+        AuthService sut = BuildSut(repo);
+        string raw = (await sut.LoginAsync(user.Username, password)).RefreshToken!;
+
+        RefreshResult refreshed = await sut.RefreshAsync(raw);
+
+        Assert.Equal(RefreshOutcome.Success, refreshed.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(refreshed.AccessToken));
+    }
+
+    [Fact]
+    public async Task RefreshAsync_WithTheStoredHashItself_IsRejected_SoADatabaseReaderCannotReplayIt()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+        AuthService sut = BuildSut(repo);
+        await sut.LoginAsync(user.Username, password);
+        string whatADbReaderSees = user.RefreshToken!;
+
+        RefreshResult replay = await sut.RefreshAsync(whatADbReaderSees);
+
+        Assert.NotEqual(RefreshOutcome.Success, replay.Outcome);
+        Assert.Equal(RefreshOutcome.TokenSuperseded, replay.Outcome);
+        Assert.Null(replay.AccessToken);
+        Assert.Null(replay.RefreshToken);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_Rotation_StoresTheHashOfTheNewToken_AndSupersedesTheOldRawToken()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+        AuthService sut = BuildSut(repo);
+        string raw1 = (await sut.LoginAsync(user.Username, password)).RefreshToken!;
+
+        RefreshResult first = await sut.RefreshAsync(raw1);
+        string raw2 = first.RefreshToken!;
+
+        Assert.Equal(RefreshOutcome.Success, first.Outcome);
+        Assert.NotEqual(raw1, raw2);
+        Assert.Equal(Sha256Hex(raw2), user.RefreshToken);                       // new hash stored, not new raw
+        Assert.NotEqual(raw2, user.RefreshToken);
+
+        // The old raw token no longer matches any row (rotation-on-use, RAL-198's Superseded)...
+        Assert.Equal(RefreshOutcome.TokenSuperseded, (await sut.RefreshAsync(raw1)).Outcome);
+        // ...and the new one is the live session.
+        Assert.Equal(RefreshOutcome.Success, (await sut.RefreshAsync(raw2)).Outcome);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_ExpiredToken_StillReturnsExpired_AndClearsTheStoredHash()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+        AuthService sut = BuildSut(repo);
+        string raw = (await sut.LoginAsync(user.Username, password)).RefreshToken!;
+        user.RefreshTokenExpiry = DateTime.UtcNow.AddMinutes(-1);   // the session has run out
+
+        RefreshResult result = await sut.RefreshAsync(raw);
+
+        Assert.Equal(RefreshOutcome.TokenExpired, result.Outcome);   // still distinct from Superseded
+        Assert.Null(user.RefreshToken);
+        Assert.Null(user.RefreshTokenExpiry);
+    }
+
+    [Fact]
+    public async Task LogoutAsync_AfterLogin_ClearsTheStoredHash_AndTheRawTokenStopsWorking()
+    {
+        (Mock<IUserRepository> repo, User user, string password) = StatefulLoginRepo();
+        AuthService sut = BuildSut(repo);
+        string raw = (await sut.LoginAsync(user.Username, password)).RefreshToken!;
+
+        await sut.LogoutAsync(user.Id);
+
+        Assert.Null(user.RefreshToken);
+        Assert.Null(user.RefreshTokenExpiry);
+        Assert.Equal(RefreshOutcome.TokenSuperseded, (await sut.RefreshAsync(raw)).Outcome);
+    }
+
+    [Fact]
+    public void RefreshTokenHasher_ProducesTheSameFormatAsTheApiKeyHash()
+    {
+        // One shape for every credential we store hashed — SHA-256, lower-case hex — rather than a second format.
+        const string sample = "any-token-value";
+
+        Assert.Equal(ApiKeyGenerator.Hash(sample), RefreshTokenHasher.Hash(sample));
+        Assert.Equal(Sha256Hex(sample), RefreshTokenHasher.Hash(sample));
     }
 
     // ── LogoutAsync ───────────────────────────────────────────────────────────

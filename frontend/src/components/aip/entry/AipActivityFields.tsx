@@ -30,13 +30,18 @@
  * sheet open beside this form and fills it left-to-right; any other order makes them hunt. **The
  * read view and the edit view must stay in the same order as each other** — they are the same
  * fields, and a reader who expands a row and then clicks Edit must not have them move.
+ *
+ * PPDO-112 (V18-64) — while the form is open, what is typed is mirrored to IndexedDB (debounced),
+ * so a crashed or closed tab can offer it back the next time this activity opens. Only when the
+ * caller passes `draftUserId` (AIP Entry does; the review screens do not). See `lib/activity-drafts`.
  */
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipActivityNameCounter from "@/components/aip/AipActivityNameCounter";
-import { updateAipActivityDetails, aipErrorMessage } from "@/lib/aip";
+import { updateAipActivityDetails, aipConflict, aipErrorMessage } from "@/lib/aip";
+import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
 import { fmtThousands } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
@@ -47,10 +52,30 @@ import { inputCls, selectCls } from "@/components/aip/AipTreeCells";
 import MultiLookup, {
   joinCodes, withProponent, withoutProponent,
 } from "@/components/ui/MultiLookup";
-import type { AipActivityDetail, OfficeResponse } from "@/types";
+import {
+  createDraftSession, decideDraft, draftKey, readDraft, deleteDraft,
+  type ActivityDraft, type ActivityDraftFields,
+} from "@/lib/activity-drafts";
+import AipDraftBanner, { draftTimeLabel } from "./AipDraftBanner";
+import type { AipActivityDetail, AipConflict, OfficeResponse } from "@/types";
+
+/** The form's values for a saved activity — exactly what `beginEdit` loads. */
+function formFromActivity(activity: AipActivityDetail, proponentOfficeCode: string | null): ActivityDraftFields {
+  return {
+    name: activity.name,
+    esreCode: activity.esreCode ?? "",
+    implementingOffices: withoutProponent(activity.implementingOffice, proponentOfficeCode),
+    startDate: activity.startDate ?? "",
+    endDate: activity.endDate ?? "",
+    expectedOutputs: activity.expectedOutputs ?? "",
+    ccAdaptation: activity.ccAdaptation,
+    ccMitigation: activity.ccMitigation,
+    ccTypologyCode: activity.ccTypologyCode ?? "",
+  };
+}
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved, offices, proponentOfficeCode,
+  activity, canEdit, onSaved, offices, proponentOfficeCode, draftUserId = null,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -69,6 +94,12 @@ export default function AipActivityFields({
    * Null leaves the value exactly as picked.
    */
   proponentOfficeCode: string | null;
+  /**
+   * PPDO-112 — the signed-in user, which turns the local draft mirror on. ⚠️ Part of the draft's
+   * key: on a shared office PC, a key without the user would offer one encoder another's unsaved
+   * text. Null (the review screens) means no draft is read or written.
+   */
+  draftUserId?: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -97,21 +128,105 @@ export default function AipActivityFields({
 
   const nameRef = useAutoGrowTextarea(name);
 
+  // PPDO-191 (V18-71) — set when the save was refused because someone else saved this activity
+  // after it was loaded. Same flow as AipActivityRow, the detail page's inline editor.
+  const [conflict, setConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+
+  // ── PPDO-112: the local draft mirror ────────────────────────────────────
+  const key = draftKey(draftUserId, activity.id);
+  const drafts = useMemo(() => createDraftSession(key), [key]);
+  /** A draft found on open, offered in the banner until Restore, Discard or new typing. */
+  const [offer, setOffer] = useState<{ draft: ActivityDraft; changedSince: boolean } | null>(null);
+  /** The rowVersion this edit began against — stored with every draft write. */
+  const baseRowVersion = useRef<string | null>(null);
+  /**
+   * Set by restoring a draft typed against an older version: Save checks against THAT version, so
+   * an edit someone made since reaches the conflict panel rather than being silently overwritten.
+   */
+  const restoredBase = useRef<string | null>(null);
+  /** Whether the stored draft is this edit's own (written or restored here), so ours to delete. */
+  const ownsDraft = useRef(false);
+
+  function loadForm(f: ActivityDraftFields) {
+    setName(f.name);
+    setEsreCode(f.esreCode);
+    setImplementingOffices(f.implementingOffices);
+    setStartDate(f.startDate);
+    setEndDate(f.endDate);
+    setExpectedOutputs(f.expectedOutputs);
+    setCcTypologyCode(f.ccTypologyCode);
+    setCcAdaptation(f.ccAdaptation);
+    setCcMitigation(f.ccMitigation);
+  }
+
   function beginEdit() {
-    setName(activity.name);
-    setEsreCode(activity.esreCode ?? "");
-    setImplementingOffices(withoutProponent(activity.implementingOffice, proponentOfficeCode));
-    setStartDate(activity.startDate ?? "");
-    setEndDate(activity.endDate ?? "");
-    setExpectedOutputs(activity.expectedOutputs ?? "");
-    setCcTypologyCode(activity.ccTypologyCode ?? "");
-    setCcAdaptation(activity.ccAdaptation);
-    setCcMitigation(activity.ccMitigation);
+    loadForm(formFromActivity(activity, proponentOfficeCode));
+    baseRowVersion.current = activity.rowVersion ?? null;
+    restoredBase.current = null;
+    ownsDraft.current = false;
     setError(null);
+    setConflict(null);
     setEditing(true);
   }
 
-  async function save() {
+  /** Restore: the draft becomes the open form, dirty, exactly as if it had just been typed. */
+  function restoreDraft() {
+    if (!offer) return;
+    loadForm(offer.draft.fields);
+    baseRowVersion.current = offer.draft.baseRowVersion;
+    restoredBase.current = offer.changedSince ? offer.draft.baseRowVersion : null;
+    ownsDraft.current = true;
+    setOffer(null);
+    setError(null);
+    setConflict(null);
+    setEditing(true);
+  }
+
+  /** Discard: gone from IndexedDB at once; the form (if open) still shows the server's values. */
+  function discardDraft() {
+    setOffer(null);
+    ownsDraft.current = false;
+    void drafts.discarded();
+  }
+
+  // On open: is there a draft worth offering? One that only repeats the server is deleted silently.
+  // Read once per activity and user — the activity prop changing afterwards is this page's own save.
+  useEffect(() => {
+    if (!key || !canEdit) return;
+    let cancelled = false;
+    void readDraft(key).then((draft) => {
+      // ⚠️ Already typing in this panel? Then the store holds THIS edit's text, not the old draft.
+      if (cancelled || !draft || ownsDraft.current) return;
+      const decision = decideDraft(
+        draft, formFromActivity(activity, proponentOfficeCode), activity.rowVersion ?? null);
+      if (decision === "none") void deleteDraft(key);
+      else setOffer({ draft, changedSince: decision === "restore-changed" });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, canEdit]);
+
+  // A pending write goes out now when the tab is hidden or closed, or this panel unmounts —
+  // otherwise the last half-second of typing is the part a crash loses.
+  useEffect(() => {
+    const flush = () => { void drafts.flush(); };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [drafts]);
+
+  /**
+   * @param rowVersion the version to save against: the activity as this page holds it, or, for an
+   *   Overwrite, the version from the conflict payload, so the retry is one request.
+   *   ⚠️ The page must hold the activity's CURRENT version: an expenditure write bumps it (the
+   *   totals recompute), and the page stores the new one from that write's result.
+   */
+  async function save(rowVersion: string | null = restoredBase.current ?? activity.rowVersion ?? null) {
     if (!name.trim()) { setError("The activity description is required."); return; }
     setSaving(true);
     setError(null);
@@ -126,14 +241,52 @@ export default function AipActivityFields({
         ccAdaptation,
         ccMitigation,
         ccTypologyCode: ccTypologyCode.trim() || null,
+        rowVersion,
       });
+      setConflict(null);
+      // ⚠️ PPDO-112 — every successful save clears the draft, the Overwrite retry included: a
+      // stale draft resurfacing after a real save is worse than having no draft at all.
+      ownsDraft.current = false;
+      void drafts.saved();
       onSaved(updated);
       setEditing(false);
     } catch (e) {
+      // ⚠️ Conflict first, and never as an ordinary error: the panel is the only way to Overwrite
+      // or Discard. The form is NOT cleared; what the user typed is what this protects.
+      const clash = aipConflict<AipActivityDetail>(e);
+      if (clash) {
+        // ⚠️ PPDO-112 — and the draft is KEPT, written through now: the 409 is exactly when the
+        // typed text must survive a closed tab.
+        void drafts.conflicted();
+        setConflict(clash);
+        return;
+      }
       setError(aipErrorMessage(e, "Could not save the activity details."));
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Only the fields that differ, as the user sees them on this form. */
+  function conflictFields(theirs: AipActivityDetail): AipConflictField[] {
+    const rows: AipConflictField[] = [];
+    const add = (label: string, mine: string | null, that: string | null | undefined) => {
+      const a = mine?.trim() || "—";
+      const b = that?.trim() || "—";
+      if (a !== b) rows.push({ label, mine: a, theirs: b });
+    };
+    const pesos = (v: number | null | undefined) => (v == null ? null : fmtThousands(v));
+    add("Description", name, theirs.name);
+    add("eSRE code", esreCode, theirs.esreCode);
+    add("Implementing office", joinCodes(withProponent(implementingOffices, proponentOfficeCode)),
+      theirs.implementingOffice);
+    add("Start", startDate, theirs.startDate);
+    add("End", endDate, theirs.endDate);
+    add("Expected outputs", expectedOutputs, theirs.expectedOutputs);
+    add("CC typology", ccTypologyCode, theirs.ccTypologyCode);
+    add("CC adaptation", pesos(ccAdaptation), pesos(theirs.ccAdaptation));
+    add("CC mitigation", pesos(ccMitigation), pesos(theirs.ccMitigation));
+    return rows;
   }
 
   // PPDO-166 — unsaved = the open form differs from the saved activity (what `beginEdit` loaded).
@@ -150,14 +303,48 @@ export default function AipActivityFields({
     || ccAdaptation !== activity.ccAdaptation
     || ccMitigation !== activity.ccMitigation;
   useAipUnsavedChange(editing && changed, "the activity details", () => {
+    // The user chose to throw these edits away, so their draft goes with them.
+    if (ownsDraft.current) { ownsDraft.current = false; void drafts.discarded(); }
     setEditing(false);
     setError(null);
   });
+
+  // PPDO-112 — mirror the open form. Typing over an offered draft replaces it (the banner goes);
+  // typing back to the saved values removes our own draft, so it cannot offer text since deleted.
+  useEffect(() => {
+    if (!editing || !key) return;
+    if (changed) {
+      ownsDraft.current = true;
+      setOffer(null);
+      drafts.changed({
+        name, esreCode, implementingOffices, startDate, endDate, expectedOutputs,
+        ccAdaptation, ccMitigation, ccTypologyCode,
+      }, baseRowVersion.current);
+    } else if (ownsDraft.current) {
+      ownsDraft.current = false;
+      void drafts.discarded();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, key, changed, name, esreCode, implementingOffices, startDate, endDate,
+      expectedOutputs, ccAdaptation, ccMitigation, ccTypologyCode]);
+
+  // Not offered on a row this user cannot edit (a lock that landed after the draft was read).
+  const banner = offer && canEdit && (
+    <AipDraftBanner
+      message={<>A local draft from {draftTimeLabel(offer.draft.savedAt)} was found for this activity. Restore it?</>}
+      // ⚠️ Said, because Save will then stop on the conflict panel: the row moved on after the
+      // draft began (someone saved it, possibly this user in another tab).
+      note={offer.changedSince
+        ? "This activity has been saved since the draft was made. If you restore it, saving will show you what changed first."
+        : undefined}
+      onRestore={restoreDraft} onDiscard={discardDraft} />
+  );
 
   // ── Read view ───────────────────────────────────────────────────────────
   if (!editing) {
     return (
       <div className="border-b border-slate-200 px-4 py-3">
+        {banner}
         <div className="flex items-start justify-between gap-3">
           {/* ⚠️ The printed form's column order, and the same order as the edit view below —
               see this file's header. Expected outputs sits in the middle rather than at the end
@@ -194,6 +381,7 @@ export default function AipActivityFields({
   // ── Edit view ───────────────────────────────────────────────────────────
   return (
     <div className="border-b border-slate-200 bg-amber-50 px-4 py-3">
+      {banner}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="sm:col-span-3">
           <Label>Activity description</Label>
@@ -312,12 +500,40 @@ export default function AipActivityFields({
         <p className="mt-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
       )}
 
+      {/* PPDO-191 — in place, below the form the user is comparing against (spec §6). */}
+      {conflict && (
+        <div className="mt-3">
+          <AipConflictPanel
+            conflict={conflict}
+            noun="activity"
+            fields={conflictFields(conflict.current)}
+            busy={saving}
+            onOverwrite={() => save(conflict.currentRowVersion)}
+            onDiscard={() => {
+              // Their values win, by the user's choice. `current` is the row as it now stands.
+              // The user discarded their text here, so its draft goes too (PPDO-112).
+              ownsDraft.current = false;
+              void drafts.discarded();
+              setConflict(null);
+              onSaved(conflict.current);
+              setEditing(false);
+            }}
+          />
+        </div>
+      )}
+
       <div className="mt-3 flex justify-end gap-2">
-        <button type="button" onClick={() => setEditing(false)} disabled={saving}
+        <button type="button" disabled={saving} onClick={() => {
+          // Cancel throws this edit away, so its own draft goes with it (PPDO-112). A draft still
+          // only OFFERED in the banner is not this edit's, and is left for the banner to decide.
+          if (ownsDraft.current) { ownsDraft.current = false; void drafts.discarded(); }
+          setConflict(null);
+          setEditing(false);
+        }}
           className="border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
           Cancel
         </button>
-        <button type="button" onClick={save} disabled={saving}
+        <button type="button" onClick={() => save()} disabled={saving}
           className="bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
           {saving ? "Saving…" : "Save details"}
         </button>

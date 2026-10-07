@@ -176,22 +176,6 @@ public sealed class DashboardFunctions
         return req.CreateResponse(HttpStatusCode.NoContent);
     }
 
-    // ── GET /api/dashboard/stats ───────────────────────────────────────────────
-
-    [Function("GetDashboardStats")]
-    public async Task<HttpResponseData> GetStats(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "dashboard/stats")]
-        HttpRequestData req,
-        CancellationToken cancellationToken)
-    {
-        User? caller = await _jwt.ValidateAsync(GetAuthHeader(req), cancellationToken);
-        if (caller is null)
-            return req.CreateResponse(HttpStatusCode.Unauthorized);
-
-        DashboardStatsDto stats = await _dashboard.GetStatsAsync(cancellationToken);
-        return await OkJson(req, stats, cancellationToken);
-    }
-
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static string? GetAuthHeader(HttpRequestData req)

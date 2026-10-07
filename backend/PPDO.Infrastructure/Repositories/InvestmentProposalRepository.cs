@@ -14,53 +14,109 @@ public sealed class InvestmentProposalRepository : IInvestmentProposalRepository
     public InvestmentProposalRepository(AppDbContext context) => _context = context;
 
     /// <inheritdoc />
-    public async Task<ProposalProjectPage> ListProjectsAsync(ProposalProjectQuery query, CancellationToken ct = default)
+    /// <summary>One project with its program and AIP office: the row every scoped read starts from.</summary>
+    private sealed class ScopedProject
+    {
+        public AipProject Project { get; init; } = null!;
+        public AipProgram Program { get; init; } = null!;
+        public AipOffice  Office  { get; init; } = null!;
+    }
+
+    /// <summary>
+    /// The projects <paramref name="query"/> allows: the record, the office axis and the division
+    /// axis. Shared by the list and the dashboard counts (PPDO-180) so the two can never disagree.
+    /// </summary>
+    private IQueryable<ScopedProject> ScopedProjects(ProposalProjectQuery query)
     {
         IReadOnlyList<int>    narrowed = query.NarrowedAipOfficeIds;
         IReadOnlyList<string> allowed  = query.AllowedProgramRefCodes;
 
-        var rows =
+        IQueryable<ScopedProject> rows =
             from j in _context.AipProjects
             join p in _context.AipPrograms on j.ProgramId equals p.Id
             join o in _context.AipOffices on p.OfficeId equals o.Id
             where o.AipRecordId == query.AipRecordId
-            select new { j, p, o };
+            select new ScopedProject { Project = j, Program = p, Office = o };
 
         if (query.AipOfficeIds is { } officeIds)
-            rows = rows.Where(x => officeIds.Contains(x.o.Id));
+            rows = rows.Where(x => officeIds.Contains(x.Office.Id));
 
         // The division axis (AipReadScope.FilterPrograms): only the narrowed offices' programs are
         // filtered, and those by ref code.
         if (narrowed.Count > 0)
-            rows = rows.Where(x => !narrowed.Contains(x.o.Id) || allowed.Contains(x.p.RefCode));
+            rows = rows.Where(x => !narrowed.Contains(x.Office.Id) || allowed.Contains(x.Program.RefCode));
+
+        return rows;
+    }
+
+    public async Task<ProposalProjectPage> ListProjectsAsync(ProposalProjectQuery query, CancellationToken ct = default)
+    {
+        IQueryable<ScopedProject> rows = ScopedProjects(query);
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             string s = query.Search.Trim();
-            rows = rows.Where(x => x.j.Name.Contains(s) || x.j.RefCode.Contains(s) || x.p.Name.Contains(s));
+            rows = rows.Where(x => x.Project.Name.Contains(s) || x.Project.RefCode.Contains(s) || x.Program.Name.Contains(s));
         }
 
         int total = await rows.CountAsync(ct);
 
         var ordered = rows
-            .OrderBy(x => x.o.RefCode).ThenBy(x => x.p.RefCode).ThenBy(x => x.j.RefCode).ThenBy(x => x.j.Id)
+            .OrderBy(x => x.Office.RefCode).ThenBy(x => x.Program.RefCode).ThenBy(x => x.Project.RefCode).ThenBy(x => x.Project.Id)
             .Skip(query.Skip);
         if (query.Take is int take) ordered = ordered.Take(take);
 
         List<ProposalProjectRow> items = await ordered
             .Select(x => new ProposalProjectRow(
-                x.j.Id, x.j.RefCode, x.j.Name,
-                x.p.Id, x.p.RefCode, x.p.Name,
-                x.o.Id, x.o.Name,
-                _context.AipActivities.Where(a => a.ProjectId == x.j.Id).Sum(a => a.Total) ?? 0m,
-                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.j.Id).Select(ip => (int?)ip.Id).FirstOrDefault(),
-                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.j.Id).Select(ip => ip.Status).FirstOrDefault(),
-                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.j.Id).Select(ip => (DateTime?)ip.UpdatedAt).FirstOrDefault(),
-                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.j.Id)
+                x.Project.Id, x.Project.RefCode, x.Project.Name,
+                x.Program.Id, x.Program.RefCode, x.Program.Name,
+                x.Office.Id, x.Office.Name,
+                _context.AipActivities.Where(a => a.ProjectId == x.Project.Id).Sum(a => a.Total) ?? 0m,
+                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.Project.Id).Select(ip => (int?)ip.Id).FirstOrDefault(),
+                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.Project.Id).Select(ip => ip.Status).FirstOrDefault(),
+                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.Project.Id).Select(ip => (DateTime?)ip.UpdatedAt).FirstOrDefault(),
+                _context.InvestmentProposals.Where(ip => ip.AipProjectId == x.Project.Id)
                     .Select(ip => ip.UpdatedBy == null ? null : ip.UpdatedBy.FullName).FirstOrDefault()))
             .ToListAsync(ct);
 
         return new ProposalProjectPage(items, total);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ProposalStatusCount>> CountByOfficeAndStatusAsync(
+        ProposalProjectQuery query, CancellationToken ct = default)
+    {
+        // One GROUP BY over the scoped projects left-joined to their proposal (unique per project).
+        var grouped = await (
+                from x in ScopedProjects(query)
+                join ip in _context.InvestmentProposals on x.Project.Id equals ip.AipProjectId into props
+                from ip in props.DefaultIfEmpty()
+                group x by new { x.Office.OfficeId, Status = ip == null ? null : ip.Status } into g
+                select new { g.Key.OfficeId, g.Key.Status, Count = g.Count() })
+            .ToListAsync(ct);
+        return grouped.Select(r => new ProposalStatusCount(r.OfficeId, r.Status, r.Count)).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ProposalAttentionRow>> ListNeedingAttentionAsync(
+        ProposalProjectQuery query, int take, CancellationToken ct = default)
+    {
+        // ⚠️ "Final" is InvestmentProposalStatus.Final (Application layer, not referenceable here).
+        var rows = await (
+                from x in ScopedProjects(query)
+                join ip in _context.InvestmentProposals on x.Project.Id equals ip.AipProjectId into props
+                from ip in props.DefaultIfEmpty()
+                where ip == null || ip.Status != "Final"
+                orderby (ip == null ? 0 : 1), x.Office.RefCode, x.Program.RefCode, x.Project.RefCode, x.Project.Id
+                select new
+                {
+                    x.Project.Id, x.Project.RefCode, x.Project.Name,
+                    ProposalId = ip == null ? (int?)null : ip.Id,
+                    Status     = ip == null ? null : ip.Status,
+                })
+            .Take(take)
+            .ToListAsync(ct);
+        return rows.Select(r => new ProposalAttentionRow(r.Id, r.RefCode, r.Name, r.ProposalId, r.Status)).ToList();
     }
 
     /// <inheritdoc />

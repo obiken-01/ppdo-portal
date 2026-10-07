@@ -92,7 +92,7 @@ public sealed class ExternalAipSchemaContractTests
         Mock<IAipExpenditureRepository> expenditures = new();
         Mock<IAuditRepository> audit = new();
         Mock<IOfficeRepository> offices = new();
-        Mock<IRepository<FundingSource>> fundingSources = new();
+        Mock<IFundingSourceRepository> fundingSources = new();
         Mock<IPriceIndexItemRepository> priceIndexItems = new();
 
         AipRecord record = new() { Id = 1, FiscalYear = 2028, Status = PlanningStatus.Draft, EntrySource = "Manual", UploadedAt = DateTime.UtcNow };
@@ -103,13 +103,13 @@ public sealed class ExternalAipSchemaContractTests
             Id = 10, AipRecordId = 1, OfficeId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO",
             Sector = "GENERAL", WorkflowStatus = AipWorkflowStatus.Consolidated,
         };
-        aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
 
         AipProgram program = new() { Id = 100, OfficeId = 10, RefCode = "1000-000-1-01-010-001", Name = "Program A", FunctionBand = "CORE" };
-        aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([program]);
+        aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([program]);
 
         AipProject project = new() { Id = 200, ProgramId = 100, RefCode = "1000-000-1-01-010-001-001", Name = "Project A", IsSynthetic = false };
-        aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([project]);
+        aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([project]);
 
         AipActivity activity = new()
         {
@@ -118,7 +118,7 @@ public sealed class ExternalAipSchemaContractTests
             ExpectedOutputs = "50 units", CcAdaptation = 1000m, CcMitigation = 500m, CcTypologyCode = "A214-01,A222-03",
             Ps = 0m, Mooe = 1000400m, Co = 0m, IsSynthetic = false,
         };
-        aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([activity]);
+        aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([activity]);
 
         AipExpenditure line = new()
         {
@@ -159,7 +159,7 @@ public sealed class ExternalAipSchemaContractTests
         Mock<IAipExpenditureRepository> expenditures = new();
         Mock<IAuditRepository> audit = new();
         Mock<IOfficeRepository> offices = new();
-        Mock<IRepository<FundingSource>> fundingSources = new();
+        Mock<IFundingSourceRepository> fundingSources = new();
         Mock<IPriceIndexItemRepository> priceIndexItems = new();
 
         AipRecord record = new() { Id = 2, FiscalYear = 2027, Status = PlanningStatus.Final, EntrySource = "Upload", UploadedAt = DateTime.UtcNow };
@@ -170,20 +170,20 @@ public sealed class ExternalAipSchemaContractTests
             Id = 20, AipRecordId = 2, OfficeId = 1, RefCode = "1000-000-1-01-010", Name = "PPDO",
             Sector = "GENERAL", WorkflowStatus = AipWorkflowStatus.Draft,
         };
-        aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
 
         AipProgram program = new() { Id = 101, OfficeId = 20, RefCode = "1000-000-1-01-010-001", Name = "Program A" };
-        aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([program]);
+        aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([program]);
 
         AipProject project = new() { Id = 201, ProgramId = 101, RefCode = "1000-000-1-01-010-001-001", Name = "Project A" };
-        aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([project]);
+        aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([project]);
 
         AipActivity activity = new()
         {
             Id = 301, ProjectId = 201, RefCode = "1000-000-1-01-010-001-001-001", Name = "Activity A",
             FundingSourceSnapshot = "GF", Ps = 100m, Mooe = 200m, Co = 0m, IsSynthetic = false,
         };
-        aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([activity]);
+        aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>())).ReturnsAsync([activity]);
 
         offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ConfigOffice(1, "PPDO", "PPDO Office")]);
         fundingSources.Setup(f => f.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([new FundingSource { Id = 1, Code = "GF", Name = "General Fund" }]);

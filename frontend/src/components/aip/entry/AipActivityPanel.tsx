@@ -19,6 +19,7 @@ import type {
   AipExpenditureWriteResult, FundingSourceResponse, OfficeResponse, PriceIndexPickerItem,
 } from "@/types";
 import { aipErrorMessage, listAipExpenditures, retagAipActivityDivision } from "@/lib/aip";
+import { useMe } from "@/lib/me-cache";
 import AipActivityFields from "./AipActivityFields";
 import AipExpenditureTable from "./AipExpenditureTable";
 import AipDeleteNodeButton from "./AipDeleteNodeButton";
@@ -67,6 +68,9 @@ export default function AipActivityPanel({
   const divisionLock = activityDivisionLock(activity, divisionView);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
+  // PPDO-112 — the draft mirror's user axis. The page already resolved /auth/me, so this reads the
+  // shared cache synchronously; it never fires a request of its own.
+  const me = useMe(() => true);
 
   // PPDO-152 — the department head re-tags an activity to another division of the office. The
   // select replaces the pill for them; encoders keep the pill. Gated on `canEdit` as well, because
@@ -144,6 +148,7 @@ export default function AipActivityPanel({
               canEdit={canEdit}
               lockedReason={lockedReason}
               onDeleted={onDeleted}
+              onKept={onDetails}
             />
           </div>
         </div>
@@ -169,7 +174,7 @@ export default function AipActivityPanel({
           and an encoder who opens an activity to cost it should see what else it still needs in
           the same glance. */}
       <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
-        offices={offices} proponentOfficeCode={proponentOfficeCode} />
+        offices={offices} proponentOfficeCode={proponentOfficeCode} draftUserId={me?.userId ?? null} />
 
       {linesError ? (
         <AipPanelError message={linesError} />
@@ -182,6 +187,7 @@ export default function AipActivityPanel({
           activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
           canEdit={canEdit} generalFundId={generalFundId}
           priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
+          draftUserId={me?.userId ?? null}
           onChanged={(result) => {
             // Refetch just this activity's lines and hand the recomputed totals upward — the
             // record is never reloaded, so the panel stays where it is.
@@ -191,10 +197,25 @@ export default function AipActivityPanel({
             // The id is re-checked on arrival instead, so a response that outlives the selection
             // cannot paint one activity's expenditures under another's name.
             const forActivity = activity.id;
+            // PPDO-191 — the written line, with its new version, goes in straight away: editing it
+            // again before the refetch lands must not send the version it was loaded with.
+            if (result.line) {
+              const written = result.line;
+              setLines((prev) => prev && (prev.some((l) => l.id === written.id)
+                ? prev.map((l) => (l.id === written.id ? written : l))
+                : [...prev, written]));
+            }
             void listAipExpenditures(forActivity)
               .then((l) => { if (showing.current === forActivity) setLines(l); })
               .catch(() => undefined);
             onTotals(result);
+          }}
+          onReload={() => {
+            // A conflict's Discard: the lines as they now stand on the server.
+            const forActivity = activity.id;
+            void listAipExpenditures(forActivity)
+              .then((l) => { if (showing.current === forActivity) setLines(l); })
+              .catch(() => undefined);
           }} />
       )}
 

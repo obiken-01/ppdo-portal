@@ -25,10 +25,10 @@ public sealed class DivisionServiceTests
         CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
     };
 
-    private static (DivisionService sut, Mock<IRepository<Division>> divRepo) Build(
+    private static (DivisionService sut, Mock<IDivisionRepository> divRepo) Build(
         List<Division> divSeed, List<Office> officeSeed, IAuditService? audit = null)
     {
-        Mock<IRepository<Division>> divRepo = new();
+        Mock<IDivisionRepository> divRepo = new();
         divRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divSeed);
         divRepo.Setup(r => r.AddAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()))
             .Callback<Division, CancellationToken>((d, _) => divSeed.Add(d))
@@ -36,7 +36,7 @@ public sealed class DivisionServiceTests
         divRepo.Setup(r => r.UpdateAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         divRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        Mock<IRepository<Office>> officeRepo = new();
+        Mock<IOfficeRepository> officeRepo = new();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(officeSeed);
 
         DivisionService sut = new(
@@ -47,7 +47,7 @@ public sealed class DivisionServiceTests
         return (sut, divRepo);
     }
 
-    private static (DivisionService sut, Mock<IRepository<Division>> divRepo, Mock<IAuditService> audit)
+    private static (DivisionService sut, Mock<IDivisionRepository> divRepo, Mock<IAuditService> audit)
         BuildWithAudit(List<Division> divSeed, List<Office> officeSeed)
     {
         Mock<IAuditService> audit = new();
@@ -55,7 +55,7 @@ public sealed class DivisionServiceTests
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        (DivisionService sut, Mock<IRepository<Division>> divRepo) = Build(divSeed, officeSeed, audit.Object);
+        (DivisionService sut, Mock<IDivisionRepository> divRepo) = Build(divSeed, officeSeed, audit.Object);
         return (sut, divRepo, audit);
     }
 
@@ -190,7 +190,7 @@ public sealed class DivisionServiceTests
     public async Task DeleteAsync_SoftDeletes()
     {
         Division target = Div(1, 1, "Admin");
-        (DivisionService sut, Mock<IRepository<Division>> divRepo) = Build([target], [Office1]);
+        (DivisionService sut, Mock<IDivisionRepository> divRepo) = Build([target], [Office1]);
 
         ServiceResult<DivisionDto> result = await sut.DeleteAsync(1);
 

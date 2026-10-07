@@ -179,7 +179,7 @@ public sealed class AipReviewService : IAipReviewService
         // thread-safe (the GetStatsAsync production 500, CLAUDE.md).
         List<int> groupIds = ctx.Groups.Select(g => g.Id).ToList();
         IReadOnlyList<AipProgram> programs =
-            await _aipRepo.GetProgramsByOfficeIdsAsync(groupIds, ct);
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(groupIds, ct);
 
         // ⚠️ NO division filter. AipReadScope narrows the host office's programs to the caller's
         // own division on the entry page; a review is of the whole office, and applying it here
@@ -187,11 +187,11 @@ public sealed class AipReviewService : IAipReviewService
         // encode them rather than as a filter.
         List<int> programIds = programs.Select(p => p.Id).ToList();
         IReadOnlyList<AipProject> projects =
-            await _aipRepo.GetProjectsByProgramIdsAsync(programIds, ct);
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programIds, ct);
 
         List<int> projectIds = projects.Select(j => j.Id).ToList();
         IReadOnlyList<AipActivity> activities =
-            await _aipRepo.GetActivitiesByProjectIdsAsync(projectIds, ct);
+            await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projectIds, ct);
 
         // The form's Funding Source column (7). Scoped by record rather than by the activity ids
         // because it costs the same query either way — the same call the entry read makes.

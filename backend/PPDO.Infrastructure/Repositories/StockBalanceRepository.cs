@@ -126,6 +126,22 @@ public sealed class StockBalanceRepository
                 cancellationToken);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<StockBalance>> GetByStockNosAndDatesAsync(
+        IReadOnlyCollection<string> stockNos,
+        IReadOnlyCollection<DateOnly> effectiveDates,
+        CancellationToken cancellationToken = default)
+    {
+        if (stockNos.Count == 0 || effectiveDates.Count == 0) return [];
+
+        return await _context.Set<StockBalance>()
+            .Where(b => stockNos.Contains(b.StockNo) && effectiveDates.Contains(b.EffectiveDate))
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public void ResetChangeTracking() => _context.ChangeTracker.Clear();
+
+    /// <inheritdoc />
     public async Task<WarehouseCountPoolRow?> GetPoolByStockNoAsync(
         string stockNo,
         CancellationToken cancellationToken = default)

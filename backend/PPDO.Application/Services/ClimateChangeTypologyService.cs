@@ -62,7 +62,7 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
         int id, CancellationToken cancellationToken = default)
     {
         ClimateChangeTypology? t =
-            (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(x => x.Id == id);
+            await _repo.GetByIntIdAsync(id, cancellationToken);
         return t is null
             ? ServiceResult<ClimateChangeTypologyDto>.NotFound($"Climate change typology {id} not found.")
             : ServiceResult<ClimateChangeTypologyDto>.Ok(MapToDto(t));
@@ -151,7 +151,7 @@ public sealed class ClimateChangeTypologyService : IClimateChangeTypologyService
         int id, CancellationToken cancellationToken = default)
     {
         ClimateChangeTypology? entity =
-            (await _repo.GetAllAsync(cancellationToken)).FirstOrDefault(t => t.Id == id);
+            await _repo.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<ClimateChangeTypologyDto>.NotFound($"Climate change typology {id} not found.");
 

@@ -78,7 +78,7 @@ public sealed partial class AipServiceTests
     private static (
         AipService sut,
         Mock<IAipRepository>           aipRepo,
-        Mock<IRepository<FundingSource>> fsRepo,
+        Mock<IFundingSourceRepository> fsRepo,
         Mock<IUserRepository>           userRepo,
         Mock<IAipXlsmParser> parser,
         Mock<IAuditService>  audit,
@@ -108,10 +108,11 @@ public sealed partial class AipServiceTests
             AipDivisionLockFixture? divisions = null,
             List<ProgramDivision>? programDivisionSeed = null,
             Mock<IAipCeilingService>? ceiling = null,
-            Mock<IInvestmentProposalRepository>? proposals = null)
+            Mock<IInvestmentProposalRepository>? proposals = null,
+            Microsoft.Extensions.Logging.ILogger<AipService>? logger = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
-        Mock<IRepository<FundingSource>> fsRepo   = new();
+        Mock<IFundingSourceRepository> fsRepo   = new();
         Mock<IUserRepository>            userRepo = new();
         Mock<IAipXlsmParser>  parser = new();
         Mock<IAuditService>   audit  = new();
@@ -220,6 +221,23 @@ public sealed partial class AipServiceTests
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 (IReadOnlyList<AipActivity>)actList.Where(a => ids.Contains(a.ProjectId)).ToList());
 
+        // PPDO-187 — untracked twins of the reads above; same data, used by the read endpoints
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) =>
+                (IReadOnlyList<AipOffice>)officeList.Where(o => o.AipRecordId == id).ToList());
+
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipProgram>)programList.Where(p => ids.Contains(p.OfficeId)).ToList());
+
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipProject>)projectList.Where(j => ids.Contains(j.ProgramId)).ToList());
+
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyList<AipActivity>)actList.Where(a => ids.Contains(a.ProjectId)).ToList());
+
         aipRepo.Setup(r => r.GetOfficeByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => officeList.FirstOrDefault(o => o.Id == id));
 
@@ -323,7 +341,7 @@ public sealed partial class AipServiceTests
             (divisions ?? new AipDivisionLockFixture()).Build(aipRepo.Object, new PermissionService()),
             ceiling?.Object ?? new Mock<IAipCeilingService>().Object,
             proposals?.Object ?? new Mock<IInvestmentProposalRepository>().Object,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
+            logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
             officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);
@@ -418,7 +436,7 @@ public sealed partial class AipServiceTests
     }
 
     [Fact]
-    public async Task GetById_UsesGetOfficesByAipIdAsync_NotGetAllAsync()
+    public async Task GetById_UsesGetOfficesByAipIdNoTrackingAsync_NotGetAllAsync()
     {
         AipRecord rec = Rec(7);
         List<AipOffice> offices = [new() { Id = 1, AipRecordId = 7, RefCode = "X", Name = "O", Sector = "GENERAL" }];
@@ -426,7 +444,7 @@ public sealed partial class AipServiceTests
 
         await sut.GetByIdAsync(7, HostCaller(), CancellationToken.None);
 
-        aipRepo.Verify(r => r.GetOfficesByAipIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetOfficesByAipIdNoTrackingAsync(7, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // ── Record shape: office-owned vs legacy multi-office (V18-40 / PPDO-39) ──
@@ -592,7 +610,7 @@ public sealed partial class AipServiceTests
 
         Assert.Equal("PPDO", Assert.Single(result.Value!.Offices).Name);
         // The other office's programs are never read, not merely dropped from the DTO.
-        aipRepo.Verify(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Verify(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
             It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 1 })), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -695,6 +713,27 @@ public sealed partial class AipServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.HasWfpUsage);
+    }
+
+    [Fact]
+    public async Task GetSummaryById_CarriesEachActivitysRowVersion()
+    {
+        // PPDO-191 — the WFP page toggles new/continuing from the summary tree, so the slim DTO must
+        // carry the concurrency token or that write can never be guarded. Red-tested by omitting it.
+        AipRecord rec = Rec(34);
+        byte[] version = [0, 0, 0, 0, 0, 0, 0, 7];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([rec], [],
+            officeSeed:  [new AipOffice { Id = 340, AipRecordId = 34, RefCode = "1000", Name = "GSO", OfficeId = 2 }],
+            programSeed: [new AipProgram { Id = 341, OfficeId = 340, RefCode = "001", Name = "P" }],
+            projectSeed: [new AipProject { Id = 342, ProgramId = 341, RefCode = "001", Name = "J" }],
+            actSeed:     [new AipActivity { Id = 343, ProjectId = 342, RefCode = "001", Name = "A", RowVersion = version }]);
+
+        ServiceResult<AipRecordSummaryDto> result = await sut.GetSummaryByIdAsync(34, HostCaller(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error);
+        AipActivitySummaryDto activity =
+            Assert.Single(Assert.Single(Assert.Single(Assert.Single(result.Value!.Offices).Programs).Projects).Activities);
+        Assert.Equal(Convert.ToBase64String(version), activity.RowVersion);
     }
 
     [Fact]
@@ -1480,7 +1519,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.IsCreation);
@@ -1494,7 +1533,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), ct: CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.IsCreation);
@@ -1507,7 +1546,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), ct: CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
