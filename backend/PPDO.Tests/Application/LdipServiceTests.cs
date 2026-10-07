@@ -55,7 +55,7 @@ public sealed class LdipServiceTests
     };
 
     private static (LdipService sut, Mock<ILdipRepository> repo, Mock<IAuditService> audit,
-        Mock<ILdipXlsmParser> parser, Mock<IRepository<FundingSource>> fsRepo)
+        Mock<ILdipXlsmParser> parser, Mock<IFundingSourceRepository> fsRepo)
         Build(List<LdipRecord> seed, List<Office>? offices = null, Dictionary<int, List<LdipOffice>>? groups = null,
               List<FundingSource>? fundingSources = null)
     {
@@ -77,6 +77,12 @@ public sealed class LdipServiceTests
         repo.Setup(r => r.GetOfficeGroupsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int recId, CancellationToken _) =>
                 (IReadOnlyList<LdipOffice>)(groupStore.GetValueOrDefault(recId) ?? []).ToList());
+        repo.Setup(r => r.GetProgramCountsByRecordIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, int>)ids
+                    .Select(id => (id, n: (groupStore.GetValueOrDefault(id) ?? []).Sum(g => g.Programs.Count)))
+                    .Where(x => x.n > 0)
+                    .ToDictionary(x => x.id, x => x.n));
         repo.Setup(r => r.AddAsync(It.IsAny<LdipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<LdipRecord, CancellationToken>((e, _) =>
             {
@@ -115,9 +121,11 @@ public sealed class LdipServiceTests
         repo.Setup(r => r.CountByFiscalYearStartAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int fy, CancellationToken _) => seed.Count(r => r.FiscalYearStart == fy));
 
-        Mock<IRepository<Office>> officeRepo = new();
+        Mock<IOfficeRepository> officeRepo = new();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(offices ?? [Off()]);
+        officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await officeRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         Mock<IAuditService> audit = new();
         audit.Setup(a => a.LogAsync(
@@ -127,9 +135,11 @@ public sealed class LdipServiceTests
 
         Mock<ILdipXlsmParser> parser = new();
 
-        Mock<IRepository<FundingSource>> fsRepo = new();
+        Mock<IFundingSourceRepository> fsRepo = new();
         fsRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(fundingSources ?? []);
+        fsRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await fsRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         CallerContext ctx = new();
         ctx.SetUserId(UserId);

@@ -106,22 +106,22 @@ public sealed class AipConsolidatedServiceTests
                     Status = PlanningStatus.Draft, UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow,
                 }
                 : null);
-        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(RecordId, It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(RecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _groups);
 
         // ⚠️ Each stub answers only for the ids it is asked about, so a read that expanded the wrong
         // offices would print their rows rather than quietly passing.
-        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
             {
                 _programsAskedFor = ids;
                 _programLoads++;
                 return _programs.Where(p => ids.Contains(p.OfficeId)).ToList();
             });
-        _aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 _projects.Where(j => ids.Contains(j.ProgramId)).ToList());
-        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        _aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<int> ids, CancellationToken _) =>
                 _activities.Where(a => ids.Contains(a.ProjectId)).ToList());
 

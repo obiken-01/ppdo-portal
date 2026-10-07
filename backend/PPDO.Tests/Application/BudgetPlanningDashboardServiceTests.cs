@@ -1,6 +1,7 @@
 ﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Application.DTOs.InvestmentProposal;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -126,15 +127,15 @@ public sealed class BudgetPlanningDashboardServiceTests
     private static Mock<IAipRepository> AipMockWithOffices(int aipRecordId, params AipOffice[] aipOffices)
     {
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(aipRecordId, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(aipRecordId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)aipOffices);
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         return aipRepo;
@@ -174,6 +175,49 @@ public sealed class BudgetPlanningDashboardServiceTests
     /// Verify() on it. GetDashboardAsync resolves the office via OfficeCode == "PPDO" — tests that
     /// exercise it must include an office built with the default Off() code ("PPDO").
     /// </summary>
+    /// <summary>
+    /// A label repository that finds nothing — what the real one returns for ids whose records are
+    /// gone. (A bare Moq mock would answer null, which no real repository ever does.)
+    /// </summary>
+    private static Mock<IActivityLabelRepository> EmptyLabels()
+    {
+        Mock<IActivityLabelRepository> m = new();
+        m.Setup(r => r.GetCeilingLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, CeilingLabel>());
+        m.Setup(r => r.GetAipOfficeLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipOfficeLabel>());
+        m.Setup(r => r.GetAipProgramLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipProgramLabel>());
+        m.Setup(r => r.GetAipActivityLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, AipActivityLabel>());
+        m.Setup(r => r.GetOfficeCodesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        m.Setup(r => r.GetDivisionNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        m.Setup(r => r.GetFundingSourceNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, string>());
+        return m;
+    }
+
+    /// <summary>PPDO-180 — a proposal service with nothing to count.</summary>
+    private static Mock<IInvestmentProposalService> NoProposals()
+    {
+        Mock<IInvestmentProposalService> m = new();
+        m.Setup(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, ProposalCountsDto>());
+        return m;
+    }
+
+    /// <summary>PPDO-178 — no unresolved comments on either side.</summary>
+    private static Mock<IAipReviewCommentRepository> NoComments()
+    {
+        Mock<IAipReviewCommentRepository> m = new();
+        m.Setup(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<PPDO.Domain.Enums.AipCommentSide, int>)
+                new Dictionary<PPDO.Domain.Enums.AipCommentSide, int>());
+        return m;
+    }
+
     private static (BudgetPlanningDashboardService svc, Mock<IAuditRepository> auditMock) Build(
         List<LdipRecord> ldips,
         List<AipRecord> aips,
@@ -195,7 +239,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<AipDivisionRollupDto>? divisionRollups = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         int? defaultFiscalYear = null,
-        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
+        Mock<IActivityLabelRepository>? activityLabelsMock = null,
+        Mock<IAipReviewCommentRepository>? commentRepoMock = null,
+        Mock<IInvestmentProposalService>? proposalServiceMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -219,13 +266,13 @@ public sealed class BudgetPlanningDashboardServiceTests
                 .FirstOrDefault());
         if (aipRepoMock is null)
         {
-            aipRepo.Setup(r => r.GetOfficesByAipIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipOffice>)[]);
-            aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipProgram>)[]);
-            aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipProject>)[]);
-            aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<AipActivity>)[]);
         }
         // Rollups are set up on EVERY aipRepo, caller-supplied or not: a caller-supplied mock is
@@ -261,10 +308,10 @@ public sealed class BudgetPlanningDashboardServiceTests
         officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => offices.FirstOrDefault(o => o.Id == id));
 
-        Mock<IRepository<Division>> divisionRepo = new();
+        Mock<IDivisionRepository> divisionRepo = new();
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divisions);
 
-        Mock<IRepository<FundingSource>> fundingSourceRepo = new();
+        Mock<IFundingSourceRepository> fundingSourceRepo = new();
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundingSources);
 
         Mock<IWfpExpenditureRepository> wfpExpRepo = wfpExpRepoMock ?? new Mock<IWfpExpenditureRepository>();
@@ -347,7 +394,10 @@ public sealed class BudgetPlanningDashboardServiceTests
             aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
             auditRepo.Object, allocation.Object,
             ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
-            divisionSubmissionRepo.Object);
+            divisionSubmissionRepo.Object,
+            new RecentActivityDescriber((activityLabelsMock ?? EmptyLabels()).Object),
+            (commentRepoMock ?? NoComments()).Object,
+            (proposalServiceMock ?? NoProposals()).Object);
 
         return (svc, auditRepo);
     }
@@ -1215,6 +1265,120 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
+    public async Task GetRecentActivityAsync_ScopesToTheReviewHandOffTables_SoSubmitAndReturnCanShow()
+    {
+        // PPDO-181: "OPA sent its AIP to PPDO" is written against aip_offices, and a division's
+        // submit/return against aip_division_submissions. Out of scope, the band could never say it.
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) = Build([], [], [], [], []);
+
+        await sut.GetRecentActivityAsync(officeId: null);
+
+        auditMock.Verify(
+            r => r.GetRecentAsync(
+                10, null,
+                It.Is<IReadOnlyList<string>?>(names =>
+                    names != null && names.Contains("aip_offices") && names.Contains("aip_division_submissions")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_AsAnOfficeUser_OnlyReturnsAndLabelsThatOfficesEntries()
+    {
+        // The real repository scopes by the ACTOR's office in SQL; this stand-in does the same, so
+        // the test shows the description step adds nothing for entries the scope already excluded.
+        User opaUser = AppUser(Guid.NewGuid(), "OPA Encoder", officeId: 5);
+        User ptoUser = AppUser(Guid.NewGuid(), "PTO Encoder", officeId: 9);
+        List<AuditLog> all =
+        [
+            new() { Id = 1, TableName = "budget_ceilings", RecordId = 101, Action = "UPDATE", NewValues = "{\"amount\":10}", ChangedById = opaUser.Id, ChangedBy = opaUser, ChangedAt = DateTime.UtcNow },
+            new() { Id = 2, TableName = "budget_ceilings", RecordId = 202, Action = "UPDATE", NewValues = "{\"amount\":20}", ChangedById = ptoUser.Id, ChangedBy = ptoUser, ChangedAt = DateTime.UtcNow },
+        ];
+
+        Mock<IActivityLabelRepository> labels = new();
+        labels.Setup(r => r.GetCeilingLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, CeilingLabel>)new Dictionary<int, CeilingLabel>
+                {
+                    [101] = new("OPA", 2028),
+                    [202] = new("PTO", 2028),
+                }.Where(kv => ids.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> auditMock) =
+            Build([], [], [], [], [], activityLabelsMock: labels);
+        auditMock.Setup(r => r.GetRecentAsync(
+                It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<IReadOnlyList<string>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int take, int? officeId, IReadOnlyList<string>? _, CancellationToken __) =>
+                (IReadOnlyList<AuditLog>)all.Where(a => officeId == null || a.ChangedBy!.OfficeId == officeId).Take(take).ToList());
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: 5);
+
+        RecentActivityDto only = Assert.Single(result);
+        Assert.Equal("OPA Encoder", only.ActorName);
+        Assert.Equal("updated OPA's FY 2028 ceiling to ₱10.00.", only.Description);
+        // The other office's record is never even looked up.
+        labels.Verify(r => r.GetCeilingLabelsAsync(
+            It.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 101 })), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain("PTO", only.Description);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_NoEntryExposesATableNameAnActionCodeOrARecordId()
+    {
+        User actor = AppUser(Guid.NewGuid(), "Jose Santos");
+        List<AuditLog> audits =
+        [
+            new() { Id = 1, TableName = "aip_activities", RecordId = 18501, Action = "RETAG_DIV", OldValues = "{\"divisionId\":1}", NewValues = "{\"divisionId\":2}", ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow },
+            new() { Id = 2, TableName = "budget_ceilings", RecordId = 13, Action = "UPDATE", NewValues = "{\"amount\":5}", ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow },
+        ];
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], audits);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        string json = System.Text.Json.JsonSerializer.Serialize(result);
+        Assert.DoesNotContain("aip_activities", json);
+        Assert.DoesNotContain("budget_ceilings", json);
+        Assert.DoesNotContain("RETAG_DIV", json);
+        Assert.DoesNotContain("18501", json);
+        Assert.DoesNotContain("tableName", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("recordId", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_TenTypicalEntriesStayUnderTwoKilobytes()
+    {
+        // "Typical" = the sentences the local data actually produces: a retag between two real
+        // division names in a real project, by an actor with a full name. The describer clips any
+        // name to 48 characters, so even a pathological one cannot run away — but the budget this
+        // pins is the everyday one (PPDO-181: "stays under ~2 KB").
+        User actor = AppUser(Guid.NewGuid(), "Jose Santos");
+        Mock<IActivityLabelRepository> labels = EmptyLabels();
+        labels.Setup(r => r.GetAipActivityLabelsAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<int> ids, CancellationToken _) =>
+                (IReadOnlyDictionary<int, AipActivityLabel>)ids.ToDictionary(
+                    i => i, i => new AipActivityLabel("OPA", "Rice Production Support")));
+        labels.Setup(r => r.GetDivisionNamesAsync(It.IsAny<IReadOnlyCollection<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<int, string>)new Dictionary<int, string>
+            {
+                [1] = "Cash Division", [2] = "Admin Division",
+            });
+        List<AuditLog> audits = Enumerable.Range(1, 10).Select(i => new AuditLog
+        {
+            Id = 1000 + i, TableName = "aip_activities", RecordId = 18000 + i, Action = "RETAG_DIV",
+            OldValues = "{\"divisionId\":1}", NewValues = "{\"divisionId\":2}",
+            ChangedById = actor.Id, ChangedBy = actor, ChangedAt = DateTime.UtcNow,
+        }).ToList();
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [], audits, activityLabelsMock: labels);
+
+        IReadOnlyList<RecentActivityDto> result = await sut.GetRecentActivityAsync(officeId: null);
+
+        int bytes = System.Text.Encoding.UTF8.GetByteCount(System.Text.Json.JsonSerializer.Serialize(
+            result, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        Assert.Equal(10, result.Count);
+        Assert.True(bytes < 2048, $"payload was {bytes} bytes");
+    }
+
+    [Fact]
     public async Task GetRecentActivityAsync_ChangedAtHasUnspecifiedKind_DtoStampsItUtc()
     {
         // Mirrors what EF Core actually returns after a SQL Server datetime2 round-trip —
@@ -1333,6 +1497,259 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         Assert.False(result.Aip.Exists);
         Assert.Null(result.Aip.WorkflowStatus);
+    }
+
+    // ── PPDO-178: why the AIP is where it is (the status band's figures) ─────
+
+    /// <summary>
+    /// Office 1 with the given groups and activities, divisions 31 (ADMIN), 32 (PLAN) and 33 (no
+    /// code, "Records"), the given ones submitted, and comment counts per side.
+    /// </summary>
+    private static (BudgetPlanningDashboardService Sut, Mock<IAuditRepository> Audit,
+        Mock<IAipDivisionSubmissionRepository> Divisions, Mock<IAipReviewCommentRepository> Comments)
+        BuildBand(
+            int fiscalYear, AipOffice[] groups, AipActivity[]? activities = null,
+            AipDivisionRollupDto[]? tags = null, int[]? submitted = null, bool divisionsActive = true,
+            Dictionary<PPDO.Domain.Enums.AipCommentSide, int>? unresolved = null)
+    {
+        Mock<IAipRepository> aipRepo = AipMockWithOffices(10, groups);
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivity>)(activities ?? []));
+
+        Mock<IAipDivisionSubmissionRepository> divisions = new();
+        divisions.Setup(r => r.GetDivisionsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<Division>)
+            [
+                new Division { Id = 31, OfficeId = 1, Code = "ADMIN", Name = "Administrative", IsActive = divisionsActive },
+                new Division { Id = 32, OfficeId = 1, Code = "PLAN", Name = "Planning", IsActive = divisionsActive },
+                new Division { Id = 33, OfficeId = 1, Code = null, Name = "Records", IsActive = divisionsActive },
+            ]);
+        divisions.Setup(r => r.GetForOfficesAsync(10, It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((submitted ?? [])
+                .Select(d => new AipDivisionSubmission
+                {
+                    AipRecordId = 10, OfficeId = 1, DivisionId = d, Status = AipDivisionStatus.Submitted,
+                })
+                .ToList());
+
+        Mock<IAipReviewCommentRepository> comments = new();
+        comments.Setup(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyDictionary<PPDO.Domain.Enums.AipCommentSide, int>)
+                (unresolved ?? new Dictionary<PPDO.Domain.Enums.AipCommentSide, int>()));
+
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit) = Build(
+            [], [Aip(10, fiscalYear, "Draft")], [], [Off(1, "PPDO", refCode: "1-01-010")], [],
+            aipRepoMock: aipRepo,
+            divisionRollups: tags?.ToList(),
+            divisionSubmissionRepoMock: divisions,
+            commentRepoMock: comments);
+        return (sut, audit, divisions, comments);
+    }
+
+    private static void HandOff(Mock<IAuditRepository> audit, string action) =>
+        audit.Setup(a => a.GetLatestActionWithTimeAsync(It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((action, new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc)));
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_CountsActivitiesWithNoCost_NullAndZeroBoth()
+    {
+        // The rollup's "costed" rule inverted: Total null (never costed) and 0 (costing removed or
+        // lines at ₱0) both still need a cost. Red-tested by counting only null.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+        [
+            new AipActivity { Id = 1, ProjectId = 1, RefCode = "A1", Name = "A1", Total = null },
+            new AipActivity { Id = 2, ProjectId = 1, RefCode = "A2", Name = "A2", Total = 0m },
+            new AipActivity { Id = 3, ProjectId = 1, RefCode = "A3", Name = "A3", Total = 1_000m },
+        ]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(2, result.Aip.UncostedActivityCount);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DraftInTheDivisionFlow_ReportsDivisionsSubmittedAndWhoIsLeft()
+    {
+        // 31 and 33 have tagged work, 32 has none (not required). 31 submitted: 1 of 2, waiting on
+        // 33, named by its name because it has no code.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m), new AipDivisionRollupDto(33, 2, 0, 0m),
+                   new AipDivisionRollupDto(32, 0, 0, 0m)],
+            submitted: [31]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(1, result.Aip.DivisionsSubmitted);
+        Assert.Equal(2, result.Aip.DivisionsRequired);
+        Assert.Equal(["Records"], result.Aip.DivisionsWaiting);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_ReturnedByPpdo_ReportsTheDivisionsResubmitting()
+    {
+        // After PPDO's return the divisions resubmit before the head can send it again (PPDO-149),
+        // so the band says how many have. Found on the local PPDO office, returned with 0 of 2 back.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "ReturnedByPpdo")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m), new AipDivisionRollupDto(32, 2, 2, 0m)]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(0, result.Aip.DivisionsSubmitted);
+        Assert.Equal(2, result.Aip.DivisionsRequired);
+        Assert.Equal(["ADMIN", "PLAN"], result.Aip.DivisionsWaiting);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_PastDraft_HasNoDivisionProgress_AndNeverReadsIt()
+    {
+        (BudgetPlanningDashboardService sut, _, Mock<IAipDivisionSubmissionRepository> divisions, _) =
+            BuildBand(2028, [Group(50, "DepartmentReview")],
+                tags: [new AipDivisionRollupDto(31, 4, 4, 0m)], submitted: [31]);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.DivisionsRequired);
+        Assert.Null(result.Aip.DivisionsWaiting);
+        divisions.Verify(r => r.GetForOfficesAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NoActiveDivision_IsOutsideTheFlow()
+    {
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "Draft")],
+            tags: [new AipDivisionRollupDto(31, 4, 4, 0m)], divisionsActive: false);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.DivisionsSubmitted);
+        Assert.Null(result.Aip.DivisionsRequired);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_ReturnedByPpdo_CountsPpdosUnresolvedComments()
+    {
+        // PPDO's side only: the department head's own open comments are not what PPDO sent back.
+        (BudgetPlanningDashboardService sut, _, _, _) = BuildBand(2028, [Group(50, "ReturnedByPpdo")],
+            unresolved: new() { [PPDO.Domain.Enums.AipCommentSide.Ppdo] = 3,
+                                [PPDO.Domain.Enums.AipCommentSide.DepartmentHead] = 1 });
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(3, result.Aip.UnresolvedComments);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_DraftReturnedByTheDepartmentHead_CountsTheirComments()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit, _, _) =
+            BuildBand(2028, [Group(50, "Draft")],
+                unresolved: new() { [PPDO.Domain.Enums.AipCommentSide.Ppdo] = 3,
+                                    [PPDO.Domain.Enums.AipCommentSide.DepartmentHead] = 2 });
+        HandOff(audit, AuditAction.ReturnToEncoder);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Equal(2, result.Aip.UnresolvedComments);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NotReturned_HasNoCommentCount_AndNeverCounts()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IAuditRepository> audit, _,
+            Mock<IAipReviewCommentRepository> comments) = BuildBand(2028, [Group(50, "SubmittedToPpdo")]);
+        HandOff(audit, AuditAction.SubmitToPpdo);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Aip.UnresolvedComments);
+        comments.Verify(c => c.CountUnresolvedBySideAsync(It.IsAny<IReadOnlyList<int>>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-180: Investment proposal counts ──────────────────────────────────
+
+    private static Mock<IInvestmentProposalService> ProposalCounts(Dictionary<int, ProposalCountsDto> byOffice)
+    {
+        Mock<IInvestmentProposalService> m = new();
+        m.Setup(p => p.CountByOfficeAsync(2028, It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(byOffice);
+        return m;
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Reviewer_CarriesEachOfficesProposalCounts()
+    {
+        Mock<IInvestmentProposalService> proposals = ProposalCounts(new() { [2] = new ProposalCountsDto(3, 1, 2) });
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canReviewAllOffices: true, aips: [Aip(10, 2028, "Draft")], proposalServiceMock: proposals);
+
+        IReadOnlyList<OfficeSummaryDto> rows = (await sut.GetOfficesAsync(caller, 2028)).Value!;
+
+        Assert.Equal(new ProposalCountsDto(3, 1, 2), rows.Single(r => r.OfficeCode == "GSO").Proposals);
+        Assert.Null(rows.Single(r => r.OfficeCode == "PPDO").Proposals);   // no projects in scope
+        proposals.Verify(p => p.CountByOfficeAsync(2028, caller, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_CeilingOnlyBudgetOfficer_GetsNoProposalCounts_AndNeverCounts()
+    {
+        // The all-offices card is the reviewer's. Red-tested by dropping the canReviewAllOffices gate.
+        Mock<IInvestmentProposalService> proposals = ProposalCounts(new() { [2] = new ProposalCountsDto(3, 1, 2) });
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canManageOfficeCeilings: true, aips: [Aip(10, 2028, "Draft")], proposalServiceMock: proposals);
+
+        IReadOnlyList<OfficeSummaryDto> rows = (await sut.GetOfficesAsync(caller, 2028)).Value!;
+
+        Assert.All(rows, r => Assert.Null(r.Proposals));
+        proposals.Verify(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficesAsync_Fy2027_NeverCountsProposals()
+    {
+        Mock<IInvestmentProposalService> proposals = ProposalCounts([]);
+        (BudgetPlanningDashboardService sut, User caller) = BuildForOffices(
+            TwoOffices(), canReviewAllOffices: true, aips: [Aip(10, 2027, "Draft")], proposalServiceMock: proposals);
+
+        await sut.GetOfficesAsync(caller, 2027);
+
+        proposals.Verify(p => p.CountByOfficeAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_WithCaller_CarriesTheProposalServicesSummaryForThatOffice()
+    {
+        OfficeProposalSummaryDto summary = new(new ProposalCountsDto(5, 4, 3),
+            [new ProposalAttentionDto(300, "001", "Rice Project 1", null, "None")]);
+        User caller = AppUser(Guid.NewGuid(), "Encoder", officeId: 1);
+        Mock<IInvestmentProposalService> proposals = new();
+        proposals.Setup(p => p.GetOfficeSummaryAsync(1, 2028, caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(summary);
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(1, "PPDO")], [],
+            proposalServiceMock: proposals);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, true, null, caller);
+
+        Assert.Same(summary, result.Proposals);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_NoCaller_HasNoProposals_AndNeverAsks()
+    {
+        Mock<IInvestmentProposalService> proposals = new();
+        (BudgetPlanningDashboardService sut, _) = Build([], [], [], [Off(1, "PPDO")], [],
+            proposalServiceMock: proposals);
+
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        Assert.Null(result.Proposals);
+        proposals.Verify(p => p.GetOfficeSummaryAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<User>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── GetOfficeDashboardAsync — allocation-setup summary (RAL-60) ───────────
@@ -1524,7 +1941,7 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<Office> offices = [Off(1, "PPDO", refCode: "013")];
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(10, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(10, It.IsAny<CancellationToken>()))
             // Unowned since V18-32: "no matching AIP office" is now a null FK, not a ref code that
             // fails to suffix-match. The test name's "RefCode" is kept for continuity with the
             // behaviour it guards — an office with AIP rows that are not its own sees no AIP.
@@ -1543,13 +1960,13 @@ public sealed class BudgetPlanningDashboardServiceTests
         List<Office> offices = [Off(1, "PPDO", refCode: "013")];
         List<AipRecord> aips = [Aip(10, 2027, "Final")];
         Mock<IAipRepository> aipRepo = new();
-        aipRepo.Setup(r => r.GetOfficesByAipIdAsync(10, It.IsAny<CancellationToken>()))
+        aipRepo.Setup(r => r.GetOfficesByAipIdNoTrackingAsync(10, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[AipOff(100, 10, "3000-000-1-01-013", "Social")]);
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 100 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[AipProg(200, 100, "3000-000-1-01-013-001")]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.SequenceEqual(new[] { 200 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)
@@ -1557,7 +1974,7 @@ public sealed class BudgetPlanningDashboardServiceTests
                 AipProj(300, 200, "3000-000-1-01-013-001-001"),
                 AipProj(301, 200, "3000-000-1-01-013-001-002"),
             ]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.Is<IReadOnlyList<int>>(ids => ids.OrderBy(x => x).SequenceEqual(new[] { 300, 301 })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)
@@ -1695,7 +2112,8 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAipRepository>? aipRepoMock = null,
         List<AipOfficeActivityFundTotalsDto>? gfLinesByOffice = null,
         List<AipDivisionRollupDto>? divisionRollups = null,
-        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null)
+        Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
+        Mock<IInvestmentProposalService>? proposalServiceMock = null)
     {
         // Deliberately a GUEST-office caller in every case: OfficeScope.Resolve would scope them
         // to their own office, so "every office came back" is real evidence the cross-office
@@ -1718,7 +2136,8 @@ public sealed class BudgetPlanningDashboardServiceTests
             officeRollups: officeRollups,
             gfLinesByOffice: gfLinesByOffice,
             divisionRollups: divisionRollups,
-            divisionSubmissionRepoMock: divisionSubmissionRepoMock);
+            divisionSubmissionRepoMock: divisionSubmissionRepoMock,
+            proposalServiceMock: proposalServiceMock);
 
         return (svc, caller);
     }
@@ -2215,13 +2634,13 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         Mock<IAipRepository> aipRepo = AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010"));
         // The office's real hierarchy: one program, one project, two activities worth ₱100 total.
-        aipRepo.Setup(r => r.GetProgramsByOfficeIdsAsync(
+        aipRepo.Setup(r => r.GetProgramsByOfficeIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProgram>)[AipProg(60, 50, "PROG-1")]);
-        aipRepo.Setup(r => r.GetProjectsByProgramIdsAsync(
+        aipRepo.Setup(r => r.GetProjectsByProgramIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipProject>)[AipProj(70, 60, "PROJ-1")]);
-        aipRepo.Setup(r => r.GetActivitiesByProjectIdsAsync(
+        aipRepo.Setup(r => r.GetActivitiesByProjectIdsNoTrackingAsync(
                 It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipActivity>)
             [

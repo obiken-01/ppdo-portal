@@ -18,4 +18,11 @@ public interface ICalendarEventRepository : IRepository<CalendarEvent>
         DateTime to,
         Guid userId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pending Office events, oldest first, filtered in SQL (PPDO-188 / O15) — the review queue
+    /// used to read every calendar event and filter in memory.
+    /// </summary>
+    Task<IReadOnlyList<CalendarEvent>> GetPendingOfficeEventsAsync(
+        CancellationToken cancellationToken = default);
 }

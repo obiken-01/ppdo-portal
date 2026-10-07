@@ -72,8 +72,8 @@ public sealed class AllocationServiceTests
         Mock<IBudgetCeilingRepository>       ceilingRepo,
         Mock<IDivisionAllocationRepository>  allocRepo,
         Mock<IAllocationRepository>          pdRepo,
-        Mock<IRepository<Division>>          divRepo,
-        Mock<IRepository<Office>>            officeRepo,
+        Mock<IDivisionRepository>          divRepo,
+        Mock<IOfficeRepository>            officeRepo,
         Mock<IAipRepository>                 aipRepo,
         Mock<IAuditService>                  audit)
         Build(
@@ -102,9 +102,9 @@ public sealed class AllocationServiceTests
         Mock<IBudgetCeilingRepository>       ceilingRepo = new();
         Mock<IDivisionAllocationRepository>  allocRepo   = new();
         Mock<IAllocationRepository>           pdRepo      = new();
-        Mock<IRepository<Division>>           divRepo     = new();
-        Mock<IRepository<Office>>             officeRepo  = new();
-        Mock<IRepository<FundingSource>>      fundingSourceRepo = new();
+        Mock<IDivisionRepository>           divRepo     = new();
+        Mock<IOfficeRepository>             officeRepo  = new();
+        Mock<IFundingSourceRepository>      fundingSourceRepo = new();
         Mock<IAipRepository>                  aipRepo     = new();
         Mock<IAuditService>                   audit       = new();
 
@@ -1246,9 +1246,9 @@ public sealed class AllocationServiceTests
         Mock<IBudgetCeilingRepository>       ceilingRepo       = new();
         Mock<IDivisionAllocationRepository>  allocRepo         = new();
         Mock<IAllocationRepository>          pdRepo            = new();
-        Mock<IRepository<Division>>          divRepo           = new();
-        Mock<IRepository<Office>>            officeRepo        = new();
-        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IDivisionRepository>          divRepo           = new();
+        Mock<IOfficeRepository>            officeRepo        = new();
+        Mock<IFundingSourceRepository>     fundingSourceRepo = new();
         Mock<IAipRepository>                 aipRepo           = new();
         Mock<IAuditService>                  audit             = new();
 
@@ -1285,9 +1285,9 @@ public sealed class AllocationServiceTests
         Mock<IBudgetCeilingRepository>       ceilingRepo       = new();
         Mock<IDivisionAllocationRepository>  allocRepo         = new();
         Mock<IAllocationRepository>          pdRepo            = new();
-        Mock<IRepository<Division>>          divRepo           = new();
-        Mock<IRepository<Office>>            officeRepo        = new();
-        Mock<IRepository<FundingSource>>     fundingSourceRepo = new();
+        Mock<IDivisionRepository>          divRepo           = new();
+        Mock<IOfficeRepository>            officeRepo        = new();
+        Mock<IFundingSourceRepository>     fundingSourceRepo = new();
         Mock<IAipRepository>                 aipRepo           = new();
         Mock<IAuditService>                  audit             = new();
 

@@ -31,7 +31,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     private readonly IWfpRepository                       _wfpRepo;
     private readonly IRepository<WfpExpenditurePeriod>    _periodRepo;
     private readonly IRepository<WfpProcurementItem>      _itemRepo;
-    private readonly IRepository<Account>                 _accountRepo;
+    private readonly IAccountRepository                 _accountRepo;
     private readonly IRepository<FundingSource>           _fsRepo;
     private readonly IWfpCeilingService                   _ceiling;
     private readonly IAuditService                        _audit;
@@ -41,7 +41,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         IWfpRepository                    wfpRepo,
         IRepository<WfpExpenditurePeriod> periodRepo,
         IRepository<WfpProcurementItem>   itemRepo,
-        IRepository<Account>              accountRepo,
+        IAccountRepository              accountRepo,
         IRepository<FundingSource>        fsRepo,
         IWfpCeilingService                ceiling,
         IAuditService                     audit)
@@ -162,7 +162,7 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
         // ── Snapshots (small config tables — same pattern as WfpService) ─────
         Account? account = dto.AccountId.HasValue
-            ? (await _accountRepo.GetAllAsync(ct)).FirstOrDefault(a => a.Id == dto.AccountId.Value)
+            ? await _accountRepo.GetByIntIdAsync(dto.AccountId.Value, ct)
             : null;
 
         // ↩️ The fund is resolved against what THIS WFP's office may use — the province-wide funds

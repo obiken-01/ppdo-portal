@@ -25,6 +25,21 @@ public interface IInvestmentProposalService
     Task<ServiceResult<IReadOnlyList<ProposalProjectOptionDto>>> ListProjectOptionsAsync(
         int fiscalYear, int? officeId, User caller, CancellationToken ct = default);
 
+    /// <summary>
+    /// PPDO-180 — the dashboard band for one office: counts by status and the first few projects
+    /// still needing a proposal, in exactly the list's scope (office clamped, division axis applied).
+    /// Null for FY2027 and earlier, or when the year has no AIP record: the band hides.
+    /// </summary>
+    Task<OfficeProposalSummaryDto?> GetOfficeSummaryAsync(
+        int officeId, int fiscalYear, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// PPDO-180 — counts by status per config office, in the caller's read scope (every office for
+    /// a cross-office reviewer). One grouped query. Empty for FY2027 and earlier or no record.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, ProposalCountsDto>> CountByOfficeAsync(
+        int fiscalYear, User caller, CancellationToken ct = default);
+
     Task<ServiceResult<ProposalDto>> CreateAsync(int aipProjectId, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<ProposalDto>> GetAsync(int id, User caller, CancellationToken ct = default);

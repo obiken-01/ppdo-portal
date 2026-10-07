@@ -127,6 +127,8 @@ var host = new HostBuilder()
         services.AddScoped<IStockBalanceRepository, StockBalanceRepository>();
         services.AddScoped<ICalendarEventRepository, CalendarEventRepository>();
         services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IActivityLabelRepository, ActivityLabelRepository>();   // PPDO-181
+        services.AddScoped<RecentActivityDescriber>();
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
         services.AddScoped<IAipReviewCommentRepository, AipReviewCommentRepository>();
@@ -147,6 +149,10 @@ var host = new HostBuilder()
         // Nager.Date response fails fast and falls back to static data or empty list.
         services.AddHttpClient<IHolidayProvider, NagerHolidayProvider>(c =>
             c.Timeout = TimeSpan.FromSeconds(3));
+
+        // PPDO-142 — GET /api/health: the SELECT 1 probe (Infrastructure) behind a service that logs.
+        services.AddScoped<IDatabaseProbe, SqlDatabaseProbe>();
+        services.AddScoped<IHealthService, HealthService>();
 
         // -- Application services --------------------------------------------
         services.AddScoped<IPermissionService, PermissionService>();
@@ -207,6 +213,9 @@ var host = new HostBuilder()
         services.AddScoped<IAllocationRepository, AllocationRepository>();
         services.AddScoped<IClimateChangeTypologyRepository, ClimateChangeTypologyRepository>();
         services.AddScoped<IEsreCodeRepository, EsreCodeRepository>();
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IDivisionRepository, DivisionRepository>();
+        services.AddScoped<IFundingSourceRepository, FundingSourceRepository>();
         services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         services.AddScoped<IInvestmentProposalRepository, InvestmentProposalRepository>();

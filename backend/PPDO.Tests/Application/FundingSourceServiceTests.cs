@@ -33,23 +33,27 @@ public sealed class FundingSourceServiceTests
         new() { Id = PhoOfficeId, OfficeCode = "PHO", OfficeName = "Provincial Health Office", IsActive = true },
     ];
 
-    private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) Build(
+    private static (FundingSourceService sut, Mock<IFundingSourceRepository> repo) Build(
         List<FundingSource> seed, IAuditService? audit = null,
         int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null,
         int wfpOutside = 0, int aipOutside = 0, Action<int>? onOutsideOffice = null,
         IReadOnlyDictionary<int, int>? wfpByYear = null, IReadOnlyDictionary<int, int>? aipByYear = null)
     {
-        Mock<IRepository<FundingSource>> repo = new();
+        Mock<IFundingSourceRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.AddAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>()))
             .Callback<FundingSource, CancellationToken>((f, _) => seed.Add(f))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
-        Mock<IRepository<Office>> officeRepo = new();
+        Mock<IOfficeRepository> officeRepo = new();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(offices ?? DefaultOffices());
+        officeRepo.Setup(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await officeRepo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         Mock<IWfpExpenditureRepository> wfpExp = new();
         wfpExp.Setup(r => r.CountByFundingSourceAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -75,7 +79,7 @@ public sealed class FundingSourceServiceTests
     private static IReadOnlyDictionary<int, int> InFy2027(int count) =>
         count == 0 ? new Dictionary<int, int>() : new Dictionary<int, int> { [2027] = count };
 
-    private static (FundingSourceService sut, Mock<IRepository<FundingSource>> repo, Mock<IAuditService> audit)
+    private static (FundingSourceService sut, Mock<IFundingSourceRepository> repo, Mock<IAuditService> audit)
         BuildWithAudit(List<FundingSource> seed)
     {
         Mock<IAuditService> audit = new();
@@ -83,7 +87,7 @@ public sealed class FundingSourceServiceTests
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, audit.Object);
+        (FundingSourceService sut, Mock<IFundingSourceRepository> repo) = Build(seed, audit.Object);
         return (sut, repo, audit);
     }
 
@@ -555,7 +559,7 @@ public sealed class FundingSourceServiceTests
         // ⚠️ The failure mode the guard exists for: other offices already have lines under a shared
         // fund, and limiting it to GSO would take it out of their pickers.
         List<FundingSource> seed = [Fs(1, "LDRRMF", "Disaster Fund")];
-        (FundingSourceService sut, Mock<IRepository<FundingSource>> repo) = Build(seed, wfpOutside: 2, aipOutside: 1);
+        (FundingSourceService sut, Mock<IFundingSourceRepository> repo) = Build(seed, wfpOutside: 2, aipOutside: 1);
 
         ServiceResult<FundingSourceDto> result = await sut.UpdateAsync(1,
             new UpsertFundingSourceDto("LDRRMF", "Renamed", null, OfficeId: GsoOfficeId));

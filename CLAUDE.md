@@ -352,6 +352,22 @@ chore(deps): upgrade ClosedXML to 0.104.1
 - Always reference the Linear issue in PR description: e.g. `Closes RAL-24`
 - Branch name should include the issue number: `feature/v0.1-ral-24-scaffold-solution`
 
+**Verification screenshots (Ralph, 2026-10-05):** Ralph tests in bulk after several tickets land, so
+screenshots of the live check are his record of what a ticket looked like when it was built.
+- **Ask first, notable frontend changes only:** a new band, page, layout or state wording. At the
+  start of such a ticket, ask whether he wants screenshots. Skip backend-only, CI and small UI tweaks.
+- **Keep them cheap:** take them during the live run already being done, never as a re-run. Scale
+  0.5–0.7 or crop to the area under test; one per state or role checked, not one per step.
+- ⚠️ **Send them in chat, never post them to GitHub.** The repo is public, and local screenshots show
+  the local database: account names, office ceilings, allocations. List the states checked live in
+  the PR body instead.
+
+**Confidence in every code change (Ralph, 2026-10-05):** every PR description, and the report at the
+end of a ticket, states a **confidence %** that the change is correct, then in a line or two what it
+rests on (tests, red-tested guards, live checks) and what was not verified that would raise it. Be
+honest rather than high: an untested path, unrun migration or unchecked role lowers it, and the
+number should say so.
+
 ---
 
 ## Key Business Logic (Do Not Change Without Checking PPDO_PROJECT_CONTEXT.md)
@@ -598,7 +614,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-04 — v1.8.1 frozen on `release/1.8.1` for UAT (cut at PPDO-176). v1.8.0 and v1.8.1 ship to `main` together.**
+> **Updated: 2026-10-05 — `release/1.8.2` cut from the frozen `release/1.8.1` (in UAT). v1.8.0 and v1.8.1 ship to `main` together.**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -610,6 +626,7 @@ illustrate.
 **Built, not yet in production:** v1.8.0 — every ticket closed; in UAT since 2026-09-21.
 **Frozen for UAT:** v1.8.1 on `release/1.8.1`, cut from `release/1.8.0` on 2026-10-04. Ships to production
 **together with v1.8.0** in one deploy (`release/1.8.1` → `main`); see the v1.8.1 section below.
+**In development:** v1.8.2 on `release/1.8.2`, cut 2026-10-05 from `release/1.8.1` @ `88bb84c5` while v1.8.1 is in UAT.
 
 ### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
@@ -739,7 +756,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | v1.7 — Inventory (+ .1–.4 patches) | ✅ Done |
 | **v1.8.0 — Office Users, AIP Redesign & Reviewer Flow** | ✅ **Complete on `release/1.8.0`, awaiting merge to `main`** — Phases 1–5 all shipped. Phases 6–7 were deliberately not built; see below |
 | **v1.8.1 — Optimization & Dashboard Fixes** | 🧊 **Frozen on `release/1.8.1` for UAT** (cut at PPDO-176) — ships to `main` together with v1.8.0 |
-| **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | ⏳ Not started — `release/1.8.2` cut after the production deploy |
+| **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | 🚧 **In development on `release/1.8.2`** (cut 2026-10-05 from the frozen `release/1.8.1`; UAT fixes merge forward) |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -824,16 +841,22 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 - ⚠️ **`release/1.8.1` is FROZEN** (cut at PPDO-176, Ralph 2026-10-04). **Only fixes found in UAT** go in
   (`fix/v1.8.1-…`). Anything else merged now would ship to production untested.
 - **New work is v1.8.2** (Linear milestone "v1.8.2 — Dashboard Redesign, Caching & Remaining
-  Optimizations": PPDO-178…181, 187…189, 111/112/113). Its branch `release/1.8.2` is cut from `main` after
-  the production deploy. If v1.8.2 work must start during UAT, cut it from the frozen `release/1.8.1`
-  instead and merge every UAT fix forward. Its first commit bumps `APP_VERSION` to `v1.8.2`.
+  Optimizations": PPDO-178…181, 187…191, 111/112/113, and V18-71 PPDO-116/121). ✅ **`release/1.8.2` was cut
+  2026-10-05 from the frozen `release/1.8.1` @ `88bb84c5`** (v1.8.1 still in UAT), so ⚠️ **every UAT fix merged
+  into `release/1.8.1` must also be merged forward into `release/1.8.2`.** Its first commit bumps `APP_VERSION`
+  to `v1.8.2`. v1.8.2 branches are `feature/v1.8.2-…` and PR into `release/1.8.2`.
 - **`release/1.8.0` is frozen**: no further merges. It stays as the record of what v1.8.0 was.
 - **UAT:** merge `release/1.8.1` → `uat` to deploy. ⚠️ Still never branch off `uat`.
 - **Production:** `release/1.8.1` → `main`, after the pre-deployment checklist.
 - **What v1.8.1 ships:** PPDO-182/183/184 (compression, picker cache, AIP Entry), PPDO-185/186, PPDO-177
   (dashboard parallel load), PPDO-175/176 (submission stage, reviewer top). **No migrations.**
-- ⚠️ **V18-71** (concurrent-edit guard) is unscheduled. It adds the migration `AddAipConcurrencyTokens`:
-  when it lands in a release, add it to the hand-applied migration list.
+- ⚠️ **V18-71** (concurrent-edit guard) is in **v1.8.2**. Its finished half (PPDO-117…120) was merged into
+  `release/1.8.2` on 2026-10-06, carrying the migration **`20261005235915_AddAipConcurrencyTokens`**
+  (regenerated with a fresh timestamp; same operations as the 2026-09-22 original). ⚠️ **v1.8.2 therefore
+  needs a hand-applied migration** in UAT and production before its code deploys, and its own
+  pre-deployment checklist. A database that ran the old `20260922022444_` ID (only local dev ones) needs that
+  `__EFMigrationsHistory` row renamed, not the migration re-run. The guard stays optional on each save
+  until PPDO-121.
 
 #### What was deliberately NOT built
 
@@ -864,6 +887,7 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 | `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
 | `docs/AI_DLC_Evaluation.md` | Considering an external AI development-workflow framework (AI-DLC assessed 2026-09-08 — cherry-pick, do not install) |
 | `docs/v1.8/Pre_Deployment_Checklist.md` | Merging `release/1.8.0` → `main` — v1.8.0 ships a migration that **rewrites existing AIP amounts**, so the baseline sums and restore path are captured before it runs |
+| `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` | Taking `release/1.8.2` to `uat` or `main` — one additive migration that must run **before** the code, a one-time sign-out of every user (PPDO-141), and the start of PPDO-121's App Insights window |
 
 ---
 

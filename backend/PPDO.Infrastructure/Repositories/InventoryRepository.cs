@@ -123,4 +123,56 @@ public sealed class InventoryRepository : IInventoryRepository
 
         return new ItemStockLevel(stockNo, ordered, delivered, distributed);
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, ItemStockLevel>> GetItemStockLevelsByStockNosAsync(
+        IReadOnlyCollection<string> stockNos,
+        CancellationToken cancellationToken = default)
+    {
+        Dictionary<string, ItemStockLevel> result = new(StringComparer.OrdinalIgnoreCase);
+        if (stockNos.Count == 0) return result;
+
+        // Sequential queries on the shared DbContext — never Task.WhenAll (see CLAUDE.md).
+        // Same three sums as GetItemStockLevelAsync, grouped by StockNo.
+        List<(string StockNo, decimal Total)> ordered =
+            await (from pi in _context.PRItems
+                   where stockNos.Contains(pi.StockNo!)
+                   group pi by pi.StockNo into g
+                   select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.Quantity)))
+                  .ToListAsync(cancellationToken);
+
+        List<(string StockNo, decimal Total)> delivered =
+            await (from di in _context.DeliveryItems
+                   join pi in _context.PRItems on di.PRItemId equals pi.Id
+                   where stockNos.Contains(pi.StockNo!)
+                   group di by pi.StockNo into g
+                   select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.QtyDelivered)))
+                  .ToListAsync(cancellationToken);
+
+        // Inner join excludes warehouse-count-sourced distributions (DeliveryItemId null,
+        // RAL-223) — same reasoning as the single-item method.
+        List<(string StockNo, decimal Total)> distributed =
+            await (from dist in _context.Distributions
+                   join di in _context.DeliveryItems on dist.DeliveryItemId equals (Guid?)di.Id
+                   join pi in _context.PRItems on di.PRItemId equals pi.Id
+                   where stockNos.Contains(pi.StockNo!)
+                   group dist by pi.StockNo into g
+                   select new ValueTuple<string, decimal>(g.Key!, g.Sum(x => x.QtyIssued)))
+                  .ToListAsync(cancellationToken);
+
+        Dictionary<string, decimal> orderedBy     = ordered.ToDictionary(x => x.StockNo, x => x.Total, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, decimal> deliveredBy   = delivered.ToDictionary(x => x.StockNo, x => x.Total, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, decimal> distributedBy = distributed.ToDictionary(x => x.StockNo, x => x.Total, StringComparer.OrdinalIgnoreCase);
+
+        foreach (string stockNo in stockNos)
+        {
+            result[stockNo] = new ItemStockLevel(
+                stockNo,
+                orderedBy.GetValueOrDefault(stockNo),
+                deliveredBy.GetValueOrDefault(stockNo),
+                distributedBy.GetValueOrDefault(stockNo));
+        }
+
+        return result;
+    }
 }

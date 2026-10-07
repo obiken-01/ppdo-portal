@@ -52,16 +52,16 @@ public sealed class ExternalAipReadServiceTests
         public Mock<IAipExpenditureRepository> Expenditures { get; } = new();
         public Mock<IAuditRepository> Audit { get; } = new();
         public Mock<IOfficeRepository> Offices { get; } = new();
-        public Mock<IRepository<FundingSource>> FundingSources { get; } = new();
+        public Mock<IFundingSourceRepository> FundingSources { get; } = new();
         public Mock<IPriceIndexItemRepository> PriceIndexItems { get; } = new();
 
         public Fixture()
         {
-            Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<AipProgram>());
-            Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            Aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<AipProject>());
-            Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            Aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<AipActivity>());
             Expenditures.Setup(e => e.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Array.Empty<AipExpenditure>());
@@ -112,8 +112,8 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
         AipOffice group = Group(10, 1, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -138,8 +138,8 @@ public sealed class ExternalAipReadServiceTests
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
         // OfficeId null — the unmatched legacy row the spec says to exclude.
         AipOffice unlinked = Group(10, 1, officeId: null, "1000-000-1-01-999", "Unmatched");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([unlinked]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([unlinked]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
 
         ExternalAipDto? result = await f.Build().GetAsync(Fy2027, null);
@@ -159,8 +159,8 @@ public sealed class ExternalAipReadServiceTests
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft)); // record.Status irrelevant for Fy2028+
         AipOffice g1 = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO", workflowStatus: AipWorkflowStatus.Consolidated);
         AipOffice g2 = Group(21, 2, PpdoOfficeId, "3000-000-1-01-010", "PPDO", sector: "SOCIAL", workflowStatus: AipWorkflowStatus.Consolidated);
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([g1, g2]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([g1, g2]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -182,8 +182,8 @@ public sealed class ExternalAipReadServiceTests
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
         AipOffice consolidated = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO", workflowStatus: AipWorkflowStatus.Consolidated);
         AipOffice notYet = Group(21, 2, PpdoOfficeId, "3000-000-1-01-010", "PPDO", sector: "SOCIAL", workflowStatus: AipWorkflowStatus.SubmittedToPpdo);
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([consolidated, notYet]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([consolidated, notYet]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -203,8 +203,8 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2028, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
         AipOffice group = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -237,15 +237,15 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
         AipOffice group = Group(10, 1, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
         AipProgram program = Program(100, 10, "1000-000-1-01-010-001", "Program A");
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([program]);
         AipProject project = Project(200, 100, "1000-000-1-01-010-001-001", "Project A");
-        f.Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([project]);
         AipActivity activity = Activity(300, 200, "1000-000-1-01-010-001-001-001", "Activity A", ps: 500m, mooe: 250.5m, co: 0m);
-        f.Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([activity]);
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -285,15 +285,15 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2028, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
         AipOffice group = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
         AipProgram program = Program(100, 20, "1000-000-1-01-010-001", "Program A");
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([program]);
         AipProject project = Project(200, 100, "1000-000-1-01-010-001-001", "Project A");
-        f.Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([project]);
         AipActivity activity = Activity(300, 200, "1000-000-1-01-010-001-001-001", "Activity A", ps: 0m, mooe: 1000400m, co: 0m);
-        f.Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([activity]);
         AipExpenditure line = new()
         {
@@ -323,18 +323,18 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2028, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
         AipOffice group = Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
         AipProgram program = Program(100, 20, "1000-000-1-01-010-001", "Program A");
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([program]);
         AipProject projectA = Project(200, 100, "1000-000-1-01-010-001-001", "Project A");
         AipProject projectB = Project(201, 100, "1000-000-1-01-010-001-002", "Project B");
-        f.Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([projectA, projectB]);
         AipActivity a1 = Activity(300, 200, "1000-000-1-01-010-001-001-001", "A1", ps: 0m, mooe: 100m, co: 0m);
         AipActivity a2 = Activity(301, 200, "1000-000-1-01-010-001-001-002", "A2", ps: 0m, mooe: 100m, co: 0m);
         AipActivity b1 = Activity(302, 201, "1000-000-1-01-010-001-002-001", "B1", ps: 1000.50m, mooe: 100m, co: 0m);
-        f.Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([a1, a2, b1]);
         f.Expenditures.Setup(e => e.GetByActivityIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Line(400, 300, 0m, 100m), Line(401, 301, 0m, 100m), Line(402, 302, 1000.50m, 100m)]);
@@ -385,16 +385,16 @@ public sealed class ExternalAipReadServiceTests
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
         AipOffice group = Group(10, 1, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([group]);
         AipProgram program = Program(100, 10, "1000-000-1-01-010-001", "Program A");
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([program]);
         AipProject syntheticProject = Project(200, 100, "1000-000-1-01-010-001", "Program A", synthetic: true);
-        f.Aip.Setup(a => a.GetProjectsByProgramIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetProjectsByProgramIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([syntheticProject]);
         AipActivity syntheticActivity = Activity(
             300, 200, "1000-000-1-01-010-001", "Program A", ps: 100m, mooe: 0m, co: 0m, synthetic: true);
-        f.Aip.Setup(a => a.GetActivitiesByProjectIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetActivitiesByProjectIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([syntheticActivity]);
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office")]);
@@ -416,8 +416,8 @@ public sealed class ExternalAipReadServiceTests
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
         AipOffice ppdoGroup = Group(10, 1, PpdoOfficeId, "1000-000-1-01-010", "PPDO");
         AipOffice peoGroup = Group(11, 1, 2, "1000-000-1-01-020", "PEO");
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([ppdoGroup, peoGroup]);
-        f.Aip.Setup(a => a.GetProgramsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync([ppdoGroup, peoGroup]);
+        f.Aip.Setup(a => a.GetProgramsByOfficeIdsNoTrackingAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<AipProgram>());
         f.Offices.Setup(o => o.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([ConfigOffice(PpdoOfficeId, "PPDO", "PPDO Office"), ConfigOffice(2, "PEO", "PEO Office")]);
@@ -437,7 +437,7 @@ public sealed class ExternalAipReadServiceTests
         Fixture f = new();
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<AipOffice>());
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<AipOffice>());
 
         ExternalAipDto? result = await f.Build().GetAsync(Fy2027, null);
 
@@ -456,13 +456,13 @@ public sealed class ExternalAipReadServiceTests
         // FY2028: record exists but nothing consolidated yet — not released.
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2028, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(2, Fy2028, PlanningStatus.Draft));
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(2, It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(2, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Group(20, 2, PpdoOfficeId, "1000-000-1-01-010", "PPDO", workflowStatus: AipWorkflowStatus.SubmittedToPpdo)]);
 
         // FY2027: Final legacy record — released.
         f.Aip.Setup(a => a.GetLatestByFiscalYearAsync(Fy2027, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(1, Fy2027, PlanningStatus.Final));
-        f.Aip.Setup(a => a.GetOfficesByAipIdAsync(1, It.IsAny<CancellationToken>()))
+        f.Aip.Setup(a => a.GetOfficesByAipIdNoTrackingAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Group(10, 1, PpdoOfficeId, "1000-000-1-01-010", "PPDO")]);
 
         IReadOnlyList<int> years = await f.Build().GetFiscalYearsAsync(null);

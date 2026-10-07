@@ -68,7 +68,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // OverrideCanAccess* and OverrideCanManage* columns are nullable bool — no extra config needed.
 
         // Refresh token — nullable; cleared on logout, rotated on every refresh.
-        // 64 random bytes base64-encoded = 88 chars; nvarchar(100) gives a small margin.
+        // PPDO-141: holds SHA-256(token) as lower-case hex = 64 chars. Before that it held the raw
+        // 88-char base64 token, which is why the limit is 100 — a hash fits with no migration.
         builder.Property(u => u.RefreshToken)
             .HasMaxLength(100);
 

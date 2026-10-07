@@ -18,6 +18,9 @@ public interface IAipRepository : IRepository<AipRecord>
     /// <summary>AipOffice rows WHERE aip_record_id = <paramref name="aipRecordId"/>.</summary>
     Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdAsync(int aipRecordId, CancellationToken ct = default);
 
+    /// <summary>Same rows as <see cref="GetOfficesByAipIdAsync"/> but untracked (PPDO-187). Read-only endpoints only — changes to these entities are NOT persisted by SaveChanges.</summary>
+    Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdNoTrackingAsync(int aipRecordId, CancellationToken ct = default);
+
     /// <summary>Returns the single AipOffice whose PK equals <paramref name="id"/>, or null (RAL-62 manual entry).</summary>
     Task<AipOffice?> GetOfficeByIdAsync(int id, CancellationToken ct = default);
 
@@ -27,17 +30,26 @@ public interface IAipRepository : IRepository<AipRecord>
     /// <summary>AipProgram rows WHERE office_id IN (<paramref name="officeIds"/>).</summary>
     Task<IReadOnlyList<AipProgram>> GetProgramsByOfficeIdsAsync(IReadOnlyList<int> officeIds, CancellationToken ct = default);
 
+    /// <summary>Same rows as <see cref="GetProgramsByOfficeIdsAsync"/> but untracked (PPDO-187). Read-only endpoints only — changes to these entities are NOT persisted by SaveChanges.</summary>
+    Task<IReadOnlyList<AipProgram>> GetProgramsByOfficeIdsNoTrackingAsync(IReadOnlyList<int> officeIds, CancellationToken ct = default);
+
     /// <summary>Returns the single AipProgram whose PK equals <paramref name="id"/>, or null (v1.4 Q1 function-band edit).</summary>
     Task<AipProgram?> GetProgramByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>AipProject rows WHERE program_id IN (<paramref name="programIds"/>).</summary>
     Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsAsync(IReadOnlyList<int> programIds, CancellationToken ct = default);
 
+    /// <summary>Same rows as <see cref="GetProjectsByProgramIdsAsync"/> but untracked (PPDO-187). Read-only endpoints only — changes to these entities are NOT persisted by SaveChanges.</summary>
+    Task<IReadOnlyList<AipProject>> GetProjectsByProgramIdsNoTrackingAsync(IReadOnlyList<int> programIds, CancellationToken ct = default);
+
     /// <summary>Returns the single AipProject whose PK equals <paramref name="id"/>, or null (RAL-62 manual entry).</summary>
     Task<AipProject?> GetProjectByIdAsync(int id, CancellationToken ct = default);
 
     /// <summary>AipActivity rows WHERE project_id IN (<paramref name="projectIds"/>).</summary>
     Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsAsync(IReadOnlyList<int> projectIds, CancellationToken ct = default);
+
+    /// <summary>Same rows as <see cref="GetActivitiesByProjectIdsAsync"/> but untracked (PPDO-187). Read-only endpoints only — changes to these entities are NOT persisted by SaveChanges.</summary>
+    Task<IReadOnlyList<AipActivity>> GetActivitiesByProjectIdsNoTrackingAsync(IReadOnlyList<int> projectIds, CancellationToken ct = default);
 
     /// <summary>Returns the single AipActivity whose PK equals <paramref name="id"/>, or null (RAL-122 ceiling checks).</summary>
     Task<AipActivity?> GetActivityByIdAsync(int id, CancellationToken ct = default);

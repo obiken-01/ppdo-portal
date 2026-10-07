@@ -169,6 +169,16 @@ export interface UpdateAipActivityRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -193,6 +203,16 @@ export interface UpdateAipActivityDetailsRequest {
   ccAdaptation?: number | null;
   ccMitigation?: number | null;
   ccTypologyCode?: string | null;
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 // ── AIP inline office/program/project edit (detail-page CRUD) ────────────────
@@ -268,6 +288,15 @@ export interface AipActivityDetail {
    * ⚠️ Always false on the review screen's tree, which carries its own `canEdit`.
    */
   canEdit: boolean;
+
+  /**
+   * Base64 `rowversion` for the concurrent-edit guard (V18-71 / PPDO-120). Hold it and send it
+   * back on the next write.
+   *
+   * ⚠️ Null means the server did not supply one — the save will then run **unguarded**, not
+   * safely. Treat a missing token as a gap, not a default.
+   */
+  rowVersion?: string | null;
 }
 
 export interface AipProjectDetail {
@@ -356,6 +385,8 @@ export interface AipActivitySummary {
   fundingSourceId: number | null;
   fundingSourceSnapshot: string | null;
   isCreation: boolean;
+  /** PPDO-191 — base64 rowversion; the WFP new/continuing toggle sends it back (V18-71). */
+  rowVersion?: string | null;
 }
 
 export interface AipProjectSummary {
@@ -517,6 +548,33 @@ export interface OfficeSummary {
   divisionsSubmitted: number | null;
   /** PPDO-152 — the "m" of "n of m divisions submitted". Null with `divisionsSubmitted`. */
   divisionsRequired: number | null;
+  /**
+   * PPDO-180 — projects by proposal status, for the reviewer's all-offices card. Cross-office
+   * reviewers only, FY2028+; absent/null otherwise and for an office with no projects.
+   */
+  proposals?: ProposalCounts | null;
+}
+
+/** PPDO-180 — projects by proposal status: a Final proposal, a Draft, or none yet. */
+export interface ProposalCounts {
+  final: number;
+  draft: number;
+  none: number;
+}
+
+/** PPDO-180 — a project still needing a proposal. `proposalId` is null when it has none. */
+export interface ProposalAttention {
+  aipProjectId: number;
+  projectRefCode: string;
+  projectName: string;
+  proposalId: number | null;
+  status: "None" | "Draft";
+}
+
+/** PPDO-180 — the dashboard's Investment proposals band for one office. */
+export interface OfficeProposalSummary {
+  counts: ProposalCounts;
+  needsAttention: ProposalAttention[];
 }
 
 /** One division's share of a fund's office-wide ceiling. */
@@ -576,16 +634,16 @@ export interface PpdoDashboard {
   noDivision?: DivisionSummary | null;
 }
 
+/**
+ * One line of the Recent activity band (PPDO-181). The server sends the sentence — never the audit
+ * row's table name, action code or record id. `description` is a verb phrase that follows
+ * `actorName`: "moved an activity in Rice Project 1 (OPA) from Cash to Admin."
+ */
 export interface RecentActivity {
   id: number;
-  changedAt: string; // ISO 8601
-  tableName: string;
-  action: string;
-  // Exactly one of recordId/recordGuid is set, depending on the table's PK type
-  // (int-keyed tables like wfp_expenditures vs Guid-keyed tables like users).
-  recordId: number | null;
-  recordGuid: string | null;
+  changedAt: string; // ISO 8601, UTC
   actorName: string;
+  description: string;
 }
 
 // ── Office-scoped dashboard (RAL-60) ─────────────────────────────────────────
@@ -639,6 +697,17 @@ export interface OfficeAipSummary {
    * RETURN_DH). RETURN_DH is what tells a Draft the department head sent back from a fresh one.
    */
   lastHandOff?: string | null;
+  /** PPDO-178 — activities whose total is empty or ₱0 (the rollup's "costed" rule, inverted). */
+  uncostedActivityCount?: number;
+  /**
+   * PPDO-178 — in Draft, for an office with divisions: how many of the divisions with work have
+   * submitted, and which have not (code, or name). Absent/null outside the division flow.
+   */
+  divisionsSubmitted?: number | null;
+  divisionsRequired?: number | null;
+  divisionsWaiting?: string[] | null;
+  /** PPDO-178 — the returning side's open comments, only while the AIP sits returned. */
+  unresolvedComments?: number | null;
 }
 
 export interface OfficeDashboard {
@@ -659,6 +728,11 @@ export interface OfficeDashboard {
   byDivision: DivisionSummary[];
   /** PPDO-150 — see `PpdoDashboard.noDivision`. Only for a department head's own office. */
   noDivision?: DivisionSummary | null;
+  /**
+   * PPDO-180 — the Investment proposals band, counted in the Investment Proposals list's own scope.
+   * Null for FY2027 and earlier or a year with no AIP record: the band hides.
+   */
+  proposals?: OfficeProposalSummary | null;
 }
 
 // ── WFP ──────────────────────────────────────────────────────────────────────
@@ -1270,6 +1344,15 @@ export interface AipExpenditure {
    * amount read-only for such a line.
    */
   procurementItems: AipProcurementItem[];
+
+  /**
+   * Base64 `rowversion` for the concurrent-edit guard (V18-71 / PPDO-120). Hold it and send it
+   * back on the next write.
+   *
+   * ⚠️ Null means the server did not supply one — the save will then run **unguarded**, not
+   * safely. Treat a missing token as a gap, not a default.
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -1323,6 +1406,16 @@ export interface SaveAipExpenditureRequest {
    * in those three fields — it does not add the two together the way WFP does.
    */
   procurementItems?: SaveAipProcurementItemRequest[];
+
+  /**
+   * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
+   * (V18-71 / PPDO-120). Send it on every write.
+   *
+   * ⚠️ Optional only while the staged rollout runs: the server currently allows an omitted
+   * value and saves **unguarded**, which is the old last-write-wins behaviour. PPDO-121 makes
+   * it a 400. Omitting it is therefore not "safe", it is "unprotected".
+   */
+  rowVersion?: string | null;
 }
 
 /**
@@ -1348,6 +1441,12 @@ export interface AipExpenditureWriteResult {
    * line was just deleted.
    */
   activityFundCodes: string[];
+  /**
+   * PPDO-191 — the activity's version AFTER this write. Every line write recomputes the activity's
+   * totals, which bumps its version; store this, or the encoder's next details save 409s against
+   * their own line. Absent from an older backend.
+   */
+  activityRowVersion?: string | null;
 }
 
 /**
@@ -1819,4 +1918,27 @@ export interface AipOfficeHistory {
   entries: AipHistoryEntry[];
   /** Comments older than every hand-off, oldest first. */
   beforeFirstSubmission: AipReviewComment[];
+}
+
+// ── Concurrent-edit conflict (V18-71 / PPDO-120) ─────────────────────────────
+
+/**
+ * What a rejected save tells the encoder. Arrives as the `data` of a **409**; read it with
+ * `aipConflict(err)` from `lib/aip`.
+ */
+export interface AipConflict<T = unknown> {
+  /**
+   * ⚠️ **Null is a real case.** The row may never have been edited since the guard shipped, or
+   * the user may no longer resolve. Render "someone else" rather than assuming a name.
+   */
+  changedByName: string | null;
+  /** UTC. Render as UTC+8. Null under the same conditions as `changedByName`. */
+  changedAtUtc: string | null;
+  /**
+   * ⚠️ The version an **Overwrite** must resubmit with. Sending the stale one again just
+   * conflicts a second time; sending this one is what makes Overwrite a single request.
+   */
+  currentRowVersion: string;
+  /** The row as it now stands, for the side-by-side compare. */
+  current: T;
 }

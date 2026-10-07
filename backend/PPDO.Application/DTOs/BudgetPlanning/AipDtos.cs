@@ -62,7 +62,18 @@ public record AipActivityDto(
     /// server-side so the page never re-derives the lock rules (spec §4). ⚠️ False on the review
     /// screen's tree, which has its own <c>AipActivityReviewDto.CanEdit</c>.
     /// </summary>
-    bool    CanEdit = false);
+    bool    CanEdit = false,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> — the concurrent-edit guard's token (V18-71 / PPDO-120).
+    ///
+    /// <para>
+    /// ⚠️ <b>Read paths must return this or the guard cannot work at all.</b> The client sends
+    /// back the version it was given; an activity delivered without one has nothing to send, so
+    /// its next save runs unguarded no matter what the write path does.
+    /// </para>
+    /// </summary>
+    string? RowVersion = null);
 
 public record AipProjectDto(
     int    Id,
@@ -434,7 +445,15 @@ public record UpdateAipActivityDto(
     decimal? Co,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> the client loaded, for the concurrent-edit guard
+    /// (V18-71 / PPDO-119). ⚠️ <b>Optional only during the staged rollout</b> — see
+    /// <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8. While it is null the save proceeds
+    /// unguarded, which is the old last-write-wins behaviour; PPDO-121 makes it required.
+    /// </summary>
+    string?  RowVersion = null);
 
 // ── Inline office/program/project edit (detail-page CRUD follow-up to RAL-179) ─
 // RefCode/Sector/hierarchy position stay immutable through these endpoints, same
@@ -480,7 +499,10 @@ public record AipActivitySummaryDto(
     decimal? Total,
     int?     FundingSourceId,
     string?  FundingSourceSnapshot,
-    bool     IsCreation);
+    bool     IsCreation,
+    // PPDO-191 — base64 rowversion: the WFP page's new/continuing toggle writes this activity, so
+    // the slim summary carries the concurrency token too (V18-71). Null only for a row without one.
+    string?  RowVersion = null);
 
 public record AipProjectSummaryDto(
     int    Id,
@@ -511,7 +533,7 @@ public record AipRecordSummaryDto(
 
 public record UpdateAipProgramFunctionBandDto(string? FunctionBand);
 
-public record UpdateAipActivityIsCreationDto(bool IsCreation);
+public record UpdateAipActivityIsCreationDto(bool IsCreation, string? RowVersion = null);
 
 /// <summary>
 /// An entered-year activity's <b>descriptive</b> fields — everything the AIP form prints about an
@@ -549,4 +571,12 @@ public record UpdateAipActivityDetailsDto(
     string?  ExpectedOutputs,
     decimal? CcAdaptation,
     decimal? CcMitigation,
-    string?  CcTypologyCode);
+    string?  CcTypologyCode,
+
+    /// <summary>
+    /// Base64 <c>rowversion</c> the client loaded, for the concurrent-edit guard
+    /// (V18-71 / PPDO-119). ⚠️ <b>Optional only during the staged rollout</b> — see
+    /// <c>docs/v1.8/AIP_Concurrent_Edit_Spec.md</c> §8. While it is null the save proceeds
+    /// unguarded, which is the old last-write-wins behaviour; PPDO-121 makes it required.
+    /// </summary>
+    string?  RowVersion = null);

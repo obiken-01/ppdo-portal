@@ -26,6 +26,8 @@ public sealed class ClimateChangeTypologyServiceTests
     {
         Mock<IClimateChangeTypologyRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.AddAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()))
             .Callback<ClimateChangeTypology, CancellationToken>((t, _) => seed.Add(t))
             .Returns(Task.CompletedTask);
@@ -194,6 +196,8 @@ public sealed class ClimateChangeTypologyServiceTests
         Mock<IClimateChangeTypologyRepository> repo = new();
         List<ClimateChangeTypology> seed = [Cc(1, "A113-08", active: false)];
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.UpdateAsync(It.IsAny<ClimateChangeTypology>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);

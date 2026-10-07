@@ -40,6 +40,7 @@ import {
   getAipOfficeDivisions, submitAipDivision, returnAipDivision, aipErrorMessage,
 } from "@/lib/aip";
 import { listAccounts, listFundingSources, listOffices, listPriceIndexForPicker } from "@/lib/config";
+import { cacheKey, loadThroughCache } from "@/lib/reference-cache";
 import { getDashboard, getOfficeDashboard } from "@/lib/budget-planning";
 import DivisionTable from "../../DivisionTable";
 import { AipUnsavedChangesProvider, useAipLeaveGuard } from "@/components/aip/entry/AipUnsavedChanges";
@@ -160,6 +161,10 @@ function AipEntryPageInner() {
   // comments provider can start its fetch alongside the detail rather than after it.
   const [openAipId, setOpenAipId] = useState<number | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
+  // PPDO-113 — when the readiness on screen was read, and whether a later refresh failed. A failed
+  // refresh keeps the old figures (the page stays usable) but the checklist then labels them.
+  const [readinessReadAt, setReadinessReadAt] = useState<string | null>(null);
+  const [readinessStale, setReadinessStale] = useState(false);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
   // PPDO-100 — the implementing-office picker’s list. Active only: a deactivated office is not
   // something a new activity should be assigned to, and an existing value is kept as a plain chip.
@@ -345,6 +350,8 @@ function AipEntryPageInner() {
     setRecord(null);
     setOpenAipId(null);
     setReadiness(null);
+    setReadinessReadAt(null);
+    setReadinessStale(false);
     setDivisions(null);
     setDivisionsError(null);
     try {
@@ -367,6 +374,7 @@ function AipEntryPageInner() {
       ]);
       setRecord(detail);
       setReadiness(nextReadiness);
+      setReadinessReadAt(new Date().toISOString());
     } catch (e) {
       setError(aipErrorMessage(e, "Could not load the AIP for this fiscal year."));
     } finally {
@@ -382,15 +390,33 @@ function AipEntryPageInner() {
   // PPDO-109 — the fund picker asks for THIS office's funds, so it shows the province-wide list plus
   // whatever this office added. `officeId` here is the office whose groups this page edits, which is
   // the encoder's own; the server clamps it anyway, so it can only ever narrow.
+  //
+  // ↩️ PPDO-111 — through the reference cache (lib/reference-cache): a repeat visit renders these
+  // pickers from IndexedDB at once, and a background re-fetch re-renders them only if the list
+  // changed. A first visit, or a browser without IndexedDB, behaves exactly as before. Every key
+  // carries the filter it was fetched with.
   useEffect(() => {
-    void listAccounts().then(setAccounts).catch(() => setAccounts([]));
-    void listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
-    void listFundingSources({ active: "true", officeId }).then(setFunds).catch(() => setFunds([]));
-    void listPriceIndexForPicker({ active: "true" })
-      .then(setPriceIndex)
-      .catch(() => setPriceIndex([]))
-      .finally(() => setPriceIndexLoading(false));
-  }, [officeId]);
+    void loadThroughCache(cacheKey("accounts"), () => listAccounts(), setAccounts, () => setAccounts([]));
+    void loadThroughCache(
+      cacheKey("offices", { active: "true" }), () => listOffices({ active: "true" }),
+      setOffices, () => setOffices([]));
+    void loadThroughCache(
+      cacheKey("price-index", { active: "true" }), () => listPriceIndexForPicker({ active: "true" }),
+      (rows) => { setPriceIndex(rows); setPriceIndexLoading(false); },
+      () => { setPriceIndex([]); setPriceIndexLoading(false); });
+  }, []);
+
+  // ⚠️ Funding sources are office-scoped (PPDO-109) and clamped per caller, so the key carries the
+  // office asked for AND who asked: a key without either would serve office A's private funds to
+  // office B on a shared machine (spec decision 8). Waits for /auth/me so the user is known.
+  const meUserId = me?.userId;
+  useEffect(() => {
+    if (!meUserId) return;
+    void loadThroughCache(
+      cacheKey("funding-sources", { active: "true", office: officeId, user: meUserId }),
+      () => listFundingSources({ active: "true", officeId }),
+      setFunds, () => setFunds([]));
+  }, [officeId, meUserId]);
 
   // PPDO-127 — same payload the Dashboard uses, already scoped server-side: a department head or
   // PPDO finance sees every division of this office, anyone else sees only their own division row.
@@ -438,7 +464,15 @@ function AipEntryPageInner() {
   async function refreshReadiness() {
     if (!record) return;
     setDivisionRowsStale(true);
-    try { setReadiness(await getAipReadiness(record.id)); } catch { /* checklist stays stale, page works */ }
+    try {
+      setReadiness(await getAipReadiness(record.id));
+      setReadinessReadAt(new Date().toISOString());
+      setReadinessStale(false);
+    } catch {
+      // The checklist keeps the last figures so the page still works, and now says how old they
+      // are (PPDO-113) instead of presenting them as current.
+      setReadinessStale(true);
+    }
     // A division's activity count and blockers move with the same edits the checklist does.
     // ⚠️ Only once loaded — a refresh must not replace a Retry prompt with a silent second failure.
     if (divisions) {
@@ -889,6 +923,8 @@ function AipEntryPageInner() {
                 proposalCheck={
                   fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? { fiscalYear, officeId } : undefined
                 }
+                staleSince={readinessStale ? readinessReadAt : null}
+                onRefresh={() => void refreshReadiness()}
               />
             )}
 

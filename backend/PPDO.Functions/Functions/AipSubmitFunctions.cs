@@ -203,7 +203,7 @@ public sealed class AipSubmitFunctions
 
         // Resolve the caller's own group row in this record — the ceiling is an office-level figure
         // and the caller may only ask about their own office (OfficeScope, DECISION F).
-        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdAsync(aipId, ct);
+        IReadOnlyList<AipOffice> offices = await _aipRepo.GetOfficesByAipIdNoTrackingAsync(aipId, ct);
         OfficeScope scope = OfficeScope.Resolve(caller!);
         AipOffice? mine = offices.FirstOrDefault(o =>
             scope.Permits(o.OfficeId)

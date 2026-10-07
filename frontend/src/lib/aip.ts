@@ -10,6 +10,7 @@ import type {
   UpdateAipActivityDivisionRequest,
   AipDivisionStatusList,
   AipDivisionSubmitResult,
+  AipConflict,
   AipRecordResponse,
   AipRecordDetail,
   AipRecordSummary,
@@ -59,6 +60,34 @@ function unwrap<T>(body: ApiResponse<T>): T {
 export function aipErrorMessage(err: unknown, fallback: string): string {
   const body = (err as { response?: { data?: ApiResponse<unknown> } })?.response?.data;
   return body?.error ?? body?.message ?? fallback;
+}
+
+/**
+ * Reads the concurrent-edit conflict out of a rejected save, or null if this was some other
+ * failure (V18-71 / PPDO-120).
+ *
+ * A conflict is the one failure the user must **act** on rather than read, so it is separated
+ * from `aipErrorMessage` at the call site:
+ *
+ * ```ts
+ * catch (err) {
+ *   const conflict = aipConflict<AipActivityDetail>(err);
+ *   if (conflict) { setConflict(conflict); return; }   // keep their input, offer the choice
+ *   setError(aipErrorMessage(err, "Could not save."));
+ * }
+ * ```
+ *
+ * ⚠️ **Checked before the generic message, never instead of it.** Falling through to
+ * `aipErrorMessage` on a 409 still shows correct text, but as a dead-end error — the user loses
+ * the Overwrite/Discard choice and, with it, any way to keep what they typed.
+ *
+ * Keyed on status 409 rather than on the payload's shape: a 409 without a body is still a
+ * conflict, and treating it as an ordinary error would be the wrong recovery.
+ */
+export function aipConflict<T = unknown>(err: unknown): AipConflict<T> | null {
+  const response = (err as { response?: { status?: number; data?: ApiResponse<AipConflict<T>> } })?.response;
+  if (response?.status !== 409) return null;
+  return response.data?.data ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +205,19 @@ export async function deleteAipProject(projectId: number): Promise<AipDeleteResu
   return unwrap(data);
 }
 
-export async function deleteAipActivity(activityId: number): Promise<AipDeleteResult> {
-  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(`/budget-planning/aip/activities/${activityId}`);
+/**
+ * PPDO-193 (V18-71) — `rowVersion` is the version the caller loaded. On the query string, as on
+ * `deleteAipExpenditure`, because a DELETE has no body. A stale one is a 409 with the activity
+ * conflict payload (read it with `aipConflict`) and nothing is deleted; omitting it deletes
+ * unguarded until PPDO-121.
+ */
+export async function deleteAipActivity(
+  activityId: number, rowVersion?: string | null
+): Promise<AipDeleteResult> {
+  const query = rowVersion ? `?rowVersion=${encodeURIComponent(rowVersion)}` : "";
+  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(
+    `/budget-planning/aip/activities/${activityId}${query}`
+  );
   return unwrap(data);
 }
 
@@ -274,11 +314,13 @@ const ACTIVITY_NULLS = {
   esreCode: true, implementingOffice: true, startDate: true, endDate: true, expectedOutputs: true,
   fundingSourceId: true, fundingSourceSnapshot: true, ps: true, mooe: true, co: true, total: true,
   ccAdaptation: true, ccMitigation: true, ccTypologyCode: true, divisionId: true, divisionName: true,
+  rowVersion: true,
 } satisfies Record<NullableKeys<AipActivityDetail>, true>;
 
 const SUMMARY_PROGRAM_NULLS = { functionBand: true } satisfies Record<NullableKeys<AipProgramSummary>, true>;
 const SUMMARY_ACTIVITY_NULLS = {
   ps: true, mooe: true, co: true, total: true, fundingSourceId: true, fundingSourceSnapshot: true,
+  rowVersion: true,
 } satisfies Record<NullableKeys<AipActivitySummary>, true>;
 
 function restoreDetailNulls(record: AipRecordDetail): AipRecordDetail {
@@ -375,15 +417,21 @@ export async function retagAipActivityDivision(
   return unwrap(data);
 }
 
+/**
+ * ↩️ PPDO-191 — sends the activity's `rowVersion` and returns the updated activity, so the caller
+ * can store its new version: toggling twice in a row must not 409 against the first toggle. A 409
+ * is a conflict (`aipConflict`), not an ordinary error.
+ */
 export async function updateAipActivityIsCreation(
   activityId: number,
-  isCreation: boolean
-): Promise<void> {
-  const { data } = await api.put<ApiResponse<unknown>>(
+  isCreation: boolean,
+  rowVersion: string | null
+): Promise<AipActivityDetail> {
+  const { data } = await api.put<ApiResponse<AipActivityDetail>>(
     `/budget-planning/aip/activities/${activityId}/is-creation`,
-    { isCreation }
+    { isCreation, rowVersion }
   );
-  unwrap(data);
+  return unwrap(data);
 }
 
 // ---------------------------------------------------------------------------
@@ -439,9 +487,14 @@ export async function updateAipExpenditure(
  * activity's total to 0, and the caller must render that — discarding the result leaves the page
  * showing the pre-delete figure until someone reloads.
  */
-export async function deleteAipExpenditure(id: number): Promise<AipExpenditureWriteResult> {
+export async function deleteAipExpenditure(
+  id: number, rowVersion?: string | null
+): Promise<AipExpenditureWriteResult> {
+  // DELETE has no body, so the concurrency token goes on the query string (PPDO-120). Same rule
+  // as everywhere else: omitting it means the delete runs unguarded, not that it is safe.
+  const query = rowVersion ? `?rowVersion=${encodeURIComponent(rowVersion)}` : "";
   const { data } = await api.delete<ApiResponse<AipExpenditureWriteResult>>(
-    `/budget-planning/aip/expenditures/${id}`
+    `/budget-planning/aip/expenditures/${id}${query}`
   );
   return unwrap(data);
 }

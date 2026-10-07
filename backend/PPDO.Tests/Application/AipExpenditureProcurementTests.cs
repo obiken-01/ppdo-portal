@@ -45,10 +45,11 @@ public sealed class AipExpenditureProcurementTests
     private readonly Mock<IAipExpenditureRepository> _expRepo  = new();
     private readonly Mock<IAipActivityTotalsService> _totals   = new();
     private readonly Mock<IAipCeilingService>        _ceiling  = new();
-    private readonly Mock<IRepository<Account>>      _accounts = new();
-    private readonly Mock<IRepository<FundingSource>> _funds   = new();
+    private readonly Mock<IAccountRepository>      _accounts = new();
+    private readonly Mock<IFundingSourceRepository> _funds   = new();
     private readonly Mock<IAuditService>             _audit    = new();
     private readonly Mock<IPermissionService>        _permissions = new();
+    private readonly Mock<IUserRepository>     _users       = new(MockBehavior.Loose);
 
     private readonly List<AipProcurementItem> _saved = [];
 
@@ -85,8 +86,12 @@ public sealed class AipExpenditureProcurementTests
                 new() { Id = CoAccountId,   AccountNumber = "5-03-01-010", AccountTitle = "Machinery",       ExpenseClass = "CO" },
                 new() { Id = OddAccountId,  AccountNumber = "9-99-99-999", AccountTitle = "Unclassified",    ExpenseClass = "" },
             });
+        _accounts.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await _accounts.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         _funds.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<FundingSource>());
+        _funds.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await _funds.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
 
         // The written line gets an id the way the database would, so the item write has one to hang
         // on — the service attaches items only after the parent save for exactly that reason.
@@ -114,7 +119,7 @@ public sealed class AipExpenditureProcurementTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
         AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
-        NullLogger<AipExpenditureService>.Instance);
+        _users.Object, NullLogger<AipExpenditureService>.Instance);
 
     private AipExpenditure? Written()
     {

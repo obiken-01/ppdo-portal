@@ -71,24 +71,21 @@ public sealed class DashboardServiceTests
 
     private DashboardService BuildSut(
         Mock<ICalendarEventRepository>   eventRepo,
-        Mock<IHolidayProvider>           holidays,
-        Mock<IRepository<PurchaseRequest>> prRepo,
-        Mock<IRepository<ItemMaster>>    itemRepo)
-        => new(eventRepo.Object, holidays.Object, prRepo.Object, itemRepo.Object);
+        Mock<IHolidayProvider>           holidays)
+        => new(eventRepo.Object, holidays.Object);
 
-    private static (Mock<ICalendarEventRepository> eventRepo, Mock<IHolidayProvider> holidays,
-        Mock<IRepository<PurchaseRequest>> prRepo, Mock<IRepository<ItemMaster>> itemRepo) EmptyMocks()
+    private static (Mock<ICalendarEventRepository> eventRepo, Mock<IHolidayProvider> holidays) EmptyMocks()
     {
         Mock<ICalendarEventRepository>     eventRepo = new();
         Mock<IHolidayProvider>             holidays  = new();
-        Mock<IRepository<PurchaseRequest>> prRepo    = new();
-        Mock<IRepository<ItemMaster>>      itemRepo  = new();
 
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         eventRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        eventRepo.Setup(r => r.GetPendingOfficeEventsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         eventRepo.Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CalendarEvent?)null);
@@ -103,7 +100,7 @@ public sealed class DashboardServiceTests
         holidays.Setup(h => h.GetPhHolidaysAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        return (eventRepo, holidays, prRepo, itemRepo);
+        return (eventRepo, holidays);
     }
 
     // ── GetEventsAsync ────────────────────────────────────────────────────────
@@ -120,7 +117,7 @@ public sealed class DashboardServiceTests
         CalendarEventDto holiday = new(null, "Independence Day", null,
             new DateTime(2026, 6, 12, 0, 0, 0, DateTimeKind.Utc), null, true, "Holiday", "Static", null, null);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
@@ -131,7 +128,7 @@ public sealed class DashboardServiceTests
             .ReturnsAsync([holiday]);
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Equal(3, result.Count);
@@ -150,13 +147,13 @@ public sealed class DashboardServiceTests
         CalendarEventDto julyHoliday = new(null, "Ninoy Aquino Day", null,
             new DateTime(2026, 7, 21, 0, 0, 0, DateTimeKind.Utc), null, true, "Holiday", "Static", null, null);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         holidays.Setup(h => h.GetPhHolidaysAsync(2026, It.IsAny<CancellationToken>()))
             .ReturnsAsync([juneHoliday, julyHoliday]);
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Single(result);
@@ -169,7 +166,7 @@ public sealed class DashboardServiceTests
         User user = MakeUser();
         CalendarEvent officeEvent = MakeOfficeEvent(new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc));
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
@@ -180,7 +177,7 @@ public sealed class DashboardServiceTests
             .ThrowsAsync(new HttpRequestException("Nager.Date unavailable"));
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Single(result);
@@ -194,14 +191,14 @@ public sealed class DashboardServiceTests
         Guid otherId = Guid.NewGuid();
         CalendarEvent pending = MakePendingOfficeEvent(new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc), otherId);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([pending]);
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Empty(result);
@@ -213,14 +210,14 @@ public sealed class DashboardServiceTests
         User user = MakeUser();
         CalendarEvent pending = MakePendingOfficeEvent(new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc), user.Id);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([pending]);
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Single(result);
@@ -238,10 +235,10 @@ public sealed class DashboardServiceTests
             new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Utc), null,
             false, "Office");
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .CreateEventAsync(user, dto);
 
         Assert.True(result.IsSuccess);
@@ -259,12 +256,12 @@ public sealed class DashboardServiceTests
             false, "Office");
 
         CalendarEvent? saved = null;
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
             .Callback<CalendarEvent, CancellationToken>((e, _) => saved = e)
             .Returns(Task.CompletedTask);
 
-        await BuildSut(eventRepo, holidays, prRepo, itemRepo).CreateEventAsync(staff, dto);
+        await BuildSut(eventRepo, holidays).CreateEventAsync(staff, dto);
 
         Assert.NotNull(saved);
         Assert.Equal(CalendarEventStatus.Pending, saved!.Status);
@@ -280,12 +277,12 @@ public sealed class DashboardServiceTests
             false, "Office");
 
         CalendarEvent? saved = null;
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
             .Callback<CalendarEvent, CancellationToken>((e, _) => saved = e)
             .Returns(Task.CompletedTask);
 
-        await BuildSut(eventRepo, holidays, prRepo, itemRepo).CreateEventAsync(admin, dto);
+        await BuildSut(eventRepo, holidays).CreateEventAsync(admin, dto);
 
         Assert.NotNull(saved);
         Assert.Equal(CalendarEventStatus.Approved, saved!.Status);
@@ -302,12 +299,12 @@ public sealed class DashboardServiceTests
             false, "Personal");
 
         CalendarEvent? saved = null;
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.AddAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
             .Callback<CalendarEvent, CancellationToken>((e, _) => saved = e)
             .Returns(Task.CompletedTask);
 
-        await BuildSut(eventRepo, holidays, prRepo, itemRepo).CreateEventAsync(staff, dto);
+        await BuildSut(eventRepo, holidays).CreateEventAsync(staff, dto);
 
         Assert.NotNull(saved);
         Assert.Equal(staff.Id, saved!.CreatedById);
@@ -322,10 +319,10 @@ public sealed class DashboardServiceTests
             new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Utc), null,
             false, "Holiday"); // "Holiday" is not a valid create type
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .CreateEventAsync(user, dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -340,10 +337,10 @@ public sealed class DashboardServiceTests
             new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Utc), null,
             false, "Office");
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .CreateEventAsync(user, dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -352,7 +349,7 @@ public sealed class DashboardServiceTests
     // ── GetPendingEventsAsync ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task GetPendingEventsAsync_Admin_ReturnsPendingOrderedByCreatedAt()
+    public async Task GetPendingEventsAsync_Admin_MapsTheRepositoryRowsInOrder()
     {
         User admin = AdminUser();
         DateTime older = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -363,29 +360,30 @@ public sealed class DashboardServiceTests
         p1.CreatedAt = older;
         CalendarEvent p2 = MakePendingOfficeEvent(newer, authorId);
         p2.CreatedAt = newer;
-        CalendarEvent approved = MakeOfficeEvent(older);  // Approved — should NOT appear
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
-        eventRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([p2, approved, p1]);  // out of order — service must sort
+        var (eventRepo, holidays) = EmptyMocks();
+        // Filtering to Pending Office events and ordering by CreatedAt happen in SQL now
+        // (PPDO-188 / O15); the service maps what the repository returns.
+        eventRepo.Setup(r => r.GetPendingOfficeEventsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([p1, p2]);
 
         ServiceResult<IReadOnlyList<PendingCalendarEventDto>> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetPendingEventsAsync(admin);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, result.Value!.Count);
-        Assert.Equal(p1.StartDate, result.Value[0].StartDate);  // older first
+        Assert.Equal(p1.StartDate, result.Value[0].StartDate);
     }
 
     [Fact]
     public async Task GetPendingEventsAsync_NonAdmin_ReturnsForbidden()
     {
         User staff = MakeUser(UserRole.Staff);
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<IReadOnlyList<PendingCalendarEventDto>> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetPendingEventsAsync(staff);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
@@ -399,12 +397,12 @@ public sealed class DashboardServiceTests
         User admin = AdminUser();
         CalendarEvent pending = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid());
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(pending.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .ReviewEventAsync(admin, pending.Id, new ReviewCalendarEventDto(true, null));
 
         Assert.True(result.IsSuccess);
@@ -420,12 +418,12 @@ public sealed class DashboardServiceTests
         User admin = AdminUser();
         CalendarEvent pending = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid());
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(pending.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .ReviewEventAsync(admin, pending.Id, new ReviewCalendarEventDto(false, "Event conflicts with another."));
 
         Assert.True(result.IsSuccess);
@@ -440,12 +438,12 @@ public sealed class DashboardServiceTests
         User admin = AdminUser();
         CalendarEvent pending = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid());
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(pending.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(pending);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .ReviewEventAsync(admin, pending.Id, new ReviewCalendarEventDto(false, null));
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -455,10 +453,10 @@ public sealed class DashboardServiceTests
     public async Task ReviewEventAsync_NonAdmin_ReturnsForbidden()
     {
         User staff = MakeUser(UserRole.Staff);
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .ReviewEventAsync(staff, Guid.NewGuid(), new ReviewCalendarEventDto(true, null));
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
@@ -468,11 +466,11 @@ public sealed class DashboardServiceTests
     public async Task ReviewEventAsync_NotFound_ReturnsNotFound()
     {
         User admin = AdminUser();
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         // GetByIdAsync returns null (default from EmptyMocks)
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .ReviewEventAsync(admin, Guid.NewGuid(), new ReviewCalendarEventDto(true, null));
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -487,7 +485,7 @@ public sealed class DashboardServiceTests
         CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, user.Id);
 
         CalendarEvent? deleted = null;
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
         eventRepo.Setup(r => r.DeleteAsync(It.IsAny<CalendarEvent>(), It.IsAny<CancellationToken>()))
@@ -495,7 +493,7 @@ public sealed class DashboardServiceTests
             .Returns(Task.CompletedTask);
 
         ServiceResult<bool> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .DeleteEventAsync(user, ev.Id);
 
         Assert.True(result.IsSuccess);
@@ -509,12 +507,12 @@ public sealed class DashboardServiceTests
         User admin = AdminUser();
         CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, Guid.NewGuid()); // different creator
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<bool> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .DeleteEventAsync(admin, ev.Id);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
@@ -527,12 +525,12 @@ public sealed class DashboardServiceTests
         User other = MakeUser();
         CalendarEvent ev = MakePendingOfficeEvent(DateTime.UtcNow, other.Id); // created by 'other'
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<bool> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .DeleteEventAsync(user, ev.Id);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
@@ -542,11 +540,11 @@ public sealed class DashboardServiceTests
     public async Task DeleteEventAsync_NotFound_ReturnsNotFound()
     {
         User user = MakeUser();
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         // GetByIdAsync returns null (default from EmptyMocks)
 
         ServiceResult<bool> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .DeleteEventAsync(user, Guid.NewGuid());
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -562,12 +560,12 @@ public sealed class DashboardServiceTests
         UpdateCalendarEventDto dto = new("Updated Title", "Updated desc",
             new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc), null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(user, ev.Id, dto);
 
         Assert.True(result.IsSuccess);
@@ -583,12 +581,12 @@ public sealed class DashboardServiceTests
         CalendarEvent ev = MakePersonalEvent(DateTime.UtcNow, Guid.NewGuid()); // different creator
         UpdateCalendarEventDto dto = new("Hijacked", null, DateTime.UtcNow, null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(admin, ev.Id, dto);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
@@ -599,11 +597,11 @@ public sealed class DashboardServiceTests
     {
         User user = MakeUser();
         UpdateCalendarEventDto dto = new("Title", null, DateTime.UtcNow, null, true);
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         // GetByIdAsync returns null (default from EmptyMocks)
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(user, Guid.NewGuid(), dto);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -614,10 +612,10 @@ public sealed class DashboardServiceTests
     {
         User user = MakeUser();
         UpdateCalendarEventDto dto = new("   ", null, DateTime.UtcNow, null, true);
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(user, Guid.NewGuid(), dto);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -632,12 +630,12 @@ public sealed class DashboardServiceTests
         ev.ReviewedAt   = DateTime.UtcNow;
         UpdateCalendarEventDto dto = new("Revised Title", null, DateTime.UtcNow, null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(staff, ev.Id, dto);
 
         Assert.True(result.IsSuccess);
@@ -655,12 +653,12 @@ public sealed class DashboardServiceTests
         ev.RejectionReason = "Conflicts with another event.";
         UpdateCalendarEventDto dto = new("Fixed Title", null, DateTime.UtcNow, null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(staff, ev.Id, dto);
 
         Assert.True(result.IsSuccess);
@@ -675,12 +673,12 @@ public sealed class DashboardServiceTests
         CalendarEvent ev = MakeOfficeEvent(DateTime.UtcNow, admin.Id);
         UpdateCalendarEventDto dto = new("Admin Revised Title", null, DateTime.UtcNow, null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(admin, ev.Id, dto);
 
         Assert.True(result.IsSuccess);
@@ -694,12 +692,12 @@ public sealed class DashboardServiceTests
         CalendarEvent ev = MakePersonalEvent(DateTime.UtcNow, user.Id); // Approved by construction
         UpdateCalendarEventDto dto = new("Renamed Appointment", null, DateTime.UtcNow, null, true);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByIdAsync(ev.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ev);
 
         ServiceResult<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .UpdateEventAsync(user, ev.Id, dto);
 
         Assert.True(result.IsSuccess);
@@ -712,68 +710,17 @@ public sealed class DashboardServiceTests
         User user = MakeUser();
         CalendarEvent ev = MakeOfficeEvent(new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc), user.Id);
 
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
+        var (eventRepo, holidays) = EmptyMocks();
         eventRepo.Setup(r => r.GetByDateRangeAsync(
                 It.IsAny<DateTime>(), It.IsAny<DateTime>(),
                 user.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([ev]);
 
         IReadOnlyList<CalendarEventDto> result =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo)
+            await BuildSut(eventRepo, holidays)
                 .GetEventsAsync(2026, 6, user.Id);
 
         Assert.Single(result);
         Assert.Equal(user.Id, result[0].CreatedById);
-    }
-
-    // ── GetStatsAsync ─────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetStatsAsync_ReturnsPRCountsByStatus()
-    {
-        List<PurchaseRequest> prs =
-        [
-            new() { Id = Guid.NewGuid(), Status = PRStatus.Open },
-            new() { Id = Guid.NewGuid(), Status = PRStatus.Open },
-            new() { Id = Guid.NewGuid(), Status = PRStatus.PartiallyDelivered },
-            new() { Id = Guid.NewGuid(), Status = PRStatus.FullyDelivered },
-        ];
-
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
-        prRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(prs);
-        itemRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ItemMaster>());
-
-        DashboardStatsDto stats =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo).GetStatsAsync();
-
-        Assert.Equal(4, stats.TotalPRs);
-        Assert.Equal(2, stats.OpenPRs);
-        Assert.Equal(1, stats.PartiallyDeliveredPRs);
-        Assert.Equal(1, stats.FullyDeliveredPRs);
-    }
-
-    [Fact]
-    public async Task GetStatsAsync_ReturnsItemCounts()
-    {
-        List<ItemMaster> items =
-        [
-            new() { Id = Guid.NewGuid(), IsNewItem = false },
-            new() { Id = Guid.NewGuid(), IsNewItem = false },
-            new() { Id = Guid.NewGuid(), IsNewItem = true },
-        ];
-
-        var (eventRepo, holidays, prRepo, itemRepo) = EmptyMocks();
-        prRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<PurchaseRequest>());
-        itemRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(items);
-
-        DashboardStatsDto stats =
-            await BuildSut(eventRepo, holidays, prRepo, itemRepo).GetStatsAsync();
-
-        Assert.Equal(3, stats.TotalItems);
-        Assert.Equal(1, stats.NewItemsPendingReview);
     }
 }

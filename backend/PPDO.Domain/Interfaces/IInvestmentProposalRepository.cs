@@ -21,6 +21,22 @@ public interface IInvestmentProposalRepository
     /// </summary>
     Task<ProposalProjectPage> ListProjectsAsync(ProposalProjectQuery query, CancellationToken ct = default);
 
+    /// <summary>
+    /// PPDO-180 — projects per config office and proposal status, for the dashboard. <b>One</b>
+    /// grouped <c>COUNT</c> over the same scoped rows as <see cref="ListProjectsAsync"/> (so the
+    /// counts always agree with the list), left-joined to the proposals. A project with no proposal
+    /// is counted under a null status. Search, skip and take are ignored.
+    /// </summary>
+    Task<IReadOnlyList<ProposalStatusCount>> CountByOfficeAndStatusAsync(
+        ProposalProjectQuery query, CancellationToken ct = default);
+
+    /// <summary>
+    /// PPDO-180 — the first <paramref name="take"/> projects in scope that still need a proposal:
+    /// none first, then drafts, each by office, program and project ref code. Final ones never appear.
+    /// </summary>
+    Task<IReadOnlyList<ProposalAttentionRow>> ListNeedingAttentionAsync(
+        ProposalProjectQuery query, int take, CancellationToken ct = default);
+
     /// <summary>Whether any of these projects has a proposal: the delete guard for programs and offices.</summary>
     Task<bool> ExistsForAnyProjectAsync(IReadOnlyList<int> aipProjectIds, CancellationToken ct = default);
 
@@ -109,6 +125,21 @@ public sealed record ProposalProjectRow(
     string?   ProposalStatus,
     DateTime? UpdatedAt,
     string?   UpdatedByName);
+
+/// <summary>
+/// PPDO-180 — how many projects of one config office have a proposal in <paramref name="Status"/>
+/// (<c>Draft</c> or <c>Final</c>), or none at all when it is null. <paramref name="OfficeId"/> is null
+/// for an AIP office not matched to a config office.
+/// </summary>
+public sealed record ProposalStatusCount(int? OfficeId, string? Status, int Count);
+
+/// <summary>PPDO-180 — one project that still needs a proposal; <paramref name="ProposalId"/> is null for none.</summary>
+public sealed record ProposalAttentionRow(
+    int     AipProjectId,
+    string  ProjectRefCode,
+    string  ProjectName,
+    int?    ProposalId,
+    string? ProposalStatus);
 
 /// <summary>A page of <see cref="ProposalProjectRow"/>. <see cref="TotalCount"/> counts the whole match.</summary>
 public sealed record ProposalProjectPage(IReadOnlyList<ProposalProjectRow> Items, int TotalCount);

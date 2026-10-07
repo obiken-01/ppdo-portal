@@ -42,9 +42,13 @@ public interface IBudgetPlanningDashboardService
     /// (DECISION F). <paramref name="divisionId"/> is only read when
     /// <paramref name="seeAllDivisions"/> is false.
     /// </summary>
+    /// <param name="caller">
+    /// PPDO-180 — whose scope the Investment proposals band is counted in (the Investment Proposals
+    /// list's own scope). Null leaves <see cref="OfficeDashboardDto.Proposals"/> out.
+    /// </param>
     Task<OfficeDashboardDto> GetOfficeDashboardAsync(
         int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
-        CancellationToken cancellationToken = default);
+        User? caller = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// One row per office in <paramref name="caller"/>'s cross-office scope, for the dashboard's

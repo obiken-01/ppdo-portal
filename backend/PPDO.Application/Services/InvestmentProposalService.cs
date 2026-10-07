@@ -138,6 +138,60 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             .ToList());
     }
 
+    // ── Dashboard counts (PPDO-180) ───────────────────────────────────────────
+
+    /// <summary>How many projects the dashboard band lists by name.</summary>
+    public const int AttentionCount = 3;
+
+    public async Task<OfficeProposalSummaryDto?> GetOfficeSummaryAsync(
+        int officeId, int fiscalYear, User caller, CancellationToken ct = default)
+    {
+        if (!AipFiscalYears.IsEntered(fiscalYear)) return null;
+        AipRecord? record = await _aip.GetLatestByFiscalYearAsync(fiscalYear, ct);
+        if (record is null) return null;
+
+        // The list's own scope, so the band can never show a project the list would not. An
+        // out-of-scope officeId is clamped to the caller's own office, as the list does.
+        ProposalProjectQuery query = await ScopedQueryAsync(
+            record, caller, (await ReadOfficeScopeAsync(caller, ct)).Clamp(officeId),
+            search: null, skip: 0, take: null, ct);
+
+        IReadOnlyList<ProposalStatusCount> counts = await _proposals.CountByOfficeAndStatusAsync(query, ct);
+        IReadOnlyList<ProposalAttentionRow> attention =
+            await _proposals.ListNeedingAttentionAsync(query, AttentionCount, ct);
+
+        return new OfficeProposalSummaryDto(
+            Tally(counts),
+            attention.Select(r => new ProposalAttentionDto(
+                r.AipProjectId, r.ProjectRefCode, r.ProjectName, r.ProposalId, r.ProposalStatus ?? "None"))
+                .ToList());
+    }
+
+    public async Task<IReadOnlyDictionary<int, ProposalCountsDto>> CountByOfficeAsync(
+        int fiscalYear, User caller, CancellationToken ct = default)
+    {
+        if (!AipFiscalYears.IsEntered(fiscalYear)) return new Dictionary<int, ProposalCountsDto>();
+        AipRecord? record = await _aip.GetLatestByFiscalYearAsync(fiscalYear, ct);
+        if (record is null) return new Dictionary<int, ProposalCountsDto>();
+
+        // Clamp(null): every office for a caller who reads them all, their own office otherwise.
+        ProposalProjectQuery query = await ScopedQueryAsync(
+            record, caller, (await ReadOfficeScopeAsync(caller, ct)).Clamp(null),
+            search: null, skip: 0, take: null, ct);
+
+        // An AIP office not matched to a config office (OfficeId null) belongs to no dashboard row.
+        return (await _proposals.CountByOfficeAndStatusAsync(query, ct))
+            .Where(c => c.OfficeId is not null)
+            .GroupBy(c => c.OfficeId!.Value)
+            .ToDictionary(g => g.Key, g => Tally(g.ToList()));
+    }
+
+    /// <summary>Folds per-status rows into final / draft / none. A null status is "no proposal".</summary>
+    private static ProposalCountsDto Tally(IReadOnlyList<ProposalStatusCount> rows) => new(
+        rows.Where(r => r.Status == InvestmentProposalStatus.Final).Sum(r => r.Count),
+        rows.Where(r => r.Status == InvestmentProposalStatus.Draft).Sum(r => r.Count),
+        rows.Where(r => r.Status is null).Sum(r => r.Count));
+
     /// <summary>
     /// The caller's read scope as a query: the office axis (already clamped) and the division axis,
     /// built from the same <see cref="AipReadScope"/> rule AIP Entry uses.

@@ -1,3 +1,5 @@
+using PPDO.Domain.Common;
+
 namespace PPDO.Domain.Entities;
 
 /// <summary>
@@ -8,7 +10,7 @@ namespace PPDO.Domain.Entities;
 /// FundingSourceSnapshot preserves the funding source code at import time so
 /// historical records stay accurate if config is edited later.
 /// </summary>
-public sealed class AipActivity
+public sealed class AipActivity : IRowVersioned
 {
     /// <summary>Primary key (INT IDENTITY).</summary>
     public int Id { get; set; }
@@ -103,6 +105,34 @@ public sealed class AipActivity
     /// </para>
     /// </summary>
     public int? DivisionId { get; set; }
+    // ── Concurrency + update tracking (V18-71 / PPDO-117) ─────────────────────
+
+    /// <summary>
+    /// Optimistic-concurrency token. <b>SQL Server maintains this — never assign to it.</b>
+    /// Mapped with <c>.IsRowVersion()</c>, so EF puts it in the <c>WHERE</c> clause of every
+    /// UPDATE and raises <c>DbUpdateConcurrencyException</c> when zero rows match, i.e. when
+    /// someone else saved this row since it was loaded.
+    ///
+    /// Chosen over comparing <see cref="UpdatedAt"/> because it <b>cannot be forgotten</b>: the
+    /// database bumps it on every update, whereas a timestamp comparison would depend on every
+    /// one of the write paths remembering to set it.
+    /// </summary>
+    public byte[] RowVersion { get; set; } = [];
+
+    /// <summary>
+    /// When this activity was last changed. Null for rows untouched since PPDO-117 shipped.
+    ///
+    /// ⚠️ This is <b>not</b> the concurrency check — <see cref="RowVersion"/> is. This exists so a
+    /// rejected save can say <i>when</i> the other edit happened. Stored UTC; render as UTC+8.
+    /// </summary>
+    public DateTime? UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Who last changed this activity. Null for rows untouched since PPDO-117 shipped. Supplies
+    /// the name in the conflict message; like <see cref="UpdatedAt"/> it is for the message, not
+    /// the detection.
+    /// </summary>
+    public Guid? UpdatedById { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────
 
@@ -114,4 +144,6 @@ public sealed class AipActivity
 
     /// <summary>The division this activity is tagged with. Null when untagged.</summary>
     public Division? Division { get; set; }
+    /// <summary>The user behind <see cref="UpdatedById"/>. Null until first edited.</summary>
+    public User? UpdatedBy { get; set; }
 }

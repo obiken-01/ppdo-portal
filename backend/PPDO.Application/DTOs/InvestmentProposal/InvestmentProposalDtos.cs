@@ -19,6 +19,28 @@ public sealed record ProposalListItemDto(
     DateTime? UpdatedAt,
     string?   UpdatedByName);
 
+/// <summary>
+/// PPDO-180 — projects by proposal status, for the dashboard: a <c>Final</c> proposal, a
+/// <c>Draft</c>, or none yet. Their sum is the projects in scope.
+/// </summary>
+public sealed record ProposalCountsDto(int Final, int Draft, int None);
+
+/// <summary>PPDO-180 — a project still needing a proposal. <c>Status</c> is <c>None</c> or <c>Draft</c>.</summary>
+public sealed record ProposalAttentionDto(
+    int     AipProjectId,
+    string  ProjectRefCode,
+    string  ProjectName,
+    int?    ProposalId,
+    string  Status);
+
+/// <summary>
+/// PPDO-180 — the dashboard's Investment proposals band for one office: the counts, and the first
+/// few projects that still need one (none first, then drafts).
+/// </summary>
+public sealed record OfficeProposalSummaryDto(
+    ProposalCountsDto                   Counts,
+    IReadOnlyList<ProposalAttentionDto> NeedsAttention);
+
 /// <summary>A page of <see cref="ProposalListItemDto"/>. <see cref="TotalCount"/> counts the whole match.</summary>
 public sealed record ProposalListPageDto(
     IReadOnlyList<ProposalListItemDto> Items, int TotalCount, int Page, int PageSize);

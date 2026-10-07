@@ -69,7 +69,12 @@ export default function InvestmentProposalsPage() {
   const fiscalYear = pickedYear ?? resolveEnteredFiscalYear(null, defaultFiscalYear, YEARS);
   const beforeEntry = fiscalYear < FIRST_ENTERED_FISCAL_YEAR;
 
-  const [officeId, setOfficeId] = useState<number | null>(null);
+  // PPDO-180 — the dashboard's all-offices card opens this list on one office. Ignored for a guest
+  // reader: the server pins them to their own office whatever is asked.
+  const requestedOffice = Number(searchParams.get("officeId"));
+  const [officeId, setOfficeId] = useState<number | null>(
+    Number.isInteger(requestedOffice) && requestedOffice > 0 ? requestedOffice : null
+  );
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");

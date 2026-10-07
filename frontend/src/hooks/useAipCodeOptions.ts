@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { listCcTypologies, listEsreCodes } from "@/lib/config";
+import { cacheKey, loadThroughCache } from "@/lib/reference-cache";
 import type { ClimateChangeTypologyResponse, EsreCodeResponse } from "@/types/config";
 
 /**
@@ -42,8 +43,19 @@ const EMPTY: AipCodeOptions = { esre: [], ccTypology: [], loaded: false };
 /**
  * ⚠️ Module scope, so it survives client-side navigation between AIP pages and is shared by every
  * component mounted from one load. Reset only by a hard reload.
+ *
+ * ↩️ PPDO-111 — the lists now come through the reference cache: a repeat visit gets them from
+ * IndexedDB at once, and a background re-fetch updates every mounted picker if a list changed. So
+ * a config edit in another tab now shows up within one page load rather than after a reload.
  */
-let cached: Promise<AipCodeOptions> | null = null;
+let current: AipCodeOptions = EMPTY;
+let started = false;
+const listeners = new Set<(o: AipCodeOptions) => void>();
+
+function publish(next: AipCodeOptions) {
+  current = next;
+  listeners.forEach((l) => l(next));
+}
 
 function toOption(row: EsreCodeResponse | ClimateChangeTypologyResponse): AipCodeOption {
   return {
@@ -57,29 +69,40 @@ function toOption(row: EsreCodeResponse | ClimateChangeTypologyResponse): AipCod
   };
 }
 
-async function fetchOptions(): Promise<AipCodeOptions> {
+function startLoading() {
+  if (started) return;
+  started = true;
+  // `loaded` turns true once BOTH lists have answered — from the cache, the server, or a failure.
+  const settled = { esre: false, ccTypology: false };
+  const settle = (side: "esre" | "ccTypology", rows: AipCodeOption[]) => {
+    settled[side] = true;
+    publish({ ...current, [side]: rows, loaded: settled.esre && settled.ccTypology });
+  };
   // ⚠️ Neither list is a prerequisite for editing an activity. A config outage must cost the
   // encoder the picker's SUGGESTIONS, never the ability to save the rest of the row — so each
   // side falls back to empty rather than rejecting. AipCodeSelect keeps whatever is already
   // stored selectable regardless, which is what stops an outage from silently blanking a field.
-  const [esre, ccTypology] = await Promise.all([
-    listEsreCodes({ active: "true" }).then((r) => r.map(toOption)).catch(() => []),
-    listCcTypologies({ active: "true" }).then((r) => r.map(toOption)).catch(() => []),
-  ]);
-  return { esre, ccTypology, loaded: true };
+  void loadThroughCache(
+    cacheKey("esre-codes", { active: "true" }),
+    () => listEsreCodes({ active: "true" }),
+    (rows) => settle("esre", rows.map(toOption)),
+    () => settle("esre", []));
+  void loadThroughCache(
+    cacheKey("cc-typologies", { active: "true" }),
+    () => listCcTypologies({ active: "true" }),
+    (rows) => settle("ccTypology", rows.map(toOption)),
+    () => settle("ccTypology", []));
 }
 
 export function useAipCodeOptions(): AipCodeOptions {
-  const [options, setOptions] = useState<AipCodeOptions>(EMPTY);
+  const [options, setOptions] = useState<AipCodeOptions>(current);
 
   useEffect(() => {
-    let cancelled = false;
-    cached ??= fetchOptions();
-    void cached.then((o) => {
-      if (!cancelled) setOptions(o);
-    });
+    listeners.add(setOptions);
+    setOptions(current); // anything that arrived between the first render and this effect
+    startLoading();
     return () => {
-      cancelled = true;
+      listeners.delete(setOptions);
     };
   }, []);
 

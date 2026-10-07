@@ -34,6 +34,8 @@ public sealed class EsreCodeServiceTests
     {
         Mock<IEsreCodeRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.AddAsync(It.IsAny<EsreCode>(), It.IsAny<CancellationToken>()))
             .Callback<EsreCode, CancellationToken>((e, _) => seed.Add(e))
             .Returns(Task.CompletedTask);
@@ -174,6 +176,8 @@ public sealed class EsreCodeServiceTests
         Mock<IEsreCodeRepository> repo = new();
         List<EsreCode> seed = [Code(1, "SS", active: false)];
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
+        repo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) => (await repo.Object.GetAllAsync(ct)).FirstOrDefault(e => e.Id == id));
         repo.Setup(r => r.UpdateAsync(It.IsAny<EsreCode>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
