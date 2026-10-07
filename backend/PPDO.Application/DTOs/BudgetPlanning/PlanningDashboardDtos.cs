@@ -2,25 +2,6 @@
 
 public record StatusBreakdownDto(string Status, int Count);
 
-public record LdipSummaryDto(int Total, IReadOnlyList<StatusBreakdownDto> Breakdown);
-
-public record AipSummaryDto(int Total, IReadOnlyList<StatusBreakdownDto> Breakdown);
-
-public record WfpSummaryDto(int FinalCount, int ActiveOfficeCount);
-
-/// <summary>WFP status for one active office. WfpStatus = "Draft" | "Final" | "Not started".</summary>
-public record WfpOfficeStatusDto(int OfficeId, string OfficeCode, string OfficeName, string WfpStatus, int? AipRecordId);
-
-public record PlanningDashboardDto(
-    int FiscalYear,
-    IReadOnlyList<int> AvailableFiscalYears,
-    LdipSummaryDto Ldip,
-    AipSummaryDto Aip,
-    WfpSummaryDto Wfp,
-    IReadOnlyList<WfpOfficeStatusDto> WfpByOffice,
-    AllocationSetupOverviewDto Allocation
-);
-
 /// <summary>
 /// One line of the dashboard's Recent activity band (PPDO-181 / B4). The server sends the sentence,
 /// not the audit row's table name, action code or record id — a reader should never see
