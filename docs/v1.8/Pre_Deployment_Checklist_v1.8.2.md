@@ -1,7 +1,7 @@
 ---
 status: current
 version: v1.8.2
-tickets: PPDO-111, PPDO-112, PPDO-113, PPDO-117…120, PPDO-141, PPDO-142, PPDO-178…181, PPDO-187…191, PPDO-193
+tickets: PPDO-111, PPDO-112, PPDO-113, PPDO-192, PPDO-117…120, PPDO-141, PPDO-142, PPDO-178…181, PPDO-187…191, PPDO-193
 ---
 
 # v1.8.2 — Pre-Deployment Checklist
@@ -113,7 +113,7 @@ the columns fails every AIP read, which is the failure the "migration first" rul
 - [x] ✅ `APP_VERSION` reads `v1.8.2` (`frontend/src/lib/version.ts`).
 - [x] ✅ **Backend tests green** on the release branch: 3,140 passed, 0 failed (2026-10-07, at the
       PPDO-193 merge, #457). Re-run on the day with `cd backend && dotnet test`.
-- [x] ✅ **Frontend tests green:** Vitest 48 passed (2026-10-07, at #458). `cd frontend && npm test`.
+- [x] ✅ **Frontend tests green:** Vitest 72 passed (2026-10-07, at #460). `cd frontend && npm test`.
 - [ ] **CLAUDE.md's Implementation Status** gets a v1.8.2 row and the footer date stamp, in the merge
       that takes v1.8.2 to `main` (the release ritual in CLAUDE.md).
 - [ ] ⚠️ **Watch the first deploy run end to end** (PPDO-190, #443). The GitHub Actions in
@@ -151,8 +151,9 @@ the columns fails every AIP read, which is the failure the "migration first" rul
       the same old tab:
       1. Its saves send no `rowVersion`, so they still save **unguarded** (and each logs the warning
          below, which delays PPDO-121's window).
-      2. It holds the old version-1 IndexedDB connection, which blocks the browser cache upgrade
-         (PPDO-112). New tabs fall back to live fetches after ~3 s, so nothing breaks, it is just
+      2. If it has a browser cache open (none exists yet in UAT or production; it arrives with
+         v1.8.2), an old connection would block the upgrade to version 3 (PPDO-112, PPDO-192). New
+         tabs fall back to live fetches after ~3 s, so nothing breaks, it is just
          slower until the old tab closes.
       3. It still shows the pre-redesign dashboard.
 
@@ -184,6 +185,9 @@ and a PPDO reviewer.
       regression check: two **different** activities saved at once → no panel for either.
 - [ ] **Draft recovery** (#456): type in an activity's details, close the tab with **Leave**, reopen
       → "A local draft from … was found" banner; Restore brings the text back.
+- [ ] **Expenditure-line draft** (#460): + Add Account, pick an account, type an amount, close the tab
+      with **Leave**, reopen → "A local draft of a new expenditure line…" banner above Expenditures;
+      Restore opens the add row filled in. Save it, reopen: no banner and no duplicate line.
 - [ ] Saving an activity's details refreshes the submit checklist; the ceiling strip has **no** amber
       "as of" caption (#458 — it only appears when that refresh fails).
 
@@ -224,7 +228,7 @@ has stopped appearing.
 | Code | Revert the merge on `main` (or redeploy the previous commit) | Do this **before** the migration's `Down` |
 | `AddAipConcurrencyTokens` | `dotnet ef database update 20261005015736_PriceIndexUniqueByStockCardNo` | Loses only the new edit stamps |
 | Hashed refresh tokens | Reverting the code signs everyone out **again** (hashes stop matching) | Prefer fixing forward |
-| Browser caches (IndexedDB) | Nothing to undo server-side | A broken cache falls back to live fetches |
+| Browser caches (IndexedDB) | Nothing to undo server-side | ⚠️ One-way: v1.8.2 creates `ppdo-aip-cache` at **version 3**. Code that opens it at a lower version (a revert to before PPDO-192) gets `VersionError`, caught as "no database": pickers fetch live and drafts stop until site data is cleared. Degraded, not broken |
 
 ---
 
