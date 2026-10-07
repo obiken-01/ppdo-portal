@@ -65,16 +65,31 @@ public sealed class AipXlsmParser : IAipXlsmParser
         ["OTHERS_"]   = "OTHERS",
     };
 
+    private const string UnreadableWorkbookMessage =
+        "This file could not be read as an Excel workbook. It may be corrupted, or saved in a "
+        + "different format with an .xlsm extension.";
+
     /// <inheritdoc />
     public Dictionary<string, List<ParsedAipOffice>> Parse(Stream xlsmStream)
     {
         Dictionary<string, List<ParsedAipOffice>> result = new(StringComparer.OrdinalIgnoreCase);
         List<string> globalErrors = new();
 
+        // PPDO-47 — only opening the workbook is guarded. A file that is not a readable workbook
+        // becomes a 400 the uploader can act on; anything thrown while parsing the sheets is a bug
+        // and must still escape as a logged 500, not be blamed on the file.
+        XLWorkbook wb;
         try
         {
-            using XLWorkbook wb = new(xlsmStream);
+            wb = new XLWorkbook(xlsmStream);
+        }
+        catch (Exception ex) when (ex is FileFormatException or InvalidDataException)
+        {
+            throw new AipParseException([UnreadableWorkbookMessage]);
+        }
 
+        using (wb)
+        {
             foreach (IXLWorksheet ws in wb.Worksheets)
             {
                 string? sector = DetectSector(ws.Name);
@@ -86,14 +101,6 @@ public sealed class AipXlsmParser : IAipXlsmParser
                 else
                     result[sector] = offices;
             }
-        }
-        catch (FileFormatException)
-        {
-            throw new AipParseException(["This file could not be read as an Excel workbook. It may be corrupted, or saved in a different format with an .xlsm extension."]);
-        }
-        catch (InvalidDataException)
-        {
-            throw new AipParseException(["This file could not be read as an Excel workbook. It may be corrupted, or saved in a different format with an .xlsm extension."]);
         }
 
         if (result.Count == 0)
