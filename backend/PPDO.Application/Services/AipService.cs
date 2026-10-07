@@ -118,12 +118,8 @@ public sealed class AipService : IAipService
     public async Task<IReadOnlyList<AipRecordDto>> GetAllAsync(
         int? fiscalYear, string? status, User caller, CancellationToken ct = default)
     {
-        IEnumerable<AipRecord> q = await _aipRepo.GetAllAsync(ct);
-        if (fiscalYear.HasValue) q = q.Where(r => r.FiscalYear == fiscalYear.Value);
-        if (!string.IsNullOrWhiteSpace(status))
-            q = q.Where(r => r.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase));
-
-        List<AipRecord> records = q.OrderByDescending(r => r.UploadedAt).ToList();
+        // PPDO-42 — filtered and ordered in SQL, not by loading every record first.
+        IReadOnlyList<AipRecord> records = await _aipRepo.GetRecordsAsync(fiscalYear, status, ct);
 
         // Scope office count to only the AIP ids being returned (not the whole table).
         List<int> aipIds = records.Select(r => r.Id).ToList();

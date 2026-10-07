@@ -26,6 +26,20 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipRecord>> GetRecordsAsync(
+        int? fiscalYear, string? status, CancellationToken ct = default)
+    {
+        IQueryable<AipRecord> q = _context.Set<AipRecord>().AsNoTracking();
+        if (fiscalYear is int fy) q = q.Where(r => r.FiscalYear == fy);
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            string wanted = status.Trim();
+            q = q.Where(r => r.Status == wanted);
+        }
+        return await q.OrderByDescending(r => r.UploadedAt).ToListAsync(ct);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdAsync(
         int aipRecordId, CancellationToken ct = default)
         => await _context.Set<AipOffice>()

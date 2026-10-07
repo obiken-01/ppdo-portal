@@ -185,6 +185,15 @@ public sealed partial class AipServiceTests
 
         int nextAipId = 100;
         aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(aipSeed);
+        // PPDO-42 — the list filters now run in SQL (AipRecordListRepositoryTests). This stand-in
+        // applies the same rule so the list tests below keep exercising the service's own logic.
+        aipRepo.Setup(r => r.GetRecordsAsync(It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? fy, string? status, CancellationToken _) => (IReadOnlyList<AipRecord>)aipSeed
+                .Where(r => fy is null || r.FiscalYear == fy)
+                .Where(r => string.IsNullOrWhiteSpace(status)
+                    || r.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(r => r.UploadedAt)
+                .ToList());
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = nextAipId++; aipSeed.Add(e); })
             .Returns(Task.CompletedTask);
@@ -412,12 +421,15 @@ public sealed partial class AipServiceTests
                 UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Final" },
         ];
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null, HostCaller());
 
         Assert.Single(result);
         Assert.Equal(2027, result[0].FiscalYear);
+        // PPDO-42 — the filter is handed to the repository, never applied to a whole-table load.
+        aipRepo.Verify(r => r.GetRecordsAsync(2027, null, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── RAL-93: scoped query verification ────────────────────────────────────

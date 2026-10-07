@@ -15,6 +15,14 @@ public interface IAipRepository : IRepository<AipRecord>
     /// </summary>
     Task<AipRecord?> GetByIntIdAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// AIP records for the list page, newest upload first, filtered in SQL (PPDO-42). A null
+    /// <paramref name="fiscalYear"/> or blank <paramref name="status"/> means no filter on it.
+    /// The status match is case-insensitive through the column's collation. Read-only, not tracked.
+    /// </summary>
+    Task<IReadOnlyList<AipRecord>> GetRecordsAsync(
+        int? fiscalYear, string? status, CancellationToken ct = default);
+
     /// <summary>AipOffice rows WHERE aip_record_id = <paramref name="aipRecordId"/>.</summary>
     Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdAsync(int aipRecordId, CancellationToken ct = default);
 

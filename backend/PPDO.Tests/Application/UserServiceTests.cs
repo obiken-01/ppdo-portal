@@ -98,13 +98,27 @@ public sealed class UserServiceTests
         Mock<IUserRepository> repoMock,
         Mock<IOfficeRepository>? officeMock = null,
         Mock<IDivisionRepository>? divisionMock = null,
-        Mock<IAuditService>? auditMock = null) =>
-        new(repoMock.Object,
-            (officeMock ?? DefaultOffices()).Object,
-            (divisionMock ?? DefaultDivisions()).Object,
+        Mock<IAuditService>? auditMock = null)
+    {
+        Mock<IOfficeRepository>   offices   = officeMock   ?? DefaultOffices();
+        Mock<IDivisionRepository> divisions = divisionMock ?? DefaultDivisions();
+
+        // PPDO-42 — UserService reads one office / division by id. Answer from each mock's
+        // GetAllAsync seed, so a test only ever declares its rows once.
+        offices.Setup(o => o.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) =>
+                (await offices.Object.GetAllAsync(ct) ?? []).FirstOrDefault(o => o.Id == id));
+        divisions.Setup(d => d.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async (int id, CancellationToken ct) =>
+                (await divisions.Object.GetAllAsync(ct) ?? []).FirstOrDefault(d => d.Id == id));
+
+        return new(repoMock.Object,
+            offices.Object,
+            divisions.Object,
             NullLogger<UserService>.Instance,
             (auditMock ?? new Mock<IAuditService>()).Object,
             new LandingPageResolver(new PermissionService()));
+    }
 
     private static Mock<IUserRepository> RepoThatSaves()
     {
@@ -1867,12 +1881,24 @@ public sealed class UserServiceTests
         repo.Setup(r => r.GetByIdWithDivisionAsync(target.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(target);
 
+        // PPDO-42 — built directly, not through BuildSut: its by-id stand-in answers from
+        // GetAllAsync, which would make the "never the whole table" check below meaningless.
+        Mock<IDivisionRepository> divisions = new();
+        divisions.Setup(d => d.GetByIntIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Division { Id = 5, OfficeId = GuestOfficeId, Name = "Office Division", IsActive = true });
+        UserService sut = new(repo.Object, DefaultOffices().Object, divisions.Object,
+            NullLogger<UserService>.Instance, Mock.Of<IAuditService>(),
+            new LandingPageResolver(new PermissionService()));
+
         ServiceResult<OfficeUserDto> result =
-            await BuildSut(repo).SetOfficeUserDivisionAsync(requester, target.Id, divisionId: 5);
+            await sut.SetOfficeUserDivisionAsync(requester, target.Id, divisionId: 5);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(5, result.Value!.DivisionId);
         Assert.Equal(5, target.DivisionId);
+        // PPDO-42 — validating and attaching the division reads that one row, never the table.
+        divisions.Verify(d => d.GetByIntIdAsync(5, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        divisions.Verify(d => d.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
