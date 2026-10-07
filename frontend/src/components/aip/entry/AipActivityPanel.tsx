@@ -148,6 +148,7 @@ export default function AipActivityPanel({
               canEdit={canEdit}
               lockedReason={lockedReason}
               onDeleted={onDeleted}
+              onKept={onDetails}
             />
           </div>
         </div>

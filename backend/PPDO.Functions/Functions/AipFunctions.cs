@@ -439,7 +439,16 @@ public sealed class AipFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _aip.DeleteActivityAsync(activityId, caller!, ct), ct);
+        // PPDO-193 (V18-71) — DELETE carries no body, so the version rides on the query string, as
+        // on the expenditure DELETE. Same staged-rollout rule: absent is allowed for now, malformed
+        // is a 400.
+        (bool versionOk, byte[]? rowVersion) = ConfigHttp.DecodeRowVersion(req.Query["rowVersion"]);
+        if (!versionOk)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<AipDeleteResultDto>.Fail("rowVersion is not valid base64."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _aip.DeleteActivityAsync(activityId, caller!, rowVersion, ct), ct);
     }
 
     // ── DELETE /api/budget-planning/aip/{id}  (archive) ──────────────────────

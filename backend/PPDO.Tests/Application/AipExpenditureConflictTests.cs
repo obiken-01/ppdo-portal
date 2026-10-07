@@ -44,6 +44,7 @@ public sealed class AipExpenditureConflictTests
     private static readonly Guid   OtherEditorId  = Guid.NewGuid();
 
     private readonly Mock<IAipRepository>             _aipRepo     = new();
+    private readonly Mock<Microsoft.Extensions.Logging.ILogger<AipExpenditureService>> _logger = new();
     private readonly Mock<IAipExpenditureRepository>  _expRepo     = new();
     private readonly Mock<IAipActivityTotalsService>  _totals      = new();
     private readonly Mock<IAipCeilingService>         _ceiling     = new();
@@ -110,7 +111,7 @@ public sealed class AipExpenditureConflictTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
         AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
-        _users.Object, NullLogger<AipExpenditureService>.Instance);
+        _users.Object, _logger.Object);
 
     /// <summary>Makes the save reject, and makes the reload behave like a real one.</summary>
     private void ArrangeConflict()
@@ -293,5 +294,39 @@ public sealed class AipExpenditureConflictTests
         await Build().DeleteAsync(LineId, Encoder, StaleVersion);
 
         _expRepo.Verify(r => r.ExpectRowVersion(_line, StaleVersion), Times.Once);
+    }
+
+    // ── PPDO-193: the unguarded-write warning PPDO-121 waits on ───────────────
+
+    [Fact]
+    public async Task Update_WithNoVersion_LogsTheUnguardedWarning()
+    {
+        await Build().UpdateAsync(LineId, Dto(), Encoder);
+
+        UnguardedWriteWarning.Verify(_logger, Times.Once());
+    }
+
+    [Fact]
+    public async Task Update_WithAVersion_LogsNoUnguardedWarning()
+    {
+        await Build().UpdateAsync(LineId, Dto(), Encoder, StaleVersion);
+
+        UnguardedWriteWarning.Verify(_logger, Times.Never());
+    }
+
+    [Fact]
+    public async Task Delete_WithNoVersion_LogsTheUnguardedWarning()
+    {
+        await Build().DeleteAsync(LineId, Encoder);
+
+        UnguardedWriteWarning.Verify(_logger, Times.Once());
+    }
+
+    [Fact]
+    public async Task Delete_WithAVersion_LogsNoUnguardedWarning()
+    {
+        await Build().DeleteAsync(LineId, Encoder, StaleVersion);
+
+        UnguardedWriteWarning.Verify(_logger, Times.Never());
     }
 }

@@ -146,8 +146,15 @@ public interface IAipService
     /// <summary>
     /// Deletes an activity with its ledger rows and comments; on an entered year later activities
     /// renumber (PPDO-88). Conflict when the renumber loses a race.
+    /// <para>
+    /// PPDO-193 (V18-71): <paramref name="expectedRowVersion"/> is the version the caller loaded.
+    /// When the row has moved on since, nothing is deleted and the result is a Conflict carrying
+    /// the standard <see cref="AipConflictDto{T}"/> payload; NotFound when it was already deleted.
+    /// Null deletes unguarded (the staged rollout until PPDO-121).
+    /// </para>
     /// </summary>
-    Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default);
+    Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(
+        int activityId, User caller, byte[]? expectedRowVersion = null, CancellationToken ct = default);
 
     /// <summary>
     /// RAL-181 — seeds bare-shell AipProgram rows (Name+RefCode only, FunctionBand=CORE) from

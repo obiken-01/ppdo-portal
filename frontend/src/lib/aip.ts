@@ -205,8 +205,19 @@ export async function deleteAipProject(projectId: number): Promise<AipDeleteResu
   return unwrap(data);
 }
 
-export async function deleteAipActivity(activityId: number): Promise<AipDeleteResult> {
-  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(`/budget-planning/aip/activities/${activityId}`);
+/**
+ * PPDO-193 (V18-71) — `rowVersion` is the version the caller loaded. On the query string, as on
+ * `deleteAipExpenditure`, because a DELETE has no body. A stale one is a 409 with the activity
+ * conflict payload (read it with `aipConflict`) and nothing is deleted; omitting it deletes
+ * unguarded until PPDO-121.
+ */
+export async function deleteAipActivity(
+  activityId: number, rowVersion?: string | null
+): Promise<AipDeleteResult> {
+  const query = rowVersion ? `?rowVersion=${encodeURIComponent(rowVersion)}` : "";
+  const { data } = await api.delete<ApiResponse<AipDeleteResult>>(
+    `/budget-planning/aip/activities/${activityId}${query}`
+  );
   return unwrap(data);
 }
 

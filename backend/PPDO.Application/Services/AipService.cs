@@ -1688,7 +1688,8 @@ public sealed class AipService : IAipService
             renumber ? () => RenumberProjectsAsync(program, ct) : null, ct);
     }
 
-    public async Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(int activityId, User caller, CancellationToken ct = default)
+    public async Task<ServiceResult<AipDeleteResultDto>> DeleteActivityAsync(
+        int activityId, User caller, byte[]? expectedRowVersion = null, CancellationToken ct = default)
     {
         AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
         if (activity is null)
@@ -1711,11 +1712,32 @@ public sealed class AipService : IAipService
 
         bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
-        return await DeleteNodeAsync(
-            office, AipCommentNodeType.Activity, "aip_activities", activity.Id, activity.RefCode, activity.Name,
-            [], [], [activity],
-            async () => { await _activityRepo.DeleteAsync(activity, ct); await _activityRepo.SaveChangesAsync(ct); },
-            renumber ? () => RenumberActivitiesAsync(project, ct) : null, ct);
+        try
+        {
+            return await DeleteNodeAsync(
+                office, AipCommentNodeType.Activity, "aip_activities", activity.Id, activity.RefCode, activity.Name,
+                [], [], [activity],
+                async () =>
+                {
+                    await _activityRepo.DeleteAsync(activity, ct);
+                    AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "activity", activity.Id, "delete", caller.Id);
+
+                    // PPDO-193 (V18-71) — declared here, after the ledger and comment deletes, and
+                    // immediately before this save. Every save accepts all changes, which resets the
+                    // declared OriginalValue to the copy read in this request; declared any earlier,
+                    // the check would pass every time.
+                    _activityRepo.ExpectRowVersion(activity, expectedRowVersion);
+                    await _activityRepo.SaveChangesAsync(ct);
+                },
+                renumber ? () => RenumberActivitiesAsync(project, ct) : null, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // The transaction rolled back, so the activity, its lines, ledger rows and comments are
+            // all still there. Same 409 as an edit conflict, so AipConflictPanel renders it as is;
+            // NotFound if the other user deleted it first.
+            return ServiceResult<AipDeleteResultDto>.FromError(await ActivityConflictAsync(activity, caller, ct));
+        }
     }
 
     /// <summary>
@@ -2313,6 +2335,7 @@ public sealed class AipService : IAipService
         activity.UpdatedAt   = DateTime.UtcNow;
         activity.UpdatedById = caller.Id;
 
+        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "activity", activity.Id, "update", caller.Id);
         _aipRepo.ExpectRowVersion(activity, expectedRowVersion);
 
         try
