@@ -161,6 +161,10 @@ function AipEntryPageInner() {
   // comments provider can start its fetch alongside the detail rather than after it.
   const [openAipId, setOpenAipId] = useState<number | null>(null);
   const [readiness, setReadiness] = useState<AipReadiness | null>(null);
+  // PPDO-113 — when the readiness on screen was read, and whether a later refresh failed. A failed
+  // refresh keeps the old figures (the page stays usable) but the checklist then labels them.
+  const [readinessReadAt, setReadinessReadAt] = useState<string | null>(null);
+  const [readinessStale, setReadinessStale] = useState(false);
   const [accounts, setAccounts]   = useState<AccountResponse[]>([]);
   // PPDO-100 — the implementing-office picker’s list. Active only: a deactivated office is not
   // something a new activity should be assigned to, and an existing value is kept as a plain chip.
@@ -346,6 +350,8 @@ function AipEntryPageInner() {
     setRecord(null);
     setOpenAipId(null);
     setReadiness(null);
+    setReadinessReadAt(null);
+    setReadinessStale(false);
     setDivisions(null);
     setDivisionsError(null);
     try {
@@ -368,6 +374,7 @@ function AipEntryPageInner() {
       ]);
       setRecord(detail);
       setReadiness(nextReadiness);
+      setReadinessReadAt(new Date().toISOString());
     } catch (e) {
       setError(aipErrorMessage(e, "Could not load the AIP for this fiscal year."));
     } finally {
@@ -457,7 +464,15 @@ function AipEntryPageInner() {
   async function refreshReadiness() {
     if (!record) return;
     setDivisionRowsStale(true);
-    try { setReadiness(await getAipReadiness(record.id)); } catch { /* checklist stays stale, page works */ }
+    try {
+      setReadiness(await getAipReadiness(record.id));
+      setReadinessReadAt(new Date().toISOString());
+      setReadinessStale(false);
+    } catch {
+      // The checklist keeps the last figures so the page still works, and now says how old they
+      // are (PPDO-113) instead of presenting them as current.
+      setReadinessStale(true);
+    }
     // A division's activity count and blockers move with the same edits the checklist does.
     // ⚠️ Only once loaded — a refresh must not replace a Retry prompt with a silent second failure.
     if (divisions) {
@@ -908,6 +923,8 @@ function AipEntryPageInner() {
                 proposalCheck={
                   fiscalYear >= FIRST_ENTERED_FISCAL_YEAR ? { fiscalYear, officeId } : undefined
                 }
+                staleSince={readinessStale ? readinessReadAt : null}
+                onRefresh={() => void refreshReadiness()}
               />
             )}
 
