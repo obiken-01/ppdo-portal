@@ -17,8 +17,7 @@ public record PlanningDashboardDto(
     LdipSummaryDto Ldip,
     AipSummaryDto Aip,
     WfpSummaryDto Wfp,
-    IReadOnlyList<WfpOfficeStatusDto> WfpByOffice,
-    AllocationSetupOverviewDto Allocation
+    IReadOnlyList<WfpOfficeStatusDto> WfpByOffice
 );
 
 /// <summary>

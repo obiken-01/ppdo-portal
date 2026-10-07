@@ -118,14 +118,6 @@ public interface IAllocationService
         int officeId, int fiscalYear, int divisionId, CancellationToken ct = default);
 
     /// <summary>
-    /// Office-level allocation-setup counts (fully set up / incomplete / not started)
-    /// across all active offices for a fiscal year — used by the dashboard's
-    /// "All Offices" view (RAL-60), where allocation can't be shown per-office.
-    /// </summary>
-    Task<AllocationSetupOverviewDto> GetSetupOverviewAsync(
-        int fiscalYear, CancellationToken ct = default);
-
-    /// <summary>
     /// Resolves the General Fund <c>funding_sources.id</c> by Code "GF" (v1.4.3 — RAL-154).
     /// Shared by every caller that needs to treat a null/unselected fund source as General
     /// Fund, so the "GF" code string lives in exactly one place. Null if the GF row is
