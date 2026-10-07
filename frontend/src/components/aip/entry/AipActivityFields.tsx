@@ -56,6 +56,7 @@ import {
   createDraftSession, decideDraft, draftKey, readDraft, deleteDraft,
   type ActivityDraft, type ActivityDraftFields,
 } from "@/lib/activity-drafts";
+import AipDraftBanner, { draftTimeLabel } from "./AipDraftBanner";
 import type { AipActivityDetail, AipConflict, OfficeResponse } from "@/types";
 
 /** The form's values for a saved activity — exactly what `beginEdit` loads. */
@@ -329,7 +330,13 @@ export default function AipActivityFields({
 
   // Not offered on a row this user cannot edit (a lock that landed after the draft was read).
   const banner = offer && canEdit && (
-    <DraftBanner savedAt={offer.draft.savedAt} changedSince={offer.changedSince}
+    <AipDraftBanner
+      message={<>A local draft from {draftTimeLabel(offer.draft.savedAt)} was found for this activity. Restore it?</>}
+      // ⚠️ Said, because Save will then stop on the conflict panel: the row moved on after the
+      // draft began (someone saved it, possibly this user in another tab).
+      note={offer.changedSince
+        ? "This activity has been saved since the draft was made. If you restore it, saving will show you what changed first."
+        : undefined}
       onRestore={restoreDraft} onDiscard={discardDraft} />
   );
 
@@ -529,43 +536,6 @@ export default function AipActivityFields({
         <button type="button" onClick={() => save()} disabled={saving}
           className="bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
           {saving ? "Saving…" : "Save details"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * PPDO-112 — the restore prompt, inline at the top of the panel (spec §6), worded as WFP's. Amber:
- * a caution that blocks nothing. The time is Manila time, as everywhere in the portal.
- */
-function DraftBanner({
-  savedAt, changedSince, onRestore, onDiscard,
-}: { savedAt: string; changedSince: boolean; onRestore: () => void; onDiscard: () => void }) {
-  const when = new Date(savedAt).toLocaleString("en-PH", {
-    timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
-  });
-  return (
-    <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-      <p>
-        A local draft from {when} was found for this activity. Restore it?
-        {/* ⚠️ Said, because Save will then stop on the conflict panel: the row moved on after the
-            draft began (someone saved it, possibly this user in another tab). */}
-        {changedSince && (
-          <span className="block text-xs">
-            This activity has been saved since the draft was made. If you restore it, saving will
-            show you what changed first.
-          </span>
-        )}
-      </p>
-      <div className="flex gap-2">
-        <button type="button" onClick={onDiscard}
-          className="border border-slate-300 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50">
-          Discard
-        </button>
-        <button type="button" onClick={onRestore}
-          className="bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800">
-          Restore
         </button>
       </div>
     </div>

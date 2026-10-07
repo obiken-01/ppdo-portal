@@ -1,6 +1,6 @@
 ---
-status: ready — §2 confirmed by Ralph 2026-10-06
-version: v1.8.2 (or later — milestone not yet chosen)
+status: built — PPDO-192, 2026-10-07 (§2 confirmed by Ralph 2026-10-06)
+version: v1.8.2
 tickets: PPDO-192 (expenditure-line draft mirror)
 supersedes: nothing — extends PPDO-112 (V18-64), whose non-goals listed expenditure lines
 ---
@@ -170,6 +170,23 @@ Components: the PPDO-112 banner, lifted from `AipActivityFields.tsx` into a smal
   code's open then fails (`VersionError`). It is caught as "no database": pickers fetch live and
   drafts stop until site data is cleared. Degraded, not broken, but it lasts past the revert.
 - Ships after PPDO-112 (it reuses that ticket's modules).
+
+### As built (PPDO-192, 2026-10-07)
+
+- `lib/local-drafts.ts` holds the shared machinery (decision 7); `activity-drafts.ts` keeps its API
+  on top of it, and PPDO-112's tests pass unedited. `lib/expenditure-drafts.ts` holds the key, the
+  value, `lineToDraftFields` (the one mapping the editor and the decision share) and
+  `decideExpenditureDraft`.
+- **"Same content" is what a save of the draft would produce**, not field-by-field equality: the
+  fund is compared only when the draft names one (single-fund mode leaves it blank and the save takes
+  the activity's), a blank amount is the 0 the save sends, and an itemised draft compares items, not
+  the amounts the server derives. Without this, decision 4a never fired in single-fund mode.
+- Restore is also disabled while another line's editor is open ("Save or cancel the line you have
+  open first."), so it never silently replaces typing on screen.
+- Switching straight from one line's editor to another's already drops the first line's typing on
+  screen; the slot follows it (decision 1).
+- Noted, not changed: the line conflict panel (PPDO-191) compares account, fund and amounts, not
+  procurement items, so an item-only conflict shows the panel with no field rows.
 
 ## 9. Ticket split
 

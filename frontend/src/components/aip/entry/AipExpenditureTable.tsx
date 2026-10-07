@@ -33,28 +33,26 @@ import {
   addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipConflict, aipErrorMessage,
 } from "@/lib/aip";
 import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
+import AipDraftBanner, { draftTimeLabel } from "./AipDraftBanner";
+import {
+  EMPTY_EXPENDITURE_FIELDS, createExpenditureDraftSession, decideExpenditureDraft,
+  deleteExpenditureDraft, expenditureDraftKey, lineToDraftFields, readExpenditureDraft,
+  type ExpenditureDraft, type ExpenditureDraftDecision, type ExpenditureDraftFields,
+} from "@/lib/expenditure-drafts";
 import type {
   AipConflict, AipExpenditure, AipExpenditureWriteResult, AccountResponse, FundingSourceResponse,
   PriceIndexPickerItem, SaveAipProcurementItemRequest,
 } from "@/types";
 
-interface Draft {
-  accountId: string;
-  fundingSourceId: string;
-  ps: number | null;
-  mooe: number | null;
-  co: number | null;
-  /**
-   * Procurement items for this line (V18-80). Non-empty means the amount is DERIVED — the three
-   * money inputs go read-only and the server routes the items' total into the column the account's
-   * expense class names.
-   */
-  procurementItems: SaveAipProcurementItemRequest[];
-}
+/**
+ * The open line's form. ↩️ PPDO-192: the same shape the local draft stores (`ExpenditureDraftFields`),
+ * so a draft is the form as typed. `procurementItems` non-empty means the amount is DERIVED (V18-80) —
+ * the three money inputs go read-only and the server routes the items' total into the column the
+ * account's expense class names.
+ */
+type Draft = ExpenditureDraftFields;
 
-const EMPTY: Draft = {
-  accountId: "", fundingSourceId: "", ps: null, mooe: null, co: null, procurementItems: [],
-};
+const EMPTY: Draft = EMPTY_EXPENDITURE_FIELDS;
 
 /**
  * Whether an encoder may put an activity on several funds (PPDO-129).
@@ -248,7 +246,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
 
 export default function AipExpenditureTable({
   activityId, lines, accounts, fundingSources, canEdit, generalFundId,
-  priceIndex, priceIndexLoading, onChanged, onReload,
+  priceIndex, priceIndexLoading, onChanged, onReload, draftUserId = null,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -267,6 +265,11 @@ export default function AipExpenditureTable({
   onChanged: (result: AipExpenditureWriteResult) => void;
   /** PPDO-191 — re-read the lines from the server: a conflict's Discard. */
   onReload?: () => void;
+  /**
+   * PPDO-192 — the signed-in user, which turns the local draft of the open line on. Only AIP Entry
+   * passes it (`AipActivityPanel`); the review modal does not, so it reads and writes no drafts.
+   */
+  draftUserId?: string | null;
 }) {
   const [adding, setAdding]       = useState(false);
   const [draft, setDraft]         = useState<Draft>(EMPTY);
@@ -340,6 +343,64 @@ export default function AipExpenditureTable({
    */
   const legacyMulti = !MULTI_FUND_ENTRY_ENABLED && lockedToMulti;
 
+  // ── PPDO-192: the local draft of the open line ─────────────────────────
+  // `docs/v1.8/AIP_Expenditure_Draft_Spec.md`. The open editor (new or existing line, items
+  // included) is mirrored to IndexedDB per user and activity, and offered back on the next open.
+  const draftKey = expenditureDraftKey(draftUserId, activityId);
+  const drafts = useMemo(() => createExpenditureDraftSession(draftKey), [draftKey]);
+  /** A draft found on open, offered in the banner until Restore, Discard or new typing. */
+  const [offer, setOffer] = useState<
+    { draft: ExpenditureDraft; decision: Exclude<ExpenditureDraftDecision, "none"> } | null
+  >(null);
+  /** The line's rowVersion when this edit began — stored with every draft write. */
+  const baseRowVersion = useRef<string | null>(null);
+  /**
+   * Set by restoring a draft typed against an older version of its line (decision 5): Save checks
+   * against THAT version, so an edit made since reaches the conflict panel instead of being
+   * silently overwritten.
+   */
+  const restoredBase = useRef<string | null>(null);
+  /** Whether the stored draft is this editor's own (written or restored here), so ours to delete. */
+  const ownsDraft = useRef(false);
+  /** Mirrors `editing` for the async read below, which must not offer a draft over an open editor. */
+  const editorOpen = useRef(false);
+
+  // On open: is there a draft worth offering? One not worth it is deleted silently (decision 4).
+  // Read once per activity and user: `lines` changing afterwards is this table's own saves.
+  useEffect(() => {
+    if (!draftKey || !canEdit) return;
+    let cancelled = false;
+    void readExpenditureDraft(draftKey).then((stored) => {
+      // ⚠️ An editor already open owns the slot: its typing replaces the stored draft (spec §3).
+      if (cancelled || !stored || ownsDraft.current || editorOpen.current) return;
+      const decision = decideExpenditureDraft(stored, lines);
+      if (decision === "none") void deleteExpenditureDraft(draftKey);
+      else setOffer({ draft: stored, decision });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey, canEdit]);
+
+  // A pending write goes out now when the tab is hidden or closed, or the table unmounts —
+  // otherwise the last half-second of typing is the part a crash loses.
+  useEffect(() => {
+    const flush = () => { void drafts.flush(); };
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [drafts]);
+
+  /** Our own draft goes with edits the user threw away (Cancel, Discard, the PPDO-166 Discard). */
+  function dropOwnDraft() {
+    restoredBase.current = null;
+    if (ownsDraft.current) { ownsDraft.current = false; void drafts.discarded(); }
+  }
+
   /**
    * @param rowVersion for an existing line: the version to save against. Defaults to the one the
    *   page holds; an Overwrite passes the conflict payload's, so the retry is one request.
@@ -373,7 +434,17 @@ export default function AipExpenditureTable({
       // A new line has no version: a row that does not exist yet cannot conflict (spec §4).
       const result = existingId === null
         ? await addAipExpenditure(activityId, body)
-        : await updateAipExpenditure(existingId, { ...body, rowVersion: rowVersion ?? versionOf(existingId) });
+        : await updateAipExpenditure(existingId, {
+            ...body,
+            // PPDO-192 — a restored draft typed against an older version saves against THAT one.
+            rowVersion: rowVersion ?? restoredBase.current ?? versionOf(existingId),
+          });
+
+      // ⚠️ PPDO-192 — every successful save clears the draft, the Overwrite retry included: a stale
+      // draft resurfacing after a real save is worse than having no draft at all.
+      ownsDraft.current = false;
+      restoredBase.current = null;
+      void drafts.saved();
 
       setLineConflict(null);
       onChanged(result);
@@ -385,6 +456,9 @@ export default function AipExpenditureTable({
       const clash = existingId === null ? null : aipConflict<AipExpenditure>(e);
       if (clash && existingId !== null) {
         setLineConflict({ kind: "save", lineId: existingId, conflict: clash });
+        // ⚠️ PPDO-192 — and the draft is KEPT, written through now: the 409 is exactly when the
+        // typing is at risk. A failed save (below) keeps it too, by doing nothing.
+        void drafts.conflicted();
         return;
       }
       setError(aipErrorMessage(e, "Could not save the expenditure line."));
@@ -468,6 +542,11 @@ export default function AipExpenditureTable({
       // 0, and the parent must render that rather than keep showing the pre-delete figure.
       onChanged(await deleteAipExpenditure(id, rowVersion ?? versionOf(id)));
       setLineConflict(null);
+      // PPDO-192 — a draft offered for the line just deleted goes with it (spec §3).
+      if (offer?.draft.target.kind === "line" && offer.draft.target.lineId === id) {
+        setOffer(null);
+        void drafts.discarded();
+      }
     } catch (e) {
       // PPDO-191 — someone edited the line since it was loaded: ask before deleting their work.
       const clash = aipConflict<AipExpenditure>(e);
@@ -518,37 +597,63 @@ export default function AipExpenditureTable({
 
   function beginAdd() {
     setAdding(true);
+    setEditingId(null);
     setDraft(EMPTY);
     openedDraft.current = JSON.stringify(EMPTY);
+    baseRowVersion.current = null;
+    restoredBase.current = null;
   }
 
   function beginEdit(line: AipExpenditure) {
     setEditingId(line.id);
     setAdding(false);
-    const opened: Draft = {
-      accountId: line.accountId != null ? String(line.accountId) : "",
-      fundingSourceId: line.fundingSourceId != null ? String(line.fundingSourceId) : "",
-      // Pesos in, pesos out — the draft holds exactly what the row stores.
-      ps:   line.ps,
-      mooe: line.mooe,
-      co:   line.co,
-      // The stored ids are dropped: the draft carries the SAVE shape, which has no id and no
-      // lineTotal, because the server recomputes both.
-      procurementItems: line.procurementItems.map((i) => ({
-        priceIndexItemId: i.priceIndexItemId,
-        name: i.name,
-        unit: i.unit,
-        unitPrice: i.unitPrice,
-        qty: i.qty,
-        numberOfDays: i.numberOfDays,
-        periodNo: i.periodNo,
-      })),
-    };
+    // Pesos in, pesos out, and items in the SAVE shape (no id, no lineTotal — the server recomputes
+    // both). ↩️ PPDO-192: one mapping, shared with the draft decision, so "the draft says what the
+    // line says" compares like with like.
+    const opened: Draft = lineToDraftFields(line);
     setDraft(opened);
     openedDraft.current = JSON.stringify(opened);
+    baseRowVersion.current = line.rowVersion ?? null;
+    restoredBase.current = null;
+  }
+
+  /** Cancel on the editor row: the edit is thrown away, and so is its draft. */
+  function cancelEditor() {
+    dropOwnDraft();
+    setAdding(false);
+    setEditingId(null);
+  }
+
+  /** PPDO-192 — Restore: the draft becomes the open editor, dirty, exactly as if just typed. */
+  function restoreDraft() {
+    if (!offer) return;
+    const { draft: stored, decision } = offer;
+    const target = stored.target;
+    const line = target.kind === "line" ? lines.find((l) => l.id === target.lineId) : undefined;
+    if (decision === "restore-as-new" || !line) {
+      // A new line, or a line deleted since (decision 4): only the add row opens. Nothing exists
+      // again until the encoder presses Save.
+      beginAdd();
+    } else {
+      beginEdit(line);
+      baseRowVersion.current = stored.baseRowVersion;
+      restoredBase.current = decision === "restore-changed" ? stored.baseRowVersion : null;
+    }
+    setDraft(stored.fields);
+    ownsDraft.current = true;
+    setOffer(null);
+    setError(null);
+  }
+
+  /** PPDO-192 — Discard: gone from IndexedDB at once; the table shows what is saved. */
+  function discardOffer() {
+    setOffer(null);
+    ownsDraft.current = false;
+    void drafts.discarded();
   }
 
   function closeEditor() {
+    dropOwnDraft();
     setAdding(false);
     setEditingId(null);
     setDraft(EMPTY);
@@ -570,17 +675,69 @@ export default function AipExpenditureTable({
   }
 
   const editing = adding || editingId !== null;
+  editorOpen.current = editing;
+  const dirty = editing && JSON.stringify(draft) !== openedDraft.current;
 
   // PPDO-166 — an open line whose draft differs from how it opened. A save clears it (the editor
   // closes); a failed save does not, so leaving after a rejected save still asks.
-  useAipUnsavedChange(
-    editing && JSON.stringify(draft) !== openedDraft.current,
-    "an expenditure line",
-    closeEditor,
-  );
+  useAipUnsavedChange(dirty, "an expenditure line", closeEditor);
+
+  // PPDO-192 — mirror the open editor. Typing replaces an offered draft (one slot, decision 1: the
+  // banner goes); typing back to how the editor opened removes our own draft.
+  useEffect(() => {
+    if (!editing || !draftKey) return;
+    if (dirty) {
+      ownsDraft.current = true;
+      setOffer(null);
+      drafts.changed(
+        editingId !== null ? { kind: "line", lineId: editingId } : { kind: "new" },
+        draft, baseRowVersion.current);
+    } else if (ownsDraft.current) {
+      ownsDraft.current = false;
+      void drafts.discarded();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, draftKey, dirty, draft, editingId]);
+
+  /**
+   * Why Restore cannot work yet, said on the banner. A new line (or a deleted line's draft) opens
+   * the add row, so it waits for whatever is withholding + Add Account; any draft waits for an
+   * editor already open, which Restore would otherwise silently replace.
+   */
+  const restoreBlockedReason = !offer ? null
+    : editing ? "Save or cancel the line you have open first."
+    : (offer.draft.target.kind === "new" || offer.decision === "restore-as-new")
+      ? (legacyMulti ? "Pick one fund for the whole activity first, then restore it."
+        : multiFund === null ? "Answer the fund question first, then restore it."
+        : multiFund === false && !activityFund ? "Pick the activity's funding source first, then restore it."
+        : null)
+      : null;
+
+  let draftBanner: React.ReactNode = null;
+  if (offer && canEdit) {
+    const when = draftTimeLabel(offer.draft.savedAt);
+    const target = offer.draft.target;
+    const lineName = target.kind === "line"
+      ? lines.find((l) => l.id === target.lineId)?.accountTitle ?? "an expenditure line" : null;
+    const message = offer.decision === "restore-as-new"
+      ? <>A local draft from {when} was found for a line that has since been deleted. Restore it as a new line?</>
+      : lineName
+        ? <>A local draft for the line {lineName} from {when} was found. Restore it?</>
+        : <>A local draft of a new expenditure line from {when} was found. Restore it?</>;
+    draftBanner = (
+      <AipDraftBanner className="mb-2" message={message}
+        note={offer.decision === "restore-changed"
+          ? "This line has been saved since the draft was made. If you restore it, saving will show you what changed first."
+          : undefined}
+        restoreDisabledReason={restoreBlockedReason}
+        onRestore={restoreDraft} onDiscard={discardOffer} />
+    );
+  }
 
   return (
     <div className="border-l-2 border-slate-200 bg-slate-50 px-4 py-3">
+      {/* PPDO-192 — above the Expenditures header (spec §6). */}
+      {draftBanner}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-800">
           Expenditures <span className="font-normal text-slate-600">(in thousand pesos)</span>
@@ -741,7 +898,7 @@ export default function AipExpenditureTable({
             onDiscard={() => {
               const c = lineConflict;
               setLineConflict(null);
-              if (c.kind === "save") { setEditingId(null); setDraft(EMPTY); }
+              if (c.kind === "save") { dropOwnDraft(); setEditingId(null); setDraft(EMPTY); }
               if (c.kind === "fund" && c.stoppedAt === 0) setActivityFund(c.previous);
               onReload?.();
             }}
@@ -807,7 +964,7 @@ export default function AipExpenditureTable({
                   lockedFundCode={legacyMulti ? (line.fundingSourceCode ?? "—") : null}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
-                  onSave={() => save(line.id)} onCancel={() => setEditingId(null)} />
+                  onSave={() => save(line.id)} onCancel={cancelEditor} />
               ) : (
                 <Fragment key={line.id}>
                 <tr className="border-t border-slate-200">
@@ -861,7 +1018,7 @@ export default function AipExpenditureTable({
                 showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                 siblingItems={siblingItemsOf(null)}
-                onSave={() => save(null)} onCancel={() => setAdding(false)} />
+                onSave={() => save(null)} onCancel={cancelEditor} />
             )}
           </tbody>
         </table>

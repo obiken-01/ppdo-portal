@@ -18,7 +18,11 @@
  * every call resolves and does nothing, and the page behaves exactly as it did before this existed.
  */
 
-import { DRAFT_STORE, getAipCacheDb } from "./aip-cache-db";
+import { DRAFT_STORE } from "./aip-cache-db";
+import {
+  createLocalDraftSession, localDrafts, userScopedKey,
+  type LocalDraftStore, type LocalDraftSessionOptions, type LocalStoreOption,
+} from "./local-drafts";
 
 /**
  * Every field `AipActivityFields` edits, in the FORM's shape (what its inputs hold), not the DTO's:
@@ -47,21 +51,16 @@ export interface ActivityDraft {
 }
 
 /** Where drafts live. IndexedDB in the browser; an in-memory map in tests. */
-export interface DraftStore {
-  get(key: string): Promise<ActivityDraft | undefined>;
-  put(key: string, draft: ActivityDraft): Promise<void>;
-  delete(key: string): Promise<void>;
-}
+export type DraftStore = LocalDraftStore<ActivityDraft>;
 
 /** `undefined` = the browser's IndexedDB; `null` = no store (IndexedDB unavailable, or tests). */
-type StoreOption = DraftStore | null | undefined;
+type StoreOption = LocalStoreOption<ActivityDraft>;
 
 // ── Keys ─────────────────────────────────────────────────────────────────────
 
 /** `<userId>:<activityId>`, or null when there is no user — and then nothing is read or written. */
 export function draftKey(userId: string | null | undefined, activityId: number): string | null {
-  if (!userId) return null;
-  return `${userId}:${activityId}`;
+  return userScopedKey(userId, activityId);
 }
 
 // ── The decision ─────────────────────────────────────────────────────────────
@@ -101,6 +100,9 @@ export function decideDraft(
 }
 
 // ── Safe read / write / delete ──────────────────────────────────────────────
+//
+// ↩️ PPDO-192 — the machinery moved to `local-drafts.ts`, shared with the expenditure-line draft.
+// This file keeps its API and its behaviour exactly; its tests are the proof.
 
 function looksLikeDraft(value: unknown): value is ActivityDraft {
   if (!value || typeof value !== "object") return false;
@@ -111,40 +113,18 @@ function looksLikeDraft(value: unknown): value is ActivityDraft {
     && Array.isArray(v.fields.implementingOffices);
 }
 
-async function resolveStore(store: StoreOption): Promise<DraftStore | null> {
-  if (store !== undefined) return store;
-  return (await getAipCacheDb()) ? idbStore : null;
-}
+const io = localDrafts<ActivityDraft>(DRAFT_STORE, looksLikeDraft);
 
 export async function readDraft(key: string | null, store?: StoreOption): Promise<ActivityDraft | undefined> {
-  if (!key) return undefined;
-  try {
-    const s = await resolveStore(store);
-    const value = s ? await s.get(key) : undefined;
-    return looksLikeDraft(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
+  return io.read(key, store);
 }
 
 export async function writeDraft(key: string | null, draft: ActivityDraft, store?: StoreOption): Promise<void> {
-  if (!key) return;
-  try {
-    const s = await resolveStore(store);
-    if (s) await s.put(key, draft);
-  } catch {
-    // A full quota or a closed database costs the safety net, never the page.
-  }
+  return io.write(key, draft, store);
 }
 
 export async function deleteDraft(key: string | null, store?: StoreOption): Promise<void> {
-  if (!key) return;
-  try {
-    const s = await resolveStore(store);
-    if (s) await s.delete(key);
-  } catch {
-    // As above.
-  }
+  return io.remove(key, store);
 }
 
 // ── A session: one activity's edit, debounced ───────────────────────────────
@@ -162,65 +142,17 @@ export interface DraftSession {
   discarded(): Promise<void>;
 }
 
-export interface DraftSessionOptions {
-  store?: StoreOption;
-  /** Debounce window. Long enough not to write per keystroke; short enough to lose little. */
-  delayMs?: number;
-  now?: () => Date;
-}
+export type DraftSessionOptions = LocalDraftSessionOptions<ActivityDraft>;
 
 export function createDraftSession(key: string | null, options: DraftSessionOptions = {}): DraftSession {
-  const { store, delayMs = 500, now = () => new Date() } = options;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let pending: ActivityDraft | null = null;
-
-  const cancel = () => {
-    if (timer) clearTimeout(timer);
-    timer = null;
-    pending = null;
-  };
-
-  const flush = async () => {
-    const draft = pending;
-    cancel();
-    if (draft) await writeDraft(key, draft, store);
-  };
-
+  const session = createLocalDraftSession<
+    { fields: ActivityDraftFields; baseRowVersion: string | null }, ActivityDraft
+  >(key, io, ({ fields, baseRowVersion }, savedAt) => ({ fields, baseRowVersion, savedAt }), options);
   return {
-    changed(fields, baseRowVersion) {
-      if (!key) return;
-      pending = { fields, baseRowVersion, savedAt: now().toISOString() };
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => { void flush(); }, delayMs);
-    },
-    flush,
-    async saved() {
-      // ⚠️ Cancel BEFORE delete: a write still waiting on the timer would otherwise land after the
-      // delete and resurrect the draft — the stale-draft-after-save failure the ticket warns of.
-      cancel();
-      await deleteDraft(key, store);
-    },
-    conflicted: flush,
-    async discarded() {
-      cancel();
-      await deleteDraft(key, store);
-    },
+    changed: (fields, baseRowVersion) => session.changed({ fields, baseRowVersion }),
+    flush: session.flush,
+    saved: session.saved,
+    conflicted: session.conflicted,
+    discarded: session.discarded,
   };
 }
-
-// ── The IndexedDB store ─────────────────────────────────────────────────────
-
-const idbStore: DraftStore = {
-  async get(key) {
-    const db = await getAipCacheDb();
-    return db ? ((await db.get(DRAFT_STORE, key)) as ActivityDraft | undefined) : undefined;
-  },
-  async put(key, draft) {
-    const db = await getAipCacheDb();
-    if (db) await db.put(DRAFT_STORE, draft, key);
-  },
-  async delete(key) {
-    const db = await getAipCacheDb();
-    if (db) await db.delete(DRAFT_STORE, key);
-  },
-};

@@ -187,6 +187,7 @@ export default function AipActivityPanel({
           activityId={activity.id} lines={lines} accounts={accounts} fundingSources={funds}
           canEdit={canEdit} generalFundId={generalFundId}
           priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
+          draftUserId={me?.userId ?? null}
           onChanged={(result) => {
             // Refetch just this activity's lines and hand the recomputed totals upward — the
             // record is never reloaded, so the panel stays where it is.

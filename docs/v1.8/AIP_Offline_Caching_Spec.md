@@ -209,6 +209,9 @@ migration and no `dotnet ef database update` step.
   draft newer" is decided by `baseRowVersion` against the row's current version, not by comparing
   `savedAt` to a server time — no activity DTO carries `updatedAt`. Added at database **version 2**;
   the upgrade keeps `reference-data`. See `frontend/src/lib/activity-drafts.ts`.
+- **Object store `expenditure-drafts`** (PPDO-192, database **version 3**): key = `<userId>:<activityId>`,
+  one slot per user per activity for the open expenditure-line editor. Shape and rules in
+  [AIP_Expenditure_Draft_Spec.md](AIP_Expenditure_Draft_Spec.md) §5.
 
 ## 6. UI states
 
