@@ -179,11 +179,6 @@ public sealed class AllocationServiceTests
                 (IReadOnlyList<ProgramDivision>)pdList
                     .Where(pd => pd.OfficeRefCode == oRef && pd.ProgramRefCode == pRef).ToList());
 
-        pdRepo.Setup(r => r.GetProgramDivisionsByOfficeRefCodesAsync(
-                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<string> refs, CancellationToken _) =>
-                (IReadOnlyList<ProgramDivision>)pdList
-                    .Where(pd => refs.Contains(pd.OfficeRefCode)).ToList());
 
         // RAL-249 — the office-FK reads the service now uses.
         pdRepo.Setup(r => r.GetProgramDivisionsByOfficeIdAsync(
@@ -1115,8 +1110,6 @@ public sealed class AllocationServiceTests
         aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([aip]);
         aipRepo.Setup(r => r.GetOfficesByAipIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<AipOffice>)[]);
-        pdRepo.Setup(r => r.GetProgramDivisionsByOfficeRefCodesAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<ProgramDivision>)[]);
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         CallerContext caller = new();

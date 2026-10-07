@@ -83,7 +83,7 @@ public record FiscalYearsDto(
 
 /// <summary>
 /// The PPDO-scoped Budget Planning Dashboard (v1.4.5 — RAL-161). Replaces the old multi-office
-/// <see cref="PlanningDashboardDto"/>: Budget Planning is permanently scoped to PPDO in practice,
+/// <c>PlanningDashboardDto</c> (removed in PPDO-66): Budget Planning is permanently scoped to PPDO in practice,
 /// so this carries PPDO's own LDIP/AIP counts plus a per-division WFP + per-fund ceiling/allocation
 /// breakdown, instead of a fleet-wide "N offices set up" summary.
 ///

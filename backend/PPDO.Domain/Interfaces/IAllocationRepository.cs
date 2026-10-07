@@ -18,13 +18,6 @@ public interface IAllocationRepository : IRepository<ProgramDivision>
         string officeRefCode, string programRefCode, CancellationToken ct = default);
 
     /// <summary>
-    /// Returns all ProgramDivision rows whose OfficeRefCode is in the supplied list.
-    /// Used by GetProgramAssignmentsAsync to bulk-load assignments for one office.
-    /// </summary>
-    Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeRefCodesAsync(
-        IReadOnlyList<string> officeRefCodes, CancellationToken ct = default);
-
-    /// <summary>
     /// Returns every ProgramDivision row for one config office, matched on the
     /// <c>office_id</c> FK (RAL-249). This is the read path — the ref-code overloads above
     /// remain only for the re-link path, where an AIP ref code is all that is known.
