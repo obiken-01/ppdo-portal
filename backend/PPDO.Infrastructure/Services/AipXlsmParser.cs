@@ -65,24 +65,42 @@ public sealed class AipXlsmParser : IAipXlsmParser
         ["OTHERS_"]   = "OTHERS",
     };
 
+    private const string UnreadableWorkbookMessage =
+        "This file could not be read as an Excel workbook. It may be corrupted, or saved in a "
+        + "different format with an .xlsm extension.";
+
     /// <inheritdoc />
     public Dictionary<string, List<ParsedAipOffice>> Parse(Stream xlsmStream)
     {
-        using XLWorkbook wb = new(xlsmStream);
-
         Dictionary<string, List<ParsedAipOffice>> result = new(StringComparer.OrdinalIgnoreCase);
         List<string> globalErrors = new();
 
-        foreach (IXLWorksheet ws in wb.Worksheets)
+        // PPDO-47 — only opening the workbook is guarded. A file that is not a readable workbook
+        // becomes a 400 the uploader can act on; anything thrown while parsing the sheets is a bug
+        // and must still escape as a logged 500, not be blamed on the file.
+        XLWorkbook wb;
+        try
         {
-            string? sector = DetectSector(ws.Name);
-            if (sector is null) continue;
+            wb = new XLWorkbook(xlsmStream);
+        }
+        catch (Exception ex) when (ex is FileFormatException or InvalidDataException)
+        {
+            throw new AipParseException([UnreadableWorkbookMessage]);
+        }
 
-            List<ParsedAipOffice> offices = ParseSheet(ws, sector);
-            if (result.ContainsKey(sector))
-                result[sector].AddRange(offices);
-            else
-                result[sector] = offices;
+        using (wb)
+        {
+            foreach (IXLWorksheet ws in wb.Worksheets)
+            {
+                string? sector = DetectSector(ws.Name);
+                if (sector is null) continue;
+
+                List<ParsedAipOffice> offices = ParseSheet(ws, sector);
+                if (result.ContainsKey(sector))
+                    result[sector].AddRange(offices);
+                else
+                    result[sector] = offices;
+            }
         }
 
         if (result.Count == 0)
