@@ -108,7 +108,8 @@ public sealed partial class AipServiceTests
             AipDivisionLockFixture? divisions = null,
             List<ProgramDivision>? programDivisionSeed = null,
             Mock<IAipCeilingService>? ceiling = null,
-            Mock<IInvestmentProposalRepository>? proposals = null)
+            Mock<IInvestmentProposalRepository>? proposals = null,
+            Microsoft.Extensions.Logging.ILogger<AipService>? logger = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IFundingSourceRepository> fsRepo   = new();
@@ -340,7 +341,7 @@ public sealed partial class AipServiceTests
             (divisions ?? new AipDivisionLockFixture()).Build(aipRepo.Object, new PermissionService()),
             ceiling?.Object ?? new Mock<IAipCeilingService>().Object,
             proposals?.Object ?? new Mock<IInvestmentProposalRepository>().Object,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
+            logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
             officeConfigRepo, programRepo, projectRepo, activityRepo, ldipRepo);

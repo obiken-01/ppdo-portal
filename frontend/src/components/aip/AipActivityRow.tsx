@@ -41,6 +41,10 @@ export default function ActivityRow({
   // `error` because it is a choice, not a message — and because the edit form must stay mounted
   // and populated underneath it.
   const [conflict, setConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+  // PPDO-193 — a delete refused because the row changed since it was loaded. Shown under the
+  // read-only row, which is where the Delete button is.
+  const [deleteConflict, setDeleteConflict] = useState<AipConflict<AipActivityDetail> | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [name, setName]                             = useState(act.name);
   const [esreCode, setEsreCode]                     = useState(act.esreCode ?? "");
@@ -139,26 +143,41 @@ export default function ActivityRow({
     return rows;
   }
 
+  /**
+   * @param rowVersion the version to delete against (PPDO-193). Defaults to the one this row was
+   *   loaded with; "Delete it" on the conflict panel passes the payload's.
+   */
+  async function handleDelete(rowVersion: string | null = act.rowVersion ?? null) {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteAipActivity(act.id, rowVersion);
+      setDeleteConflict(null);
+      onDeleted(act.id);
+    } catch (err) {
+      // Conflict first, never as an ordinary error: the user has a choice to make.
+      const clash = aipConflict<AipActivityDetail>(err);
+      if (clash) { setDeleteConflict(clash); return; }
+      setError(aipErrorMessage(err, "Could not delete activity."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function confirmDelete() {
     onRequestConfirm({
       title: "Delete Activity?",
       message: `This removes "${act.name}". This cannot be undone.`,
       confirmLabel: "Delete",
       variant: "danger",
-      onConfirm: async () => {
-        try {
-          await deleteAipActivity(act.id);
-          onDeleted(act.id);
-        } catch (err) {
-          setError(aipErrorMessage(err, "Could not delete activity."));
-        }
-      },
+      onConfirm: () => handleDelete(),
       onClose: () => {},
     });
   }
 
   if (!editing) {
     return (
+      <>
       <tr className="bg-white border-t border-slate-100 hover:bg-green-50 transition-colors">
         <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-600 align-top border-l-4 border-transparent">
           {act.refCode}
@@ -191,11 +210,39 @@ export default function ActivityRow({
           {canEdit && (
             <span className="inline-flex gap-2">
               <button onClick={startEdit} className="text-xs text-green-700 hover:underline">Edit</button>
-              <button onClick={confirmDelete} className="text-xs text-danger-500 hover:underline">Delete</button>
+              <button onClick={confirmDelete} disabled={deleting}
+                className="text-xs text-danger-500 hover:underline disabled:opacity-50">
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
             </span>
           )}
+          {error && <p className="text-[10px] text-danger-600 max-w-[110px] leading-snug">{error}</p>}
         </td>
       </tr>
+      {deleteConflict && (
+        <tr className="bg-amber-50 border-t border-amber-200">
+          <td colSpan={16} className="px-2 pb-2 pl-12">
+            <AipConflictPanel
+              conflict={deleteConflict}
+              noun="activity"
+              fields={[{
+                label: "This activity",
+                mine: "Delete it",
+                theirs: deleteConflict.current.total ? `Keep it (${fmtPesos(deleteConflict.current.total)})` : "Keep it",
+              }]}
+              busy={deleting}
+              onOverwrite={() => void handleDelete(deleteConflict.currentRowVersion)}
+              onDiscard={() => {
+                // Keep it: splice the row as it now stands, as the edit conflict's Discard does.
+                const current = deleteConflict.current;
+                setDeleteConflict(null);
+                onSaved(current);
+              }}
+            />
+          </td>
+        </tr>
+      )}
+      </>
     );
   }
 

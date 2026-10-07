@@ -224,6 +224,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (dto.ProcurementItems is not null)
             await _expRepo.ReplaceProcurementItemsAsync(line.Id, BuildItems(dto.ProcurementItems), ct);
 
+        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "expenditure", line.Id, "update", caller.Id);
+
         // Declared immediately before the save that matters. An intervening SaveChanges — the
         // audit service performs its own — calls AcceptAllChanges and copies current values over
         // original ones, which would silently discard the expectation.
@@ -277,6 +279,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
         object deletedSnapshot = new { line.ActivityId, line.Ps, line.Mooe, line.Co, line.Total };
 
         await _expRepo.DeleteAsync(line, ct);
+
+        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "expenditure", expenditureId, "delete", caller.Id);
 
         // Declared here, not earlier: the audit service's own SaveChanges would otherwise call
         // AcceptAllChanges and discard the expectation before it could be used.
