@@ -68,21 +68,32 @@ public sealed class AipXlsmParser : IAipXlsmParser
     /// <inheritdoc />
     public Dictionary<string, List<ParsedAipOffice>> Parse(Stream xlsmStream)
     {
-        using XLWorkbook wb = new(xlsmStream);
-
         Dictionary<string, List<ParsedAipOffice>> result = new(StringComparer.OrdinalIgnoreCase);
         List<string> globalErrors = new();
 
-        foreach (IXLWorksheet ws in wb.Worksheets)
+        try
         {
-            string? sector = DetectSector(ws.Name);
-            if (sector is null) continue;
+            using XLWorkbook wb = new(xlsmStream);
 
-            List<ParsedAipOffice> offices = ParseSheet(ws, sector);
-            if (result.ContainsKey(sector))
-                result[sector].AddRange(offices);
-            else
-                result[sector] = offices;
+            foreach (IXLWorksheet ws in wb.Worksheets)
+            {
+                string? sector = DetectSector(ws.Name);
+                if (sector is null) continue;
+
+                List<ParsedAipOffice> offices = ParseSheet(ws, sector);
+                if (result.ContainsKey(sector))
+                    result[sector].AddRange(offices);
+                else
+                    result[sector] = offices;
+            }
+        }
+        catch (FileFormatException)
+        {
+            throw new AipParseException(["This file could not be read as an Excel workbook. It may be corrupted, or saved in a different format with an .xlsm extension."]);
+        }
+        catch (InvalidDataException)
+        {
+            throw new AipParseException(["This file could not be read as an Excel workbook. It may be corrupted, or saved in a different format with an .xlsm extension."]);
         }
 
         if (result.Count == 0)

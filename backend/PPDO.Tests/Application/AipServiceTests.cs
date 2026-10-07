@@ -890,6 +890,38 @@ public sealed partial class AipServiceTests
         Assert.Equal(1, result.Value.Counts.Activities);
     }
 
+    [Fact]
+    public async Task ParsePreview_ParserRejectsFile_ReturnsBadRequestWithItsMessage()
+    {
+        // PPDO-47 — an unreadable file reaches the service as an AipParseException and must come
+        // back as a 400 carrying the parser's sentence, not a 500.
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Throws(new AipParseException(["This file could not be read as an Excel workbook."]));
+
+        using MemoryStream ms = new();
+        ServiceResult<AipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(ms, 2027, [], CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Excel workbook", result.Error!);
+    }
+
+    [Fact]
+    public async Task ParsePreview_UnexpectedParserFailure_StillThrows()
+    {
+        // ⚠️ PPDO-47 guard — a genuine bug inside the parser must NOT be reported to the user as
+        // "your file is bad". It escapes, so it is a logged 500 that someone notices. This fails
+        // if the service's catch is ever widened to catch (Exception).
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Throws(new InvalidOperationException("parser bug"));
+
+        using MemoryStream ms = new();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.ParsePreviewAsync(ms, 2027, [], CancellationToken.None));
+    }
+
     // ── ConfirmImportAsync ────────────────────────────────────────────────────
 
     [Fact]
