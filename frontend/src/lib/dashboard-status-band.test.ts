@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { statusBand, type StatusBandInput } from "./dashboard-status-band";
 
-/** A guest-office encoder on FY2028, nothing encoded yet. Each test overrides what it needs. */
+/** A guest-office encoder on an entered-format year, nothing encoded yet. Each test overrides what it needs.
+ *  The year is arbitrary on purpose: the break year may only be written in aip-fiscal-years.ts
+ *  (AipFiscalYearsTests.TheBreakYear_IsHardcodedInExactlyOnePlace scans frontend/src). */
 function guestOffice(overrides: Partial<StatusBandInput> = {}): StatusBandInput {
   return {
-    fiscalYear: 2028,
-    firstEnteredYear: 2028,
+    fiscalYear: 2031,
+    firstEnteredYear: 2031,
     officeCode: "PTO",
     isCrossOfficeReviewer: false,
     canManageOfficeCeilings: false,
@@ -46,7 +48,7 @@ describe("statusBand ceiling copy (PPDO-196)", () => {
   it("tells an office without a ceiling it is waiting for one, without naming PBO", () => {
     const band = statusBand(guestOffice())!;
 
-    expect(band.headline).toBe("Waiting for the FY 2028 ceiling. You can start encoding now.");
+    expect(band.headline).toBe("Waiting for the FY 2031 ceiling. You can start encoding now.");
     expect(band.reason).toBe("Sending the AIP to PPDO opens once the ceiling is published.");
     expect(band.steps.find((s) => s.key === "ceiling")?.note).toBe("Waiting for ceiling");
   });
