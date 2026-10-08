@@ -101,6 +101,14 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _proposalService        = proposalService;
     }
 
+    // ── Request-scoped reference data (PPDO-194) ─────────────────────────────
+    // Registered Scoped (Program.cs), so this field lives exactly one request. Three places below
+    // need the funding-source list; this makes them share one read instead of three.
+    private IReadOnlyList<FundingSource>? _fundingSourcesCache;
+
+    private async Task<IReadOnlyList<FundingSource>> GetAllFundingSourcesAsync(CancellationToken ct) =>
+        _fundingSourcesCache ??= await _fundingSourceRepo.GetAllAsync(ct);
+
     /// <inheritdoc />
     public async Task<PpdoDashboardDto> GetDashboardAsync(
         int? fiscalYear, int? divisionId, CancellationToken ct = default)
@@ -112,7 +120,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         (int resolvedFY, IReadOnlyList<int> availableFiscalYears, _) = await ResolveFiscalYearsAsync(fiscalYear, ct);
 
         OfficeLdipSummaryDto ldip = await BuildOfficeLdipSummaryAsync(host.Id, resolvedFY, ct);
-        OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(host.Id, resolvedFY, ct);
+        OfficeAipSummaryDto  aip  = await BuildOfficeAipSummaryAsync(host, resolvedFY, ct);
 
         // Divisions in scope: every active division of PPDO, narrowed to one when the caller
         // (the Functions layer) has already clamped divisionId for a non-finance caller.
@@ -131,7 +139,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11). Both panels below are
         // per-fund CEILING and allocation views, and office funds have no ceiling. Unfiltered, this
         // dashboard would grow a column for every fund every office ever added.
-        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+        IReadOnlyList<FundingSource> activeFunds = (await GetAllFundingSourcesAsync(ct))
             .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
@@ -716,14 +724,15 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId,
         User? caller = null, CancellationToken cancellationToken = default)
     {
+        Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         AllocationSetupSummaryDto allocation =
             await BuildAllocationSummaryAsync(officeId, fiscalYear, cancellationToken);
         OfficeLdipSummaryDto ldip =
             await BuildOfficeLdipSummaryAsync(officeId, fiscalYear, cancellationToken);
         OfficeAipSummaryDto aip =
-            await BuildOfficeAipSummaryAsync(officeId, fiscalYear, cancellationToken);
+            await BuildOfficeAipSummaryAsync(office, fiscalYear, cancellationToken);
         (IReadOnlyList<DivisionSummaryDto> byDivision, DivisionSummaryDto? noDivision) =
-            await BuildOfficeDivisionsAsync(officeId, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
+            await BuildOfficeDivisionsAsync(officeId, office, fiscalYear, seeAllDivisions, divisionId, cancellationToken);
 
         // PPDO-180 — the proposal band, counted by the proposal service in the list's own scope so
         // the band and the Investment Proposals list can never disagree.
@@ -740,7 +749,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// PPDO's own dashboard uses — rather than re-deriving a second version of it.
     /// </summary>
     private async Task<(IReadOnlyList<DivisionSummaryDto>, DivisionSummaryDto?)> BuildOfficeDivisionsAsync(
-        int officeId, int fiscalYear, bool seeAllDivisions, int? divisionId, CancellationToken ct)
+        int officeId, Office? office, int fiscalYear, bool seeAllDivisions, int? divisionId, CancellationToken ct)
     {
         // seeAllDivisions=false and divisionId=null means a Staff caller with no division assigned
         // — must resolve to NO rows, never every row. `d.Id == divisionId.Value` on a null id
@@ -758,11 +767,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // division-scoped caller whose one division didn't match: nothing further to query.
         if (divisions.Count == 0) return ([], null);
 
-        Office? office = await _officeRepo.GetByIdAsync(officeId, ct);
-
         // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11), same rule GetDashboardAsync
         // applies for PPDO. An office's OWN funds have no ceiling to show a per-division share of.
-        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+        IReadOnlyList<FundingSource> activeFunds = (await GetAllFundingSourcesAsync(ct))
             .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
@@ -828,9 +835,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     }
 
     private async Task<OfficeAipSummaryDto> BuildOfficeAipSummaryAsync(
-        int officeId, int fiscalYear, CancellationToken cancellationToken)
+        Office? office, int fiscalYear, CancellationToken cancellationToken)
     {
-        Office? office = await _officeRepo.GetByIdAsync(officeId, cancellationToken);
         if (office?.OfficeRefCode is null)
             return new OfficeAipSummaryDto(false, null, 0, 0, 0, 0m);
 
@@ -873,7 +879,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         if (AipFiscalYears.IsEntered(fiscalYear))
         {
             // The same fund set the division rows count — shared (province-wide) and active.
-            HashSet<int> sharedFundIds = (await _fundingSourceRepo.GetAllAsync(cancellationToken))
+            HashSet<int> sharedFundIds = (await GetAllFundingSourcesAsync(cancellationToken))
                 .Where(f => f.IsActive && f.OfficeId is null)
                 .Select(f => f.Id)
                 .ToHashSet();

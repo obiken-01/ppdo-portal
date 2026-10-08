@@ -242,7 +242,9 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IAipDivisionSubmissionRepository>? divisionSubmissionRepoMock = null,
         Mock<IActivityLabelRepository>? activityLabelsMock = null,
         Mock<IAipReviewCommentRepository>? commentRepoMock = null,
-        Mock<IInvestmentProposalService>? proposalServiceMock = null)
+        Mock<IInvestmentProposalService>? proposalServiceMock = null,
+        Mock<IFundingSourceRepository>? fundingSourceRepoMock = null,
+        Mock<IOfficeRepository>? officeRepoMock = null)
     {
         divisions      ??= [];
         fundingSources ??= [];
@@ -299,7 +301,8 @@ public sealed class BudgetPlanningDashboardServiceTests
                     .Where(w => divisionId == null || w.DivisionId == divisionId)
                     .ToList());
 
-        Mock<IOfficeRepository> officeRepo = new();
+        // PPDO-194 — passed in only to Verify the by-id reads; rows still come from `offices`.
+        Mock<IOfficeRepository> officeRepo = officeRepoMock ?? new Mock<IOfficeRepository>();
         officeRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(offices);
         officeRepo.Setup(r => r.GetByCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string code, CancellationToken _) => offices.FirstOrDefault(o => o.OfficeCode == code));
@@ -311,7 +314,11 @@ public sealed class BudgetPlanningDashboardServiceTests
         Mock<IDivisionRepository> divisionRepo = new();
         divisionRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divisions);
 
-        Mock<IFundingSourceRepository> fundingSourceRepo = new();
+        // PPDO-194 — a test may pass its own mock to Verify how many times the funds are read.
+        // The setup stays unconditional (same reason as the rollups above): the test supplies the
+        // rows through fundingSources and only uses the mock to count calls.
+        Mock<IFundingSourceRepository> fundingSourceRepo =
+            fundingSourceRepoMock ?? new Mock<IFundingSourceRepository>();
         fundingSourceRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(fundingSources);
 
         Mock<IWfpExpenditureRepository> wfpExpRepo = wfpExpRepoMock ?? new Mock<IWfpExpenditureRepository>();
@@ -2690,5 +2697,72 @@ public sealed class BudgetPlanningDashboardServiceTests
         // …and the office's own figures do not. This is what the dashboard tiles read.
         Assert.Equal(2, result.Aip.ActivityCount);
         Assert.Equal(100m, result.Aip.CostedInAip);
+    }
+
+    // ── PPDO-194: config tables read once per request ─────────────────────────
+
+    /// <summary>
+    /// One FY2028 office (id 1, the host) with everything the dashboard needs to reach all three
+    /// funding-source reads: a ref code (else the AIP summary stops early), an AIP record with a
+    /// group for office 1, an active division (else the per-division build stops early), and one
+    /// shared fund. Returns the two mocks the tests count calls on.
+    /// </summary>
+    private static (BudgetPlanningDashboardService Sut,
+                    Mock<IFundingSourceRepository> Funds,
+                    Mock<IOfficeRepository> Offices) BuildForReadCount()
+    {
+        Mock<IFundingSourceRepository> funds = new();
+        Mock<IOfficeRepository> offices = new();
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [Aip(10, 2028)], [], [Off(1, "PPDO", refCode: "1-01-010")], [],
+            divisions: [Div(1, 1, "Planning")],
+            fundingSources: [Fund(1, "GF", "General Fund")],
+            aipRepoMock: AipMockWithOffices(10, AipOff(50, 10, "1000-000-1-01-010")),
+            fundingSourceRepoMock: funds,
+            officeRepoMock: offices);
+
+        return (sut, funds, offices);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_ReadsFundingSourcesOnce()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IFundingSourceRepository> funds, _) = BuildForReadCount();
+
+        await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        funds.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_ReadsFundingSourcesOnce()
+    {
+        (BudgetPlanningDashboardService sut, Mock<IFundingSourceRepository> funds, _) = BuildForReadCount();
+
+        await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        funds.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_Fy2028_LoadsTheOfficeOnce()
+    {
+        (BudgetPlanningDashboardService sut, _, Mock<IOfficeRepository> offices) = BuildForReadCount();
+
+        await sut.GetOfficeDashboardAsync(1, 2028, seeAllDivisions: true, divisionId: null);
+
+        offices.Verify(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDashboardAsync_Fy2028_DoesNotReloadTheHostOfficeById()
+    {
+        (BudgetPlanningDashboardService sut, _, Mock<IOfficeRepository> offices) = BuildForReadCount();
+
+        await sut.GetDashboardAsync(fiscalYear: 2028, divisionId: null);
+
+        // GetHostOfficeAsync already returned it; a second, by-id read is the duplicate.
+        offices.Verify(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
