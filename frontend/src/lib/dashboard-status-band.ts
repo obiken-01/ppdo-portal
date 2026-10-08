@@ -83,7 +83,7 @@ export interface StatusBandInput {
   // ── Who is reading ──
   /** `canReviewAllOffices` or SuperAdmin: the reviewer band, whatever their own office is doing. */
   isCrossOfficeReviewer: boolean;
-  /** PBO: publishes every office's ceiling. */
+  /** PPDO finance (PBO until PPDO-87): publishes every office's ceiling. */
   canManageOfficeCeilings: boolean;
   /** This office's department head (`canReviewBudgetPlanning`). */
   isDepartmentHead: boolean;
@@ -213,7 +213,7 @@ function buildSteps(i: StatusBandInput): BandStep[] {
   const ceilingStep: BandStep = {
     key: "ceiling",
     label: "Ceiling",
-    note: i.ceiling != null ? "Published by PBO" : i.canManageOfficeCeilings ? "Waiting on you" : "Waiting on PBO",
+    note: i.ceiling != null ? "Published by PPDO" : i.canManageOfficeCeilings ? "Waiting on you" : "Waiting for ceiling",
     state: i.ceiling != null ? "done" : "current",
   };
 
@@ -392,8 +392,8 @@ export function statusBand(i: StatusBandInput): StatusBand | null {
     return {
       tone: "waiting",
       eyebrow: `${fyLabel} AIP · ${i.officeCode}`,
-      headline: `Waiting on PBO for the ${fyLabel} ceiling. You can start encoding now.`,
-      reason: "Sending the AIP to PPDO opens once the Provincial Budget Office publishes it.",
+      headline: `Waiting for the ${fyLabel} ceiling. You can start encoding now.`,
+      reason: "Sending the AIP to PPDO opens once the ceiling is published.",
       action: entry("Open AIP Entry"),
       steps,
     };

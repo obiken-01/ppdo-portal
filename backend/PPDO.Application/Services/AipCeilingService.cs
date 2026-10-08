@@ -145,16 +145,16 @@ public sealed class AipCeilingService : IAipCeilingService
 
         // ⚠️ An unset ceiling is ZERO, not unlimited — the same rule as a missing allocation row
         // (GetDivisionAllocationAsync → 0m). But the message must say so rather than reporting an
-        // overage, or the encoder deletes work to fix a problem that is PBO's to fix.
+        // overage, or the encoder deletes work to fix a problem that is PPDO's to fix (PBO's until PPDO-87).
         if (!status.CeilingSet)
             return $"There is no General Fund ceiling set for this office for the fiscal year, so "
                  + $"the encoded total of ₱{status.EncodedBaseRounded:N2} cannot be approved. "
-                 + $"Ask the Provincial Budget Office to set the ceiling.";
+                 + $"Ask PPDO to set the ceiling.";
 
         decimal overage = status.EncodedBaseRounded - status.Ceiling;
         return $"General Fund MOOE + CO totals ₱{status.EncodedBaseRounded:N2}, which is "
              + $"₱{overage:N2} over the ceiling of ₱{status.Ceiling:N2}. "
-             + $"Reduce the encoded amounts or ask the Provincial Budget Office to raise the ceiling.";
+             + $"Reduce the encoded amounts or ask PPDO to raise the ceiling.";
     }
 
     // ── Ledger upsert ─────────────────────────────────────────────────────────
