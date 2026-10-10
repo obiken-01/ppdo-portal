@@ -111,10 +111,13 @@ swa start http://localhost:3000 --api-location http://localhost:7071
     "Jwt__Audience": "ppdo-portal",
     "Jwt__AccessTokenExpiryMinutes": "15",
     "Jwt__RefreshTokenExpiryDays": "7",
-    "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+    "Seq__ServerUrl": "http://localhost:5341"
   }
 }
 ```
+
+> `Seq__ServerUrl` is optional: when set, worker logs also go to a local [Seq](https://datalust.co/seq) instance, where the structured `{PropertyName}` values are searchable. Leave it out and nothing is sent. Never set it in Azure.
 
 > Leave `APPLICATIONINSIGHTS_CONNECTION_STRING` blank locally — telemetry won't be sent to Azure but console logging via `ILogger<T>` still works. Add the real value if you want to test monitoring locally.
 
