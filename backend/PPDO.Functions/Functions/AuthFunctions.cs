@@ -42,6 +42,12 @@ public sealed class AuthFunctions
     // prod (v1.2.0 hotfix). This is safe here because the cookie is narrowly scoped
     // (HttpOnly, Path=/api/auth/refresh) and CORS only allows credentialed responses to
     // the allowlisted origin (see Program.cs).
+    //
+    // Partitioned (CHIPS, PPDO-200): being cross-site, the cookie is third-party, and a browser
+    // that blocks third-party cookies (Edge InPrivate, Safari, Firefox strict) dropped it — every
+    // full page load then signed the user out. A Partitioned cookie lives in a jar keyed to the
+    // portal's site, which those browsers allow; one that does not know the attribute ignores it.
+    // The long-term fix is serving the portal and the API from one site (custom domain / MIS).
     private const string RefreshCookieName = "ppdo_rt";
     private const string RefreshCookiePath = "/api/auth/refresh";
     private const int    AccessTokenLifetimeSeconds = 15 * 60;
@@ -280,17 +286,25 @@ public sealed class AuthFunctions
     {
         int maxAgeSeconds = _jwtSettings.RefreshTokenExpiryDays * 24 * 60 * 60;
         string value = Uri.EscapeDataString(refreshToken);
-        response.Headers.Add(
-            "Set-Cookie",
-            $"{RefreshCookieName}={value}; Max-Age={maxAgeSeconds}; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=None");
+
+        // ⚠️ Order matters. The first header expires the legacy unpartitioned cookie a browser may
+        // still hold from before PPDO-200 — left in place it would ride along with the new one and
+        // carry a revoked token. It must come BEFORE the set: a browser that ignores Partitioned
+        // sees both headers as the same cookie, and a delete after the set would erase the token.
+        response.Headers.Add("Set-Cookie", RefreshCookie(string.Empty, maxAgeSeconds: 0, partitioned: false));
+        response.Headers.Add("Set-Cookie", RefreshCookie(value, maxAgeSeconds, partitioned: true));
     }
 
+    /// <summary>Clears both copies: a clear without Partitioned does not reach the partitioned one.</summary>
     private static void ClearRefreshCookie(HttpResponseData response)
     {
-        response.Headers.Add(
-            "Set-Cookie",
-            $"{RefreshCookieName}=; Max-Age=0; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=None");
+        response.Headers.Add("Set-Cookie", RefreshCookie(string.Empty, maxAgeSeconds: 0, partitioned: false));
+        response.Headers.Add("Set-Cookie", RefreshCookie(string.Empty, maxAgeSeconds: 0, partitioned: true));
     }
+
+    private static string RefreshCookie(string value, int maxAgeSeconds, bool partitioned)
+        => $"{RefreshCookieName}={value}; Max-Age={maxAgeSeconds}; Path={RefreshCookiePath}; HttpOnly; Secure; SameSite=None"
+           + (partitioned ? "; Partitioned" : string.Empty);
 
     /// <summary>Reads and URL-decodes the refresh token from the request's Cookie header.</summary>
     private static string? ReadRefreshCookie(HttpRequestData req)
