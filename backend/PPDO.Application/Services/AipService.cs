@@ -1447,7 +1447,7 @@ public sealed class AipService : IAipService
         activity.CcTypologyCode        = dto.CcTypologyCode;
 
         ServiceResult<AipActivityDto>? conflict =
-            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+            await SaveActivityAsync(activity, expectedRowVersion, caller, div, ct);
         if (conflict is not null) return conflict;
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old,
             new
@@ -1515,7 +1515,7 @@ public sealed class AipService : IAipService
         // method rather than a reuse of UpdateActivityAsync. They belong to the expenditure lines.
 
         ServiceResult<AipActivityDto>? conflict =
-            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+            await SaveActivityAsync(activity, expectedRowVersion, caller, div, ct);
         if (conflict is not null) return conflict;
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update, old, new
         {
@@ -1738,7 +1738,7 @@ public sealed class AipService : IAipService
             // The transaction rolled back, so the activity, its lines, ledger rows and comments are
             // all still there. Same 409 as an edit conflict, so AipConflictPanel renders it as is;
             // NotFound if the other user deleted it first.
-            return ServiceResult<AipDeleteResultDto>.FromError(await ActivityConflictAsync(activity, caller, ct));
+            return ServiceResult<AipDeleteResultDto>.FromError(await ActivityConflictAsync(activity, caller, div, ct));
         }
     }
 
@@ -2308,7 +2308,7 @@ public sealed class AipService : IAipService
         bool oldValue = activity.IsCreation;
         activity.IsCreation = isCreation;
         ServiceResult<AipActivityDto>? conflict =
-            await SaveActivityAsync(activity, expectedRowVersion, caller, ct);
+            await SaveActivityAsync(activity, expectedRowVersion, caller, div, ct);
         if (conflict is not null) return conflict;
 
         await _audit.LogAsync("aip_activities", activity.Id, AuditAction.Update,
@@ -2329,7 +2329,7 @@ public sealed class AipService : IAipService
     /// </para>
     /// </summary>
     private async Task<ServiceResult<AipActivityDto>?> SaveActivityAsync(
-        AipActivity activity, byte[]? expectedRowVersion, User caller, CancellationToken ct)
+        AipActivity activity, byte[]? expectedRowVersion, User caller, AipDivisionContext div, CancellationToken ct)
     {
         // Stamped on EVERY activity write, not only the ones that can conflict — the 409 message
         // is only as good as the last writer it can name, and a path that skips this leaves a
@@ -2347,16 +2347,23 @@ public sealed class AipService : IAipService
         }
         catch (ConcurrencyConflictException)
         {
-            return await ActivityConflictAsync(activity, caller, ct);
+            return await ActivityConflictAsync(activity, caller, div, ct);
         }
     }
 
     /// <summary>
     /// Builds the 409 payload after a rejected activity save: who saved last, when, and what the
     /// row says now.
+    ///
+    /// <para>
+    /// ⚠️ <paramref name="div"/> is required, not optional: "Discard mine and reload" splices
+    /// <c>Current</c> into the tree in place of the row, so it must carry what a successful save's
+    /// response carries — the division name, the caller's CanEdit and the fund codes. Mapped without
+    /// them, a department head saw a tagged activity come back as "No division", locked (PPDO-202).
+    /// </para>
     /// </summary>
     private async Task<ServiceResult<AipActivityDto>> ActivityConflictAsync(
-        AipActivity activity, User caller, CancellationToken ct)
+        AipActivity activity, User caller, AipDivisionContext div, CancellationToken ct)
     {
         int activityId = activity.Id;
 
@@ -2401,7 +2408,7 @@ public sealed class AipService : IAipService
                 changedByName,
                 activity.UpdatedAt,
                 Convert.ToBase64String(activity.RowVersion),
-                MapActivityToDto(activity)));
+                MapActivityToDto(activity, div, await _expRepo.GetFundCodesByActivityIdAsync(activityId, ct))));
     }
 
     private const string ActivityNoun = "activity";
