@@ -271,13 +271,27 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         Dictionary<string, IReadOnlyList<int>> divisionsByProgramRefCode = new(StringComparer.OrdinalIgnoreCase);
         // PPDO-150: an entered year's untagged activities, for the "No division" row.
         (int Costed, int Total) untaggedCounts = (0, 0);
+        // PPDO-203: an entered year's stage follows the review workflow, not the AIP record.
+        string? officeWorkflow = null;
+        HashSet<int> submittedDivisionIds = [];
 
         if (entered && primaryAip is not null && officeRefCode is not null)
         {
-            List<int> aipOfficeIds = (await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct))
+            List<AipOffice> officeGroups = (await _aipRepo.GetOfficesByAipIdNoTrackingAsync(primaryAip.Id, ct))
                 .Where(o => o.OfficeId == officeId)
-                .Select(o => o.Id)
                 .ToList();
+            List<int> aipOfficeIds = officeGroups.Select(o => o.Id).ToList();
+            officeWorkflow = AipReadinessColumn.OfficeStatus(officeGroups.Select(o => o.WorkflowStatus));
+
+            // A division's own submit decides its stage only while the office is with its divisions;
+            // with PPDO or accepted it no longer does, so there is nothing to read.
+            if (officeWorkflow is not (AipWorkflowStatus.SubmittedToPpdo or AipWorkflowStatus.Consolidated))
+            {
+                submittedDivisionIds = (await _divisionSubmissionRepo.GetForOfficeAsync(primaryAip.Id, officeId, ct))
+                    .Where(s => s.Status == AipDivisionStatus.Submitted)
+                    .Select(s => s.DivisionId)
+                    .ToHashSet();
+            }
 
             foreach (AipDivisionRollupDto rollup in await _aipRepo.GetDivisionRollupsAsync(aipOfficeIds, ct))
             {
@@ -404,7 +418,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
                 allocated - costed,
                 aip.Costed,
                 aip.Total,
-                PlanningStage.ForAip(primaryAip?.Status, aip.Total),
+                entered
+                    ? PlanningStage.ForDivision(officeWorkflow, submittedDivisionIds.Contains(division.Id), aip.Total)
+                    : PlanningStage.ForAip(primaryAip?.Status, aip.Total),
                 // Constant until Phase 4 adds a submission entity — spec §7. Rendered rather than
                 // omitted so the layout does not move when it becomes real.
                 PlanningStage.Todo,
@@ -412,7 +428,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         }
 
         return (result, includeNoDivision && entered && untaggedCounts.Total > 0
-            ? BuildNoDivisionRow(untaggedCounts, untaggedUsedByFund, activeFunds, primaryAip)
+            ? BuildNoDivisionRow(untaggedCounts, untaggedUsedByFund, activeFunds, officeWorkflow)
             : null);
     }
 
@@ -424,7 +440,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     /// </summary>
     private static DivisionSummaryDto BuildNoDivisionRow(
         (int Costed, int Total) counts, IReadOnlyDictionary<int, decimal> usedByFund,
-        IReadOnlyList<FundingSource> activeFunds, AipRecord? primaryAip)
+        IReadOnlyList<FundingSource> activeFunds, string? officeWorkflow)
     {
         List<DivisionFundAmountDto> byFund = activeFunds
             .Where(f => usedByFund.GetValueOrDefault(f.Id) > 0m)
@@ -438,7 +454,8 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             Remaining: 0m,
             CostedActivityCount: counts.Costed,
             TotalActivities: counts.Total,
-            AipStatus: PlanningStage.ForAip(primaryAip?.Status, counts.Total),
+            // Entered years only (the row exists only then); untagged work has no division to submit.
+            AipStatus: PlanningStage.ForDivision(officeWorkflow, divisionSubmitted: false, counts.Total),
             SubmissionStatus: PlanningStage.Todo,
             AllocationByFund: byFund);
     }
