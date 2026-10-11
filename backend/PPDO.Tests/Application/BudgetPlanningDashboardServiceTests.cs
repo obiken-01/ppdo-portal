@@ -391,6 +391,10 @@ public sealed class BudgetPlanningDashboardServiceTests
             divisionSubmissionRepoMock ?? new Mock<IAipDivisionSubmissionRepository>();
         if (divisionSubmissionRepoMock is null)
         {
+            // PPDO-203 — the division rows' stage. Nothing submitted by default.
+            divisionSubmissionRepo.Setup(r => r.GetForOfficeAsync(
+                    It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<AipDivisionSubmission>)[]);
             divisionSubmissionRepo.Setup(r => r.GetDivisionsByOfficeIdsAsync(
                     It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<Division>)[]);
@@ -2764,5 +2768,110 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         // GetHostOfficeAsync already returned it; a second, by-id read is the duplicate.
         offices.Verify(r => r.GetByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-203: a division row follows the review workflow (FY2028+) ───────
+
+    /// <summary>
+    /// Office 1 in FY <paramref name="fiscalYear"/> at <paramref name="officeStatus"/>, divisions 31
+    /// (CASH) and 32 (REV) each with tagged work, the given ones submitted to the department head.
+    /// </summary>
+    private static (BudgetPlanningDashboardService Sut, Mock<IAipDivisionSubmissionRepository> Divisions)
+        BuildDivisionStage(string officeStatus, int fiscalYear = 2028, int[]? submitted = null,
+            AipDivisionRollupDto[]? tags = null)
+    {
+        Mock<IAipDivisionSubmissionRepository> divisions = new();
+        // The status band's own reads (PPDO-152/178) — not what these tests are about.
+        divisions.Setup(r => r.GetDivisionsByOfficeIdsAsync(It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<Division>)[]);
+        divisions.Setup(r => r.GetForOfficesAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipDivisionSubmission>)[]);
+        divisions.Setup(r => r.GetForOfficeAsync(10, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((submitted ?? [])
+                .Select(d => new AipDivisionSubmission
+                {
+                    AipRecordId = 10, OfficeId = 1, DivisionId = d, Status = AipDivisionStatus.Submitted,
+                })
+                .ToList());
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [Aip(10, fiscalYear, "Draft")], [], [Off(1, "PTO", refCode: "1-01-005")], [],
+            divisions: [Div(31, 1, "Cash", "CASH"), Div(32, 1, "Revenue", "REV")],
+            aipRepoMock: AipMockWithOffices(10, Group(50, officeStatus)),
+            divisionRollups: (tags ?? [new AipDivisionRollupDto(31, 2, 2, 350m), new AipDivisionRollupDto(32, 2, 2, 351m)]).ToList(),
+            divisionSubmissionRepoMock: divisions);
+        return (sut, divisions);
+    }
+
+    private static async Task<Dictionary<int, string>> DivisionStages(BudgetPlanningDashboardService sut, int fiscalYear = 2028)
+    {
+        OfficeDashboardDto result = await sut.GetOfficeDashboardAsync(1, fiscalYear, seeAllDivisions: true, divisionId: null);
+        return result.ByDivision.ToDictionary(d => d.DivisionId, d => d.AipStatus);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_AcceptedByPpdo_EveryDivisionWithWorkIsDone()
+    {
+        // Found in PPDO-195: PTO accepted (Consolidated), header "accepted", rows still "In progress"
+        // because the stage read the province-wide AIP record, which stays Draft until the whole
+        // provincial AIP is final.
+        (BudgetPlanningDashboardService sut, _) = BuildDivisionStage(AipWorkflowStatus.Consolidated);
+
+        Dictionary<int, string> stages = await DivisionStages(sut);
+
+        Assert.Equal(PlanningStage.Done, stages[31]);
+        Assert.Equal(PlanningStage.Done, stages[32]);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_WithPpdo_EveryDivisionWithWorkIsReview()
+    {
+        (BudgetPlanningDashboardService sut, _) = BuildDivisionStage(AipWorkflowStatus.SubmittedToPpdo);
+
+        Dictionary<int, string> stages = await DivisionStages(sut);
+
+        Assert.Equal(PlanningStage.Review, stages[31]);
+        Assert.Equal(PlanningStage.Review, stages[32]);
+    }
+
+    [Theory]
+    [InlineData(AipWorkflowStatus.Draft)]
+    [InlineData(AipWorkflowStatus.ReturnedByPpdo)]
+    public async Task GetOfficeDashboardAsync_WithItsDivisions_SubmittedDivisionIsReview_OtherInProgress(string officeStatus)
+    {
+        // ReturnedByPpdo too: after PPDO's return the divisions resubmit one by one (PPDO-149).
+        (BudgetPlanningDashboardService sut, _) = BuildDivisionStage(officeStatus, submitted: [31]);
+
+        Dictionary<int, string> stages = await DivisionStages(sut);
+
+        Assert.Equal(PlanningStage.Review, stages[31]);
+        Assert.Equal(PlanningStage.InProgress, stages[32]);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_AcceptedByPpdo_DivisionWithNoWorkStaysTodo()
+    {
+        // The ForAip rule kept: a division that contributed nothing is not "Done" just because the
+        // office was accepted — that is how a missing division goes unnoticed.
+        (BudgetPlanningDashboardService sut, _) = BuildDivisionStage(AipWorkflowStatus.Consolidated,
+            tags: [new AipDivisionRollupDto(31, 2, 2, 350m)]);
+
+        Dictionary<int, string> stages = await DivisionStages(sut);
+
+        Assert.Equal(PlanningStage.Done, stages[31]);
+        Assert.Equal(PlanningStage.Todo, stages[32]);
+    }
+
+    [Fact]
+    public async Task GetOfficeDashboardAsync_PastTheDivisions_NeverReadsDivisionSubmissions()
+    {
+        // With PPDO or accepted, a division's own submit no longer decides its stage — no query.
+        (BudgetPlanningDashboardService sut, Mock<IAipDivisionSubmissionRepository> divisions) =
+            BuildDivisionStage(AipWorkflowStatus.Consolidated, submitted: [31, 32]);
+
+        await DivisionStages(sut);
+
+        divisions.Verify(r => r.GetForOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
