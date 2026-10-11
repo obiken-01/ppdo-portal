@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using PPDO.Infrastructure.Data;
 using PPDO.Infrastructure.Repositories;
 
@@ -79,5 +80,24 @@ public sealed class PriceIndexVersionStampTests : IDisposable
 
         Assert.Equal(3, count);
         Assert.Equal(new DateTime(2026, 10, 4, 9, 30, 0), last);
+    }
+
+    [Fact]
+    public async Task GetVersionStampAsync_DoesNotTripEfsFirstWithoutOrderByWarning()
+    {
+        // PPDO-204: UAT App Insights logged EF's "First/FirstOrDefault without OrderBy and filter"
+        // warning 7 times in one test run. This query was the only unfiltered, unordered First in
+        // the repositories, and it runs on every AIP Entry load (the picker's ETag). A context that
+        // throws on the warning is the only way to see it here; the default just logs.
+        Insert(1, "2026-09-01 08:00:00");
+        DbContextOptions<AppDbContext> strict = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite(_connection)
+            .ConfigureWarnings(w => w.Throw(CoreEventId.FirstWithoutOrderByAndFilterWarning))
+            .Options;
+
+        using AppDbContext ctx = new(strict);
+        (int count, _) = await new PriceIndexItemRepository(ctx).GetVersionStampAsync();
+
+        Assert.Equal(1, count);
     }
 }
