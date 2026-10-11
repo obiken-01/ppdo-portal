@@ -254,12 +254,16 @@ public sealed class AipExpenditureProcurementTests
         Assert.Equal(33_000m, result.Value!.Line!.Mooe);
     }
 
-    /// <summary>A line with no items keeps the amounts the encoder typed — the pre-PPDO-54 path is untouched.</summary>
+    /// <summary>
+    /// A line with no items keeps the amounts the encoder typed — the pre-PPDO-54 path is untouched.
+    /// ↩️ On an unclassified account since PPDO-201: a MOOE account now refuses PS and CO, and only a
+    /// class the server does not recognise leaves all three columns open to type into.
+    /// </summary>
     [Fact]
     public async Task Add_WithNoItems_LeavesTheTypedAmountsExactlyAsGiven()
     {
         var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
-            MooeAccountId, null, Ps: 5_000m, Mooe: 20_000m, Co: 1_000m), Encoder);
+            OddAccountId, null, Ps: 5_000m, Mooe: 20_000m, Co: 1_000m), Encoder);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(5_000m,  result.Value!.Line!.Ps);
@@ -339,5 +343,106 @@ public sealed class AipExpenditureProcurementTests
 
         AipProcurementItem stored = Assert.Single(_saved);
         Assert.Equal(18_000m, stored.LineTotal);
+    }
+
+    // ── A typed line's amount sits in its account's column (PPDO-201) ─────────
+
+    // Found in the PPDO-195 UAT run: a PS amount on a MOOE account was saved, and PS is exempt from
+    // the ceiling, so MOOE spending parked in PS escaped it. The form disables the other columns
+    // (PPDO-97), but the form is not a guard.
+
+    private static AipExpenditure StoredLine(int accountId, decimal ps, decimal mooe, decimal co) => new()
+    {
+        Id = 900, ActivityId = ActivityId, AccountId = accountId, Ps = ps, Mooe = mooe, Co = co,
+    };
+
+    [Theory]
+    [InlineData(250_500, 0, 0)]   // the UAT case: PS on a MOOE account
+    [InlineData(0, 100_000, 50)]  // CO alongside MOOE
+    public async Task Add_TypedAmountOutsideTheAccountsClass_IsRefusedAndNothingIsWritten(
+        int ps, int mooe, int co)
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(MooeAccountId, null, ps, mooe, co), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("5-02-03-010", result.Error);
+        Assert.Contains("MOOE", result.Error);
+        _expRepo.Verify(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Add_TypedAmountInTheAccountsColumn_Saves()
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(CoAccountId, null, 0m, 0m, 200_000m), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(200_000m, Written()!.Co);
+    }
+
+    [Theory]
+    [InlineData(OddAccountId)]  // blank class: the form leaves all three open, so does the server
+    [InlineData(null)]          // no account yet: nothing says which column is right
+    public async Task Add_WithNoRecognisedClass_AnyColumnSaves(int? accountId)
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(accountId, null, 1_000m, 2_000m, 3_000m), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public async Task Update_NewOutOfClassAmount_IsRefusedAndNotSaved()
+    {
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 0m, mooe: 100_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900,
+            new UpdateAipExpenditureDto(MooeAccountId, null, 250_500m, 100_000m, 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_LegacyOutOfClassAmountLeftAsItWas_StillSaves()
+    {
+        // PPDO-97 keeps a legacy line's out-of-class figure "disabled and visible, until the account
+        // itself is changed", and the form sends it back on every edit. Refusing it would lock the
+        // encoder out of the line for a figure they cannot touch.
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 5_000m, mooe: 100_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900,
+            new UpdateAipExpenditureDto(MooeAccountId, null, 5_000m, 120_000m, 0m), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public async Task Update_LegacyOutOfClassAmountChanged_IsRefused()
+    {
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 5_000m, mooe: 100_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900,
+            new UpdateAipExpenditureDto(MooeAccountId, null, 6_000m, 100_000m, 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task Update_AccountChanged_OutOfClassAmountCarriedOver_IsRefused()
+    {
+        // Changing the account is the encoder saying what the line is now; the form clears the other
+        // columns at that moment (withAccount), so an amount carried across is not the legacy case.
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(CoAccountId, ps: 0m, mooe: 0m, co: 200_000m));
+
+        var result = await Build().UpdateAsync(900,
+            new UpdateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 200_000m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 }

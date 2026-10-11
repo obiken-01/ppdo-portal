@@ -127,6 +127,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 line, dto.AccountId, dto.ProcurementItems, ct) is { } routingError)
             return routingError;
 
+        if (await CheckAccountColumnAsync<AipExpenditureWriteResultDto>(line, stored: null, ct) is { } wrongColumn)
+            return wrongColumn;
+
         line.Recalculate();
 
         await _expRepo.AddAsync(line, ct);
@@ -177,6 +180,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (itemsInvalid is not null) return itemsInvalid;
 
         object before = new { line.AccountId, line.FundingSourceId, line.Ps, line.Mooe, line.Co, line.Total };
+        StoredAmounts stored = new(line.AccountId, line.Ps, line.Mooe, line.Co);
 
         line.Ps   = dto.Ps;
         line.Mooe = dto.Mooe;
@@ -216,6 +220,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         {
             return routingError;
         }
+
+        if (await CheckAccountColumnAsync<AipExpenditureWriteResultDto>(line, stored, ct) is { } wrongColumn)
+            return wrongColumn;
 
         line.Recalculate();
 
@@ -484,6 +491,57 @@ public sealed class AipExpenditureService : IAipExpenditureService
         }
 
         return null;
+    }
+
+    /// <summary>What an edited line held before the edit — the legacy allowance below reads it.</summary>
+    private sealed record StoredAmounts(int? AccountId, decimal Ps, decimal Mooe, decimal Co);
+
+    /// <summary>
+    /// A line's amount sits in the column its account's expense class names (PPDO-201).
+    ///
+    /// <para>
+    /// The form closes the other two columns (PPDO-97), but the form is not a guard: a PS amount on
+    /// a MOOE account was accepted in the PPDO-195 UAT run, and PS is exempt from the ceiling, so
+    /// MOOE spending parked in PS escaped it.
+    /// </para>
+    ///
+    /// <list type="bullet">
+    /// <item>No account, or a class that is not PS / MOOE / CO → no check: the form leaves all three
+    /// open in that case, and nothing says which column is right.</item>
+    /// <item>⚠️ <b>Legacy allowance on an edit.</b> An out-of-class amount that is unchanged from
+    /// <paramref name="stored"/>, on an unchanged account, is let through. PPDO-97 keeps such a
+    /// figure "disabled and visible, until the account itself is changed" and the form sends it
+    /// back on every save; refusing it would lock the encoder out of the line over a figure they
+    /// cannot edit. A new or changed amount, or one carried onto a different account, is refused.</item>
+    /// </list>
+    ///
+    /// Itemised lines always pass: routing has already put the total in the class's column.
+    /// </summary>
+    private async Task<ServiceResult<T>?> CheckAccountColumnAsync<T>(
+        AipExpenditure line, StoredAmounts? stored, CancellationToken ct)
+    {
+        if (line.AccountId is not int accountId) return null;
+        Account? account = await _accountRepo.GetByIntIdAsync(accountId, ct);
+        string? cls = account?.ExpenseClass?.Trim().ToUpperInvariant();
+        if (cls is not (AipProcurementRouting.Ps or AipProcurementRouting.Mooe or AipProcurementRouting.Co))
+            return null;
+
+        bool sameAccount = stored is not null && stored.AccountId == accountId;
+        List<string> wrong = [];
+        void Check(string column, decimal value, decimal? storedValue)
+        {
+            if (column == cls || value == 0m) return;
+            if (sameAccount && storedValue == value) return;
+            wrong.Add(column);
+        }
+        Check(AipProcurementRouting.Ps,   line.Ps,   stored?.Ps);
+        Check(AipProcurementRouting.Mooe, line.Mooe, stored?.Mooe);
+        Check(AipProcurementRouting.Co,   line.Co,   stored?.Co);
+        if (wrong.Count == 0) return null;
+
+        return ServiceResult<T>.BadRequest(
+            $"Account {account!.AccountNumber} is {cls}, so this line can only carry a {cls} amount. "
+            + $"Clear {string.Join(" and ", wrong)}, or pick an account of that class.");
     }
 
     /// <summary>
