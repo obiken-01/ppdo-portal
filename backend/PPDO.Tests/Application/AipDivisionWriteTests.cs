@@ -1,4 +1,4 @@
-using Moq;
+﻿using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
@@ -48,7 +48,8 @@ public sealed partial class AipServiceTests
         AipDivisionLockFixture Divisions,
         List<AipActivity> Activities,
         Mock<IAuditService> Audit,
-        Mock<IAipCeilingService> Ceiling);
+        Mock<IAipCeilingService> Ceiling,
+        Mock<IAipRepository> Repo);
 
     private static DivisionWorld BuildDivisionWorld(
         int fiscalYear = 2028,
@@ -103,7 +104,7 @@ public sealed partial class AipServiceTests
             ],
             ceiling: ceiling);
 
-        return new DivisionWorld(built.Item1, divisions, acts, built.Item6, ceiling);
+        return new DivisionWorld(built.Item1, divisions, acts, built.Item6, ceiling, built.Item2);
     }
 
     private static CreateAipActivityDto NewActivity(int? divisionId = null) =>
