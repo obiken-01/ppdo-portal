@@ -30,6 +30,17 @@
     <ProjectReference Include="..\PPDO.Infrastructure\PPDO.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!--
+    PPDO-199: the module-wiping cleanup endpoints exist for local live-testing only. Every
+    non-Debug build — so every `dotnet publish -c Release` that CI deploys to UAT and
+    production — leaves them out entirely, so no environment setting can ever switch them on.
+    `func start` builds Debug and keeps them. Pinned by DevOnlyEndpointsTests.
+  -->
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <Compile Remove="Functions\InventoryCleanupFunctions.cs" />
+    <Compile Remove="Functions\BudgetPlanningCleanupFunctions.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

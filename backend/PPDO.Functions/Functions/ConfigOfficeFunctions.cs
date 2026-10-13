@@ -99,7 +99,8 @@ public sealed class ConfigOfficeFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
         if (denied is not null) return denied;
 
-        string csv = await ConfigHttp.ReadTextAsync(req);
+        (string csv, HttpResponseData? tooLarge) = await ConfigHttp.ReadTextAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
         ServiceResult<CsvImportResult> result = await _offices.ImportCsvAsync(csv, ct);
         string? message = result.IsSuccess
             ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} skipped."

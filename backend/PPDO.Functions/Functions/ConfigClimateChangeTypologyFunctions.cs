@@ -90,7 +90,8 @@ public sealed class ConfigClimateChangeTypologyFunctions
         (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanManageConfig, ct);
         if (denied is not null) return denied;
 
-        string csv = await ConfigHttp.ReadTextAsync(req);
+        (string csv, HttpResponseData? tooLarge) = await ConfigHttp.ReadTextAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
         ServiceResult<CsvImportResult> result = await _typologies.ImportCsvAsync(csv, ct);
         string? message = result.IsSuccess
             ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} skipped."

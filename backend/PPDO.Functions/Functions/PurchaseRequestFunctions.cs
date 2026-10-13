@@ -170,8 +170,11 @@ public sealed class PurchaseRequestFunctions
         // req.Body in the isolated worker is a non-seekable HttpRequestStream.
         // ClosedXML calls .Length internally, which throws NotSupportedException.
         // Copy to a MemoryStream first so the stream is fully seekable.
-        using MemoryStream ms = new();
-        await req.Body.CopyToAsync(ms, cancellationToken);
+        // PPDO-199: capped at UploadLimits, refused with a 413 before any parser sees it.
+        UploadBuffer upload = await ConfigHttp.ReadUploadAsync(req, cancellationToken);
+        if (upload.IsRefused)
+            return await PlainError(req, HttpStatusCode.RequestEntityTooLarge, upload.Error!, cancellationToken);
+        using MemoryStream ms = upload.Body!;
 
         if (ms.Length == 0)
             return await PlainError(req, HttpStatusCode.BadRequest,
@@ -200,8 +203,11 @@ public sealed class PurchaseRequestFunctions
         // req.Body in the isolated worker is a non-seekable HttpRequestStream — copy to a
         // MemoryStream first so ClosedXML's/PdfPig's internal .Length/seek calls don't throw,
         // and so the service can sniff the file's magic number to tell .xlsx from .pdf.
-        using MemoryStream ms = new();
-        await req.Body.CopyToAsync(ms, cancellationToken);
+        // PPDO-199: capped at UploadLimits, refused with a 413 before any parser sees it.
+        UploadBuffer upload = await ConfigHttp.ReadUploadAsync(req, cancellationToken);
+        if (upload.IsRefused)
+            return await PlainError(req, HttpStatusCode.RequestEntityTooLarge, upload.Error!, cancellationToken);
+        using MemoryStream ms = upload.Body!;
 
         if (ms.Length == 0)
             return await PlainError(req, HttpStatusCode.BadRequest,

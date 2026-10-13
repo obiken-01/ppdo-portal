@@ -168,7 +168,8 @@ public sealed class ConfigPriceIndexFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanManageConfig, ct);
         if (denied is not null) return denied;
 
-        string csv = await ConfigHttp.ReadTextAsync(req);
+        (string csv, HttpResponseData? tooLarge) = await ConfigHttp.ReadTextAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
         ServiceResult<CsvImportResult> result = await _priceIndex.ImportCsvAsync(csv, ct);
         string? message = result.IsSuccess
             ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} skipped."
@@ -186,9 +187,10 @@ public sealed class ConfigPriceIndexFunctions
         if (denied is not null) return denied;
 
         // ClosedXML needs a seekable stream; the request body is not (same buffering as AIP/LDIP upload).
-        using MemoryStream buffer = new();
-        await req.Body.CopyToAsync(buffer, ct);
-        buffer.Position = 0;
+        // PPDO-199: capped at UploadLimits, refused with a 413 before any parser sees it.
+        (MemoryStream? upload, HttpResponseData? tooLarge) = await ConfigHttp.ReadUploadEnvelopedAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
+        using MemoryStream buffer = upload!;
 
         ServiceResult<CsvImportResult> result = await _priceIndex.ImportPgomAsync(buffer, ct);
         string? message = result.IsSuccess
