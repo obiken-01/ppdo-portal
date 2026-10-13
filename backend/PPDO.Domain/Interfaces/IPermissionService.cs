@@ -57,6 +57,21 @@ public interface IPermissionService
     Task<bool> CanAccessBudgetPlanningAsync(User user, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// True when the user may reach the WFP surface — records, expenditures, ceilings and the WFP
+    /// report (v1.8.3 — PPDO-198).
+    ///
+    /// <see cref="CanAccessBudgetPlanningAsync"/> AND a seat in the host office. WFP is PPDO's own
+    /// plan (PPDO-20); a guest office holds Budget Planning by default, and without this check its
+    /// users could read and change PPDO's WFP. SuperAdmin passes from any office (or none), for
+    /// support access.
+    ///
+    /// ⚠️ Admin does <b>not</b> bypass the office check — same shape as
+    /// <see cref="CanManageInvestmentPlanningSettingsAsync"/>. The division axis inside PPDO is a
+    /// separate check, made per record by the WFP services (<c>WfpDivisionScope</c>).
+    /// </summary>
+    Task<bool> CanAccessWfpAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// True when the user may upload / import AIP files.
     /// SuperAdmin/Admin: always true. PPDO Staff: override ?? division flag.
     /// Non-PPDO office users (OfficeId set): always false — the uploaded file contains every

@@ -140,7 +140,7 @@ public sealed class PpmpReportServiceTests
                 Dictionary<int, IReadOnlyList<WfpExpenditureDto>> map = [];
                 foreach (int id in actIds)
                 {
-                    IReadOnlyList<WfpExpenditureDto> e = await expenditures.Object.GetByActivityIdAsync(id, ct);
+                    IReadOnlyList<WfpExpenditureDto> e = await expenditures.Object.GetByActivityIdAsync(id, DivisionScope.All, ct);
                     if (e is { Count: > 0 }) map[id] = e;
                 }
                 return map;
@@ -211,7 +211,7 @@ public sealed class PpmpReportServiceTests
         Fixture f = Build();
         SeedHierarchy(f);
         // Same item across all 4 quarterly periods, different qty each quarter.
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-99-030", "Representation Expenses", WfpFrequency.Quarterly, [
                     Item(1, null, "Snacks SET A", "set", 150m, 35m, 1m, 5250m),
@@ -243,7 +243,7 @@ public sealed class PpmpReportServiceTests
         Fixture f = Build();
         SeedHierarchy(f);
         // Monthly: period 2 -> Q1, period 5 -> Q2, period 8 -> Q3, period 11 -> Q4.
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Monthly, [
                     Item(2, null, "Bond Paper", "ream", 500m, 1m, 1m, 500m),
@@ -269,7 +269,7 @@ public sealed class PpmpReportServiceTests
     {
         Fixture f = Build();
         SeedHierarchy(f);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-99-050", "Rent", WfpFrequency.Annual, [
                     Item(1, null, "Venue", "lot", 10000m, 1m, 1m, 10000m),
@@ -292,7 +292,7 @@ public sealed class PpmpReportServiceTests
     {
         Fixture f = Build();
         SeedHierarchy(f);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 // Non-procurement: no items → must not appear at all.
                 new WfpExpenditureDto(9, 500, 1, "5-02-01-010", "Travelling", WfpNature.NonProcurement,
@@ -317,7 +317,7 @@ public sealed class PpmpReportServiceTests
         SeedHierarchy(f);
         // Combined = typed periods + procurement items. Only the items should surface; the typed
         // (non-proc) portion is ignored, so the account total is the items' total, not Net/Total.
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 new WfpExpenditureDto(1, 500, 1, "5-02-03-010", "Office Supplies", WfpNature.Combined,
                     WfpFrequency.Quarterly, null, null, null, false, 0, null, 0, 0, 0, 0, 9999, 9999,
@@ -340,7 +340,7 @@ public sealed class PpmpReportServiceTests
     {
         Fixture f = Build();
         SeedHierarchy(f);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Quarterly, [
                     Item(1, null, "Bond Paper", "ream", 500m, 2m, 1m, 1000m),
@@ -363,7 +363,7 @@ public sealed class PpmpReportServiceTests
     {
         Fixture f = Build();
         SeedHierarchy(f);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Quarterly,
                     [Item(1, null, "Bond Paper", "ream", 500m, 2m, 1m, 1000m)], fundSourceName: null), // → GENERAL FUND
@@ -387,7 +387,7 @@ public sealed class PpmpReportServiceTests
         Fixture f = Build();
         SeedHierarchy(f);
         f.PriceItems.Add(MakePriceItem(7, "Bond paper A4 80gsm", "ream", "OSE-1714343441", "Office Supplies Expenses"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Quarterly, [
                     Item(1, 7, "Bond paper A4 80gsm", "ream", 494m, 2m, 1m, 988m),   // linked → joined
@@ -415,7 +415,7 @@ public sealed class PpmpReportServiceTests
         Fixture f = Build();
         SeedHierarchy(f, divisionId: 5);
         f.Divisions.Add(new Division { Id = 5, Name = "Planning Division", OfficeId = 1, IsActive = true });
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Quarterly,
                     [Item(1, null, "Bond Paper", "ream", 500m, 2m, 1m, 1000m)]),
@@ -433,7 +433,7 @@ public sealed class PpmpReportServiceTests
     {
         Fixture f = Build();
         SeedHierarchy(f, divisionId: null);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 Expenditure(1, 500, "5-02-03-010", "Office Supplies", WfpFrequency.Quarterly,
                     [Item(1, null, "Bond Paper", "ream", 500m, 2m, 1m, 1000m)]),

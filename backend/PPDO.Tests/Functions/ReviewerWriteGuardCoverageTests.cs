@@ -560,6 +560,8 @@ public sealed class ReviewerWriteGuardCoverageTests
         Mock<IPermissionService> permissions = new();
         permissions.Setup(p => p.CanAccessBudgetPlanningAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(true);
+        permissions.Setup(p => p.CanAccessWfpAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+                   .ReturnsAsync(true);
         permissions.Setup(p => p.CanUploadAipAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
                    .ReturnsAsync(true);
         permissions.Setup(p => p.CanManagePpdoAllocationAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))

@@ -341,6 +341,10 @@ export interface AuditLogEntry {
   actorName: string;
   /** Human-readable, possibly multi-line ("\n"-joined) summary of what changed. */
   description: string;
+  /** PPDO-110 — an AIP program/project/activity's ref code; null for other tables (show #id). */
+  recordCode?: string | null;
+  /** PPDO-110 — that row's name, for the hover title. */
+  recordName?: string | null;
 }
 
 /** One filtered/paginated page of audit log entries. */

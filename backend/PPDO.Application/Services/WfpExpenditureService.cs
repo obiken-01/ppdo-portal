@@ -62,10 +62,10 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     public WfpReserveRateDto GetReserveRate() => new(WfpReserveRule.Rate);
 
     public async Task<ServiceResult<WfpExpenditureDto>> GetByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, DivisionScope scope, CancellationToken ct = default)
     {
         WfpExpenditure? entity = await _repo.GetByIntIdAsync(id, ct);
-        if (entity is null)
+        if (entity is null || !await InScopeAsync(entity.WfpActivityId, scope, ct))
             return ServiceResult<WfpExpenditureDto>.NotFound($"WFP expenditure {id} not found.");
 
         IReadOnlyList<WfpExpenditurePeriod> periods = await _repo.GetPeriodsByExpenditureIdAsync(id, ct);
@@ -74,8 +74,10 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     }
 
     public async Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(
-        int wfpActivityId, CancellationToken ct = default)
+        int wfpActivityId, DivisionScope scope, CancellationToken ct = default)
     {
+        if (!await InScopeAsync(wfpActivityId, scope, ct)) return [];
+
         // Three queries total regardless of expenditure count — was one query per expenditure
         // for its periods AND its procurement items (2N), the same N+1 GetByActivityIdsAsync
         // below was already fixed for under RAL-158, just never applied to this singular path
@@ -137,16 +139,20 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     // ── Save (create or replace) ─────────────────────────────────────────────
 
     public async Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(
-        SaveWfpExpenditureDto dto, CancellationToken ct = default)
+        SaveWfpExpenditureDto dto, DivisionScope scope, CancellationToken ct = default)
     {
         string? validationError = ValidateDto(dto);
         if (validationError is not null)
             return ServiceResult<WfpExpenditureDto>.BadRequest(validationError);
 
-        // Resolved once and used twice below: the finalized-WFP lock, and the office whose funds
-        // this line may name. Null means the activity is unknown — see GetFinalLockErrorAsync for
-        // why that is left to the FK rather than refused here.
+        // Resolved once and used three times below: the caller's scope, the finalized-WFP lock, and
+        // the office whose funds this line may name. Null means the activity is unknown — see
+        // GetFinalLockErrorAsync for why that is left to the FK rather than refused here.
         WfpExpenditureContext? context = await _repo.GetActivityContextAsync(dto.WfpActivityId, ct);
+
+        // ⚠️ PPDO-198 — before the lock check, whose Forbidden would confirm the activity exists.
+        if (!InScope(context, scope))
+            return ServiceResult<WfpExpenditureDto>.NotFound($"WFP activity {dto.WfpActivityId} not found.");
 
         string? lockError = await GetFinalLockErrorAsync(context, ct);
         if (lockError is not null)
@@ -156,7 +162,11 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
         if (dto.Id.HasValue)
         {
             existing = await _repo.GetByIntIdAsync(dto.Id.Value, ct);
-            if (existing is null)
+
+            // ⚠️ PPDO-198 — an update edits the row in place under ITS OWN activity, while the scope
+            // and lock checks above read dto.WfpActivityId. Pairing a foreign expenditure id with an
+            // activity the caller may edit would otherwise reach that row, finalized or not.
+            if (existing is null || existing.WfpActivityId != dto.WfpActivityId)
                 return ServiceResult<WfpExpenditureDto>.NotFound($"WFP expenditure {dto.Id} not found.");
         }
 
@@ -337,10 +347,11 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
 
     // ── Delete (RAL-129) ─────────────────────────────────────────────────────
 
-    public async Task<ServiceResult<bool>> DeleteExpenditureAsync(int id, CancellationToken ct = default)
+    public async Task<ServiceResult<bool>> DeleteExpenditureAsync(
+        int id, DivisionScope scope, CancellationToken ct = default)
     {
         WfpExpenditure? existing = await _repo.GetByIntIdAsync(id, ct);
-        if (existing is null)
+        if (existing is null || !await InScopeAsync(existing.WfpActivityId, scope, ct))
             return ServiceResult<bool>.NotFound($"WFP expenditure {id} not found.");
 
         string? lockError = await GetFinalLockErrorAsync(existing.WfpActivityId, ct);
@@ -370,6 +381,23 @@ public sealed class WfpExpenditureService : IWfpExpenditureService
     // finalized WFP is locked; an admin must Unlock it first (same as the record-level flow).
 
     /// <summary>Resolves the activity's context, then applies the finalized-WFP lock.</summary>
+    // ── Scope (PPDO-198) ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Whether the WFP behind <paramref name="wfpActivityId"/> is inside the caller's division
+    /// scope. An unrestricted caller skips the lookup.
+    /// </summary>
+    private async Task<bool> InScopeAsync(int wfpActivityId, DivisionScope scope, CancellationToken ct)
+        => scope.SeeAll || InScope(await _repo.GetActivityContextAsync(wfpActivityId, ct), scope);
+
+    /// <summary>
+    /// The scope rule for a caller that already holds the context. ⚠️ An unknown activity (null
+    /// context) is in scope only for an unrestricted caller — that keeps the long-standing
+    /// "let the FK reject it" behaviour for them, and never lets a scoped caller past on a guess.
+    /// </summary>
+    private static bool InScope(WfpExpenditureContext? context, DivisionScope scope)
+        => scope.SeeAll || (context is not null && WfpDivisionScope.Allows(scope, context.DivisionId));
+
     private async Task<string?> GetFinalLockErrorAsync(int wfpActivityId, CancellationToken ct)
         => await GetFinalLockErrorAsync(await _repo.GetActivityContextAsync(wfpActivityId, ct), ct);
 

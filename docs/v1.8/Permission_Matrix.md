@@ -75,6 +75,31 @@ Office is not read by any of these five.
 A guest-office user has no division to inherit from and Budget Planning is their only feature, so a
 blank override means granted. An explicit `false` still turns it off.
 
+### 2.2a `CanAccessWfp` — Budget Planning in the host office (PPDO-198)
+
+The gate on every WFP endpoint: records, expenditures, ceilings and the WFP report. Composed from
+existing inputs; it has **no override column and no division flag of its own**. The override and
+division inputs below are `CanAccessBudgetPlanning`'s.
+
+| Role | Office | Override (`CanAccessBudgetPlanning`) | Division flag | Result |
+|---|---|---|---|---|
+| SuperAdmin | any, or none | — | — | ✅ support access |
+| Admin | host | — | — | ✅ |
+| Admin | **guest**, or none | — | — | ❌ **the office check binds Admin** |
+| Staff | host | `null` | `false` | ❌ |
+| Staff | host | `null` | `true` | ✅ |
+| Staff | host | `true` | `false` | ✅ |
+| Staff | host | `false` | `true` | ❌ |
+| Staff | **guest** | `null` | — | ❌ **§2.2's guest default-on does not carry over** |
+| Staff | **guest** | `true` | `true` | ❌ **never, however set** |
+
+WFP is PPDO's own plan (PPDO-20). §2.2 grants every guest office Budget Planning by default, which
+is right for the AIP and wrong for the WFP. Before this flag, the WFP endpoints were gated on §2.2
+alone, so a guest-office account could reach PPDO's WFP. Same shape as §2.3a: the office is read
+before the role bypass.
+
+The flag is only the **office** half. Inside PPDO, the WFP is also scoped by **division**; see §3.3.
+
 ### 2.3 `CanUploadAip` — host-office only, never grantable to a guest
 
 | Role | Office | Override | Division flag | Result |
@@ -269,6 +294,26 @@ office hand-off does. Another office's division answers 404, the same as a missi
 
 Pinned by `AipDivisionSubmitServiceTests` and
 `ReviewerWriteGuardCoverageTests.ReturnDivision_IsGatedOnTheDepartmentHeadFlag`.
+
+### 3.3 `WfpDivisionScope` — the WFP's division axis (PPDO-198)
+
+Every WFP path that names a record checks it against the caller's division. That covers a WFP id, a
+WFP activity id, an expenditure id, and a division id sent in a request body.
+
+| Caller | Sees |
+|---|---|
+| SuperAdmin / Admin | every division (may narrow a list with `?divisionId=`) |
+| `CanManagePpdoAllocation` (finance) | every division (may narrow a list with `?divisionId=`) |
+| Staff with a division | their own division only; a requested `divisionId` is ignored |
+| Staff with no division | **nothing**, never "every division" |
+
+A record outside the scope answers **404 with the same message as a missing id**, so ids cannot be
+probed. An office-level WFP (no division) is visible only to an unrestricted caller. An expenditure
+update must name the activity its row already sits under: the scope and Final-lock checks read that
+activity, so a mismatch is refused rather than trusted.
+
+Pinned by `WfpDivisionScopeTests` and the `Division scope (PPDO-198)` blocks in `WfpServiceTests`
+and `WfpExpenditureServiceTests`.
 
 ---
 
@@ -487,6 +532,7 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 | Office scope + cross-office read bypass | `PPDO.Application/Common/OfficeScope.cs` |
 | Division scope | `PPDO.Application/Common/DivisionScope.cs` |
 | Combined budget-planning scope | `PPDO.Application/Common/BudgetPlanningScope.cs` |
+| WFP division scope | `PPDO.Application/Common/WfpDivisionScope.cs` |
 | Reviewer write denial | `PPDO.Application/Common/ReviewerWriteGuard.cs` |
 | Endpoint wiring | `PPDO.Functions/Functions/ConfigHttp.cs` |
 | **This matrix, as tests** | `PPDO.Tests/Application/PermissionMatrixTests.cs` |
@@ -496,4 +542,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198)*

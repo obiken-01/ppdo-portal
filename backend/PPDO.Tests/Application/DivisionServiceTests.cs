@@ -30,6 +30,8 @@ public sealed class DivisionServiceTests
     {
         Mock<IDivisionRepository> divRepo = new();
         divRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divSeed);
+        divRepo.Setup(r => r.GetByIntIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => divSeed.FirstOrDefault(d => d.Id == id));
         divRepo.Setup(r => r.AddAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()))
             .Callback<Division, CancellationToken>((d, _) => divSeed.Add(d))
             .Returns(Task.CompletedTask);
@@ -197,6 +199,32 @@ public sealed class DivisionServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(target.IsActive);
         divRepo.Verify(r => r.DeleteAsync(It.IsAny<Division>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // PPDO-42 — a by-id read or delete looks the one row up in SQL. The by-id mock answers from
+    // the same seed, so only these Verify calls can tell a whole-table load apart.
+
+    [Fact]
+    public async Task GetByIdAsync_ReadsOneRow_NeverTheWholeTable()
+    {
+        (DivisionService sut, Mock<IDivisionRepository> divRepo) = Build([Div(1, 1, "Admin")], [Office1]);
+
+        ServiceResult<DivisionDto> result = await sut.GetByIdAsync(1);
+
+        Assert.True(result.IsSuccess);
+        divRepo.Verify(r => r.GetByIntIdAsync(1, It.IsAny<CancellationToken>()), Times.Once);
+        divRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ReadsOneRow_NeverTheWholeTable()
+    {
+        (DivisionService sut, Mock<IDivisionRepository> divRepo) = Build([Div(1, 1, "Admin")], [Office1]);
+
+        await sut.DeleteAsync(1);
+
+        divRepo.Verify(r => r.GetByIntIdAsync(1, It.IsAny<CancellationToken>()), Times.Once);
+        divRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── CSV upsert ─────────────────────────────────────────────────────────────

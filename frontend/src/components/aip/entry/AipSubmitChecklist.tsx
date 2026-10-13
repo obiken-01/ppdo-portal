@@ -379,7 +379,7 @@ export default function AipSubmitChecklist({
             value={ceiling.ceilingSet ? fmtThousandsReadout(ceiling.ceiling) : "Not set"}
             // ⚠️ An unset ceiling is ZERO, not unlimited. Saying so here stops an encoder reading
             // a blank as headroom.
-            hint={ceiling.ceilingSet ? undefined : "PBO has not set your ceiling — treated as ₱0"} />
+            hint={ceiling.ceilingSet ? undefined : "PPDO has not set your ceiling — treated as ₱0"} />
           <Figure label="Encoded (MOOE + CO) (in thousand pesos)" value={fmtThousandsReadout(ceiling.encodedBaseRounded)}
             // ⚠️ Keep this next to the figure. It is the only thing explaining why the strip does
             // not reconcile with the tree: DECISION 9 rounds each activity UP to the thousand

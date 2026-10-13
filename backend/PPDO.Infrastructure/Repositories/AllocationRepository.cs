@@ -24,16 +24,6 @@ public sealed class AllocationRepository : Repository<ProgramDivision>, IAllocat
             .ToListAsync(ct);
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeRefCodesAsync(
-        IReadOnlyList<string> officeRefCodes, CancellationToken ct = default)
-    {
-        if (officeRefCodes.Count == 0) return [];
-        return await _context.Set<ProgramDivision>()
-            .Where(pd => officeRefCodes.Contains(pd.OfficeRefCode))
-            .ToListAsync(ct);
-    }
-
-    /// <inheritdoc />
     public async Task<IReadOnlyList<ProgramDivision>> GetProgramDivisionsByOfficeIdAsync(
         int officeId, CancellationToken ct = default)
         => await _context.Set<ProgramDivision>()

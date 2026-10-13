@@ -132,7 +132,7 @@ public sealed class WfpReportServiceTests
                 Dictionary<int, IReadOnlyList<WfpExpenditureDto>> map = [];
                 foreach (int id in actIds)
                 {
-                    IReadOnlyList<WfpExpenditureDto> e = await expenditures.Object.GetByActivityIdAsync(id, ct);
+                    IReadOnlyList<WfpExpenditureDto> e = await expenditures.Object.GetByActivityIdAsync(id, DivisionScope.All, ct);
                     if (e is { Count: > 0 }) map[id] = e;
                 }
                 return map;
@@ -338,11 +338,11 @@ public sealed class WfpReportServiceTests
                 new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
             ]);
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
             ]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 500, total: 500),
             ]);
@@ -392,11 +392,11 @@ public sealed class WfpReportServiceTests
         f.Accounts.Add(MakeAccount(1, "5-01-01-010", "Salaries and Wages - Regular", "PS"));
         f.Accounts.Add(MakeAccount(2, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
 
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-01-01-010", "Salaries and Wages - Regular", net: 90000, total: 100000),
             ]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(2, 501, 2, "5-02-03-010", "Office Supplies Expenses", net: 5000, total: 5000),
             ]);
@@ -458,7 +458,7 @@ public sealed class WfpReportServiceTests
             .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 501, WfpId = 1001, AipActivityId = 100 }]);
 
         f.Accounts.Add(MakeAccount(2, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(2, 501, 2, "5-02-03-010", "Office Supplies Expenses", net: 5000, total: 5000),
             ]);
@@ -532,7 +532,7 @@ public sealed class WfpReportServiceTests
         f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
             ]);
@@ -607,11 +607,11 @@ public sealed class WfpReportServiceTests
                 new WfpActivity { Id = 502, WfpId = 1000, AipActivityId = 102 },
             ]);
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000)]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 2000, total: 2000)]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(502, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(502, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[MakeExpenditure(3, 502, 1, "5-02-03-010", "Office Supplies Expenses", net: 4000, total: 4000)]);
 
         ServiceResult<WfpReportDto> result = await f.Sut.GetReportAsync(1, FiscalYear);
@@ -664,13 +664,13 @@ public sealed class WfpReportServiceTests
         f.Accounts.Add(MakeAccount(2, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
         f.Accounts.Add(MakeAccount(3, "1-07-05-010", "Machinery", "CO"));
 
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-01-01-010", "Salaries and Wages - Regular", net: 10000, total: 10000),
                 MakeExpenditure(2, 500, 2, "5-02-03-010", "Office Supplies Expenses", net: 3000, total: 3000),
                 MakeExpenditure(3, 500, 3, "1-07-05-010", "Machinery", net: 5000, total: 5000),
             ]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(4, 501, 1, "5-01-01-010", "Salaries and Wages - Regular", net: 20000, total: 20000),
                 MakeExpenditure(5, 501, 2, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
@@ -724,11 +724,11 @@ public sealed class WfpReportServiceTests
                 new WfpActivity { Id = 501, WfpId = 1000, AipActivityId = 101 },
             ]);
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
             ]);
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(501, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(2, 501, 1, "5-02-03-010", "Office Supplies Expenses", net: 2000, total: 2000),
             ]);
@@ -773,7 +773,7 @@ public sealed class WfpReportServiceTests
 
         // The SAME activity has two expenditure rows under two different fund sources — one
         // with no fund source set at all (defaults to General Fund), one explicitly GAD Fund.
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000, fundSourceName: null),
                 MakeExpenditure(2, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 500, total: 500, fundSourceName: "5% GAD Fund"),
@@ -850,7 +850,7 @@ public sealed class WfpReportServiceTests
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
         foreach (int wfpActivityId in new[] { 500, 501, 502, 503, 504 })
         {
-            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                     MakeExpenditure(wfpActivityId, wfpActivityId, 1, "5-02-03-010", "Office Supplies Expenses", net: 100, total: 100),
                 ]);
@@ -904,7 +904,7 @@ public sealed class WfpReportServiceTests
         f.WfpRepo.Setup(r => r.GetActivitiesByWfpIdAsync(1000, It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpActivity>)[new WfpActivity { Id = 500, WfpId = 1000, AipActivityId = 100 }]);
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
-        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<CancellationToken>()))
+        f.Expenditures.Setup(e => e.GetByActivityIdAsync(500, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                 MakeExpenditure(1, 500, 1, "5-02-03-010", "Office Supplies Expenses", net: 1000, total: 1000),
             ]);
@@ -952,7 +952,7 @@ public sealed class WfpReportServiceTests
 
         f.Accounts.Add(MakeAccount(1, "5-02-03-010", "Office Supplies Expenses", "MOOE"));
         foreach (int wfpActivityId in new[] { 500, 501, 502 })
-            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<CancellationToken>()))
+            f.Expenditures.Setup(e => e.GetByActivityIdAsync(wfpActivityId, It.IsAny<DivisionScope>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IReadOnlyList<WfpExpenditureDto>)[
                     MakeExpenditure(wfpActivityId, wfpActivityId, 1, "5-02-03-010", "Office Supplies Expenses", net: 100, total: 100),
                 ]);

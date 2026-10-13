@@ -11,7 +11,8 @@ namespace PPDO.Functions.Functions;
 
 /// <summary>
 /// WFP expenditure endpoints under <c>/api/budget-planning/wfp/expenditures</c> (RAL-120).
-/// Gated by CanAccessBudgetPlanning, same as the rest of the WFP surface (WfpFunctions.cs).
+/// Gated by CanAccessWfp, same as the rest of the WFP surface (WfpFunctions.cs), and scoped to the
+/// caller's WfpDivisionScope inside the service (PPDO-198).
 /// Not yet wired to any frontend — this is the schema + computation-pipeline ticket; the
 /// entry UI (RAL-123/124/125) calls these endpoints once built.
 /// </summary>
@@ -29,7 +30,8 @@ public sealed class WfpExpenditureFunctions
         _permissions  = permissions;
     }
 
-    private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
+    private Task<bool> CanAccess(User u) => _permissions.CanAccessWfpAsync(u);
+    private Task<DivisionScope> ScopeOf(User u) => WfpDivisionScope.ResolveAsync(u, _permissions);
 
     // ── GET /api/budget-planning/wfp/expenditures?wfpActivityId= ─────────────
     // The entry wizard's "expenditures added so far under this activity" list (RAL-123).
@@ -39,14 +41,14 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["wfpActivityId"], out int wfpActivityId))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<IReadOnlyList<WfpExpenditureDto>>.Fail("wfpActivityId query parameter is required."), ct);
 
-        IReadOnlyList<WfpExpenditureDto> data = await _expenditures.GetByActivityIdAsync(wfpActivityId, ct);
+        IReadOnlyList<WfpExpenditureDto> data = await _expenditures.GetByActivityIdAsync(wfpActivityId, await ScopeOf(caller!), ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<WfpExpenditureDto>>.Ok(data), ct);
     }
@@ -58,10 +60,10 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _expenditures.GetByIdAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _expenditures.GetByIdAsync(id, await ScopeOf(caller!), ct), ct);
     }
 
     // ── POST /api/budget-planning/wfp/expenditures  (create or replace) ─────
@@ -71,7 +73,7 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures")] HttpRequestData req,
         CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
         SaveWfpExpenditureDto? body = await ConfigHttp.ReadBodyAsync<SaveWfpExpenditureDto>(req, ct);
@@ -79,7 +81,7 @@ public sealed class WfpExpenditureFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<WfpExpenditureDto>.Fail("Request body is missing or malformed."), ct);
 
-        ServiceResult<WfpExpenditureDto> result = await _expenditures.SaveExpenditureAsync(body, ct);
+        ServiceResult<WfpExpenditureDto> result = await _expenditures.SaveExpenditureAsync(body, await ScopeOf(caller!), ct);
         return await ConfigHttp.FromResultAsync(req, result, ct,
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
@@ -93,10 +95,10 @@ public sealed class WfpExpenditureFunctions
             Route = "budget-planning/wfp/expenditures/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
-        (User? _, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _expenditures.DeleteExpenditureAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _expenditures.DeleteExpenditureAsync(id, await ScopeOf(caller!), ct), ct);
     }
 
     // ── GET /api/budget-planning/wfp/reserve-rate ────────────────────────────

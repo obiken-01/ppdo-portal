@@ -22,7 +22,7 @@ public sealed class UserService : IUserService
 {
     private readonly IUserRepository _users;
     private readonly IOfficeRepository _offices;
-    private readonly IRepository<Division> _divisions;
+    private readonly IDivisionRepository _divisions;
     private readonly ILogger<UserService> _logger;
     private readonly IAuditService _audit;
     private readonly ILandingPageResolver _landing;
@@ -30,7 +30,7 @@ public sealed class UserService : IUserService
     public UserService(
         IUserRepository users,
         IOfficeRepository offices,
-        IRepository<Division> divisions,
+        IDivisionRepository divisions,
         ILogger<UserService> logger,
         IAuditService audit,
         ILandingPageResolver landing)
@@ -859,8 +859,7 @@ public sealed class UserService : IUserService
         if (user.Division?.Id == divisionId)
             return;
 
-        IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
-        user.Division = divisions.FirstOrDefault(d => d.Id == divisionId);
+        user.Division = await _divisions.GetByIntIdAsync(divisionId, cancellationToken);
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
@@ -888,8 +887,7 @@ public sealed class UserService : IUserService
         int officeId,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Office> offices = await _offices.GetAllAsync(cancellationToken);
-        Office? office = offices.FirstOrDefault(o => o.Id == officeId);
+        Office? office = await _offices.GetByIdAsync(officeId, cancellationToken);
 
         if (office is null)
             return ServiceResult<TResult>.BadRequest($"Office {officeId} not found.");
@@ -908,8 +906,7 @@ public sealed class UserService : IUserService
         int? requireOfficeId,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Division> divisions = await _divisions.GetAllAsync(cancellationToken);
-        Division? division = divisions.FirstOrDefault(d => d.Id == divisionId);
+        Division? division = await _divisions.GetByIntIdAsync(divisionId, cancellationToken);
 
         if (division is null)
             return ServiceResult<TResult>.BadRequest($"Division {divisionId} not found.");

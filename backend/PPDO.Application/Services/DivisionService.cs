@@ -24,13 +24,13 @@ public sealed class DivisionService : IDivisionService
     /// <summary>Column index of <c>landing_page</c> in <see cref="CsvHeaders"/> (RAL-259).</summary>
     private const int LandingPageIndex = 11;
 
-    private readonly IRepository<Division>   _divisions;
+    private readonly IDivisionRepository     _divisions;
     private readonly IRepository<Office>     _offices;
     private readonly ILogger<DivisionService> _logger;
     private readonly IAuditService            _audit;
 
     public DivisionService(
-        IRepository<Division> divisions,
+        IDivisionRepository   divisions,
         IRepository<Office>   offices,
         ILogger<DivisionService> logger,
         IAuditService audit)
@@ -67,8 +67,7 @@ public sealed class DivisionService : IDivisionService
     /// <inheritdoc />
     public async Task<ServiceResult<DivisionDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
-        Division? division = all.FirstOrDefault(d => d.Id == id);
+        Division? division = await _divisions.GetByIntIdAsync(id, cancellationToken);
         if (division is null)
             return ServiceResult<DivisionDto>.NotFound($"Division {id} not found.");
 
@@ -211,8 +210,7 @@ public sealed class DivisionService : IDivisionService
     /// <inheritdoc />
     public async Task<ServiceResult<DivisionDto>> DeleteAsync(int id, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<Division> all = await _divisions.GetAllAsync(cancellationToken);
-        Division? entity = all.FirstOrDefault(d => d.Id == id);
+        Division? entity = await _divisions.GetByIntIdAsync(id, cancellationToken);
         if (entity is null)
             return ServiceResult<DivisionDto>.NotFound($"Division {id} not found.");
 

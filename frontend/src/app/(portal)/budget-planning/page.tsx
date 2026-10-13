@@ -387,7 +387,7 @@ export default function BudgetPlanningPage() {
       label: "Office ceiling",
       value: officeCeiling,
       muted: !canManageOfficeCeilings,
-      hint: canManageOfficeCeilings ? "You publish this" : "Set by PBO — read only",
+      hint: canManageOfficeCeilings ? "You publish this" : "Set by PPDO — read only",
     };
 
     if (isHost) {
