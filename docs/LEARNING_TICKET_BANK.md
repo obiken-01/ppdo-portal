@@ -160,6 +160,36 @@ introducing a rule into a codebase that already violates it.
 
 ---
 
+## S1 🔵 Neutralise spreadsheet formulas in the config CSV exports (PPDO-199, item 3)
+
+**Taken 2026-10-13. Backend, one file plus tests. ~1–2 hours.** The other three PPDO-199 items
+shipped without it (PR for PPDO-199), so this is the last open piece of that ticket.
+
+Every config page has a CSV download (accounts, offices, divisions, funding sources, ESRE codes, CC
+typology, price index). A cell that starts with `=`, `+`, `-` or `@` is read by Excel as a
+**formula** when someone opens the file, so a value like `=HYPERLINK("https://…","Click")` typed into
+a name field runs on another person's machine. The usual defence is to prefix such a cell with a
+single quote `'`, which Excel shows as text.
+
+- **Where:** `backend/PPDO.Application/Common/Csv.cs` — `Escape` (the private method `Write` calls)
+  is the one place every export goes through.
+- **The catch, and the real exercise:** these files are also **imported back** (`Csv.Parse` →
+  each service's `ImportCsvAsync`). If export adds a `'` and import keeps it, a round trip changes
+  the data: `-` becomes `'-`. So `Parse` must undo exactly what `Escape` added, and nothing else.
+  Decide what counts as "exactly" — think about a value that genuinely starts with `'`.
+- **Siblings to copy the shape from:** `Csv.OverLimit` and `Csv.ParseBool` in the same file — small,
+  pure, documented helpers. For tests, `backend/PPDO.Tests/Application/EsreCodeCsvTests.cs` and
+  `ClimateChangeTypologyCsvTests.cs` exercise export and import through a real service.
+
+**What you'll learn:** CSV/formula injection (OWASP's name for it), and why an encoder needs a
+matching decoder when the format round-trips.
+
+**Verify:** `dotnet test backend/PPDO.slnx --filter Csv` — write a test that exports a row whose
+name is `=1+1`, checks the text carries `'=1+1`, re-imports it, and gets `=1+1` back. Then
+red-test it: remove your prefix and watch it fail. Finally, download a config CSV, open it in Excel.
+
+---
+
 ## ✅ Done
 
 Hand-coded tickets that have merged. They were picked during normal ticket planning rather than

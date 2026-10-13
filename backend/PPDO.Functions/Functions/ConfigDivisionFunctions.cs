@@ -211,7 +211,8 @@ public sealed class ConfigDivisionFunctions
             IsActive = o.IsActive, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         }).ToList();
 
-        string csv = await ConfigHttp.ReadTextAsync(req);
+        (string csv, HttpResponseData? tooLarge) = await ConfigHttp.ReadTextAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
         ServiceResult<CsvImportResult> result = await _divisions.ImportCsvAsync(csv, offices, ct);
         string? message = result.IsSuccess
             ? $"{result.Value!.New} added, {result.Value.Updated} updated, {result.Value.Skipped} skipped."
