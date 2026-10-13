@@ -235,11 +235,51 @@ internal static class ConfigHttp
             : (false, null);
     }
 
-    internal static async Task<string> ReadTextAsync(HttpRequestData req)
+    /// <summary>
+    /// Reads an uploaded file into a seekable buffer under <see cref="UploadLimits"/> (PPDO-199).
+    /// For handlers that answer errors in their own shape; the rest use
+    /// <see cref="ReadUploadEnvelopedAsync"/>.
+    /// </summary>
+    internal static Task<UploadBuffer> ReadUploadAsync(HttpRequestData req, CancellationToken cancellationToken)
+        => UploadLimits.BufferAsync(req.Body, DeclaredLength(req), cancellationToken);
+
+    /// <summary>
+    /// <see cref="ReadUploadAsync"/>, answering a refusal with an enveloped 413. On success the
+    /// caller owns <c>body</c>, positioned at 0.
+    /// </summary>
+    internal static async Task<(MemoryStream? body, HttpResponseData? refused)> ReadUploadEnvelopedAsync(
+        HttpRequestData req, CancellationToken cancellationToken)
     {
-        using StreamReader reader = new(req.Body);
-        return await reader.ReadToEndAsync();
+        UploadBuffer upload = await ReadUploadAsync(req, cancellationToken);
+        return upload.IsRefused
+            ? (null, await TooLargeAsync(req, upload.Error!, cancellationToken))
+            : (upload.Body, null);
     }
+
+    /// <summary>
+    /// Reads a CSV upload as text under the same limit (PPDO-199). Before, the whole body was read
+    /// to a string with no cap at all.
+    /// </summary>
+    internal static async Task<(string text, HttpResponseData? refused)> ReadTextAsync(
+        HttpRequestData req, CancellationToken cancellationToken)
+    {
+        (MemoryStream? body, HttpResponseData? refused) = await ReadUploadEnvelopedAsync(req, cancellationToken);
+        if (refused is not null) return (string.Empty, refused);
+
+        await using MemoryStream buffer = body!;
+        using StreamReader reader = new(buffer);
+        return (await reader.ReadToEndAsync(cancellationToken), null);
+    }
+
+    private static Task<HttpResponseData> TooLargeAsync(HttpRequestData req, string message, CancellationToken cancellationToken)
+        => EnvelopeAsync(req, HttpStatusCode.RequestEntityTooLarge, ApiResponse<object>.Fail(message), cancellationToken);
+
+    /// <summary>The request's Content-Length, when it sent a usable one.</summary>
+    private static long? DeclaredLength(HttpRequestData req)
+        => req.Headers.TryGetValues("Content-Length", out IEnumerable<string>? values)
+           && long.TryParse(values.FirstOrDefault(), out long length)
+            ? length
+            : null;
 
     internal static async Task<HttpResponseData> EnvelopeAsync<T>(
         HttpRequestData req, HttpStatusCode status, ApiResponse<T> body, CancellationToken cancellationToken,

@@ -103,9 +103,10 @@ public sealed class AipFunctions
         // Buffer the request body into a MemoryStream before passing to ClosedXML.
         // Kestrel (Azure Functions isolated worker) disallows synchronous reads on the
         // HttpRequestStream; MemoryStream supports them so XLWorkbook.Load() succeeds.
-        using MemoryStream xlsmBuffer = new();
-        await req.Body.CopyToAsync(xlsmBuffer, ct);
-        xlsmBuffer.Position = 0;
+        // PPDO-199: capped at UploadLimits, refused with a 413 before any parser sees it.
+        (MemoryStream? upload, HttpResponseData? tooLarge) = await ConfigHttp.ReadUploadEnvelopedAsync(req, ct);
+        if (tooLarge is not null) return tooLarge;
+        using MemoryStream xlsmBuffer = upload!;
 
         ServiceResult<AipImportPreviewDto> result =
             await _aip.ParsePreviewAsync(xlsmBuffer, fiscalYear, fundingSources, ct);
