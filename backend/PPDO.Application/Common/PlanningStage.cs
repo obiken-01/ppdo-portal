@@ -1,4 +1,4 @@
-namespace PPDO.Application.Common;
+﻿namespace PPDO.Application.Common;
 
 /// <summary>
 /// The one status vocabulary the Budget Planning dashboard speaks (PPDO-20,
@@ -46,6 +46,32 @@ public static class PlanningStage
     {
         if (aipStatus is null || activityCount == 0) return Todo;
         return aipStatus == PlanningStatus.Final ? Done : InProgress;
+    }
+
+    /// <summary>
+    /// A division's stage in an entered year (FY2028+, PPDO-203), from where its office is in the
+    /// review workflow and whether the division has submitted to its department head.
+    ///
+    /// <para>
+    /// ⚠️ Not <see cref="ForAip"/>: that reads the province-wide <c>aip_records.status</c>, which stays
+    /// Draft until the whole provincial AIP is final, so an office PPDO had accepted still showed every
+    /// division "In progress" (found in the PPDO-195 UAT run).
+    /// </para>
+    ///
+    /// No work → <see cref="Todo"/>, whatever the office's state: a division that contributed nothing
+    /// is not done because its office was accepted. Otherwise <c>Consolidated</c> → Done ·
+    /// <c>SubmittedToPpdo</c> → Review · while the office is with its divisions (Draft, DepartmentReview,
+    /// ReturnedByPpdo) a division that has submitted to its head → Review, else In progress.
+    /// </summary>
+    public static string ForDivision(string? officeWorkflowStatus, bool divisionSubmitted, int activityCount)
+    {
+        if (activityCount == 0) return Todo;
+        return officeWorkflowStatus switch
+        {
+            AipWorkflowStatus.Consolidated    => Done,
+            AipWorkflowStatus.SubmittedToPpdo => Review,
+            _ => divisionSubmitted ? Review : InProgress,
+        };
     }
 
     /// <summary>

@@ -160,6 +160,24 @@ introducing a rule into a codebase that already violates it.
 
 ---
 
+## ✅ Done
+
+Hand-coded tickets that have merged. They were picked during normal ticket planning rather than
+from the entries above, which are still open.
+
+| Ticket | PR | Merged | What | Notes |
+|---|---|---|---|---|
+| PPDO-47 | #464 | 2026-10-07 | Return 400 for an unreadable AIP upload | Claude wrote the tests and took over one fix |
+| PPDO-66 | #465 | 2026-10-07 | Remove the dead fleet-wide allocation setup overview | Deletion ticket: name the live neighbours in a shared file up front |
+| PPDO-194 | #468 | 2026-10-08 | Read funding sources and the office once per dashboard request | Production change hand-coded from step outlines. Test helper and tests were given as verified code (level 4). Measured −2 config reads per request, responses byte-identical |
+
+**What the three taught about guiding, not just coding:** test-fixture scaffolding isn't the skill
+being practised, so give it as verified code. Production changes work well as per-line
+before → after steps with current line numbers. And check the file on disk before reviewing,
+because an unsaved editor tab has caught us out on more than one ticket.
+
+---
+
 ## Not candidates (and why)
 
 Excluded for feedback-loop and blast-radius reasons, **not difficulty**:

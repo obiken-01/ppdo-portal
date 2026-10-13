@@ -150,7 +150,7 @@ the columns fails every AIP read, which is the failure the "migration first" rul
 - [ ] **Ask users to reload any AIP tab left open from before the deploy.** Three reasons, all from
       the same old tab:
       1. Its saves send no `rowVersion`, so they still save **unguarded** (and each logs the warning
-         below, which delays PPDO-121's window).
+         in §5, which muddies PPDO-121's evidence).
       2. If it has a browser cache open (none exists yet in UAT or production; it arrives with
          v1.8.2), an old connection would block the upgrade to version 3 (PPDO-112, PPDO-192). New
          tabs fall back to live fetches after ~3 s, so nothing breaks, it is just
@@ -200,24 +200,39 @@ and a PPDO reviewer.
 
 ---
 
-## 5. Start PPDO-121's clock
+## 5. PPDO-121's evidence: UAT first, production confirms
 
 The concurrent-edit guard ships in its **warn-and-proceed** state: a save with no `rowVersion` is
 still accepted, and logged. PPDO-121 (milestone **v1.8.3**) turns that into a 400 once the warning
-has stopped appearing.
+is shown not to appear.
 
-- [ ] **Note the production deploy time** in PPDO-121. The evidence window starts there.
-- [ ] **Run the query** (Application Insights → Logs) a day after, then weekly:
+⚠️ **Changed 2026-10-07 (Ralph): the evidence comes from the UAT test round, not a production window.**
+Production goes straight from v1.7.4 to v1.8.0–v1.8.3 in one deploy, so no v1.8.x screen is in use
+there before PPDO-121. The question "does every save path send `rowVersion`?" is answered by
+testers saving in UAT. `ppdo-portal-api-uat` has Application Insights connected (checked 2026-10-07).
+
+**In UAT, after the testers' first round:**
+
+- [ ] **Run the query** (Application Insights → Logs):
 
       ```kusto
       traces
+      | where cloud_RoleName =~ "ppdo-portal-api-uat"
       | where message startswith "AIP write without rowVersion"
       | summarize count() by tostring(customDimensions.Operation), tostring(customDimensions.Entity), bin(timestamp, 1d)
       ```
 
-      Expected: a tail from tabs left open across the deploy, falling to zero. A count that stays up
-      means something still saves without a version; find it (`customDimensions.UserId`) before
-      PPDO-121 starts.
+- [ ] **Expected: zero rows**, provided the testers did each of these: an inline activity edit, an
+      AIP Entry details save, an expenditure edit and delete, an activity delete, and the WFP
+      is-creation toggle. An empty result without those saves proves nothing.
+- [ ] **Any rows:** `Operation` and `Entity` name the path, and `customDimensions.UserId` names who.
+      Fix it before PPDO-121 starts.
+
+**In production, after the deploy:**
+
+- [ ] **Run the same query a day after,** with `cloud_RoleName =~ "ppdo-portal-api-sea"`. Expect a
+      short tail from tabs left open across the deploy, and nothing after the first day. A count
+      that stays up means something still saves without a version.
 
 ---
 

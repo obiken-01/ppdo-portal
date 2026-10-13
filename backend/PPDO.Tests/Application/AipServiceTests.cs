@@ -185,6 +185,15 @@ public sealed partial class AipServiceTests
 
         int nextAipId = 100;
         aipRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(aipSeed);
+        // PPDO-42 — the list filters now run in SQL (AipRecordListRepositoryTests). This stand-in
+        // applies the same rule so the list tests below keep exercising the service's own logic.
+        aipRepo.Setup(r => r.GetRecordsAsync(It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int? fy, string? status, CancellationToken _) => (IReadOnlyList<AipRecord>)aipSeed
+                .Where(r => fy is null || r.FiscalYear == fy)
+                .Where(r => string.IsNullOrWhiteSpace(status)
+                    || r.Status.Equals(status.Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(r => r.UploadedAt)
+                .ToList());
         aipRepo.Setup(r => r.AddAsync(It.IsAny<AipRecord>(), It.IsAny<CancellationToken>()))
             .Callback<AipRecord, CancellationToken>((e, _) => { e.Id = nextAipId++; aipSeed.Add(e); })
             .Returns(Task.CompletedTask);
@@ -412,12 +421,15 @@ public sealed partial class AipServiceTests
                 UploadedById = Guid.NewGuid(), UploadedAt = DateTime.UtcNow, Status = "Final" },
         ];
 
-        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
+        var (sut, aipRepo, _, _, _, _, _, _, _, _, _, _, _) = Build(seed, []);
 
         IReadOnlyList<AipRecordDto> result = await sut.GetAllAsync(2027, null, HostCaller());
 
         Assert.Single(result);
         Assert.Equal(2027, result[0].FiscalYear);
+        // PPDO-42 — the filter is handed to the repository, never applied to a whole-table load.
+        aipRepo.Verify(r => r.GetRecordsAsync(2027, null, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ── RAL-93: scoped query verification ────────────────────────────────────
@@ -888,6 +900,38 @@ public sealed partial class AipServiceTests
         // The synthetic project + activity it will become at confirm time count toward the totals.
         Assert.Equal(1, result.Value.Counts.Projects);
         Assert.Equal(1, result.Value.Counts.Activities);
+    }
+
+    [Fact]
+    public async Task ParsePreview_ParserRejectsFile_ReturnsBadRequestWithItsMessage()
+    {
+        // PPDO-47 — an unreadable file reaches the service as an AipParseException and must come
+        // back as a 400 carrying the parser's sentence, not a 500.
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Throws(new AipParseException(["This file could not be read as an Excel workbook."]));
+
+        using MemoryStream ms = new();
+        ServiceResult<AipImportPreviewDto> result =
+            await sut.ParsePreviewAsync(ms, 2027, [], CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Excel workbook", result.Error!);
+    }
+
+    [Fact]
+    public async Task ParsePreview_UnexpectedParserFailure_StillThrows()
+    {
+        // ⚠️ PPDO-47 guard — a genuine bug inside the parser must NOT be reported to the user as
+        // "your file is bad". It escapes, so it is a logged 500 that someone notices. This fails
+        // if the service's catch is ever widened to catch (Exception).
+        var (sut, _, _, _, parser, _, _, _, _, _, _, _, _) = Build([], []);
+        parser.Setup(p => p.Parse(It.IsAny<Stream>()))
+            .Throws(new InvalidOperationException("parser bug"));
+
+        using MemoryStream ms = new();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.ParsePreviewAsync(ms, 2027, [], CancellationToken.None));
     }
 
     // ── ConfirmImportAsync ────────────────────────────────────────────────────

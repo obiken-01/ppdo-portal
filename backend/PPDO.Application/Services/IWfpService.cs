@@ -13,22 +13,33 @@ namespace PPDO.Application.Services;
 /// </summary>
 public interface IWfpService
 {
+    /// <summary>
+    /// Lists WFP records. <paramref name="scope"/> is the caller's <see cref="WfpDivisionScope"/>:
+    /// an unrestricted caller may narrow with <paramref name="divisionId"/>; a division-scoped caller
+    /// is pinned to their own division whatever they ask for, and an unassigned one gets nothing.
+    /// </summary>
     Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(
-        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default);
+        int? aipRecordId, int? officeId, DivisionScope scope, int? divisionId = null, CancellationToken ct = default);
 
-    Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(int id, CancellationToken ct = default);
+    /// <summary>NotFound when the record is missing OR outside <paramref name="scope"/> (PPDO-198).</summary>
+    Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(int id, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Upsert: creates a new WFP or replaces all activities/lines of an existing Draft WFP
     /// for the given (aipRecordId, officeId, divisionId) triplet.
     /// When divisionId is provided: enforces the setup gate (ceiling + allocation + program assignment)
     /// and validates Σ gross total ≤ division allocation before any write.
-    /// Returns Forbidden if the existing WFP is Final.
+    /// Returns Forbidden if the existing WFP is Final, and NotFound when the target division is
+    /// outside <paramref name="scope"/> (PPDO-198).
     /// </summary>
-    Task<ServiceResult<WfpRecordDto>> SaveAsync(SaveWfpDto dto, Guid createdById, CancellationToken ct = default);
+    Task<ServiceResult<WfpRecordDto>> SaveAsync(
+        SaveWfpDto dto, Guid createdById, DivisionScope scope, CancellationToken ct = default);
 
-    Task<ServiceResult<WfpRecordDto>> FinalizeAsync(int id, CancellationToken ct = default);
-    Task<ServiceResult<WfpRecordDto>> UnlockAsync(int id, CancellationToken ct = default);
+    /// <summary>NotFound when the record is missing OR outside <paramref name="scope"/> (PPDO-198).</summary>
+    Task<ServiceResult<WfpRecordDto>> FinalizeAsync(int id, DivisionScope scope, CancellationToken ct = default);
+
+    /// <summary>NotFound when the record is missing OR outside <paramref name="scope"/> (PPDO-198).</summary>
+    Task<ServiceResult<WfpRecordDto>> UnlockAsync(int id, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Finds or creates the WFP record for (aipRecordId, officeId, divisionId) and, within it,
@@ -37,18 +48,21 @@ public interface IWfpService
     /// v1.4 entry wizard (RAL-123) needs to obtain a wfp_activity_id before calling RAL-120's
     /// <c>WfpExpenditureService.SaveExpenditureAsync</c> — the old SaveAsync's replace-all
     /// semantics would silently orphan/cascade-delete any wfp_expenditures already attached to
-    /// an activity if used for this purpose. Returns Forbidden if the record is already Final.
+    /// an activity if used for this purpose. Returns Forbidden if the record is already Final, and
+    /// NotFound when <paramref name="divisionId"/> is outside <paramref name="scope"/> (PPDO-198).
     /// </summary>
     Task<ServiceResult<WfpActivityRefDto>> EnsureActivityAsync(
         int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
-        Guid createdById, CancellationToken ct = default);
+        Guid createdById, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Generates an A4-landscape Excel report for the given WFP record.
     /// Loads the parent AIP hierarchy and config-office name internally.
-    /// Returns <c>NotFound</c> if the WFP or its AIP record does not exist.
+    /// Returns <c>NotFound</c> if the WFP or its AIP record does not exist, or the WFP is outside
+    /// <paramref name="scope"/> (PPDO-198).
     /// </summary>
-    Task<ServiceResult<byte[]>> ExportReportAsync(int id, User caller, CancellationToken ct = default);
+    Task<ServiceResult<byte[]>> ExportReportAsync(
+        int id, User caller, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>Wipes all WFP records (cascade removes activities/lines). Returns deleted count.</summary>
     Task<int> PurgeAllAsync(CancellationToken ct = default);

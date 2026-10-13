@@ -59,10 +59,13 @@ public sealed class PriceIndexItemRepository : Repository<PriceIndexItem>, IPric
     public async Task<(int Count, DateTime? LastUpdatedAt)> GetVersionStampAsync(CancellationToken ct = default)
     {
         // One SELECT COUNT(*), MAX(updated_at) — never loads a row.
+        // ⚠️ SingleOrDefault, not FirstOrDefault (PPDO-204): a constant-key group over the whole table
+        // is one row or none, and First with no filter and no OrderBy is what EF warns about — this
+        // query alone logged it on every AIP Entry load in UAT.
         var stamp = await _context.Set<PriceIndexItem>()
             .GroupBy(_ => 1)
             .Select(g => new { Count = g.Count(), Last = g.Max(p => (DateTime?)p.UpdatedAt) })
-            .FirstOrDefaultAsync(ct);
+            .SingleOrDefaultAsync(ct);
         return stamp is null ? (0, null) : (stamp.Count, stamp.Last);
     }
 

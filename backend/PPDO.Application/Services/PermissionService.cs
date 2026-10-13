@@ -89,6 +89,19 @@ public sealed class PermissionService : IPermissionService
     }
 
     /// <inheritdoc />
+    public async Task<bool> CanAccessWfpAsync(User user, CancellationToken cancellationToken = default)
+    {
+        // SuperAdmin passes from any office, or none — support access.
+        if (user.Role is UserRole.SuperAdmin) return true;
+
+        // ⚠️ The office check comes BEFORE the Budget Planning role bypass, so it binds Admin too,
+        // and it also cancels the guest office's default-on Budget Planning grant (PPDO-198).
+        if (!OfficeScope.IsHostOfficeUser(user)) return false;
+
+        return await CanAccessBudgetPlanningAsync(user, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public Task<bool> CanUploadAipAsync(User user, CancellationToken cancellationToken = default)
     {
         if (IsAdminOrAbove(user)) return Task.FromResult(true);

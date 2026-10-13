@@ -28,6 +28,7 @@ import { configErrorMessage, listAuditLog, listAuditLogTableNames } from "@/lib/
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type { AuditLogEntry } from "@/types";
+import { auditRecordLabel } from "@/lib/audit-record-label";
 
 const PAGE_SIZE = 50;
 const ACTIONS = ["CREATE", "UPDATE", "DELETE"] as const;
@@ -53,12 +54,6 @@ function formatClock(d: Date): string {
   return d.toLocaleTimeString("en-PH", {
     hour: "numeric", minute: "2-digit", second: "2-digit", timeZone: "Asia/Manila",
   });
-}
-
-function recordLabel(entry: AuditLogEntry): string {
-  if (entry.recordId != null) return `#${entry.recordId}`;
-  if (entry.recordGuid != null) return `#${entry.recordGuid.split("-")[0]}`;
-  return "—";
 }
 
 const ACTION_BADGE_CLASS: Record<string, string> = {
@@ -270,7 +265,11 @@ export default function AuditLogPage() {
       key: "recordId",
       header: "Record",
       className: "whitespace-nowrap align-top",
-      render: (e) => <span className="font-mono text-xs text-slate-600">{recordLabel(e)}</span>,
+      // PPDO-110 — an AIP row's ref code, its name on hover; #id for everything else.
+      render: (e) => {
+        const label = auditRecordLabel(e);
+        return <span className="font-mono text-xs text-slate-600" title={label.title}>{label.text}</span>;
+      },
     },
     {
       key: "action",

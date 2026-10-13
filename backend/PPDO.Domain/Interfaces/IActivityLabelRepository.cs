@@ -39,7 +39,26 @@ public interface IActivityLabelRepository
     /// <summary>funding sources by id → name.</summary>
     Task<IReadOnlyDictionary<int, string>> GetFundingSourceNamesAsync(
         IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// PPDO-110 — the ref-coded AIP rows (programs, projects, activities) by id → their ref code,
+    /// name and office code: what the Audit Log page shows instead of <c>#id</c>, and what the
+    /// dashboard names a project by. One query per call; a deleted id is simply absent.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, AipRecordLabel>> GetAipRecordLabelsAsync(
+        AipRecordKind kind, IReadOnlyCollection<int> ids, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The three AIP tables whose rows carry a ref code (PPDO-110).</summary>
+public enum AipRecordKind
+{
+    Program,
+    Project,
+    Activity,
+}
+
+/// <summary>A ref-coded AIP row: its ref code, its name, and its office code (null when unlinked).</summary>
+public sealed record AipRecordLabel(string RefCode, string Name, string? OfficeCode);
 
 /// <summary>A budget ceiling's office code (null when the office is gone) and fiscal year.</summary>
 public sealed record CeilingLabel(string? OfficeCode, int FiscalYear);

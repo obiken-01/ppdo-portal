@@ -129,6 +129,7 @@ var host = new HostBuilder()
         services.AddScoped<IAuditRepository, AuditRepository>();
         services.AddScoped<IActivityLabelRepository, ActivityLabelRepository>();   // PPDO-181
         services.AddScoped<RecentActivityDescriber>();
+        services.AddScoped<AuditRecordCodeResolver>();
         services.AddScoped<IAipRepository, AipRepository>();
         services.AddScoped<IAipExpenditureRepository, AipExpenditureRepository>();
         services.AddScoped<IAipReviewCommentRepository, AipReviewCommentRepository>();
@@ -272,6 +273,12 @@ var host = new HostBuilder()
         // in prod (App Insights already surfaces these regardless of this filter).
         if (string.IsNullOrWhiteSpace(context.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
             logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Information);
+
+        // Local dev only: ship worker logs to a local Seq instance (structured properties and the
+        // InvocationLogScope fields become searchable). Opt-in via "Seq__ServerUrl" in
+        // local.settings.json — UAT and prod never set it, so App Insights stays the only sink there.
+        if (!string.IsNullOrWhiteSpace(context.Configuration["Seq:ServerUrl"]))
+            logging.AddSeq(context.Configuration.GetSection("Seq"));
     })
     .Build();
 

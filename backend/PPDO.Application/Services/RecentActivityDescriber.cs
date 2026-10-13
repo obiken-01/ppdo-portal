@@ -55,7 +55,7 @@ public sealed class RecentActivityDescriber
 
     private async Task<Lookups> LoadAsync(IReadOnlyList<Row> rows, CancellationToken ct)
     {
-        HashSet<int> ceilings = [], aipOffices = [], programs = [], activities = [];
+        HashSet<int> ceilings = [], aipOffices = [], programs = [], projects = [], activities = [];
         HashSet<int> officeCodes = [], divisions = [], funds = [];
 
         foreach (Row r in rows)
@@ -93,6 +93,17 @@ public sealed class RecentActivityDescriber
                         Add(programs, r.Audit.RecordId);
                     break;
 
+                // PPDO-110 — projects joined the feed. A create names its program's office; a delete
+                // its sector group (from the DeleteNodeAsync snapshot); anything else the live row.
+                case "aip_projects":
+                    if (r.Audit.Action == AuditAction.Create)
+                        Add(programs, Int(r.New, "programId"));
+                    else if (r.Audit.Action == AuditAction.Delete)
+                        Add(aipOffices, Int(r.Old, "aipOfficeId"));
+                    else
+                        Add(projects, r.Audit.RecordId);
+                    break;
+
                 case "aip_offices":
                     if (r.Audit.Action != AuditAction.Delete)
                         Add(aipOffices, r.Audit.RecordId);
@@ -115,6 +126,7 @@ public sealed class RecentActivityDescriber
             AipOffices: aipOffices.Count > 0 ? await _labels.GetAipOfficeLabelsAsync(aipOffices, ct)     : Empty<AipOfficeLabel>(),
             Programs:   programs.Count   > 0 ? await _labels.GetAipProgramLabelsAsync(programs, ct)      : Empty<AipProgramLabel>(),
             Activities: activities.Count > 0 ? await _labels.GetAipActivityLabelsAsync(activities, ct)   : Empty<AipActivityLabel>(),
+            Projects:   projects.Count   > 0 ? await _labels.GetAipRecordLabelsAsync(AipRecordKind.Project, projects, ct) : Empty<AipRecordLabel>(),
             OfficeCodes: officeCodes.Count > 0 ? await _labels.GetOfficeCodesAsync(officeCodes, ct)      : Empty<string>(),
             Divisions:  divisions.Count  > 0 ? await _labels.GetDivisionNamesAsync(divisions, ct)        : Empty<string>(),
             Funds:      funds.Count      > 0 ? await _labels.GetFundingSourceNamesAsync(funds, ct)       : Empty<string>());
@@ -128,6 +140,7 @@ public sealed class RecentActivityDescriber
         "division_allocations"     => Allocation(r, l),
         "aip_activities"           => Activity(r, l),
         "aip_programs"             => Program(r, l),
+        "aip_projects"             => Project(r, l),
         "aip_offices"              => OfficeGroup(r, l),
         "aip_division_submissions" => DivisionSubmission(r, l),
         "program_divisions"        => ProgramDivision(r, l),
@@ -224,6 +237,35 @@ public sealed class RecentActivityDescriber
                 return r.Audit.RecordId is int id && l.Programs.TryGetValue(id, out AipProgramLabel? p)
                     ? $"edited the program \"{Clip(p.Name)}\"{(p.OfficeCode is null ? string.Empty : $" ({p.OfficeCode})")}."
                     : "edited a program.";
+        }
+    }
+
+    private static string Project(Row r, Lookups l)
+    {
+        switch (r.Audit.Action)
+        {
+            case AuditAction.Create:
+            {
+                string? name = Str(r.New, "name");
+                if (name is null) return "added a project.";
+                string office = Int(r.New, "programId") is int programId
+                    && l.Programs.TryGetValue(programId, out AipProgramLabel? p) && p.OfficeCode is not null
+                    ? $" to {p.OfficeCode}"
+                    : string.Empty;
+                return $"added the project \"{Clip(name)}\"{office}.";
+            }
+            case AuditAction.Delete:
+            {
+                // The row is gone; the delete snapshot still names it and its sector group.
+                string? name = Str(r.Old, "name");
+                if (name is null) return "deleted a project.";
+                string office = OfficeOfGroup(r.Old, "aipOfficeId", l) is { } code ? $" ({code})" : string.Empty;
+                return $"deleted the project \"{Clip(name)}\"{office}.";
+            }
+            default:
+                return r.Audit.RecordId is int id && l.Projects.TryGetValue(id, out AipRecordLabel? j)
+                    ? $"edited the project \"{Clip(j.Name)}\"{(j.OfficeCode is null ? string.Empty : $" ({j.OfficeCode})")}."
+                    : "edited a project.";
         }
     }
 
@@ -373,6 +415,7 @@ public sealed class RecentActivityDescriber
         IReadOnlyDictionary<int, AipOfficeLabel>   AipOffices,
         IReadOnlyDictionary<int, AipProgramLabel>  Programs,
         IReadOnlyDictionary<int, AipActivityLabel> Activities,
+        IReadOnlyDictionary<int, AipRecordLabel>   Projects,
         IReadOnlyDictionary<int, string>           OfficeCodes,
         IReadOnlyDictionary<int, string>           Divisions,
         IReadOnlyDictionary<int, string>           Funds);

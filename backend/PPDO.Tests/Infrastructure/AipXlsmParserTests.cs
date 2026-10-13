@@ -412,6 +412,34 @@ public sealed class AipXlsmParserTests
         Assert.Throws<AipParseException>(() => _sut.Parse(s));
     }
 
+    // ── Unreadable files (PPDO-47) ────────────────────────────────────────────
+    //
+    // A file that is not a workbook at all must come back as an AipParseException, which the
+    // service turns into a 400 with a message the uploader can act on. Before PPDO-47 the
+    // packaging library's own exception escaped and the user got a bare 500.
+
+    [Fact]
+    public void Parse_NotAWorkbook_ThrowsAipParseException()
+    {
+        // A text file renamed to .xlsm — not a zip container at all.
+        using MemoryStream s = new("this is not an excel file"u8.ToArray());
+
+        AipParseException ex = Assert.Throws<AipParseException>(() => _sut.Parse(s));
+        Assert.Contains(ex.Errors, e => e.Contains("Excel workbook"));
+    }
+
+    [Fact]
+    public void Parse_TruncatedWorkbook_ThrowsAipParseException()
+    {
+        // A real workbook cut short — a half-finished download or a file still syncing.
+        using Stream full = BuildStream(wb => wb.Worksheets.Add("GENERAL"));
+        byte[] bytes = ((MemoryStream)full).ToArray();
+        using MemoryStream s = new(bytes[..(bytes.Length / 2)]);
+
+        AipParseException ex = Assert.Throws<AipParseException>(() => _sut.Parse(s));
+        Assert.Contains(ex.Errors, e => e.Contains("Excel workbook"));
+    }
+
     // ── Level detection from the description column (RAL-238) ─────────────────
     //
     // The province's real FY2027 AIP does not encode ref-code depth consistently: 82 of 2,887

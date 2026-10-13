@@ -234,7 +234,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 10), UserId, CancellationToken.None);
+            SimpleDto(2, 3, 10), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PlanningStatus.Draft, result.Value!.Status);
@@ -249,7 +249,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, actRepo, _, _, _) = Build([existing], [oldAct], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 99), UserId, CancellationToken.None);
+            SimpleDto(2, 3, 99), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         actRepo.Verify(r => r.DeleteAsync(It.Is<WfpActivity>(a => a.Id == 10), It.IsAny<CancellationToken>()), Times.Once);
@@ -264,7 +264,7 @@ public sealed class WfpServiceTests
         var (sut, _, _, _, _, _) = Build([finalRec], [], [], []);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, 3, 10), UserId, CancellationToken.None);
+            SimpleDto(2, 3, 10), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
     }
@@ -283,7 +283,7 @@ public sealed class WfpServiceTests
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
             SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -303,7 +303,7 @@ public sealed class WfpServiceTests
         ServiceResult<WfpActivityRefDto> result = await sut.EnsureActivityAsync(
             aipRecordId: 2, officeId: 3, divisionId: null,
             fiscalYear: AipFiscalYears.FirstEnteredFiscalYear, aipActivityId: 10,
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -320,7 +320,7 @@ public sealed class WfpServiceTests
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
             SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear - 1),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -338,7 +338,7 @@ public sealed class WfpServiceTests
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
             SimpleDto(2, 3, 10, fiscalYear: AipFiscalYears.FirstEnteredFiscalYear),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         wfpRepo.Verify(r => r.UpdateAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -379,7 +379,7 @@ public sealed class WfpServiceTests
             .Callback<WfpExpenditureLine, CancellationToken>((e, _) => captured = e)
             .Returns(Task.CompletedTask);
 
-        await sut.SaveAsync(SimpleDto(2, 3, 10, accountId: 5), UserId, CancellationToken.None);
+        await sut.SaveAsync(SimpleDto(2, 3, 10, accountId: 5), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal("5-01-01-010", captured!.AccountNumberSnapshot);
@@ -396,7 +396,7 @@ public sealed class WfpServiceTests
             .Callback<WfpExpenditureLine, CancellationToken>((e, _) => captured = e)
             .Returns(Task.CompletedTask);
 
-        await sut.SaveAsync(SimpleDto(2, 3, 10, fsId: 7), UserId, CancellationToken.None);
+        await sut.SaveAsync(SimpleDto(2, 3, 10, fsId: 7), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal(7, captured!.FundingSourceId);
@@ -413,7 +413,7 @@ public sealed class WfpServiceTests
             .Callback<WfpExpenditureLine, CancellationToken>((e, _) => captured = e)
             .Returns(Task.CompletedTask);
 
-        await sut.SaveAsync(SimpleDto(2, 3, 10, fsId: 7), UserId, CancellationToken.None);
+        await sut.SaveAsync(SimpleDto(2, 3, 10, fsId: 7), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal("Fund GF", captured!.FundingSourceNameSnapshot);
@@ -434,7 +434,7 @@ public sealed class WfpServiceTests
         await sut.SaveAsync(SimpleDto(2, 3, 10,
             totalAppropriation: 1000m, applyReserve: true,
             q1: 225m, q2: 225m, q3: 225m, q4: 225m),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal(100m, captured!.ReserveAmount);
@@ -453,7 +453,7 @@ public sealed class WfpServiceTests
         await sut.SaveAsync(SimpleDto(2, 3, 10,
             totalAppropriation: 500m, applyReserve: false,
             q1: 125m, q2: 125m, q3: 125m, q4: 125m),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal(0m, captured!.ReserveAmount);
@@ -472,7 +472,7 @@ public sealed class WfpServiceTests
         await sut.SaveAsync(SimpleDto(2, 3, 10,
             totalAppropriation: 1000m, applyReserve: false,
             q1: 100m, q2: 200m, q3: 300m, q4: 400m),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotNull(captured);
         Assert.Equal(1000m, captured!.QuarterlyTotal);
@@ -490,7 +490,7 @@ public sealed class WfpServiceTests
             SimpleDto(2, 3, 10,
                 totalAppropriation: 1000m, applyReserve: false,
                 q1: 300m, q2: 300m, q3: 300m, q4: 101m),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -505,7 +505,7 @@ public sealed class WfpServiceTests
             SimpleDto(2, 3, 10,
                 totalAppropriation: 1000m, applyReserve: false,
                 q1: 250m, q2: 250m, q3: 250m, q4: 250m),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }
@@ -518,7 +518,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(1, PlanningStatus.Draft);
         var (sut, _, _, _, _, _) = Build([rec], [], [], []);
 
-        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PlanningStatus.Final, result.Value!.Status);
@@ -531,7 +531,7 @@ public sealed class WfpServiceTests
     {
         var (sut, _, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Final)], [], [], []);
 
-        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -547,7 +547,7 @@ public sealed class WfpServiceTests
             .ReturnsAsync("AIP activity X is over its AIP budget (₱60,000.00 used vs ₱50,000.00 budgeted).");
         var (sut, _, _, _, _, _) = Build([rec], [], [], [], ceilingMock: ceilingMock);
 
-        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("AIP budget", result.Error);
@@ -564,7 +564,7 @@ public sealed class WfpServiceTests
             .ReturnsAsync((string?)null);
         var (sut, _, _, _, _, _) = Build([rec], [], [], [], ceilingMock: ceilingMock);
 
-        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PlanningStatus.Final, rec.Status);
@@ -580,7 +580,7 @@ public sealed class WfpServiceTests
         rec.FinalizedAt = DateTime.UtcNow.AddDays(-1);
         var (sut, _, _, _, _, _) = Build([rec], [], [], []);
 
-        ServiceResult<WfpRecordDto> result = await sut.UnlockAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.UnlockAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PlanningStatus.Draft, result.Value!.Status);
@@ -593,7 +593,7 @@ public sealed class WfpServiceTests
     {
         var (sut, _, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Draft)], [], [], []);
 
-        ServiceResult<WfpRecordDto> result = await sut.UnlockAsync(1, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.UnlockAsync(1, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -694,7 +694,7 @@ public sealed class WfpServiceTests
         List<WfpRecord> seed = [WfpRec(1, PlanningStatus.Draft, 2, 3)];
         var (sut, wfpRepo, _, _, _, _) = Build(seed, [], [], []);
 
-        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, null, CancellationToken.None);
+        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, DivisionScope.All, null, CancellationToken.None);
 
         Assert.Single(result);
         wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, null, It.IsAny<CancellationToken>()), Times.Once);
@@ -707,7 +707,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(5, PlanningStatus.Draft);
         var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
 
-        await sut.GetByIdAsync(5, CancellationToken.None);
+        await sut.GetByIdAsync(5, DivisionScope.All, CancellationToken.None);
 
         wfpRepo.Verify(r => r.GetByIntIdAsync(5, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -719,7 +719,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(7, PlanningStatus.Draft);
         var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
 
-        await sut.GetByIdAsync(7, CancellationToken.None);
+        await sut.GetByIdAsync(7, DivisionScope.All, CancellationToken.None);
 
         wfpRepo.Verify(r => r.GetActivitiesByWfpIdAsync(7, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -729,7 +729,7 @@ public sealed class WfpServiceTests
     {
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
-        await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+        await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, DivisionScope.All, CancellationToken.None);
 
         wfpRepo.Verify(r => r.FindByAipOfficeAndDivisionAsync(2, 3, 5, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -741,7 +741,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(3, PlanningStatus.Draft);
         var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
 
-        await sut.FinalizeAsync(3, CancellationToken.None);
+        await sut.FinalizeAsync(3, DivisionScope.All, CancellationToken.None);
 
         wfpRepo.Verify(r => r.GetByIntIdAsync(3, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -753,7 +753,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(4, PlanningStatus.Final);
         var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
 
-        await sut.UnlockAsync(4, CancellationToken.None);
+        await sut.UnlockAsync(4, DivisionScope.All, CancellationToken.None);
 
         wfpRepo.Verify(r => r.GetByIntIdAsync(4, It.IsAny<CancellationToken>()), Times.Once);
         wfpRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -766,7 +766,7 @@ public sealed class WfpServiceTests
     {
         var (sut, _, _, _, _, _) = Build([], [], [], []);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(999, ExportCaller(), CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(999, ExportCaller(), DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
@@ -778,7 +778,7 @@ public sealed class WfpServiceTests
         WfpRecord rec = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3);
         var (sut, _, _, _, _, _) = Build([rec], [], [], []);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(1, ExportCaller(), CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(1, ExportCaller(), DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
     }
@@ -794,7 +794,7 @@ public sealed class WfpServiceTests
             .Callback<WfpRecord, CancellationToken>((e, _) => { e.Id = 50; captured = e; })
             .Returns(Task.CompletedTask);
 
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 7), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 7), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(captured);
@@ -809,7 +809,7 @@ public sealed class WfpServiceTests
         WfpRecord div1Record = WfpRec(1, PlanningStatus.Draft, aipId: 2, officeId: 3, divisionId: 1);
         var (sut, wfpRepo, actRepo, _, _, _) = Build([div1Record], [], [], []);
 
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 2), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 2), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         // A new record is created — not an update of division 1's record.
@@ -832,7 +832,7 @@ public sealed class WfpServiceTests
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
 
         // divisionId = null → skip all division checks
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: null), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: null), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         allocMock.Verify(s => s.GetSetupStatusAsync(
@@ -853,7 +853,7 @@ public sealed class WfpServiceTests
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
 
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("ceiling", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -871,7 +871,7 @@ public sealed class WfpServiceTests
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
 
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("allocation", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -889,7 +889,7 @@ public sealed class WfpServiceTests
 
         var (sut, _, _, _, _, _) = Build([], [], [], [], allocMock);
 
-        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, CancellationToken.None);
+        var result = await sut.SaveAsync(SimpleDto(2, 3, 10, divisionId: 5), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("program", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -913,7 +913,7 @@ public sealed class WfpServiceTests
         // TotalAppropriation = 2000 > allocation 1000
         var result = await sut.SaveAsync(
             SimpleDto(2, 3, 10, totalAppropriation: 2_000m, divisionId: 5),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("allocation", result.Error, StringComparison.OrdinalIgnoreCase);
@@ -936,7 +936,7 @@ public sealed class WfpServiceTests
         // TotalAppropriation = 1000 ≤ allocation 5000
         var result = await sut.SaveAsync(
             SimpleDto(2, 3, 10, totalAppropriation: 1_000m, divisionId: 5),
-            UserId, CancellationToken.None);
+            UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }
@@ -947,7 +947,7 @@ public sealed class WfpServiceTests
         List<WfpRecord> seed = [WfpRec(1, PlanningStatus.Draft, 2, 3, divisionId: 5)];
         var (sut, wfpRepo, _, _, _, _) = Build(seed, [], [], []);
 
-        var result = await sut.GetAllAsync(2, 3, 5, CancellationToken.None);
+        var result = await sut.GetAllAsync(2, 3, DivisionScope.All, 5, CancellationToken.None);
 
         Assert.Single(result);
         wfpRepo.Verify(r => r.GetFilteredAsync(2, 3, 5, It.IsAny<CancellationToken>()), Times.Once);
@@ -1012,7 +1012,7 @@ public sealed class WfpServiceTests
             aipSvc.Object, officeSvc.Object, excelSvc.Object, allocSvc.Object, ceilingSvc.Object,
             expenditureRepo.Object);
 
-        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, ExportCaller(), CancellationToken.None);
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, ExportCaller(), DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(expectedBytes, result.Value!);
@@ -1027,7 +1027,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, actRepo, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpActivityRefDto> result =
-            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PlanningStatus.Draft, result.Value!.WfpStatus);
@@ -1042,7 +1042,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, actRepo, _, _, _) = Build([existing], [], [], []);
 
         ServiceResult<WfpActivityRefDto> result =
-            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Value!.WfpRecordId);
@@ -1058,7 +1058,7 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, actRepo, _, _, _) = Build([existing], [existingAct], [], []);
 
         ServiceResult<WfpActivityRefDto> result =
-            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, result.Value!.WfpRecordId);
@@ -1075,7 +1075,7 @@ public sealed class WfpServiceTests
         var (sut, _, actRepo, _, _, _) = Build([finalRec], [], [], []);
 
         ServiceResult<WfpActivityRefDto> result =
-            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 5, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
         actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1087,9 +1087,9 @@ public sealed class WfpServiceTests
         var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
 
         ServiceResult<WfpActivityRefDto> div1 =
-            await sut.EnsureActivityAsync(2, 3, 1, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 1, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
         ServiceResult<WfpActivityRefDto> div2 =
-            await sut.EnsureActivityAsync(2, 3, 2, 2027, 99, UserId, CancellationToken.None);
+            await sut.EnsureActivityAsync(2, 3, 2, 2027, 99, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.NotEqual(div1.Value!.WfpRecordId, div2.Value!.WfpRecordId);
         wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
@@ -1111,7 +1111,7 @@ public sealed class WfpServiceTests
             [], [], [], [Fs(7, "GF"), Fs(8, "PHOX", WfpOtherOffice)]);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, CancellationToken.None);
+            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         // ⚠️ Nothing written at all. This method is find-or-create, so a check placed after the
@@ -1134,7 +1134,7 @@ public sealed class WfpServiceTests
             .Returns(Task.CompletedTask);
 
         ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
-            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, CancellationToken.None);
+            SimpleDto(2, WfpOwnerOffice, 10, fsId: 8), UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("GSOX", captured!.FundingSourceSnapshot);
@@ -1153,8 +1153,169 @@ public sealed class WfpServiceTests
                     null, null, false, null, null, null, null, 8, 0),
             ])]);
 
-        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(dto, UserId, CancellationToken.None);
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(dto, UserId, DivisionScope.All, CancellationToken.None);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── Division scope (PPDO-198) ─────────────────────────────────────────────
+    // A record outside the caller's division answers NotFound with the same text as a missing id,
+    // and nothing is written. Each assertion pins the NotFound TEXT or Code, not just "failed",
+    // because without the guard these paths fail later for unrelated reasons (setup gate, missing
+    // AIP mock) and a bare IsSuccess == false would pass vacuously.
+
+    private const int OwnDivision   = 5;
+    private const int OtherDivision = 6;
+    private static readonly DivisionScope OwnDivisionStaff = DivisionScope.For(OwnDivision);
+
+    [Fact]
+    public async Task GetById_AnotherDivisionsWfp_IsNotFound()
+    {
+        var (sut, _, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Draft, divisionId: OtherDivision)], [], [], []);
+
+        ServiceResult<WfpRecordDetailDto> result = await sut.GetByIdAsync(1, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal("WFP record 1 not found.", result.Error);
+    }
+
+    [Fact]
+    public async Task GetById_OwnDivisionsWfp_IsReturned()
+    {
+        var (sut, _, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Draft, divisionId: OwnDivision)], [], [], []);
+
+        ServiceResult<WfpRecordDetailDto> result = await sut.GetByIdAsync(1, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task GetById_StaffWithNoDivision_SeesNoRecord()
+    {
+        var (sut, _, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Draft, divisionId: OwnDivision)], [], [], []);
+
+        ServiceResult<WfpRecordDetailDto> result = await sut.GetByIdAsync(1, DivisionScope.Nothing, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task Finalize_AnotherDivisionsWfp_IsNotFound_AndStaysDraft()
+    {
+        WfpRecord rec = WfpRec(1, PlanningStatus.Draft, divisionId: OtherDivision);
+        var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.FinalizeAsync(1, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal(PlanningStatus.Draft, rec.Status);
+        wfpRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Unlock_AnotherDivisionsWfp_IsNotFound_AndStaysFinal()
+    {
+        WfpRecord rec = WfpRec(1, PlanningStatus.Final, divisionId: OtherDivision);
+        var (sut, wfpRepo, _, _, _, _) = Build([rec], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.UnlockAsync(1, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal(PlanningStatus.Final, rec.Status);
+        wfpRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExportReport_AnotherDivisionsWfp_IsNotFound()
+    {
+        var (sut, _, _, _, _, _) = Build([WfpRec(42, PlanningStatus.Draft, divisionId: OtherDivision)], [], [], []);
+
+        ServiceResult<byte[]> result = await sut.ExportReportAsync(42, ExportCaller(), OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal("WFP record 42 not found.", result.Error);
+    }
+
+    [Fact]
+    public async Task Save_IntoAnotherDivision_IsNotFound_AndNothingIsWritten()
+    {
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, divisionId: OtherDivision), UserId, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        wfpRepo.Verify(r => r.FindByAipOfficeAndDivisionAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Save_OfficeLevelWfp_ByDivisionStaff_IsNotFound()
+    {
+        // A null division in the body is the office-level WFP — not a division encoder's.
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpRecordDto> result = await sut.SaveAsync(
+            SimpleDto(2, 3, 10, divisionId: null), UserId, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_InAnotherDivision_IsNotFound_AndNothingIsWritten()
+    {
+        var (sut, wfpRepo, actRepo, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result = await sut.EnsureActivityAsync(
+            aipRecordId: 2, officeId: 3, divisionId: OtherDivision, fiscalYear: 2027, aipActivityId: 10,
+            UserId, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        actRepo.Verify(r => r.AddAsync(It.IsAny<WfpActivity>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnsureActivity_InOwnDivision_CreatesTheRecord()
+    {
+        var (sut, wfpRepo, _, _, _, _) = Build([], [], [], []);
+
+        ServiceResult<WfpActivityRefDto> result = await sut.EnsureActivityAsync(
+            aipRecordId: 2, officeId: 3, divisionId: OwnDivision, fiscalYear: 2027, aipActivityId: 10,
+            UserId, OwnDivisionStaff, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        wfpRepo.Verify(r => r.AddAsync(It.IsAny<WfpRecord>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAll_DivisionScoped_IsPinnedToOwnDivision_WhateverIsRequested()
+    {
+        List<WfpRecord> seed =
+        [
+            WfpRec(1, PlanningStatus.Draft, 2, 3, divisionId: OwnDivision),
+            WfpRec(2, PlanningStatus.Draft, 2, 3, divisionId: OtherDivision),
+        ];
+        var (sut, _, _, _, _, _) = Build(seed, [], [], []);
+
+        IReadOnlyList<WfpRecordDto> asked = await sut.GetAllAsync(2, 3, OwnDivisionStaff, OtherDivision, CancellationToken.None);
+        IReadOnlyList<WfpRecordDto> all   = await sut.GetAllAsync(2, 3, OwnDivisionStaff, null, CancellationToken.None);
+
+        Assert.Equal(1, Assert.Single(asked).Id);
+        Assert.Equal(1, Assert.Single(all).Id);
+    }
+
+    [Fact]
+    public async Task GetAll_StaffWithNoDivision_IsEmpty_AndNeverQueries()
+    {
+        var (sut, wfpRepo, _, _, _, _) = Build([WfpRec(1, PlanningStatus.Draft, 2, 3, divisionId: OwnDivision)], [], [], []);
+
+        IReadOnlyList<WfpRecordDto> result = await sut.GetAllAsync(2, 3, DivisionScope.Nothing, null, CancellationToken.None);
+
+        Assert.Empty(result);
+        wfpRepo.Verify(r => r.GetFilteredAsync(
+            It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
