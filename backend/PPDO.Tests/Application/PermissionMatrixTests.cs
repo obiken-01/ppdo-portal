@@ -40,6 +40,7 @@ public sealed class PermissionMatrixTests
         ["CanManageResourceLinks"]  = (s, u) => s.CanManageResourceLinksAsync(u),
         ["CanManageConfig"]         = (s, u) => s.CanManageConfigAsync(u),
         ["CanAccessBudgetPlanning"] = (s, u) => s.CanAccessBudgetPlanningAsync(u),
+        ["CanAccessWfp"]            = (s, u) => s.CanAccessWfpAsync(u),
         ["CanUploadAip"]            = (s, u) => s.CanUploadAipAsync(u),
         ["CanAccessProfile"]        = (s, u) => s.CanAccessProfileAsync(u),
         ["CanManagePpdoAllocation"] = (s, u) => s.CanManagePpdoAllocationAsync(u),
@@ -111,6 +112,22 @@ public sealed class PermissionMatrixTests
         rows.Add("CanAccessBudgetPlanning", UserRole.Staff,      null,  false, false, true);
         rows.Add("CanAccessBudgetPlanning", UserRole.Staff,      false, false, false, false);
         rows.Add("CanAccessBudgetPlanning", UserRole.Staff,      true,  false, false, true);
+
+        // ── CanAccessWfp: CanAccessBudgetPlanning AND host office (PPDO-198) ──
+        // WFP is PPDO's own plan (PPDO-20). A guest office reaches Budget Planning by default, so
+        // without the office check its users could read and change PPDO's WFP. SuperAdmin keeps it
+        // anywhere (support access); ⚠️ Admin does NOT bypass the office check.
+        const string wfp = "CanAccessWfp";
+        rows.Add(wfp, UserRole.SuperAdmin, null,  false, true,  true);
+        rows.Add(wfp, UserRole.SuperAdmin, null,  false, false, true);   // guest office: support exemption
+        rows.Add(wfp, UserRole.Admin,      null,  false, true,  true);
+        rows.Add(wfp, UserRole.Admin,      null,  false, false, false);  // guest-office Admin: never
+        rows.Add(wfp, UserRole.Staff,      null,  false, true,  false);
+        rows.Add(wfp, UserRole.Staff,      null,  true,  true,  true);
+        rows.Add(wfp, UserRole.Staff,      true,  false, true,  true);
+        rows.Add(wfp, UserRole.Staff,      false, true,  true,  false);
+        rows.Add(wfp, UserRole.Staff,      null,  false, false, false);  // guest default-on does NOT carry over
+        rows.Add(wfp, UserRole.Staff,      true,  true,  false, false);  // guest office: never, however set
 
         // ── CanUploadAip: host-office only, never grantable to a guest ────────
         // The uploaded file contains every office's records, so a guest office can never hold it
@@ -356,6 +373,7 @@ public sealed class PermissionMatrixTests
                 user.Division!.CanManageConfig = divisionFlag;
                 user.OverrideCanManageConfig = overrideValue; break;
             case "CanAccessBudgetPlanning":
+            case "CanAccessWfp":   // reads CanAccessBudgetPlanning's inputs
                 user.Division!.CanAccessBudgetPlanning = divisionFlag;
                 user.OverrideCanAccessBudgetPlanning = overrideValue; break;
             case "CanUploadAip":
