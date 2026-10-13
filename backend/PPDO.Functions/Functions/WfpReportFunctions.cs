@@ -11,8 +11,9 @@ namespace PPDO.Functions.Functions;
 
 /// <summary>
 /// WFP Report preview endpoints under <c>/api/budget-planning/wfp/report</c> (RAL-132).
-/// Read-only — gated by CanAccessBudgetPlanning, same as the rest of the WFP surface.
-/// GetPreview additionally scopes non-finance callers to their own division (RAL-136).
+/// Read-only — gated by CanAccessWfp, same as the rest of the WFP surface (PPDO-198).
+/// Preview and export are division-scoped through WfpDivisionScope (RAL-136, PPDO-198): finance and
+/// Admin see every division; Staff see their own; Staff with no division see nothing.
 /// </summary>
 public sealed class WfpReportFunctions
 {
@@ -31,8 +32,8 @@ public sealed class WfpReportFunctions
         _permissions = permissions;
     }
 
-    private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
-    private Task<bool> CanManagePpdoAllocation(User u) => _permissions.CanManagePpdoAllocationAsync(u);
+    private Task<bool> CanAccess(User u) => _permissions.CanAccessWfpAsync(u);
+    private Task<DivisionScope> ScopeOf(User u) => WfpDivisionScope.ResolveAsync(u, _permissions);
 
     // ── GET /api/budget-planning/wfp/report/offices?fiscalYear= ──────────────
     // Office picker — only offices with at least a Draft WFP for the fiscal year.
@@ -73,11 +74,10 @@ public sealed class WfpReportFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<WfpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
-        int? divisionId;
-        if (await CanManagePpdoAllocation(caller))
-            divisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
-        else
-            divisionId = caller.DivisionId;
+        int? requestedDivisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
+        if (!WfpDivisionScope.TryFilter(await ScopeOf(caller), requestedDivisionId, out int? divisionId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                ApiResponse<WfpReportDto>.Fail("Report not found."), ct);
 
         ServiceResult<WfpReportDto> result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
         return await ConfigHttp.FromResultAsync(req, result, ct);
@@ -99,11 +99,10 @@ public sealed class WfpReportFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<WfpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
-        int? divisionId;
-        if (await CanManagePpdoAllocation(caller))
-            divisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
-        else
-            divisionId = caller.DivisionId;
+        int? requestedDivisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
+        if (!WfpDivisionScope.TryFilter(await ScopeOf(caller), requestedDivisionId, out int? divisionId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                ApiResponse<WfpReportDto>.Fail("Report not found."), ct);
 
         ServiceResult<WfpReportDto> result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
         if (!result.IsSuccess)

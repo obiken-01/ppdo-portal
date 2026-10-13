@@ -71,13 +71,20 @@ public sealed class WfpService : IWfpService
     // ── Read ──────────────────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<WfpRecordDto>> GetAllAsync(
-        int? aipRecordId, int? officeId, int? divisionId = null, CancellationToken ct = default)
-        => (await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, divisionId, ct)).Select(MapToDto).ToList();
+        int? aipRecordId, int? officeId, DivisionScope scope, int? divisionId = null, CancellationToken ct = default)
+    {
+        // ⚠️ PPDO-198: an unassigned Staff user sees nothing — never the unfiltered list. A
+        // division-scoped caller is pinned to their own division, whatever they asked for.
+        if (!WfpDivisionScope.TryFilter(scope, divisionId, out int? effectiveDivisionId)) return [];
+
+        return (await _wfpRepo.GetFilteredAsync(aipRecordId, officeId, effectiveDivisionId, ct))
+            .Select(MapToDto).ToList();
+    }
 
     public async Task<ServiceResult<WfpRecordDetailDto>> GetByIdAsync(
-        int id, CancellationToken ct = default)
+        int id, DivisionScope scope, CancellationToken ct = default)
     {
-        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
+        WfpRecord? rec = await LoadInScopeAsync(id, scope, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDetailDto>.NotFound($"WFP record {id} not found.");
 
@@ -97,8 +104,13 @@ public sealed class WfpService : IWfpService
     // ── Save (upsert) ─────────────────────────────────────────────────────────
 
     public async Task<ServiceResult<WfpRecordDto>> SaveAsync(
-        SaveWfpDto dto, Guid createdById, CancellationToken ct = default)
+        SaveWfpDto dto, Guid createdById, DivisionScope scope, CancellationToken ct = default)
     {
+        // ⚠️ PPDO-198 — the target division comes from the request body, so it is checked before
+        // anything else reads or writes. Same NotFound as a by-id miss, so it reveals nothing.
+        if (!WfpDivisionScope.Allows(scope, dto.DivisionId))
+            return ServiceResult<WfpRecordDto>.NotFound("WFP record not found.");
+
         // ⚠️ V18-81 — first statement, before the lookup and before any write. This path is
         // find-or-create, so a refusal placed lower would already have added the row: the original
         // bug with an error message attached. Above the existing-record branch too, deliberately —
@@ -307,9 +319,9 @@ public sealed class WfpService : IWfpService
     // ── Status transitions ────────────────────────────────────────────────────
 
     public async Task<ServiceResult<WfpRecordDto>> FinalizeAsync(
-        int id, CancellationToken ct = default)
+        int id, DivisionScope scope, CancellationToken ct = default)
     {
-        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
+        WfpRecord? rec = await LoadInScopeAsync(id, scope, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDto>.NotFound($"WFP record {id} not found.");
         if (rec.Status != PlanningStatus.Draft)
@@ -333,9 +345,9 @@ public sealed class WfpService : IWfpService
     }
 
     public async Task<ServiceResult<WfpRecordDto>> UnlockAsync(
-        int id, CancellationToken ct = default)
+        int id, DivisionScope scope, CancellationToken ct = default)
     {
-        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
+        WfpRecord? rec = await LoadInScopeAsync(id, scope, ct);
         if (rec is null)
             return ServiceResult<WfpRecordDto>.NotFound($"WFP record {id} not found.");
         if (rec.Status != PlanningStatus.Final)
@@ -356,8 +368,12 @@ public sealed class WfpService : IWfpService
 
     public async Task<ServiceResult<WfpActivityRefDto>> EnsureActivityAsync(
         int aipRecordId, int officeId, int? divisionId, int fiscalYear, int aipActivityId,
-        Guid createdById, CancellationToken ct = default)
+        Guid createdById, DivisionScope scope, CancellationToken ct = default)
     {
+        // ⚠️ PPDO-198 — a body-supplied division, checked before the find-or-create can add a row.
+        if (!WfpDivisionScope.Allows(scope, divisionId))
+            return ServiceResult<WfpActivityRefDto>.NotFound("WFP record not found.");
+
         // ⚠️ V18-81 — see SaveAsync. This is the path most easily missed: it does not read as a
         // create endpoint from outside, it is the v1.4 entry wizard's find-or-create, and that is
         // exactly the shape of the two leaks V18-37 found.
@@ -403,9 +419,9 @@ public sealed class WfpService : IWfpService
     // ── Export (RAL-79) ───────────────────────────────────────────────────────
 
     public async Task<ServiceResult<byte[]>> ExportReportAsync(
-        int id, User caller, CancellationToken ct = default)
+        int id, User caller, DivisionScope scope, CancellationToken ct = default)
     {
-        ServiceResult<WfpRecordDetailDto> wfpResult = await GetByIdAsync(id, ct);
+        ServiceResult<WfpRecordDetailDto> wfpResult = await GetByIdAsync(id, scope, ct);
         if (!wfpResult.IsSuccess)
             return ServiceResult<byte[]>.NotFound(wfpResult.Error!);
 
@@ -425,6 +441,18 @@ public sealed class WfpService : IWfpService
         byte[] bytes = _excel.GenerateWfpReport(
             new WfpExcelReportData(wfp, aipResult.Value!, officeName, officeCode, fsColors));
         return ServiceResult<byte[]>.Ok(bytes);
+    }
+
+    // ── Scope (PPDO-198) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads a WFP record, or null when it is missing OR outside the caller's division scope. The
+    /// two are deliberately indistinguishable to the caller, so record ids cannot be probed.
+    /// </summary>
+    private async Task<WfpRecord?> LoadInScopeAsync(int id, DivisionScope scope, CancellationToken ct)
+    {
+        WfpRecord? rec = await _wfpRepo.GetByIntIdAsync(id, ct);
+        return rec is not null && WfpDivisionScope.Allows(scope, rec.DivisionId) ? rec : null;
     }
 
     // ── Purge (dev/test only) ─────────────────────────────────────────────────

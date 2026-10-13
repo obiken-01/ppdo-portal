@@ -12,12 +12,15 @@ namespace PPDO.Functions.Functions;
 
 /// <summary>
 /// WFP endpoints under <c>/api/budget-planning/wfp</c> (RAL-64, RAL-102).
-/// All require CanAccessBudgetPlanning. Unlock additionally requires Admin/SuperAdmin.
+/// All require CanAccessWfp — Budget Planning AND the host office (PPDO-198). Unlock additionally
+/// requires Admin/SuperAdmin.
 /// SaveAsync is a POST that both creates and updates (upsert by aipRecordId + officeId + divisionId).
 ///
-/// Division-filter bypass (RAL-102): Admin/SuperAdmin/CanManagePpdoAllocation callers may pass an
-/// optional ?divisionId= to list a specific division's WFPs; others are automatically scoped to
-/// their own division.
+/// Division scope (RAL-102, PPDO-198): every endpoint resolves the caller's
+/// <see cref="WfpDivisionScope"/> and hands it to the service, which checks it against the record.
+/// Admin/SuperAdmin/CanManagePpdoAllocation callers see every division and may pass an optional
+/// ?divisionId= to list one; others are pinned to their own division, and Staff with no division
+/// see nothing.
 /// </summary>
 public sealed class WfpFunctions
 {
@@ -35,7 +38,8 @@ public sealed class WfpFunctions
         _permissions = permissions;
     }
 
-    private Task<bool> CanAccess(User u) => _permissions.CanAccessBudgetPlanningAsync(u);
+    private Task<bool> CanAccess(User u) => _permissions.CanAccessWfpAsync(u);
+    private Task<DivisionScope> ScopeOf(User u) => WfpDivisionScope.ResolveAsync(u, _permissions);
 
     // ── GET /api/budget-planning/wfp?aipRecordId=&officeId=&divisionId= ──────
     [Function("WfpList")]
@@ -49,10 +53,10 @@ public sealed class WfpFunctions
         int? aipId    = int.TryParse(req.Query["aipRecordId"], out int a) ? a : null;
         int? officeId = int.TryParse(req.Query["officeId"],    out int o) ? o : null;
 
-        // Division filter: bypass for Admin/SuperAdmin/CanManagePpdoAllocation; auto-scope others.
-        int? divisionId = await ResolveDivisionFilterAsync(caller!, req, ct);
+        // ?divisionId= narrows an unrestricted caller's list; a scoped caller's is ignored.
+        int? divisionId = int.TryParse(req.Query["divisionId"], out int d) ? d : null;
 
-        IReadOnlyList<WfpRecordDto> data = await _wfp.GetAllAsync(aipId, officeId, divisionId, ct);
+        IReadOnlyList<WfpRecordDto> data = await _wfp.GetAllAsync(aipId, officeId, await ScopeOf(caller!), divisionId, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<IReadOnlyList<WfpRecordDto>>.Ok(data), ct);
     }
@@ -66,7 +70,7 @@ public sealed class WfpFunctions
             Route = "budget-planning/wfp/ceilings")] HttpRequestData req,
         CancellationToken ct)
     {
-        (_, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
         if (!int.TryParse(req.Query["activityId"], out int activityId)   ||
@@ -75,6 +79,11 @@ public sealed class WfpFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<WfpCeilingStatusDto>.Fail(
                     "activityId, divisionId, and fiscalYear query parameters are required."), ct);
+
+        // PPDO-198: another division's ceiling and spend are that division's figures.
+        if (!WfpDivisionScope.Allows(await ScopeOf(caller!), divisionId))
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                ApiResponse<WfpCeilingStatusDto>.Fail("Division not found."), ct);
 
         WfpCeilingStatusDto status = await _ceilings.GetStatusAsync(activityId, divisionId, fiscalYear, ct);
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
@@ -90,7 +99,7 @@ public sealed class WfpFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _wfp.GetByIdAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _wfp.GetByIdAsync(id, await ScopeOf(caller!), ct), ct);
     }
 
     // ── POST /api/budget-planning/wfp  (upsert) ──────────────────────────────
@@ -107,7 +116,7 @@ public sealed class WfpFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
                 ApiResponse<WfpRecordDto>.Fail("Request body is missing or malformed."), ct);
 
-        ServiceResult<WfpRecordDto> result = await _wfp.SaveAsync(body, caller!.Id, ct);
+        ServiceResult<WfpRecordDto> result = await _wfp.SaveAsync(body, caller!.Id, await ScopeOf(caller), ct);
         return await ConfigHttp.FromResultAsync(req, result, ct,
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
@@ -131,7 +140,8 @@ public sealed class WfpFunctions
                 ApiResponse<WfpActivityRefDto>.Fail("Request body is missing or malformed."), ct);
 
         ServiceResult<WfpActivityRefDto> result = await _wfp.EnsureActivityAsync(
-            body.AipRecordId, body.OfficeId, body.DivisionId, body.FiscalYear, body.AipActivityId, caller!.Id, ct);
+            body.AipRecordId, body.OfficeId, body.DivisionId, body.FiscalYear, body.AipActivityId, caller!.Id,
+            await ScopeOf(caller), ct);
         return await ConfigHttp.FromResultAsync(req, result, ct,
             result.IsSuccess ? HttpStatusCode.OK : HttpStatusCode.BadRequest);
     }
@@ -145,7 +155,7 @@ public sealed class WfpFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
         if (denied is not null) return denied;
 
-        return await ConfigHttp.FromResultAsync(req, await _wfp.FinalizeAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _wfp.FinalizeAsync(id, await ScopeOf(caller!), ct), ct);
     }
 
     // ── POST /api/budget-planning/wfp/{id}/unlock  (admin only) ──────────────
@@ -161,7 +171,7 @@ public sealed class WfpFunctions
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden,
                 ApiResponse<WfpRecordDto>.Fail("Admin or SuperAdmin role required to unlock records."), ct);
 
-        return await ConfigHttp.FromResultAsync(req, await _wfp.UnlockAsync(id, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _wfp.UnlockAsync(id, await ScopeOf(caller), ct), ct);
     }
 
     // ── GET /api/budget-planning/wfp/{id}/report ─────────────────────────────
@@ -174,7 +184,7 @@ public sealed class WfpFunctions
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
-        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, caller!, ct);
+        ServiceResult<byte[]> result = await _wfp.ExportReportAsync(id, caller!, await ScopeOf(caller!), ct);
         if (!result.IsSuccess)
             return await ConfigHttp.FromResultAsync(req, result, ct);
 
@@ -185,28 +195,5 @@ public sealed class WfpFunctions
             $"attachment; filename=\"WFP_Report.xlsx\"");
         await response.WriteBytesAsync(result.Value!);
         return response;
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Resolves the effective division filter for list queries.
-    /// Admin/SuperAdmin/CanManagePpdoAllocation may pass an optional ?divisionId= (or see all when omitted).
-    /// All other callers are automatically scoped to their own division_id.
-    /// </summary>
-    private async Task<int?> ResolveDivisionFilterAsync(
-        User caller, HttpRequestData req, CancellationToken ct)
-    {
-        bool canBypass = caller.Role is UserRole.SuperAdmin or UserRole.Admin
-            || await _permissions.CanManagePpdoAllocationAsync(caller);
-
-        if (canBypass)
-        {
-            // Admin/finance: optional explicit filter; null = see all divisions.
-            return int.TryParse(req.Query["divisionId"], out int qDiv) ? qDiv : null;
-        }
-
-        // Regular user: always scoped to own division (even if ?divisionId= was supplied).
-        return caller.DivisionId;
     }
 }

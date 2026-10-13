@@ -11,13 +11,24 @@ namespace PPDO.Application.Services;
 ///
 /// <see cref="SaveExpenditureAsync"/> is intentionally named so RAL-122's ceiling-check
 /// rejection has one obvious place to hook in.
+///
+/// ⚠️ <b>Scope (PPDO-198).</b> Every caller-facing method takes the caller's
+/// <see cref="WfpDivisionScope"/> and checks the parent WFP record's division before reading or
+/// writing. An expenditure or activity outside it answers NotFound (or an empty list), the same as a
+/// missing id. <see cref="GetByActivityIdsAsync"/> is report-internal and takes no scope: its
+/// callers pass activity ids they have already scoped.
 /// </summary>
 public interface IWfpExpenditureService
 {
-    Task<ServiceResult<WfpExpenditureDto>> GetByIdAsync(int id, CancellationToken ct = default);
+    /// <summary>NotFound when the expenditure is missing OR its WFP is outside <paramref name="scope"/>.</summary>
+    Task<ServiceResult<WfpExpenditureDto>> GetByIdAsync(int id, DivisionScope scope, CancellationToken ct = default);
 
-    /// <summary>Expenditures already saved under this WFP activity — the entry wizard's "added so far" list (RAL-123).</summary>
-    Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(int wfpActivityId, CancellationToken ct = default);
+    /// <summary>
+    /// Expenditures already saved under this WFP activity — the entry wizard's "added so far" list
+    /// (RAL-123). Empty when the activity is outside <paramref name="scope"/>.
+    /// </summary>
+    Task<IReadOnlyList<WfpExpenditureDto>> GetByActivityIdAsync(
+        int wfpActivityId, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Batched sibling of <see cref="GetByActivityIdAsync"/> — every WFP activity's expenditures
@@ -38,15 +49,20 @@ public interface IWfpExpenditureService
     /// <c>WfpReserveRule.Rate</c> × Net if not supplied, and is rejected (BadRequest) if it
     /// exceeds that cap — regardless of the account's default_apply_reserve, which is a
     /// pre-fill only, never an eligibility gate.
+    ///
+    /// NotFound when the target activity is outside <paramref name="scope"/>, or when an update's
+    /// expenditure does not sit under <c>dto.WfpActivityId</c> — the scope and Final-lock checks
+    /// both read that activity, so the two must agree (PPDO-198).
     /// </summary>
     Task<ServiceResult<WfpExpenditureDto>> SaveExpenditureAsync(
-        SaveWfpExpenditureDto dto, CancellationToken ct = default);
+        SaveWfpExpenditureDto dto, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Deletes an expenditure and its child periods/procurement items, then recomputes the
-    /// division-allocation ledger (RAL-129). Forbidden when the parent WFP record is Final.
+    /// division-allocation ledger (RAL-129). Forbidden when the parent WFP record is Final;
+    /// NotFound when it is outside <paramref name="scope"/>.
     /// </summary>
-    Task<ServiceResult<bool>> DeleteExpenditureAsync(int id, CancellationToken ct = default);
+    Task<ServiceResult<bool>> DeleteExpenditureAsync(int id, DivisionScope scope, CancellationToken ct = default);
 
     /// <summary>The current reserve rate, for the frontend to display without hard-coding it.</summary>
     WfpReserveRateDto GetReserveRate();
