@@ -120,4 +120,22 @@ public sealed class AipReviewCommentFunctions
         return await ConfigHttp.FromResultAsync(req,
             await _comments.ResolveAsync(id, caller!, ct), ct);
     }
+
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/comments/acknowledge-edits ──
+    // v1.9.0 — PPDO-213. The edited office's "Mark as seen" on PPDO reviewer edits. Not a content
+    // write (it stamps a comment, never a figure), so no reviewer guard. The service refuses anyone
+    // outside that office, a PPDO reviewer included.
+    [Function("AipReviewCommentAcknowledgeEdits")]
+    public async Task<HttpResponseData> AcknowledgeEdits(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/comments/acknowledge-edits")] HttpRequestData req,
+        int aipId, int officeId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _comments.AcknowledgeReviewerEditsAsync(aipId, officeId, caller!, ct), ct);
+    }
 }

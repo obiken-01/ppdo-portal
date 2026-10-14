@@ -745,6 +745,14 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("AcknowledgedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("acknowledged_at");
+
+                    b.Property<Guid?>("AcknowledgedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("acknowledged_by_id");
+
                     b.Property<int>("AipOfficeId")
                         .HasColumnType("int")
                         .HasColumnName("aip_office_id");
@@ -769,6 +777,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("IsReviewerEdit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_reviewer_edit");
+
                     b.Property<int>("NodeId")
                         .HasColumnType("int")
                         .HasColumnName("node_id");
@@ -789,12 +803,17 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AcknowledgedById");
+
                     b.HasIndex("AuthorId");
 
                     b.HasIndex("ResolvedById");
 
                     b.HasIndex("AipOfficeId", "ResolvedAt")
                         .HasDatabaseName("IX_aip_review_comments_office_resolved");
+
+                    b.HasIndex("AipOfficeId", "IsReviewerEdit", "AcknowledgedAt")
+                        .HasDatabaseName("IX_aip_review_comments_office_reviewer_edit_ack");
 
                     b.ToTable("aip_review_comments", (string)null);
                 });
@@ -4287,6 +4306,12 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PPDO.Domain.Entities.AipReviewComment", b =>
                 {
+                    b.HasOne("PPDO.Domain.Entities.User", "AcknowledgedBy")
+                        .WithMany()
+                        .HasForeignKey("AcknowledgedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_aip_review_comments_Users_acknowledged_by_id");
+
                     b.HasOne("PPDO.Domain.Entities.AipOffice", "AipOffice")
                         .WithMany()
                         .HasForeignKey("AipOfficeId")
@@ -4306,6 +4331,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasForeignKey("ResolvedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_aip_review_comments_Users_resolved_by_id");
+
+                    b.Navigation("AcknowledgedBy");
 
                     b.Navigation("AipOffice");
 

@@ -50,7 +50,16 @@ public sealed record AipReviewCommentDto(
     DateTime? ResolvedAt,
     string?   ResolvedByName,
     bool      CanResolve,
-    bool      IsOrphaned);
+    bool      IsOrphaned,
+    bool      IsReviewerEdit = false,
+    DateTime? AcknowledgedAt = null,
+    string?   AcknowledgedByName = null);
+
+/// <summary>
+/// What Mark as seen returns (v1.9.0 — PPDO-213): how many reviewer-edit comments it stamped.
+/// 0 is a success — there was nothing pending, which is what a double click looks like.
+/// </summary>
+public sealed record AipReviewerEditsAcknowledgedDto(int Acknowledged);
 
 /// <summary>
 /// The unresolved tally, split by who wrote them (V18-53 / PPDO-71).

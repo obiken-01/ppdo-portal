@@ -19,13 +19,20 @@ namespace PPDO.Application.DTOs.BudgetPlanning;
 /// <c>CanReviewBudgetPlanning</c>.</param>
 /// <param name="Returned">Open years in which the caller's own office is returned to them, earliest
 /// first. Empty when nothing is.</param>
+/// <param name="ReviewerEditCount">v1.9.0 — PPDO-213. PPDO reviewer edits to the caller's own office
+/// that nobody in the office has marked as seen, across open years. ⚠️ Own office only, for every
+/// caller including a cross-office reviewer: it is the edited office's notice.</param>
+/// <param name="ReviewerEditFiscalYear">The earliest year with such an edit — where the notice links
+/// to. Null when the count is zero.</param>
 public sealed record AipReviewNotificationsDto(
     int     PendingForPpdo,
     int?    PpdoFiscalYear,
     int     PendingForDepartmentHead,
     int?    DepartmentHeadFiscalYear,
     IReadOnlyList<AipReturnedNoticeDto> Returned,
-    int     DivisionsSubmitted = 0);
+    int     DivisionsSubmitted = 0,
+    int     ReviewerEditCount = 0,
+    int?    ReviewerEditFiscalYear = null);
 
 /// <summary>
 /// One returned year. <paramref name="ReturnedBy"/> is <c>"Ppdo"</c> (the office sits at

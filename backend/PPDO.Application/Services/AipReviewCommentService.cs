@@ -284,6 +284,38 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
             Map(comment, side, new Dictionary<int, string>(), resolvedNameOverride: caller.FullName));
     }
 
+    // ── Mark as seen (v1.9.0 — PPDO-213) ──────────────────────────────────────
+
+    /// <summary>
+    /// The edited office marks every PPDO reviewer edit it has not yet seen as seen.
+    ///
+    /// <para>
+    /// ⚠️ <b>Seeing the office is not enough; it has to be yours.</b> A PPDO reviewer and a host-office
+    /// user both pass the read scope for any office, and both are refused here with a 403: the
+    /// acknowledgement says "the office has seen what PPDO changed", which only the office can say.
+    /// Anyone who cannot even see the office gets the usual not-found (PPDO-46).
+    /// </para>
+    /// </summary>
+    public async Task<ServiceResult<AipReviewerEditsAcknowledgedDto>> AcknowledgeReviewerEditsAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default)
+    {
+        CommentContext? ctx = await ResolveAsync(aipRecordId, officeId, caller, ct);
+        if (ctx is null)
+            return ServiceResult<AipReviewerEditsAcknowledgedDto>.NotFound(NotFoundMessage(aipRecordId, officeId));
+
+        if (caller.OfficeId != officeId)
+            return ServiceResult<AipReviewerEditsAcknowledgedDto>.Forbidden(
+                "Only the office whose AIP was edited can mark PPDO's changes as seen.");
+
+        int stamped = await _comments.AcknowledgeReviewerEditsAsync(ctx.GroupIds, caller.Id, DateTime.UtcNow, ct);
+
+        _logger.LogInformation(
+            "PPDO reviewer edits acknowledged. AipRecordId: {AipRecordId}, OfficeId: {OfficeId}, Count: {Count}, UserId: {UserId}",
+            aipRecordId, officeId, stamped, caller.Id);
+
+        return ServiceResult<AipReviewerEditsAcknowledgedDto>.Ok(new AipReviewerEditsAcknowledgedDto(stamped));
+    }
+
     // ── Internals ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -444,7 +476,10 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
             // ⚠️ Unresolved AND the caller is on the authoring side. Both halves matter: an already
             // resolved comment offers no control, and neither does one addressed to this reader.
             CanResolve: c.IsUnresolved && callerSide == c.AuthorSide,
-            IsOrphaned: refCode is null);
+            IsOrphaned: refCode is null,
+            IsReviewerEdit: c.IsReviewerEdit,
+            AcknowledgedAt: c.AcknowledgedAt,
+            AcknowledgedByName: c.AcknowledgedBy?.FullName);
     }
 
     private sealed record CommentContext(AipRecord Record, int OfficeId, List<AipOffice> Groups)

@@ -775,6 +775,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
             CreatedAt    = now,
             ResolvedAt   = now,
             ResolvedById = caller.Id,
+            // PPDO-213 — what the office's notice counts until someone there marks it as seen.
+            IsReviewerEdit = true,
         }, ct);
         await _comments.SaveChangesAsync(ct);
 
