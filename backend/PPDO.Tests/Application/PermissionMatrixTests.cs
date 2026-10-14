@@ -1,3 +1,4 @@
+using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
@@ -326,6 +327,38 @@ public sealed class PermissionMatrixTests
     [InlineData(1)]
     public void DivisionLock_OfficeWithoutDivisions_AllowsEveryone(int? activityDivision)
         => Assert.True(AipDivisionContext.None.CanWriteActivity(activityDivision));
+
+    // ── PPDO reviewer edits (v1.9.0 — PPDO-212) ──────────────────────────────
+    //
+    // The one place a cross-office reviewer may change an office's plan content: adding an
+    // expenditure line or changing a line's amounts (docs/v1.9/AIP_Reviewer_Edit_Spec.md). No flag
+    // changes; the grant is narrowed by the office's workflow state alone. The endpoint half (exactly
+    // Add and Update, never Delete) is pinned by ReviewerWriteGuardCoverageTests.
+
+    public static TheoryData<string, bool> ReviewerEditRows() => new()
+    {
+        // office workflow state,                 reviewer may add/edit lines
+        { AipWorkflowStatus.Draft,                false },
+        { AipWorkflowStatus.DepartmentReview,     false },
+        { AipWorkflowStatus.ReturnedByPpdo,       false },
+        { AipWorkflowStatus.SubmittedToPpdo,      true  },
+        { AipWorkflowStatus.Consolidated,         true  },
+    };
+
+    [Theory]
+    [MemberData(nameof(ReviewerEditRows))]
+    public async Task ReviewerEdit_AllowedOnlyOnceTheOfficeReachesPpdo(string state, bool expected)
+    {
+        Mock<IAipRepository> repo = new();
+        repo.Setup(r => r.GetByIntIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipRecord { Id = 5, FiscalYear = 2028, Status = PlanningStatus.Draft });
+        AipOffice office = new() { Id = 11, OfficeId = GuestOfficeId, AipRecordId = 5, WorkflowStatus = state };
+
+        ServiceResult<object>? refused =
+            await AipWriteGuard.CheckReviewerEditAsync<object>(office, repo.Object, CancellationToken.None);
+
+        Assert.Equal(expected, refused is null);
+    }
 
     // ── Fixture ───────────────────────────────────────────────────────────────
 

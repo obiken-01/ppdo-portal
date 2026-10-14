@@ -516,6 +516,26 @@ which is all the guard protects. It stays gated on `CanManageOfficeCeilings`; th
 never reaches it. Pinned by `ReviewerWriteGuardCoverageTests.UpsertCeiling_LetsACrossOfficeReviewerThrough`
 and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeilingGrant_ReturnsForbidden`.
 
+**PPDO reviewer edits — adding or editing an expenditure line (v1.9.0, PPDO-212).** The one place the
+cross-office reviewer may change an office's plan content, for the LFC adjustment that brings a part-year
+activity up to the full year ([AIP_Reviewer_Edit_Spec.md](../v1.9/AIP_Reviewer_Edit_Spec.md)). Unlike the
+exemptions above, this **is** a content write, so the guard opens for exactly two endpoints and the
+service narrows the rest:
+
+| Endpoint | Reviewer | Rule |
+|---|---|---|
+| `POST …/aip/activities/{id}/expenditures` | ✅ reaches the service | Office in `SubmittedToPpdo` or `Consolidated`, FY2028+, reason 1–500 chars |
+| `PUT …/aip/expenditures/{id}` | ✅ reaches the service | Same, and amounts only: the line's account and fund may not change |
+| `DELETE …/aip/expenditures/{id}` | ❌ 403 | A reviewer never removes a line |
+| every other budget-planning write | ❌ 403 | Unchanged |
+
+In `Draft`, `DepartmentReview` and `ReturnedByPpdo` the AIP is the office's, and the reviewer gets a 400.
+Each edit posts a PPDO comment on the activity that is **created already resolved**, so it never reaches
+the re-submit gate. No new flag, and SuperAdmin is unaffected (it is never routed through this path).
+Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAndUpdateExpenditure`,
+`PermissionMatrixTests.ReviewerEdit_AllowedOnlyOnceTheOfficeReachesPpdo` and
+`AipExpenditureReviewerEditTests`.
+
 > Finance users who also encode for their own division use a **separate encoder account** — the guard
 > is not narrowed to "own office" (recommended 2026-09-15, to confirm with finance).
 

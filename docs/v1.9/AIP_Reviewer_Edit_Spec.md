@@ -56,11 +56,12 @@ changed it, and why.
 9. **The concurrent-edit guard applies as today** (`rowVersion`). Offices cannot edit in these
    states, so a clash can only be two reviewers on one line.
 
-### Open follow-ups (proposed defaults, confirm before the backend ticket starts)
+### Open follow-ups (A settled; B and C stand on their defaults — Ralph started T1 on them, 2026-10-14)
 
-- **A. Procurement-itemised lines.** A procurement line's amount *is* its items' total, so editing
-  "the amount" means editing items. *Default:* the reviewer may change item **quantities** and add
-  items (same Price Index picker); the comment lists the line's old → new total.
+- ✅ **A. Procurement-itemised lines — settled (Ralph, 2026-10-14).** A procurement line's amount
+  *is* its items' total, so editing "the amount" means editing items. The reviewer may change item
+  quantities, add items (same Price Index picker), **and add new account lines** (decision 3); the
+  comment lists the line's old → new total.
 - **B. Activity schedule.** If the edit annualises the amounts, should Start/End month also become
   Jan–Dec? *Default:* **no**, schedule stays the office's (decision 3); the reason text records it.
 - **C. Undoing a mistaken added line.** Delete stays denied. *Default:* the reviewer edits it to the

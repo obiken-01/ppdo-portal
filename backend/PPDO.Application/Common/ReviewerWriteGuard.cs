@@ -31,6 +31,12 @@ namespace PPDO.Application.Common;
 /// An earlier reading of V18-04 had a single reviewer flag denying writes for both. That reading
 /// is superseded; RAL-244's ticket carries the same warning.
 ///
+/// ↩️ <b>v1.9.0 (PPDO-212): one content exception.</b> A PPDO reviewer may add an AIP expenditure
+/// line, or change a line's amounts, once the office is <c>SubmittedToPpdo</c> or
+/// <c>Consolidated</c> (<c>docs/v1.9/AIP_Reviewer_Edit_Spec.md</c>). Those two endpoints authorize
+/// without this guard and <c>AipExpenditureService</c> calls it to choose the reviewer path. This
+/// guard itself is unchanged, and every other budget-planning write still runs through it.
+///
 /// <b>SuperAdmin is exempt, deliberately.</b> <c>CanReviewAllOfficesAsync</c> resolves true for
 /// SuperAdmin — as every flag does, so support access always works — so a guard that simply asked
 /// "is this a cross-office reviewer?" would lock SuperAdmin out of every write in budget planning.

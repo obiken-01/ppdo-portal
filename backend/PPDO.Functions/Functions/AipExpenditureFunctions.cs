@@ -64,8 +64,11 @@ public sealed class AipExpenditureFunctions
             Route = "budget-planning/aip/activities/{activityId:int}/expenditures")] HttpRequestData req,
         int activityId, CancellationToken ct)
     {
+        // ⚠️ AuthorizeAsync, not AuthorizeWriteAsync: one of only two content writes a PPDO
+        // cross-office reviewer may reach (v1.9.0 — PPDO-212). AipExpenditureService decides, on the
+        // office's workflow state and a required reason. Pinned by ReviewerWriteGuardCoverageTests.
         (User? caller, HttpResponseData? denied) =
-            await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
         CreateAipExpenditureDto? body = await ConfigHttp.ReadBodyAsync<CreateAipExpenditureDto>(req, ct);
@@ -84,8 +87,10 @@ public sealed class AipExpenditureFunctions
             Route = "budget-planning/aip/expenditures/{id:int}")] HttpRequestData req,
         int id, CancellationToken ct)
     {
+        // ⚠️ AuthorizeAsync, not AuthorizeWriteAsync — see Add above (PPDO-212). The DELETE below
+        // keeps the reviewer guard: a reviewer never removes a line.
         (User? caller, HttpResponseData? denied) =
-            await ConfigHttp.AuthorizeWriteAsync(req, _jwt, _permissions, CanAccess, ct);
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null) return denied;
 
         UpdateAipExpenditureDto? body = await ConfigHttp.ReadBodyAsync<UpdateAipExpenditureDto>(req, ct);

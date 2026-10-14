@@ -89,7 +89,8 @@ public sealed class AipExpenditureDivisionLockTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, new PermissionService(),
         _divisions.Build(_aipRepo.Object, new PermissionService()),
-        new Mock<IUserRepository>().Object, NullLogger<AipExpenditureService>.Instance);
+        new Mock<IUserRepository>().Object, new Mock<IAipReviewCommentRepository>().Object,
+        NullLogger<AipExpenditureService>.Instance);
 
     private static User Staff(int? divisionId, bool departmentHead = false) => new()
     {

@@ -175,6 +175,65 @@ public sealed class ReviewerWriteGuardCoverageTests
         Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", crossOffice);
     }
 
+    /// <summary>
+    /// Content writes a cross-office reviewer may reach, where <b>the service</b> decides
+    /// (v1.9.0 — PPDO-212, <c>docs/v1.9/AIP_Reviewer_Edit_Spec.md</c>).
+    ///
+    /// <para>
+    /// ⚠️ <b>Unlike every list above, these DO change an office's plan content.</b> A PPDO reviewer may
+    /// add an expenditure line, or change a line's amounts, on an office whose AIP is
+    /// <c>SubmittedToPpdo</c> or <c>Consolidated</c> — the LFC adjustment that brings a part-year
+    /// activity up to the full year. The endpoint lets them through and
+    /// <c>AipExpenditureService</c> enforces the state, the required reason and the amounts-only rule
+    /// (<c>AipExpenditureReviewerEditTests</c>). The line's DELETE is deliberately not here: a reviewer
+    /// never removes a line, so it stays guarded by the theories below.
+    /// </para>
+    ///
+    /// <para>
+    /// <see cref="ReviewerEditEndpoints_AreExactlyAddAndUpdateExpenditure"/> pins this set, so growing
+    /// it is a visible decision rather than one line in a diff.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> ServiceGatedReviewerEditEndpoints =
+    [
+        $"{nameof(AipExpenditureFunctions)}.{nameof(AipExpenditureFunctions.Add)}",
+        $"{nameof(AipExpenditureFunctions)}.{nameof(AipExpenditureFunctions.Update)}",
+    ];
+
+    [Fact]
+    public void ReviewerEditEndpoints_AreExactlyAddAndUpdateExpenditure()
+        => Assert.Equal(
+            ["AipExpenditureFunctions.Add", "AipExpenditureFunctions.Update"],
+            ServiceGatedReviewerEditEndpoints.Order().ToArray());
+
+    /// <summary>
+    /// The positive assertion behind <see cref="ServiceGatedReviewerEditEndpoints"/>: the reviewer
+    /// reaches the service rather than being refused at the door. "Not 403", for the same reason as
+    /// <see cref="CommentEndpoints_LetACrossOfficeReviewerThrough"/>.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(AipExpenditureFunctions.Add))]
+    [InlineData(nameof(AipExpenditureFunctions.Update))]
+    public async Task ReviewerEditEndpoints_LetACrossOfficeReviewerThrough(string methodName)
+    {
+        string outcome = await OutcomeAsync(
+            typeof(AipExpenditureFunctions).FullName!, methodName,
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", outcome);
+    }
+
+    /// <summary>The line's delete is not part of the exception: the reviewer is still refused.</summary>
+    [Fact]
+    public async Task DeleteExpenditure_StillRefusesACrossOfficeReviewer()
+    {
+        string outcome = await OutcomeAsync(
+            typeof(AipExpenditureFunctions).FullName!, nameof(AipExpenditureFunctions.Delete),
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.Equal($"status:{HttpStatusCode.Forbidden}", outcome);
+    }
+
     /// <summary>Write endpoints that genuinely guard content — the set the two theories cover.</summary>
     public static TheoryData<string, string> GuardedWriteEndpoints()
     {
@@ -182,7 +241,8 @@ public sealed class ReviewerWriteGuardCoverageTests
         foreach ((Type type, MethodInfo method, _) in DiscoverWriteEndpoints())
         {
             string key = $"{type.Name}.{method.Name}";
-            if (ReviewerGatedEndpoints.Contains(key) || NotContentWriteEndpoints.Contains(key)) continue;
+            if (ReviewerGatedEndpoints.Contains(key) || NotContentWriteEndpoints.Contains(key)
+                || ServiceGatedReviewerEditEndpoints.Contains(key)) continue;
             data.Add(type.FullName!, method.Name);
         }
         return data;
