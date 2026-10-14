@@ -263,7 +263,7 @@ export default function OfficeCeilingsPage() {
           </button>
         </div>
       ) : loading ? (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse border border-slate-200 bg-slate-50" />
           ))}
@@ -273,7 +273,7 @@ export default function OfficeCeilingsPage() {
           {cards.length === 0 ? "No offices to show for this fiscal year." : "No office matches this search or filter."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
           {visible.map((card) => {
             const over = card.lines.filter(isOver);
             const gfNotSet = card.lines.find((l) => l.fundId === gfId)?.ceiling == null;
@@ -329,7 +329,7 @@ export default function OfficeCeilingsPage() {
                               onChange={(value) => patchLine(card.officeId, l.fundId, { draft: value, error: null })}
                               disabled={card.saving}
                               placeholder="Not set"
-                              className="w-full text-right"
+                              className="ml-auto w-40 text-right"
                             />
                             {l.error && <p className="mt-1 text-xs text-red-600">{l.error}</p>}
                           </td>
