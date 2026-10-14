@@ -42,7 +42,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionConflict();
 
         AipActivityDto current = ConflictCurrent(
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead()));
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead(), expectedRowVersion: AipTestVersion.Any));
 
         Assert.Equal(DivPlanning, current.DivisionId);
         Assert.Equal("Planning Division", current.DivisionName);
@@ -55,7 +55,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionConflict();
 
         AipActivityDto current = ConflictCurrent(
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning()));
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any));
 
         Assert.Equal("Planning Division", current.DivisionName);
         Assert.True(current.CanEdit);

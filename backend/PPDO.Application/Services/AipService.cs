@@ -1397,6 +1397,7 @@ public sealed class AipService : IAipService
             await GuardAsync<AipActivityDto>(office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
         if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipActivityDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
@@ -1485,6 +1486,7 @@ public sealed class AipService : IAipService
             office, caller, $"AIP activity {activityId} not found.", ct, "edit");
         if (refused is not null) return refused;
         if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipActivityDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipActivityDto>.BadRequest("Activity name is required.");
@@ -1711,6 +1713,7 @@ public sealed class AipService : IAipService
             await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
         if (AipWriteGuard.CheckDivision<AipDeleteResultDto>(div, activity.DivisionId) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipDeleteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         bool renumber = await RenumbersOnDeleteAsync(office, ct);
 
@@ -1722,7 +1725,6 @@ public sealed class AipService : IAipService
                 async () =>
                 {
                     await _activityRepo.DeleteAsync(activity, ct);
-                    AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "activity", activity.Id, "delete", caller.Id);
 
                     // PPDO-193 (V18-71) — declared here, after the ledger and comment deletes, and
                     // immediately before this save. Every save accepts all changes, which resets the
@@ -2304,6 +2306,7 @@ public sealed class AipService : IAipService
         // division lock all the same: a submitted activity must not change under its division.
         AipDivisionContext div = await _divisionLock.LoadAsync(creationOffice, caller, ct);
         if (AipWriteGuard.CheckDivision<AipActivityDto>(div, activity.DivisionId) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipActivityDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         bool oldValue = activity.IsCreation;
         activity.IsCreation = isCreation;
@@ -2337,7 +2340,6 @@ public sealed class AipService : IAipService
         activity.UpdatedAt   = DateTime.UtcNow;
         activity.UpdatedById = caller.Id;
 
-        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "activity", activity.Id, "update", caller.Id);
         _aipRepo.ExpectRowVersion(activity, expectedRowVersion);
 
         try

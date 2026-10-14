@@ -399,7 +399,7 @@ public sealed class AipExpenditureProcurementTests
             .ReturnsAsync(StoredLine(MooeAccountId, ps: 0m, mooe: 100_000m, co: 0m));
 
         var result = await Build().UpdateAsync(900,
-            new UpdateAipExpenditureDto(MooeAccountId, null, 250_500m, 100_000m, 0m), Encoder);
+            new UpdateAipExpenditureDto(MooeAccountId, null, 250_500m, 100_000m, 0m), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -415,7 +415,7 @@ public sealed class AipExpenditureProcurementTests
             .ReturnsAsync(StoredLine(MooeAccountId, ps: 5_000m, mooe: 100_000m, co: 0m));
 
         var result = await Build().UpdateAsync(900,
-            new UpdateAipExpenditureDto(MooeAccountId, null, 5_000m, 120_000m, 0m), Encoder);
+            new UpdateAipExpenditureDto(MooeAccountId, null, 5_000m, 120_000m, 0m), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess, result.Error);
     }
@@ -427,7 +427,7 @@ public sealed class AipExpenditureProcurementTests
             .ReturnsAsync(StoredLine(MooeAccountId, ps: 5_000m, mooe: 100_000m, co: 0m));
 
         var result = await Build().UpdateAsync(900,
-            new UpdateAipExpenditureDto(MooeAccountId, null, 6_000m, 100_000m, 0m), Encoder);
+            new UpdateAipExpenditureDto(MooeAccountId, null, 6_000m, 100_000m, 0m), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
@@ -441,7 +441,7 @@ public sealed class AipExpenditureProcurementTests
             .ReturnsAsync(StoredLine(CoAccountId, ps: 0m, mooe: 0m, co: 200_000m));
 
         var result = await Build().UpdateAsync(900,
-            new UpdateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 200_000m), Encoder);
+            new UpdateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 200_000m), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
