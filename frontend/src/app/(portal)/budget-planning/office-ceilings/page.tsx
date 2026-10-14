@@ -263,7 +263,7 @@ export default function OfficeCeilingsPage() {
           </button>
         </div>
       ) : loading ? (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 min-[1800px]:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse border border-slate-200 bg-slate-50" />
           ))}
@@ -273,7 +273,7 @@ export default function OfficeCeilingsPage() {
           {cards.length === 0 ? "No offices to show for this fiscal year." : "No office matches this search or filter."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 min-[1800px]:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((card) => {
             const over = card.lines.filter(isOver);
             const gfNotSet = card.lines.find((l) => l.fundId === gfId)?.ceiling == null;
@@ -299,56 +299,37 @@ export default function OfficeCeilingsPage() {
                     </span>
                   ) : null}
                 </header>
-                <table className="w-full table-fixed text-sm">
-                  {/* Fixed widths: the ceiling column fits ₱999,999,999.99; the figures share the rest and truncate rather than overflow. */}
-                  <colgroup>
-                    <col className="w-12" />
-                    <col className="w-44" />
-                    <col />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr className="text-xs text-slate-600">
-                      <th className="py-1 text-left font-normal">Fund</th>
-                      <th className="py-1 text-right font-normal">Ceiling</th>
-                      <th className="py-1 text-right font-normal">Encoded</th>
-                      <th className="py-1 text-right font-normal">Remaining</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {card.lines.map((l) => {
-                      const remaining = l.ceiling == null || l.encoded == null ? null : l.ceiling - l.encoded;
-                      return (
-                        <tr key={l.fundId} className="border-t border-slate-100 align-top">
-                          <td className="py-1.5 pr-2 font-mono text-xs text-slate-800" title={l.name}>
+                {/* One line per fund: code and ceiling on top, the figures beneath, so a card stays
+                    readable at three to a row and the ceiling input keeps its full width. */}
+                <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                  {card.lines.map((l) => {
+                    const remaining = l.ceiling == null || l.encoded == null ? null : l.ceiling - l.encoded;
+                    return (
+                      <li key={l.fundId} className="py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xs text-slate-800" title={l.name}>
                             {l.code}
-                          </td>
-                          <td className="py-1.5">
-                            <MoneyInput
-                              value={l.draft !== undefined ? l.draft : l.ceiling}
-                              onChange={(value) => patchLine(card.officeId, l.fundId, { draft: value, error: null })}
-                              disabled={card.saving}
-                              placeholder="Not set"
-                              className="ml-auto w-40 text-right"
-                            />
-                            {l.error && <p className="mt-1 text-xs text-red-600">{l.error}</p>}
-                          </td>
-                          {/* ⚠️ Null is absence, not zero: no AIP record for the year. */}
-                          <td className="truncate py-1.5 pl-2 text-right tabular-nums text-slate-600">
-                            {l.encoded == null ? "—" : formatMoney(l.encoded)}
-                          </td>
-                          <td
-                            className={`truncate py-1.5 pl-2 text-right tabular-nums ${
-                              remaining != null && remaining < 0 ? "font-medium text-amber-700" : "text-slate-600"
-                            }`}
-                          >
-                            {remaining == null ? "—" : formatMoney(remaining)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </span>
+                          <MoneyInput
+                            value={l.draft !== undefined ? l.draft : l.ceiling}
+                            onChange={(value) => patchLine(card.officeId, l.fundId, { draft: value, error: null })}
+                            disabled={card.saving}
+                            placeholder="Not set"
+                            className="w-40 text-right"
+                          />
+                        </div>
+                        {/* ⚠️ Null is absence, not zero: no AIP record for the year. */}
+                        <div className="mt-1 flex justify-end gap-4 text-xs tabular-nums text-slate-600">
+                          <span>Encoded {l.encoded == null ? "—" : formatMoney(l.encoded)}</span>
+                          <span className={remaining != null && remaining < 0 ? "font-medium text-amber-700" : ""}>
+                            Remaining {remaining == null ? "—" : formatMoney(remaining)}
+                          </span>
+                        </div>
+                        {l.error && <p className="mt-1 text-right text-xs text-red-600">{l.error}</p>}
+                      </li>
+                    );
+                  })}
+                </ul>
                 <div className="mt-2 flex items-center justify-end gap-2">
                   {dirtyCount > 0 && !card.saving && (
                     <span className="text-xs text-slate-600">
