@@ -126,7 +126,8 @@ export default function AipProjectPanel({
             )}
             <AipInlineAdd
               label="+ Add activity"
-              placeholder="Activity description"
+              placeholder="Activity title"
+              multiline
               disabled={!canEdit || addBlocked != null}
               disabledReason={
                 addBlocked
