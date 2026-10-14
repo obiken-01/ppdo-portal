@@ -32,6 +32,11 @@ import type {
 import { resolveLandingPath, LANDING_FALLBACK } from "@/lib/landing";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 
+// Zod otherwise probes `Function("")` to decide whether it may compile validators. The site's
+// Content-Security-Policy forbids eval, so the probe was blocked and filed a CSP violation report
+// on every login page load. Same validation either way (PPDO-207).
+z.config({ jitless: true });
+
 // ---------------------------------------------------------------------------
 // Unexpected-logout explanation (RAL-198) — carried from a failed silent
 // refresh via ?reason= on the /login redirect. See lib/auth-redirect.ts.
