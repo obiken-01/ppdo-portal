@@ -1,5 +1,5 @@
 ---
-status: draft
+status: built (merged into release/1.9.0, PR #490 + #491)
 version: v1.9.0
 tickets: PPDO-216 (T1 backend), PPDO-217 (T2 frontend)
 supersedes: IAipCeilingService remarks item 1 ("General Fund ONLY"), office-ceilings D4 (GF tab only)
@@ -37,8 +37,8 @@ while it is over any enforced fund's ceiling, the same way the General Fund work
 5. **One message per fund that fails**, all of them at once, so an office over on two funds does not
    discover the second after fixing the first.
 6. **Ceilings are set where they already live**: the Office Ceilings page and `PUT /allocation/ceiling`,
-   which have been per fund since v1.4.3. The page's fund tabs (hidden by D4 since 2026-09-19) show
-   the General Fund **plus every enforced fund**, nothing else.
+   which have been per fund since v1.4.3. ↩️ The page is now **one card per office** (see §6), each
+   listing the General Fund **plus every enforced fund that office can encode on**, nothing else.
 7. **Who turns the flag on**: holders of `CanManageOfficeCeilings` (PPDO finance) and SuperAdmin.
    A department head who manages their own office's fund sources (PPDO-109) sees the flag read-only:
    it decides what their office is held to, so it is not theirs to change.
@@ -67,7 +67,7 @@ while it is over any enforced fund's ceiling, the same way the General Fund work
 | 6 | TF-PhilHealth **not** enforced, X encodes ₱9,000,000 on it | Send to PPDO | Not affected (today's behaviour) |
 | 7 | X over on an enforced fund | Encoder submits for department review | Allowed, with the warning naming the fund (PPDO-146 behaviour) |
 | 8 | PS-only lines on an enforced fund | Any submit | Not counted (follow-up A) |
-| 9 | A finance user | Turns the flag on for TF-PhilHealth | Saved; the fund gets a tab on Office Ceilings |
+| 9 | A finance user | Turns the flag on for TF-PhilHealth | Saved; the fund gets a line on each office's card on Office Ceilings |
 | 10 | A department head managing their office's own fund | Opens that fund | Flag shown read-only; a direct API attempt to change it returns 403 |
 | 11 | Anyone | Turns the flag off on the General Fund | 400 "The General Fund ceiling is always enforced." |
 | 12 | A PPDO reviewer edit takes X over TF-PhilHealth | Save | Saved (PPDO-212: reviewer edits are not ceiling-checked) |
@@ -109,14 +109,36 @@ No new routes.
 
 ### Office Ceilings
 - ⚠️ **Funds that do not need a ceiling are hidden** (Ralph, 2026-10-14). Only the General Fund and
-  the funds flagged "Enforce AIP ceiling" ever get a tab; every other fund stays off this page, and
-  off the AIP Entry ceiling strip, entirely.
-- Tabs: General Fund, then each enforced fund by code.
-- ↩️ **An office's own fund lists only that office** (found live-testing PPDO-217): no other office
-  can encode on it, so their rows could only collect a ceiling that means nothing. A province-wide
-  fund lists every office, as the General Fund does. D4's hidden tab strip, now driven by the flag
-  instead of the constant. Unchanged when only the General Fund is enforced (no tab strip).
+  the funds flagged "Enforce AIP ceiling" appear; every other fund stays off this page, and off the
+  AIP Entry ceiling strip, entirely.
+- ↩️ **One card per office, not one tab per fund** (Ralph, 2026-10-14, during PPDO-217). With only a
+  fund or two enforced, a tab per fund repeated the whole office list for a handful of rows, and
+  finance sets one office's ceilings in one sitting. Each card lists:
+  - the General Fund first, then each enforced fund the office can encode on, by code
+    (`fundsForOffice`): every province-wide one, plus the office's **own** enforced fund. Another
+    office's own fund never appears, so the common card is General Fund only;
+  - per fund: code and full name (cut with "…" when long, whole name on hover), the ceiling input
+    (fixed width, fits up to ₱999,999,999.99), and beneath it "Encoded" and "Remaining" (amber when
+    negative, never clamped).
+- Cards grow with their fund count and align to the top of their row. Three per row from 1280px,
+  two from 768px, one below.
+- **One Save per card** saves every changed line, one request per fund. ⚠️ Not atomic: a line that
+  fails keeps its draft and its own error; the lines that saved stay saved.
+- Pills: "Over on TAX" (amber, card border amber) when any fund is over; else "GF not set".
+- Toolbar: search by office code or name, and filter chips All / Not set / Over ceiling with counts.
+- Carry forward from the prior year stays General Fund only, offered for offices without a GF ceiling.
 - "Not set" for a missing ceiling, never ₱0.00 (existing rule).
+
+### Division Allocation
+- ⚠️ Lists the General Fund and enforced funds only (Ralph, 2026-10-14). A fund nobody limits has no
+  ceiling to split across divisions, so its section could only ever say "Not set".
+
+### Budget Planning dashboard (Divisions band, fund ceiling panel)
+- ↩️ Lists every shared fund (unchanged, PPDO-109 D11) **plus the office's own fund when it is
+  enforced** (`DashboardFunds`). D11 excluded office-owned funds because they had no ceiling; an
+  enforced one now does, so its row under each division shows. Un-enforced own funds and other
+  offices' funds still have no row. A division still shows a fund only once it has an allocation or
+  encoded money in it.
 
 ### AIP Entry, submit card (ceiling strip)
 - The General Fund row as today, plus one row per entry in `otherFunds`: fund code, ceiling,
@@ -144,19 +166,21 @@ No new routes.
 | Ticket | Scope | Depends on |
 |---|---|---|
 | T1 Backend | Migration + entity/config; fund config DTO + the permission and GF rules; `AipCeilingService` per enforced fund; readiness/submit messages; tests (red-tested) | — |
-| T2 Frontend | Fund Sources checkbox + badge; Office Ceilings tabs from the flag; AIP Entry ceiling strip rows + warning | T1 |
+| T2 Frontend | Fund Sources checkbox + badge; Office Ceilings cards from the flag; Division Allocation filter; dashboard band own-fund rows (backend); AIP Entry ceiling strip rows + warning | T1 |
 
 ## 10. Acceptance checklist
 
 - [ ] As finance, tick "Enforce AIP ceiling" on TF-PhilHealth; it shows "Ceiling" in the list.
-- [ ] Office Ceilings now shows a TF-PhilHealth tab; set office X to ₱500,000.
+- [ ] Office Ceilings now shows a TF-PhilHealth line on each office's card; set office X to ₱500,000.
+- [ ] An office's own enforced fund shows only on that office's card; an office with no other enforced fund shows a GF-only card.
+- [ ] Division Allocation shows only GF and enforced funds; the dashboard Divisions band shows the office's own enforced fund.
 - [ ] X with ₱520,000 MOOE on TF-PhilHealth: the department head's send to PPDO is refused naming TF-PhilHealth and the ₱20,000 overage.
 - [ ] Reduce to ₱450,000: the send goes through.
 - [ ] Another office with PhilHealth lines and no ceiling: refused with the "no ceiling set" message.
 - [ ] An office with no PhilHealth lines is unaffected.
 - [ ] As a department head on their own office's fund: the checkbox is read-only.
 - [ ] The General Fund's checkbox is checked and disabled.
-- [ ] Untick TF-PhilHealth: its tab disappears and sends are no longer checked against it.
+- [ ] Untick TF-PhilHealth: its line disappears from every card and sends are no longer checked against it.
 
 ## 11. Test focus
 
