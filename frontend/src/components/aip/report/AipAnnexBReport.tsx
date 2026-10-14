@@ -12,7 +12,7 @@
  * server-side by `AipFormRowBuilder`. Rounding or uplifting anything here would make the preview and
  * the file disagree.
  *
- * ⚠️ **The amounts are PRINTED figures** — rounded up per figure, MOOE and CO uplifted 30% — so they
+ * ⚠️ **The amounts are PRINTED figures** — rounded up per figure, PS, MOOE and CO uplifted 30% — so they
  * will not match AIP Entry or the review screen, which show exact amounts. The note under the grid
  * says so; keep it next to the grid.
  *
@@ -309,11 +309,11 @@ function FormSheet({
         </table>
       </div>
 
-      {/* ⚠️ AIP_Form_Spec §6.2 — the printed MOOE and CO read above a ceiling by design, and the reader
+      {/* ⚠️ AIP_Form_Spec §6.2 — the printed PS, MOOE and CO read above a ceiling by design, and the reader
           has no way to know that unless the document says so. Wording still to agree with PPDC. */}
       <p className="border-t border-slate-200 px-4 py-2.5 text-xs text-slate-600">
-        Amounts in thousand pesos. Each figure is rounded up to the thousand before it is added. MOOE
-        and CO include the +30% required from FY {FIRST_ENTERED_FISCAL_YEAR}, so they can read above an
+        Amounts in thousand pesos. Each figure is rounded up to the thousand before it is added. PS,
+        MOOE and CO include the +30% required from FY {FIRST_ENTERED_FISCAL_YEAR}, so they can read above an
         office&rsquo;s ceiling. These figures differ from AIP Entry, which shows amounts exactly as encoded.
       </p>
     </div>
