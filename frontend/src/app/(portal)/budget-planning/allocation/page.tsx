@@ -623,8 +623,10 @@ function AllocationPageInner() {
   const [expandedFundIds, setExpandedFundIds] = useState<Set<number>>(new Set());
 
   const generalFund = useMemo(() => findGeneralFund(fundList), [fundList]);
+  // Only funds held to a ceiling get a section (Ralph, 2026-10-14, PPDO-217): a fund nobody limits
+  // has no ceiling to split across divisions, so its section could only show "Not set".
   const otherFunds = useMemo(
-    () => fundList.filter((f) => f.id !== generalFund?.id),
+    () => fundList.filter((f) => f.id !== generalFund?.id && f.enforceAipCeiling),
     [fundList, generalFund]
   );
   const orderedFunds = useMemo(

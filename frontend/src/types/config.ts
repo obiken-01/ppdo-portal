@@ -129,6 +129,11 @@ export interface FundingSourceResponse {
    * the UI has one thing to read when deciding what to render read-only.
    */
   isShared: boolean;
+  /**
+   * PPDO-216 — offices cannot send their AIP to PPDO while over this fund's ceiling. Always true for
+   * the General Fund. Only PPDO finance (`canManageOfficeCeilings`) may change it.
+   */
+  enforceAipCeiling: boolean;
   /** Owning office's code / name. Null on a shared fund. */
   officeCode: string | null;
   officeName: string | null;
@@ -136,6 +141,11 @@ export interface FundingSourceResponse {
 
 /** Create/update body for a funding source. code is the unique key. */
 export interface UpsertFundingSourceRequest {
+  /**
+   * PPDO-216 — send ONLY when it changed (`ceilingFlagPayload`). Omitted = unchanged; a change
+   * without the office-ceiling grant is a 403.
+   */
+  enforceAipCeiling?: boolean;
   code: string;
   name: string;
   description: string | null;

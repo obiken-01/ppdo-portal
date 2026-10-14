@@ -1489,6 +1489,23 @@ export interface AipCeilingStatus {
   encodedBaseRounded: number;
   remaining: number;
   withinCeiling: boolean;
+  /**
+   * PPDO-216 — each fund other than the General Fund that finance flagged "Enforce AIP ceiling", with
+   * the same figures and rules (unset = zero, remaining never clamped). Listed only when the office
+   * has encoded on the fund or has a ceiling for it.
+   */
+  otherFunds: AipFundCeilingStatus[];
+}
+
+export interface AipFundCeilingStatus {
+  fundingSourceId: number;
+  code: string;
+  name: string;
+  ceilingSet: boolean;
+  ceiling: number;
+  encodedBaseRounded: number;
+  remaining: number;
+  withinCeiling: boolean;
 }
 
 /** One reason submit is blocked. `kind` is the stable slug to switch on; `message` is for display. */

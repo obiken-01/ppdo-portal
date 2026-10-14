@@ -111,7 +111,10 @@ No new routes.
 - ⚠️ **Funds that do not need a ceiling are hidden** (Ralph, 2026-10-14). Only the General Fund and
   the funds flagged "Enforce AIP ceiling" ever get a tab; every other fund stays off this page, and
   off the AIP Entry ceiling strip, entirely.
-- Tabs: General Fund, then each enforced fund by code. D4's hidden tab strip, now driven by the flag
+- Tabs: General Fund, then each enforced fund by code.
+- ↩️ **An office's own fund lists only that office** (found live-testing PPDO-217): no other office
+  can encode on it, so their rows could only collect a ceiling that means nothing. A province-wide
+  fund lists every office, as the General Fund does. D4's hidden tab strip, now driven by the flag
   instead of the constant. Unchanged when only the General Fund is enforced (no tab strip).
 - "Not set" for a missing ceiling, never ₱0.00 (existing rule).
 
