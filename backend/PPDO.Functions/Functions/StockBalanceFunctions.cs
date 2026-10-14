@@ -185,8 +185,15 @@ public sealed class StockBalanceFunctions
         // req.Body in the isolated worker is a non-seekable HttpRequestStream — ClosedXML's
         // internal .Length/seek calls throw on it. Copy to a MemoryStream first (same fix
         // documented in CLAUDE.md and used by PurchaseRequestFunctions.Import).
-        using MemoryStream ms = new();
-        await req.Body.CopyToAsync(ms, cancellationToken);
+        // PPDO-199: capped at UploadLimits, refused with a 413 before any parser sees it.
+        UploadBuffer upload = await ConfigHttp.ReadUploadAsync(req, cancellationToken);
+        if (upload.IsRefused)
+        {
+            HttpResponseData tooLarge = req.CreateResponse(HttpStatusCode.RequestEntityTooLarge);
+            await tooLarge.WriteStringAsync(upload.Error!, cancellationToken);
+            return tooLarge;
+        }
+        using MemoryStream ms = upload.Body!;
 
         if (ms.Length == 0)
             return await BadRequest(req, "Request body must contain the .xlsx file.");

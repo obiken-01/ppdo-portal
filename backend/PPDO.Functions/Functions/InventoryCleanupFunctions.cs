@@ -1,9 +1,12 @@
-// Dev/maintenance endpoint (wipes ALL inventory records). INTENTIONALLY KEPT — unlike the
-// budget-planning cleanup endpoint, this is NOT a merge-blocker. It is safe in any environment
-// because it returns 403 unless DevCleanupKey is configured (DevCleanupKey is never set in
-// Azure production App Settings). Supports the v1.2 clean-slate migration (RAL-97).
+// ⚠️ DEBUG BUILDS ONLY (PPDO-199). PPDO.Functions.csproj removes this file from every non-Debug
+// build, so the Release publish CI deploys to UAT and production does not contain these
+// endpoints at all — DevCleanupKey cannot switch them on there. Pinned by DevOnlyEndpointsTests.
+// Dev/maintenance endpoint (wipes ALL inventory records). Supports the v1.2 clean-slate
+// migration (RAL-97). Returns 403 unless DevCleanupKey is configured.
 
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -47,7 +50,7 @@ public sealed class InventoryCleanupFunctions
             ? vals.FirstOrDefault()
             : null;
 
-        if (headerKey != devKey)
+        if (!KeyMatches(devKey, headerKey))
             return await Forbidden(req, "Invalid or missing X-Dev-Cleanup-Key header.", ct);
 
         InventoryPurgeResult result = await _cleanup.PurgeAllAsync(ct);
@@ -55,6 +58,11 @@ public sealed class InventoryCleanupFunctions
         return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.OK,
             ApiResponse<object>.Ok(result, "Inventory records purged."), ct);
     }
+
+    /// <summary>Constant-time key comparison (PPDO-199), so the key cannot be probed by timing.</summary>
+    private static bool KeyMatches(string expected, string? supplied) =>
+        supplied is not null &&
+        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(supplied));
 
     private static Task<HttpResponseData> Forbidden(HttpRequestData req, string message, CancellationToken ct) =>
         ConfigHttp.EnvelopeAsync(req, HttpStatusCode.Forbidden, ApiResponse<object>.Fail(message), ct);

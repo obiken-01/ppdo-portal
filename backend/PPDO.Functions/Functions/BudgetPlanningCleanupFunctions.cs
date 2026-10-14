@@ -1,7 +1,12 @@
-// Dev/maintenance endpoint (wipes ALL LDIP/AIP/WFP records). INTENTIONALLY KEPT — gated by
-// the same DevCleanupKey guard as the inventory cleanup endpoint; not a merge-blocker.
+// ⚠️ DEBUG BUILDS ONLY (PPDO-199). PPDO.Functions.csproj removes this file from every non-Debug
+// build, so the Release publish CI deploys to UAT and production does not contain these
+// endpoints at all — DevCleanupKey cannot switch them on there. Pinned by DevOnlyEndpointsTests.
+// Dev/maintenance endpoint (wipes ALL LDIP/AIP/WFP records), gated by the same DevCleanupKey
+// guard as the inventory cleanup endpoint.
 
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Configuration;
@@ -105,7 +110,11 @@ public sealed class BudgetPlanningCleanupFunctions
             ? vals.FirstOrDefault()
             : null;
 
-        return headerKey == devKey ? null : await Forbidden(req, "Invalid or missing X-Dev-Cleanup-Key header.", ct);
+        // Constant-time (PPDO-199), so the key cannot be probed by timing.
+        bool matches = headerKey is not null &&
+            CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(devKey), Encoding.UTF8.GetBytes(headerKey));
+
+        return matches ? null : await Forbidden(req, "Invalid or missing X-Dev-Cleanup-Key header.", ct);
     }
 
     private static Task<HttpResponseData> Forbidden(HttpRequestData req, string message, CancellationToken ct) =>
