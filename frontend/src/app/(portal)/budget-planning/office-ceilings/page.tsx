@@ -263,7 +263,7 @@ export default function OfficeCeilingsPage() {
           </button>
         </div>
       ) : loading ? (
-        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse border border-slate-200 bg-slate-50" />
           ))}
@@ -273,7 +273,7 @@ export default function OfficeCeilingsPage() {
           {cards.length === 0 ? "No offices to show for this fiscal year." : "No office matches this search or filter."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {visible.map((card) => {
             const over = card.lines.filter(isOver);
             const gfNotSet = card.lines.find((l) => l.fundId === gfId)?.ceiling == null;
@@ -299,7 +299,14 @@ export default function OfficeCeilingsPage() {
                     </span>
                   ) : null}
                 </header>
-                <table className="w-full text-sm">
+                <table className="w-full table-fixed text-sm">
+                  {/* Fixed widths: a long figure must not push the table past the card edge. */}
+                  <colgroup>
+                    <col className="w-20" />
+                    <col />
+                    <col className="w-32" />
+                    <col className="w-32" />
+                  </colgroup>
                   <thead>
                     <tr className="text-xs text-slate-600">
                       <th className="py-1 text-left font-normal">Fund</th>
