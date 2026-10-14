@@ -16,7 +16,7 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215
 
 - [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
   `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-213 there is one. Re-check rather than trust this page:
+- [ ] **Migration count.** As of PPDO-216 there are two. Re-check rather than trust this page:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -37,6 +37,15 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215
 
 Additive only: no existing value changes, so no baseline sums are needed.
 
+`20261014084154_AddFundingSourceEnforceAipCeiling` (PPDO-216), on `funding_sources`:
+
+| Change | Detail |
+|---|---|
+| `enforce_aip_ceiling` | `bit NOT NULL DEFAULT 0`, then set to `1` on the shared `GF` row only |
+
+Additive. Every other fund stays unenforced until finance turns it on, so no office's checks change
+at deploy time.
+
 ### Steps (UAT first, then production)
 
 - [ ] ⚠️ **Run it BEFORE the code deploys.** The new code reads `is_reviewer_edit` on every portal page
@@ -48,7 +57,14 @@ Additive only: no existing value changes, so no baseline sums are needed.
   dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.Functions
   ```
 
-- [ ] **Verify.** The columns exist and nothing is flagged yet:
+- [ ] **Verify (PPDO-216).** Only the General Fund is enforced:
+
+  ```sql
+  SELECT code, office_id, enforce_aip_ceiling FROM funding_sources WHERE enforce_aip_ceiling = 1;
+  -- expect exactly one row: GF, NULL, 1
+  ```
+
+- [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
 
   ```sql
   SELECT COUNT(*) AS total,
@@ -60,8 +76,8 @@ Additive only: no existing value changes, so no baseline sums are needed.
 
 ### Rollback
 
-`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops the three columns and both
-indexes. Run it only **after** rolling the code back, because the code needs the columns.
+`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops both migrations' columns
+and indexes. Run it only **after** rolling the code back, because the code needs the columns.
 Acknowledgements and reviewer-edit flags recorded since the deploy are lost. The comments themselves
 remain.
 
@@ -73,6 +89,10 @@ remain.
 - [ ] **Office encoders and department heads:** PPDO may edit their AIP after it is submitted. Each
   change appears as an "Edited by PPDO" comment with the reason, and AIP Entry (plus a sidebar pill)
   shows a notice until someone in the office clicks **Mark as seen**.
+
+- [ ] **PPDO finance (PPDO-216):** once they tick "Enforce AIP ceiling" on a fund (TF-PhilHealth
+  first), every office with lines on that fund and **no ceiling set** is blocked from sending to PPDO.
+  Set those offices' ceilings on Office Ceilings straight after turning the flag on.
 
 ## 3. After the deploy (UAT, then production)
 

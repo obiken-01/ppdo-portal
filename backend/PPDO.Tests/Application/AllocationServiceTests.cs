@@ -1012,6 +1012,27 @@ public sealed class AllocationServiceTests
 
     // ── PPDO-109 D7 — the canonical General Fund is a SHARED row ─────────────
 
+    // ── PPDO-216 — funds flagged "Enforce AIP ceiling" ─────────────────────────
+
+    /// <summary>
+    /// Flagged funds only, the General Fund left out even when its stored flag is on (the ceiling
+    /// check handles it on its own path), office-owned funds included, ordered by code.
+    /// </summary>
+    [Fact]
+    public async Task GetEnforcedAipCeilingFundsAsync_ReturnsFlaggedNonGeneralFundsByCode()
+    {
+        FundingSource gf    = MakeFundingSource(GfFundId, "GF", "General Fund");
+        FundingSource ph    = MakeFundingSource(40, "TF-PH", "PhilHealth");
+        FundingSource own   = MakeFundingSource(41, "OWN-7", "Office fund", officeId: 7);
+        FundingSource plain = MakeFundingSource(42, "SEF", "Special Education Fund");
+        gf.EnforceAipCeiling = ph.EnforceAipCeiling = own.EnforceAipCeiling = true;
+        (AllocationService sut, _, _, _, _, _, _, _) = Build(fundingSources: [gf, ph, own, plain]);
+
+        IReadOnlyList<FundingSource> enforced = await sut.GetEnforcedAipCeilingFundsAsync();
+
+        Assert.Equal(["OWN-7", "TF-PH"], enforced.Select(f => f.Code).ToArray());
+    }
+
     [Fact]
     public async Task GetGeneralFundIdAsync_IgnoresAnOfficeFundCodedGf()
     {

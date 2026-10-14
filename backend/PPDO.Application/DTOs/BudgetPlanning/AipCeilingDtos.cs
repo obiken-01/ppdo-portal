@@ -39,4 +39,21 @@ public sealed record AipCeilingStatusDto(
     decimal Ceiling,
     decimal EncodedBaseRounded,
     decimal Remaining,
+    bool    WithinCeiling,
+    IReadOnlyList<AipFundCeilingStatusDto> OtherFunds);
+
+/// <summary>
+/// v1.9.0 — PPDO-216. One fund flagged "Enforce AIP ceiling" (other than the General Fund), checked
+/// with the General Fund's arithmetic: MOOE + CO rounded up per activity, PS excluded, base figures,
+/// every group of the office summed. Listed only when the office has encoded on the fund or has a
+/// ceiling for it. ⚠️ Same rules as above: unset is zero, and remaining is never clamped.
+/// </summary>
+public sealed record AipFundCeilingStatusDto(
+    int     FundingSourceId,
+    string  Code,
+    string  Name,
+    bool    CeilingSet,
+    decimal Ceiling,
+    decimal EncodedBaseRounded,
+    decimal Remaining,
     bool    WithinCeiling);

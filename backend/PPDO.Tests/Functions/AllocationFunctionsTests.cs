@@ -158,7 +158,7 @@ public sealed class AllocationFunctionsTests
                 _aipCeiling.Setup(s => s.GetStatusForOfficeAsync(
                         It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                     .Callback((int o, int _, CancellationToken _) => captured = o)
-                    .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 400_000m, 600_000m, true));
+                    .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 400_000m, 600_000m, true, []));
                 invoke = r => Sut.GetCeilingUsage(r, CancellationToken.None);
                 break;
 

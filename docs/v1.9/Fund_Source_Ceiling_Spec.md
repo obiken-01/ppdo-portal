@@ -108,6 +108,9 @@ No new routes.
 - A badge in the list ("Ceiling") on enforced funds.
 
 ### Office Ceilings
+- ⚠️ **Funds that do not need a ceiling are hidden** (Ralph, 2026-10-14). Only the General Fund and
+  the funds flagged "Enforce AIP ceiling" ever get a tab; every other fund stays off this page, and
+  off the AIP Entry ceiling strip, entirely.
 - Tabs: General Fund, then each enforced fund by code. D4's hidden tab strip, now driven by the flag
   instead of the constant. Unchanged when only the General Fund is enforced (no tab strip).
 - "Not set" for a missing ceiling, never ₱0.00 (existing rule).
