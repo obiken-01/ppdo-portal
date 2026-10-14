@@ -208,7 +208,7 @@ public sealed class AipExpenditureFundScopeTests
 
         ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(
             900, new UpdateAipExpenditureDto(AccountId, ForeignFundId, 0m, 1_000m, 0m, null),
-            Encoder, ct: CancellationToken.None);
+            Encoder, ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
@@ -226,7 +226,7 @@ public sealed class AipExpenditureFundScopeTests
 
         ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(
             900, new UpdateAipExpenditureDto(AccountId, SharedFundId, 0m, 1_000m, 0m, null),
-            Encoder, ct: CancellationToken.None);
+            Encoder, ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }

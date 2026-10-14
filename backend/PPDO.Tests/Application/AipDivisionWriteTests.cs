@@ -227,7 +227,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld();
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning());
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.CanEdit);
@@ -240,7 +240,7 @@ public sealed partial class AipServiceTests
         w.Divisions.Submit(AipRecordId, GuestOfficeId, DivPlanning);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning());
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Equal(
@@ -255,7 +255,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld();
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityAsync(AipRecordId, ActEngineering, UpdateActivity(), EncoderPlanning());
+            await w.Sut.UpdateActivityAsync(AipRecordId, ActEngineering, UpdateActivity(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Equal("This activity belongs to Engineering Division.", result.Error);
@@ -267,7 +267,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld();
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActUntagged, Details(), EncoderPlanning());
+            await w.Sut.UpdateActivityDetailsAsync(ActUntagged, Details(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(AipDivisionContext.UntaggedActivityMessage, result.Error);
     }
@@ -279,7 +279,7 @@ public sealed partial class AipServiceTests
         w.Divisions.Submit(AipRecordId, GuestOfficeId, DivPlanning);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead());
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }
@@ -291,7 +291,7 @@ public sealed partial class AipServiceTests
         w.Divisions.Submit(AipRecordId, GuestOfficeId, DivPlanning);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), GuestStaff(null, role: UserRole.Admin));
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), GuestStaff(null, role: UserRole.Admin), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }
@@ -309,7 +309,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld(workflowStatus: status);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead());
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), DepartmentHead(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains("It has been sent on and is no longer editable here.", result.Error);
@@ -321,7 +321,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld();
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderNoDivision());
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), EncoderNoDivision(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(AipDivisionContext.NotAssignedMessage, result.Error);
     }
@@ -340,7 +340,7 @@ public sealed partial class AipServiceTests
         hostHead.DivisionId = DivHostOffice;
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), hostHead);
+            await w.Sut.UpdateActivityDetailsAsync(ActPlanning, Details(), hostHead, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(AipDivisionContext.NotAssignedMessage, result.Error);
     }
@@ -351,7 +351,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld(withDivisions: false);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityDetailsAsync(ActEngineering, Details(), EncoderNoDivision());
+            await w.Sut.UpdateActivityDetailsAsync(ActEngineering, Details(), EncoderNoDivision(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }
@@ -362,7 +362,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld(fiscalYear: 2027);
 
         ServiceResult<AipActivityDto> result =
-            await w.Sut.UpdateActivityAsync(AipRecordId, ActEngineering, UpdateActivity(), EncoderPlanning());
+            await w.Sut.UpdateActivityAsync(AipRecordId, ActEngineering, UpdateActivity(), EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }
@@ -372,7 +372,7 @@ public sealed partial class AipServiceTests
     {
         DivisionWorld w = BuildDivisionWorld();
 
-        ServiceResult<AipDeleteResultDto> result = await w.Sut.DeleteActivityAsync(ActEngineering, EncoderPlanning());
+        ServiceResult<AipDeleteResultDto> result = await w.Sut.DeleteActivityAsync(ActEngineering, EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains(w.Activities, a => a.Id == ActEngineering);
@@ -384,7 +384,7 @@ public sealed partial class AipServiceTests
         DivisionWorld w = BuildDivisionWorld();
         w.Divisions.Submit(AipRecordId, GuestOfficeId, DivPlanning);
 
-        ServiceResult<AipActivityDto> result = await w.Sut.UpdateActivityIsCreationAsync(ActPlanning, true, EncoderPlanning());
+        ServiceResult<AipActivityDto> result = await w.Sut.UpdateActivityIsCreationAsync(ActPlanning, true, EncoderPlanning(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.False(w.Activities.Single(a => a.Id == ActPlanning).IsCreation);

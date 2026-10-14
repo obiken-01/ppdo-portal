@@ -167,69 +167,84 @@ public sealed partial class AipServiceTests
         Assert.Equal(["delete", "expect", "save"], calls);
     }
 
+    // ── PPDO-121: a write with no version is refused ──────────────────────────
+
     [Fact]
-    public async Task DeleteActivity_WithNoVersionSupplied_StillDeletes()
+    public async Task DeleteActivity_WithNoVersion_IsRefusedAndDeletesNothing()
     {
-        // ⚠️ The staged-rollout state (spec §8), asserted so it is a decision: an omitted version
-        // deletes UNGUARDED until PPDO-121 turns it into a 400.
-        var (sut, _, activityRepo, activity, acts, _) = BuildForDeleteConflict(conflictOnSave: false);
+        // Red-test by removing AipRowVersionRequired.Check from DeleteActivityAsync.
+        var (sut, _, activityRepo, _, acts, _) = BuildForDeleteConflict(conflictOnSave: false);
 
         ServiceResult<AipDeleteResultDto> result =
             await sut.DeleteActivityAsync(ConflictActivityId, WriteHostCaller());
 
-        Assert.True(result.IsSuccess);
-        Assert.DoesNotContain(acts, a => a.Id == ConflictActivityId);
-        activityRepo.Verify(r => r.ExpectRowVersion(activity, null), Times.Once);
-    }
-
-    // ── The unguarded-write warning PPDO-121 waits on ─────────────────────────
-
-    /// <summary>The scoped tree with a logger the test can inspect.</summary>
-    private static (AipService sut, Mock<Microsoft.Extensions.Logging.ILogger<AipService>> logger) BuildWithLogger()
-    {
-        var (recs, offices, programs, projects, acts) = HostOwnedTree();
-        acts.Single(a => a.Id == ConflictActivityId).RowVersion = CurrentVersion;
-        Mock<Microsoft.Extensions.Logging.ILogger<AipService>> logger = new();
-
-        var built = Build(recs, [], officeSeed: offices,
-            programSeed: programs, projectSeed: projects, actSeed: acts,
-            officeConfigSeed: [ConfigOffice(HostOfficeId, true), ConfigOffice(GuestOfficeId, false)],
-            logger: logger.Object);
-        return (built.Item1, logger);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("rowVersion", result.Error);
+        Assert.Contains(acts, a => a.Id == ConflictActivityId);
+        activityRepo.Verify(r => r.DeleteAsync(It.IsAny<AipActivity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task DeleteActivity_WithNoVersion_LogsTheUnguardedWarning()
+    public async Task UpdateActivity_WithNoVersion_IsRefused()
     {
-        // Red-test by removing the WarnIfMissing call in DeleteActivityAsync.
-        var (sut, logger) = BuildWithLogger();
-
-        await sut.DeleteActivityAsync(ConflictActivityId, WriteHostCaller());
-
-        UnguardedWriteWarning.Verify(logger, Times.Once());
-    }
-
-    [Fact]
-    public async Task DeleteActivity_WithAVersion_LogsNoUnguardedWarning()
-    {
-        var (sut, logger) = BuildWithLogger();
-
-        await sut.DeleteActivityAsync(ConflictActivityId, WriteHostCaller(), expectedRowVersion: CurrentVersion);
-
-        UnguardedWriteWarning.Verify(logger, Times.Never());
-    }
-
-    [Fact]
-    public async Task UpdateActivity_WithNoVersion_LogsTheUnguardedWarning()
-    {
-        // Covers SaveActivityAsync, the one save behind all three activity edit paths.
-        var (sut, logger) = BuildWithLogger();
+        // Red-test by removing AipRowVersionRequired.Check from UpdateActivityAsync.
+        var (sut, _, _, _, _, _) = BuildForDeleteConflict(conflictOnSave: false);
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
             AipRecordId, ConflictActivityId, UpdateActivity(), WriteHostCaller(), expectedRowVersion: null);
 
-        Assert.True(result.IsSuccess);
-        UnguardedWriteWarning.Verify(logger, Times.Once());
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateActivityDetails_WithNoVersion_IsRefused()
+    {
+        // Red-test by removing AipRowVersionRequired.Check from UpdateActivityDetailsAsync.
+        var (sut, _, _, _, _, _) = BuildForDeleteConflict(conflictOnSave: false);
+
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
+            ConflictActivityId,
+            new UpdateAipActivityDetailsDto("Renamed", null, null, null, null, null, null, null, null),
+            WriteHostCaller());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateActivityIsCreation_WithNoVersion_IsRefused()
+    {
+        // Red-test by removing AipRowVersionRequired.Check from UpdateActivityIsCreationAsync.
+        var (sut, _, _, _, _, _) = BuildForDeleteConflict(conflictOnSave: false);
+
+        ServiceResult<AipActivityDto> result =
+            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteHostCaller());
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    [Fact]
+    public async Task ActivityWrites_CallerOutsideTheOfficeWithNoVersion_AreRefusedAsNotPermittedNotAsBadRequest()
+    {
+        // ⚠️ The ordering guard: a 400 here would tell a caller who may not touch this office that the
+        // row exists. Scope comes first, the version is never looked at. Red-test by moving the
+        // Check above the guard.
+        var (sut, _, _, _, _, _) = BuildForDeleteConflict(conflictOnSave: false);
+
+        ServiceResult<AipDeleteResultDto> delete =
+            await sut.DeleteActivityAsync(ConflictActivityId, WriteGuestCaller());
+        ServiceResult<AipActivityDto> update = await sut.UpdateActivityAsync(
+            AipRecordId, ConflictActivityId, UpdateActivity(), WriteGuestCaller());
+        ServiceResult<AipActivityDto> details = await sut.UpdateActivityDetailsAsync(
+            ConflictActivityId,
+            new UpdateAipActivityDetailsDto("Renamed", null, null, null, null, null, null, null, null),
+            WriteGuestCaller());
+        ServiceResult<AipActivityDto> creation =
+            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteGuestCaller());
+
+        Assert.NotEqual(ServiceErrorCode.BadRequest, delete.Code);
+        Assert.NotEqual(ServiceErrorCode.BadRequest, update.Code);
+        Assert.NotEqual(ServiceErrorCode.BadRequest, details.Code);
+        Assert.NotEqual(ServiceErrorCode.BadRequest, creation.Code);
     }
 
     // ── Authorization still wins ──────────────────────────────────────────────

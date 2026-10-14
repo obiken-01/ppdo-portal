@@ -189,7 +189,7 @@ public sealed partial class AipServiceTests
         DateTime before = DateTime.UtcNow;
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, ConflictActivityId, UpdateActivity(), caller);
+            AipRecordId, ConflictActivityId, UpdateActivity(), caller, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(caller.Id, activity.UpdatedById);
@@ -208,7 +208,7 @@ public sealed partial class AipServiceTests
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
             ConflictActivityId,
             new UpdateAipActivityDetailsDto("Renamed", null, null, null, null, null, null, null, null),
-            caller);
+            caller, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(caller.Id, activity.UpdatedById);
@@ -221,7 +221,7 @@ public sealed partial class AipServiceTests
         User caller = WriteHostCaller();
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, caller);
+            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, caller, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(caller.Id, activity.UpdatedById);
@@ -242,21 +242,5 @@ public sealed partial class AipServiceTests
             expectedRowVersion: StaleVersion);
 
         repo.Verify(r => r.ExpectRowVersion(activity, StaleVersion), Times.Once);
-    }
-
-    [Fact]
-    public async Task UpdateActivity_WithNoVersionSupplied_StillSaves()
-    {
-        // ⚠️ The PPDO-119 rollout state, asserted so it is a decision rather than an accident:
-        // an omitted version saves UNGUARDED. PPDO-121 turns this into a 400, and until it ships
-        // the guard is opt-out by omission.
-        var (sut, repo, activity) = BuildForConflict(conflictOnSave: false);
-
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, ConflictActivityId, UpdateActivity(), WriteHostCaller(),
-            expectedRowVersion: null);
-
-        Assert.True(result.IsSuccess);
-        repo.Verify(r => r.ExpectRowVersion(activity, null), Times.Once);
     }
 }

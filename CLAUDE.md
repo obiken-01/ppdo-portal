@@ -617,7 +617,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-07 — v1.8.2 complete and going to UAT; `release/1.8.3` cut from it for the next AIP work. Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
+> **Updated: 2026-10-13 — v1.8.3 complete; `release/1.8.4` cut from it for minor fixes, larger work goes to v1.9.0. Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -631,8 +631,11 @@ illustrate.
 **together with v1.8.0** in one deploy (`release/1.8.1` → `main`); see the v1.8.1 section below.
 **Complete, going to UAT:** v1.8.2 on `release/1.8.2`, cut 2026-10-05 from `release/1.8.1` @ `88bb84c5`; every ticket
 merged 2026-10-07. Deploy steps: `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` (one migration, run before the code).
-**In development:** v1.8.3 on `release/1.8.3`, cut 2026-10-07 from the complete `release/1.8.2`. Branches are
-`feature/v1.8.3-…`, PRs into `release/1.8.3`.
+**Complete:** v1.8.3 on `release/1.8.3`, cut 2026-10-07 from `release/1.8.2`; last merge #479 on 2026-10-13. ⚠️ `uat` has
+v1.8.3 up to #477 (via #478) but not yet #479.
+**In development:** v1.8.4 on `release/1.8.4`, cut 2026-10-13 from the complete `release/1.8.3`, for **minor fixes**
+found or requested in UAT. Branches are `fix/v1.8.4-…`, PRs into `release/1.8.4`. **Larger items go to v1.9.0**
+(Linear milestone ready; its branch is cut when the first item starts, from the latest 1.8.x).
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.
@@ -766,7 +769,9 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.8.0 — Office Users, AIP Redesign & Reviewer Flow** | ✅ **Complete on `release/1.8.0`, awaiting merge to `main`** — Phases 1–5 all shipped. Phases 6–7 were deliberately not built; see below |
 | **v1.8.1 — Optimization & Dashboard Fixes** | 🧊 **Frozen on `release/1.8.1` for UAT** (cut at PPDO-176) — ships to `main` together with v1.8.0 |
 | **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | ✅ **Complete on `release/1.8.2`** (2026-10-07), going to UAT |
-| **v1.8.3 — Concurrent-edit guard: turn it on** (+ next AIP work) | 🚧 **In development on `release/1.8.3`** (cut 2026-10-07 from `release/1.8.2`). PPDO-121 itself waits for v1.8.2 to be in real use |
+| **v1.8.3 — Concurrent-edit guard: turn it on** (+ next AIP work) | ✅ **Complete on `release/1.8.3`** (2026-10-13). PPDO-121 and PPDO-199's last item moved on to v1.8.4 |
+| **v1.8.4 — Minor fixes** | 🚧 **In development on `release/1.8.4`** (cut 2026-10-13 from `release/1.8.3`) |
+| **v1.9.0 — Larger requests** | 📋 Collecting items; branch not cut yet |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -901,6 +906,6 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.8.3 (in development; v1.8.0–v1.8.2 unreleased, awaiting PDC/finance sign-off) — 2026-10-07 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.8.4 (in development; v1.8.0–v1.8.3 unreleased, awaiting PDC/finance sign-off) — 2026-10-13 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

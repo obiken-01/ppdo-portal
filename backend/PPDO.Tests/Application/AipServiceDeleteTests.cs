@@ -61,7 +61,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal($"{ProgramCode}-001-001", activities.Single(a => a.Id == 50).RefCode);
@@ -77,7 +77,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(52, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(52, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Renumbered);
@@ -91,7 +91,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value!.Renumbered);
@@ -109,7 +109,7 @@ public sealed partial class AipServiceTests
             .Callback(() => codeAtEachSave.Add(activities.Single(a => a.Id == 52).RefCode))
             .ReturnsAsync(1);
 
-        await sut.DeleteActivityAsync(51, HostCaller());
+        await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         // Delete save, then the parked code, then the final one — never straight from -003 to -002,
         // which would let the unique index see two rows mid-shift.
@@ -163,7 +163,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
                 ledgerRepo: ledger);
 
-        await sut.DeleteActivityAsync(51, HostCaller());
+        await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         ledger.Verify(r => r.DeleteByActivityIdsAsync(
             It.Is<IReadOnlyList<int>>(ids => IdsAre(ids, 51)), It.IsAny<CancellationToken>()), Times.Once);
@@ -299,7 +299,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
                 commentSeed: comments);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(2, result.Value!.RemovedCommentCount);
         Assert.Equal(3, Assert.Single(comments).Id);
@@ -337,7 +337,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
                 expSeed: lines, commentSeed: comments);
 
-        await sut.DeleteActivityAsync(51, HostCaller());
+        await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         audit.Verify(a => a.LogAsync(
             "aip_activities", 51, AuditAction.Delete,
@@ -359,7 +359,7 @@ public sealed partial class AipServiceTests
             .ThrowsAsync(new UniqueConstraintViolationException(
                 "A unique constraint rejected this write.", "UX_aip_activities_project_id_ref_code", new Exception()));
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
         audit.Verify(a => a.LogAsync(
@@ -377,7 +377,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
                 ledgerRepo: ledger);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         Assert.Contains(activities, a => a.Id == 51);
@@ -395,7 +395,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.DoesNotContain(activities, a => a.Id == 51);
