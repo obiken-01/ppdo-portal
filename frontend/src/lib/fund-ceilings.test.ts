@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AipCeilingStatus, FundingSourceResponse } from "@/types";
 import {
-  ceilingFlagControl, ceilingFlagPayload, ceilingFundTabs, encodedForFund, officesForFundTab,
+  ceilingFlagControl, ceilingFlagPayload, ceilingFundTabs, encodedForFund, fundsForOffice, officesForFundTab,
 } from "./fund-ceilings";
 
 function fund(id: number, code: string, enforce = false, officeId: number | null = null): FundingSourceResponse {
@@ -105,5 +105,15 @@ describe("officesForFundTab", () => {
 
   it("lists every office while no fund is chosen", () => {
     expect(officesForFundTab(offices, null)).toHaveLength(3);
+  });
+});
+
+describe("fundsForOffice (card per office)", () => {
+  it("is the General Fund, then each province-wide enforced fund and the office's own enforced fund", () => {
+    expect(fundsForOffice([SEF, PH, OWN, GF], 7).map((f) => f.code)).toEqual(["GF", "OWN-7", "TF-PH"]);
+  });
+
+  it("leaves out another office's own fund, so that office's card can be General Fund only", () => {
+    expect(fundsForOffice([GF, SEF, OWN], 3).map((f) => f.code)).toEqual(["GF"]);
   });
 });

@@ -73,3 +73,12 @@ export function officesForFundTab<T extends { officeId: number }>(
   if (fund?.officeId == null) return offices;
   return offices.filter((o) => o.officeId === fund.officeId);
 }
+
+/**
+ * The fund lines on one office's card (Office Ceilings, one card per office — Ralph, 2026-10-14):
+ * the General Fund, then each enforced fund the office can encode on — every province-wide one and
+ * the office's own. Another office's own fund is left out, so a card can be General Fund only.
+ */
+export function fundsForOffice(funds: FundingSourceResponse[], officeId: number): FundingSourceResponse[] {
+  return ceilingFundTabs(funds).filter((f) => f.officeId == null || f.officeId === officeId);
+}

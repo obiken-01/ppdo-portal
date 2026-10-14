@@ -8,14 +8,14 @@
  * (`Office_Setup_Spec.md` D3), and setting twenty offices one picker-selection at a time is the
  * wrong shape for that job. Allocation still SHOWS the ceiling, read-only.
  *
- * ⚠️ **Tabs: the General Fund, plus the funds finance flagged "Enforce AIP ceiling"** (v1.9.0 —
- * PPDO-217, `Fund_Source_Ceiling_Spec.md`). ↩️ D4 (Ralph 2026-09-19) hid every fund but the GF behind
- * a constant, because empty tabs would invite ceilings nobody asked for. That reasoning still holds,
- * so the flag replaces the constant rather than revealing every fund: a fund that needs no ceiling
- * never gets a tab (Ralph, 2026-10-14). With only the GF enforced the strip is not drawn at all.
+ * ⚠️ **One card per office** (v1.9.0 — PPDO-217, Ralph 2026-10-14; replaced the per-fund tabs). Each
+ * card lists the General Fund, then each fund finance flagged "Enforce AIP ceiling" that the office
+ * can encode on (`fundsForOffice`): every province-wide one and the office's own. A fund that needs no
+ * ceiling never appears (D4 still holds), and a card with only the GF is the common case. Cards grow
+ * with their fund count; one Save per card saves every changed line.
  *
  * ⚠️ **A ceiling cut below what the office has already encoded is allowed** (A5-b, non-destructive).
- * The row turns amber and the office fails its own submit gate — the alternative, refusing the save,
+ * The line turns amber and the office fails its own submit gate — the alternative, refusing the save,
  * would leave finance unable to record a cut that has actually happened.
  *
  * ⚠️ **Two reads per office, issued in parallel.** `ceilings` is the authority on the amount (per
@@ -29,7 +29,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
-import DataTable, { type Column } from "@/components/ui/DataTable";
 import MoneyInput from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import BulkCeilingModal from "../BulkCeilingModal";
@@ -37,25 +36,37 @@ import { allocationErrorMessage, getCeilingUsage, getCeilings, upsertCeiling } f
 import { getDashboardOffices, getFiscalYears } from "@/lib/budget-planning";
 import { budgetPlanningFallback, canOpenOfficeCeilings } from "@/lib/budget-planning-access";
 import { findGeneralFund, listFundingSources } from "@/lib/config";
-import { ceilingFundTabs, encodedForFund, officesForFundTab } from "@/lib/fund-ceilings";
+import { encodedForFund, fundsForOffice } from "@/lib/fund-ceilings";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
 import type { FundingSourceResponse, OfficeSummary } from "@/types";
 
-interface Row {
+interface Line {
+  fundId: number;
+  code: string;
+  name: string;
+  /** Null = no ceiling set for this fund. ⚠️ Rendered as "Not set", never ₱0.00. */
+  ceiling: number | null;
+  /** What the office has encoded against this fund's ceiling. Null = no AIP record for the year. */
+  encoded: number | null;
+  /** Unsaved edit, or undefined when the line is untouched. */
+  draft?: number | null;
+  error?: string | null;
+}
+
+interface Card {
   officeId: number;
   officeCode: string;
   officeName: string;
-  /** Null = no ceiling set for this fund. ⚠️ Rendered as "Not set", never ₱0.00. */
-  ceiling: number | null;
-  /** What the office has encoded against this tab's fund ceiling. Null = no AIP record for the year. */
-  encoded: number | null;
-  /** Unsaved edit, or undefined when the row is untouched. */
-  draft?: number | null;
+  lines: Line[];
   saving?: boolean;
-  error?: string | null;
   saved?: boolean;
 }
+
+type Filter = "all" | "notSet" | "over";
+
+const isOver = (l: Line) => l.ceiling != null && l.encoded != null && l.encoded > l.ceiling;
+const isDirty = (l: Line) => l.draft !== undefined && l.draft != null && l.draft !== l.ceiling;
 
 export default function OfficeCeilingsPage() {
   const me = useMe(canOpenOfficeCeilings, budgetPlanningFallback);
@@ -63,17 +74,14 @@ export default function OfficeCeilingsPage() {
 
   const [fiscalYear, setFiscalYear] = useState<number | null>(null);
   const [availableFiscalYears, setAvailableFiscalYears] = useState<number[]>([]);
-  const [funds, setFunds] = useState<FundingSourceResponse[]>([]);
-  const [fundId, setFundId] = useState<number | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [funds, setFunds] = useState<FundingSourceResponse[] | null>(null);
+  const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
-
-  // The fund tabs: the GF first, then each fund flagged "Enforce AIP ceiling" (PPDO-217). Funds that
-  // need no ceiling are not offered at all.
-  const tabs = useMemo(() => ceilingFundTabs(funds), [funds]);
 
   useEffect(() => {
     if (!me) return;
@@ -84,172 +92,124 @@ export default function OfficeCeilingsPage() {
       })
       .catch(() => setError("Could not load fiscal years."));
     listFundingSources({ active: "true" })
-      .then((all) => {
-        setFunds(all);
-        // Selected outright rather than defaulting to funds[0]: config order is not a promise, and
-        // the General Fund is the first tab and the one every office is held to.
-        setFundId(findGeneralFund(all)?.id ?? null);
-      })
+      .then(setFunds)
       .catch(() => setError("Could not load funding sources."));
   }, [me]);
 
   const load = useCallback(() => {
-    if (fiscalYear == null || fundId == null) return;
+    if (fiscalYear == null || funds == null) return;
     setLoading(true);
     setError(null);
     getDashboardOffices(fiscalYear)
       .then((offices) =>
         Promise.all(
-          // An office's own fund lists only that office (PPDO-217).
-          officesForFundTab(offices, funds.find((f) => f.id === fundId) ?? null).map(async (office: OfficeSummary) => {
+          offices.map(async (office: OfficeSummary) => {
             const [ceilings, usage] = await Promise.all([
               getCeilings(office.officeId, fiscalYear),
               getCeilingUsage(office.officeId, fiscalYear),
             ]);
-            const own = ceilings.find((c) => c.fundingSourceId === fundId);
             return {
               officeId: office.officeId,
               officeCode: office.officeCode,
               officeName: office.officeName,
-              ceiling: own?.amount ?? null,
-              // The tab's own fund: the GF figure, or that fund's entry in `otherFunds` (PPDO-217).
-              encoded: encodedForFund(usage, fundId),
-            } satisfies Row;
+              lines: fundsForOffice(funds, office.officeId).map((fund) => ({
+                fundId: fund.id,
+                code: fund.code,
+                name: fund.name,
+                ceiling: ceilings.find((c) => c.fundingSourceId === fund.id)?.amount ?? null,
+                encoded: encodedForFund(usage, fund.id),
+              })),
+            } satisfies Card;
           })
         )
       )
-      .then(setRows)
+      .then(setCards)
       .catch(() => setError("Could not load this year's ceilings."))
       .finally(() => setLoading(false));
-  }, [fiscalYear, fundId, funds]);
+  }, [fiscalYear, funds]);
 
   useEffect(load, [load]);
 
-  const patch = (officeId: number, changes: Partial<Row>) =>
-    setRows((current) =>
-      current.map((r) => (r.officeId === officeId ? { ...r, ...changes } : r))
-    );
+  const patchCard = (officeId: number, update: (c: Card) => Card) =>
+    setCards((current) => current.map((c) => (c.officeId === officeId ? update(c) : c)));
 
-  const save = async (row: Row) => {
-    if (fiscalYear == null || fundId == null || row.draft == null) return;
-    patch(row.officeId, { saving: true, error: null, saved: false });
-    try {
-      const saved = await upsertCeiling({
-        officeId: row.officeId,
-        fiscalYear,
-        fundingSourceId: fundId,
-        amount: row.draft,
-      });
-      patch(row.officeId, {
-        ceiling: saved.amount,
-        draft: undefined,
-        saving: false,
-        saved: true,
-      });
-      // The office is named: this table saves one row at a time and the row that moved is not
-      // necessarily the one the reader is looking at by the time the toast lands.
-      toast.success("Saved", `${row.officeCode} ceiling set to ₱${formatMoney(saved.amount)}.`);
-    } catch (err) {
-      // Named per office: a failure on one row must not read as "nothing saved" when the rows
-      // above it did save.
-      const message = allocationErrorMessage(err, `Could not save ${row.officeCode}'s ceiling.`);
-      // Both: the toast carries it to a reader whose eyes are elsewhere, the row keeps it visible
-      // after the toast goes.
-      patch(row.officeId, { saving: false, error: message });
-      toast.error("Save failed", message);
+  const patchLine = (officeId: number, fundId: number, changes: Partial<Line>) =>
+    patchCard(officeId, (c) => ({
+      ...c,
+      saved: false,
+      lines: c.lines.map((l) => (l.fundId === fundId ? { ...l, ...changes } : l)),
+    }));
+
+  // Saves every changed line on the card, one request per fund. ⚠️ Not atomic: a line that fails
+  // keeps its draft and its own error while the lines that saved show as saved, so nothing reads
+  // as applied that was not.
+  const save = async (card: Card) => {
+    if (fiscalYear == null) return;
+    const dirty = card.lines.filter(isDirty);
+    if (dirty.length === 0) return;
+    patchCard(card.officeId, (c) => ({ ...c, saving: true, saved: false }));
+    let failed = 0;
+    for (const line of dirty) {
+      try {
+        const saved = await upsertCeiling({
+          officeId: card.officeId,
+          fiscalYear,
+          fundingSourceId: line.fundId,
+          amount: line.draft as number,
+        });
+        patchLine(card.officeId, line.fundId, { ceiling: saved.amount, draft: undefined, error: null });
+      } catch (err) {
+        failed++;
+        const message = allocationErrorMessage(err, `Could not save ${card.officeCode}'s ${line.code} ceiling.`);
+        patchLine(card.officeId, line.fundId, { error: message });
+        toast.error("Save failed", message);
+      }
     }
+    patchCard(card.officeId, (c) => ({ ...c, saving: false, saved: failed === 0 }));
+    if (failed === 0) toast.success("Saved", `${card.officeCode} ceilings saved.`);
   };
 
-  const columns: Column<Row>[] = [
-    {
-      key: "office",
-      header: "Office",
-      sortable: true,
-      sortValue: (r) => r.officeCode,
-      render: (r) => (
-        <span>
-          <span className="font-mono text-xs text-slate-600">{r.officeCode}</span>
-          <span className="ml-2 text-slate-800">{r.officeName}</span>
-        </span>
-      ),
-    },
-    {
-      key: "ceiling",
-      header: "Ceiling",
-      align: "right",
-      sortable: true,
-      sortValue: (r) => r.ceiling ?? -1,
-      render: (r) => (
-        <MoneyInput
-          value={r.draft !== undefined ? r.draft : r.ceiling}
-          onChange={(value) => patch(r.officeId, { draft: value, saved: false, error: null })}
-          disabled={r.saving}
-          placeholder="Not set"
-          className="w-40 text-right"
-        />
-      ),
-    },
-    {
-      key: "encoded",
-      header: "Encoded",
-      align: "right",
-      sortable: true,
-      sortValue: (r) => r.encoded ?? -1,
-      // ⚠️ Null is absence, not zero — no AIP record for the year, or the office holds no rows in
-      // it. Showing ₱0.00 would claim the office had encoded nothing.
-      render: (r) => (
-        <span className="tabular-nums text-slate-600">
-          {r.encoded == null ? "—" : formatMoney(r.encoded)}
-        </span>
-      ),
-    },
-    {
-      key: "remaining",
-      header: "Remaining",
-      align: "right",
-      sortable: true,
-      sortValue: (r) => (r.ceiling == null || r.encoded == null ? -1 : r.ceiling - r.encoded),
-      render: (r) => {
-        if (r.ceiling == null || r.encoded == null) return <span className="text-slate-500">—</span>;
-        const remaining = r.ceiling - r.encoded;
-        return (
-          <span className={`tabular-nums ${remaining < 0 ? "text-amber-700 font-medium" : "text-slate-600"}`}>
-            {formatMoney(remaining)}
-            {remaining < 0 && <span className="ml-1 text-xs">over</span>}
-          </span>
-        );
-      },
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      render: (r) => (
-        <span className="flex items-center justify-end gap-2">
-          {r.error && <span className="text-xs text-red-600">{r.error}</span>}
-          {r.saved && !r.error && <span className="text-xs text-green-700">Saved</span>}
-          <button
-            type="button"
-            onClick={() => save(r)}
-            disabled={r.draft === undefined || r.draft == null || r.saving}
-            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 disabled:bg-slate-200 disabled:text-slate-500 text-white text-xs font-medium transition-colors"
-          >
-            {r.saving ? "Saving…" : "Save"}
-          </button>
-        </span>
-      ),
-    },
-  ];
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return cards.filter((c) => {
+      if (q && !c.officeCode.toLowerCase().includes(q) && !c.officeName.toLowerCase().includes(q)) return false;
+      if (filter === "notSet") return c.lines.some((l) => l.ceiling == null);
+      if (filter === "over") return c.lines.some(isOver);
+      return true;
+    });
+  }, [cards, search, filter]);
 
-  const officesWithoutCeiling = rows.filter((r) => r.ceiling == null);
+  const counts: Record<Filter, number> = {
+    all: cards.length,
+    notSet: cards.filter((c) => c.lines.some((l) => l.ceiling == null)).length,
+    over: cards.filter((c) => c.lines.some(isOver)).length,
+  };
+
+  // Carry-forward works on the General Fund (BulkCeilingModal), so it offers offices without a GF ceiling.
+  const gfId = funds ? findGeneralFund(funds)?.id : undefined;
+  const officesWithoutCeiling = cards.filter((c) => c.lines.find((l) => l.fundId === gfId)?.ceiling == null);
 
   if (!me) return null;
+
+  const chip = (key: Filter, label: string) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => setFilter(key)}
+      aria-pressed={filter === key}
+      className={`rounded-full px-3 py-1 text-xs ${
+        filter === key ? "bg-green-600 text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {label} {counts[key]}
+    </button>
+  );
 
   return (
     <div className="p-6 space-y-4">
       <ConfigPageHeader
         title="Office Ceilings"
-        description="The ceiling each office plans against, per fiscal year: the General Fund, and any fund PPDO finance has set to enforce one."
+        description="One card per office: the General Fund, plus any fund PPDO finance has set to enforce a ceiling that the office can encode on."
         actions={
           <div className="flex items-center gap-2">
             {/* ⚠️ `aria-label`, never an `sr-only` label: Tailwind's `sr-only` is `position:
@@ -279,37 +239,130 @@ export default function OfficeCeilingsPage() {
         }
       />
 
-      {tabs.length > 1 && (
-        <div className="flex gap-1 border-b border-slate-200">
-          {tabs.map((fund) => (
-            <button
-              key={fund.id}
-              type="button"
-              onClick={() => setFundId(fund.id)}
-              className={`px-4 py-2 text-sm ${
-                fund.id === fundId
-                  ? "border-b-2 border-green-600 text-slate-800 font-medium"
-                  : "text-slate-600 hover:text-slate-800"
-              }`}
-            >
-              {fund.name}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          aria-label="Search office"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search office code or name"
+          className="w-72 border border-slate-200 px-3 py-2 text-sm text-slate-800"
+        />
+        {chip("all", "All")}
+        {chip("notSet", "Not set")}
+        {chip("over", "Over ceiling")}
+      </div>
 
       {bulkNotice && <p className="text-sm text-green-700">{bulkNotice}</p>}
 
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.officeId}
-        loading={loading}
-        error={error}
-        onRetry={load}
-        emptyMessage="No offices to show for this fiscal year."
-        rowNoun={["office", "offices"]}
-      />
+      {error ? (
+        <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}{" "}
+          <button type="button" onClick={load} className="underline">
+            Retry
+          </button>
+        </div>
+      ) : loading ? (
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-36 animate-pulse border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+          {cards.length === 0 ? "No offices to show for this fiscal year." : "No office matches this search or filter."}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {visible.map((card) => {
+            const over = card.lines.filter(isOver);
+            const gfNotSet = card.lines.find((l) => l.fundId === gfId)?.ceiling == null;
+            const dirtyCount = card.lines.filter(isDirty).length;
+            return (
+              <section
+                key={card.officeId}
+                aria-label={`${card.officeCode} ceilings`}
+                className={`border bg-white p-4 ${over.length > 0 ? "border-amber-400" : "border-slate-200"}`}
+              >
+                <header className="mb-2 flex items-start justify-between gap-2">
+                  <h2 className="text-sm text-slate-800">
+                    <span className="font-mono text-xs text-slate-600">{card.officeCode}</span>
+                    <span className="ml-2 font-medium">{card.officeName}</span>
+                  </h2>
+                  {over.length > 0 ? (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                      Over on {over.map((l) => l.code).join(", ")}
+                    </span>
+                  ) : gfNotSet ? (
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                      GF not set
+                    </span>
+                  ) : null}
+                </header>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-slate-600">
+                      <th className="py-1 text-left font-normal">Fund</th>
+                      <th className="py-1 text-right font-normal">Ceiling</th>
+                      <th className="py-1 text-right font-normal">Encoded</th>
+                      <th className="py-1 text-right font-normal">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {card.lines.map((l) => {
+                      const remaining = l.ceiling == null || l.encoded == null ? null : l.ceiling - l.encoded;
+                      return (
+                        <tr key={l.fundId} className="border-t border-slate-100 align-top">
+                          <td className="py-1.5 pr-2 font-mono text-xs text-slate-800" title={l.name}>
+                            {l.code}
+                          </td>
+                          <td className="py-1.5">
+                            <MoneyInput
+                              value={l.draft !== undefined ? l.draft : l.ceiling}
+                              onChange={(value) => patchLine(card.officeId, l.fundId, { draft: value, error: null })}
+                              disabled={card.saving}
+                              placeholder="Not set"
+                              className="w-full text-right"
+                            />
+                            {l.error && <p className="mt-1 text-xs text-red-600">{l.error}</p>}
+                          </td>
+                          {/* ⚠️ Null is absence, not zero: no AIP record for the year. */}
+                          <td className="py-1.5 pl-2 text-right tabular-nums text-slate-600">
+                            {l.encoded == null ? "—" : formatMoney(l.encoded)}
+                          </td>
+                          <td
+                            className={`py-1.5 pl-2 text-right tabular-nums ${
+                              remaining != null && remaining < 0 ? "font-medium text-amber-700" : "text-slate-600"
+                            }`}
+                          >
+                            {remaining == null ? "—" : formatMoney(remaining)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  {dirtyCount > 0 && !card.saving && (
+                    <span className="text-xs text-slate-600">
+                      {dirtyCount} unsaved change{dirtyCount === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {card.saved && dirtyCount === 0 && <span className="text-xs text-green-700">Saved</span>}
+                  <button
+                    type="button"
+                    onClick={() => save(card)}
+                    disabled={dirtyCount === 0 || card.saving}
+                    className="px-3 py-1.5 bg-green-600 hover:bg-green-500 disabled:bg-slate-200 disabled:text-slate-500 text-white text-xs font-medium transition-colors"
+                  >
+                    {card.saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
 
       <p className="text-xs text-slate-500">
         A ceiling below what an office has already encoded is allowed — the office is shown as over
@@ -322,19 +375,17 @@ export default function OfficeCeilingsPage() {
 
       {bulkOpen && fiscalYear != null && (
         <BulkCeilingModal
-          offices={officesWithoutCeiling.map((r) => ({
-            officeId: r.officeId,
-            officeCode: r.officeCode,
-            officeName: r.officeName,
+          offices={officesWithoutCeiling.map((c) => ({
+            officeId: c.officeId,
+            officeCode: c.officeCode,
+            officeName: c.officeName,
           }))}
           fiscalYear={fiscalYear}
           priorFiscalYear={fiscalYear - 1}
           onClose={() => setBulkOpen(false)}
           onApplied={(created) => {
             setBulkOpen(false);
-            setBulkNotice(
-              `Published ${created} ceiling${created === 1 ? "" : "s"} for FY ${fiscalYear}.`
-            );
+            setBulkNotice(`Published ${created} ceiling${created === 1 ? "" : "s"} for FY ${fiscalYear}.`);
             load();
           }}
         />
