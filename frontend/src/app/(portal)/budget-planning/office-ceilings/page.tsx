@@ -263,7 +263,7 @@ export default function OfficeCeilingsPage() {
           </button>
         </div>
       ) : loading ? (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 min-[1800px]:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-36 animate-pulse border border-slate-200 bg-slate-50" />
           ))}
@@ -273,7 +273,7 @@ export default function OfficeCeilingsPage() {
           {cards.length === 0 ? "No offices to show for this fiscal year." : "No office matches this search or filter."}
         </p>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 min-[1800px]:grid-cols-3">
           {visible.map((card) => {
             const over = card.lines.filter(isOver);
             const gfNotSet = card.lines.find((l) => l.fundId === gfId)?.ceiling == null;
@@ -300,12 +300,12 @@ export default function OfficeCeilingsPage() {
                   ) : null}
                 </header>
                 <table className="w-full table-fixed text-sm">
-                  {/* Fixed widths: a long figure must not push the table past the card edge. */}
+                  {/* Fixed widths: the ceiling column fits ₱999,999,999.99; the figures share the rest and truncate rather than overflow. */}
                   <colgroup>
-                    <col className="w-14" />
-                    <col className="min-w-0" />
-                    <col className="w-28" />
-                    <col className="w-28" />
+                    <col className="w-12" />
+                    <col className="w-44" />
+                    <col />
+                    <col />
                   </colgroup>
                   <thead>
                     <tr className="text-xs text-slate-600">
