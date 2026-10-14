@@ -94,7 +94,13 @@ public sealed record CreateAipExpenditureDto(
     decimal  Ps,
     decimal  Mooe,
     decimal  Co,
-    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null);
+    IReadOnlyList<SaveAipProcurementItemDto>? ProcurementItems = null,
+
+    /// <summary>
+    /// Why a PPDO reviewer is making this change (v1.9.0 — PPDO-212). Required, 1–500 characters,
+    /// when the caller is a cross-office reviewer; ignored for everyone else.
+    /// </summary>
+    string?  ReviewerReason = null);
 
 /// <summary>
 /// Body of <c>PUT /api/budget-planning/aip/expenditures/{id}</c>. Same shape as the create — a line
@@ -123,7 +129,13 @@ public sealed record UpdateAipExpenditureDto(
     /// own and are written only through this request.
     /// </para>
     /// </summary>
-    string?  RowVersion = null);
+    string?  RowVersion = null,
+
+    /// <summary>
+    /// Why a PPDO reviewer is making this change (v1.9.0 — PPDO-212). Required, 1–500 characters,
+    /// when the caller is a cross-office reviewer; ignored for everyone else.
+    /// </summary>
+    string?  ReviewerReason = null);
 
 /// <summary>
 /// What an expenditure write returns: the line, plus its activity's recomputed totals so the page

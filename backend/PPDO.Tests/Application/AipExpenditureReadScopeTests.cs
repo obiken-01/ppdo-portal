@@ -77,7 +77,7 @@ public sealed class AipExpenditureReadScopeTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
         AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
-        _users.Object, NullLogger<AipExpenditureService>.Instance);
+        _users.Object, new Mock<IAipReviewCommentRepository>().Object, NullLogger<AipExpenditureService>.Instance);
 
     /// <summary>One typed ₱500 MOOE line. <c>Total</c> is computed, so it goes through Recalculate.</summary>
     private static AipExpenditure Line()
@@ -159,19 +159,27 @@ public sealed class AipExpenditureReadScopeTests
     // ── The boundary ──────────────────────────────────────────────────────────
 
     /// <summary>
-    /// ⚠️ <b>The line the fix must not cross.</b> The reviewer who may now READ another office's
-    /// lines still cannot ADD one: writes resolve through <c>AipWriteGuard</c> with
-    /// <c>OfficeScope.Resolve</c>, and the cross-office grant is read scope only
-    /// (<c>OfficeScope.ResolveForReview</c>'s remarks). Asserted on the repository as well as the
-    /// status — a refusal that had already written the row would pass a status-only check.
+    /// ⚠️ <b>The line the fix must not cross.</b> The reviewer who may READ another office's lines
+    /// still cannot ADD one while that office is working on its AIP — even with a reason.
+    ///
+    /// <para>
+    /// ↩️ v1.9.0 (PPDO-212) moved this boundary from office to state: a PPDO reviewer may now add or
+    /// edit lines once an office is <c>SubmittedToPpdo</c> or <c>Consolidated</c>
+    /// (<see cref="AipExpenditureReviewerEditTests"/>). Before that the AIP is the office's, and the
+    /// refusal is a 400 naming the rule rather than the old 404 — the reviewer can already see this
+    /// office, so a not-found would only mislead them. Asserted on the repository as well as the
+    /// status, because a refusal that had already written the row would pass a status-only check.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task AddAsync_ByACrossOfficeReviewer_StillCannotWriteAnotherOffice()
+    public async Task AddAsync_ByACrossOfficeReviewer_StillCannotWriteAnotherOfficesDraft()
     {
         ServiceResult<AipExpenditureWriteResultDto> result = await Build().AddAsync(
-            ActivityId, new CreateAipExpenditureDto(null, null, 0m, 500m, 0m, []), GuestSeatedReviewer());
+            ActivityId, new CreateAipExpenditureDto(null, null, 0m, 500m, 0m, [], "Annualised"),
+            GuestSeatedReviewer());
 
-        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal(AipWriteGuard.ReviewerEditStateMessage, result.Error);
         _expRepo.Verify(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

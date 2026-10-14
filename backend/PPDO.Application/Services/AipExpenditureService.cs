@@ -22,6 +22,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
     // PPDO-148 — expenditure lines follow their activity's division lock.
     private readonly IAipDivisionLock           _divisionLock;
     private readonly IUserRepository           _userRepo;
+    // PPDO-212 — a PPDO reviewer's edit leaves a comment on the activity.
+    private readonly IAipReviewCommentRepository _comments;
     private readonly ILogger<AipExpenditureService> _logger;
 
     public AipExpenditureService(
@@ -35,6 +37,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IPermissionService         permissions,
         IAipDivisionLock           divisionLock,
         IUserRepository            userRepo,
+        IAipReviewCommentRepository comments,
         ILogger<AipExpenditureService> logger)
     {
         _divisionLock = divisionLock;
@@ -47,6 +50,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         _audit       = audit;
         _permissions = permissions;
         _userRepo    = userRepo;
+        _comments    = comments;
         _logger      = logger;
     }
 
@@ -69,9 +73,11 @@ public sealed class AipExpenditureService : IAipExpenditureService
         // therefore refused every office but their own. It only ever worked because the reviewers
         // happened to sit in PPDO. Found while building PPDO-79.
         //
-        // ⚠️ The write paths below keep Resolve, through AipWriteGuard, and must: the cross-office
-        // grant is READ scope. Letting it reach a write would turn a comment-only reviewer into an
-        // editor of every office. Pinned by AddAsync_ByACrossOfficeReviewer_StillCannotWriteAnotherOffice.
+        // ⚠️ The write paths below keep Resolve, through AipWriteGuard, for everyone but one case: the
+        // cross-office grant is READ scope. ↩️ v1.9.0 (PPDO-212) adds that one case — a PPDO reviewer
+        // adding or editing a line on an office that has reached PPDO (CheckWriteAsync below). It is
+        // narrowed by workflow state, not by office, and every other write stays closed to them.
+        // Pinned by AddAsync_ByACrossOfficeReviewer_StillCannotWriteAnotherOfficesDraft.
         bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
         if (!OfficeScope.ResolveForReview(caller, crossOffice).Permits(ctx.Office.OfficeId))
             return ServiceResult<IReadOnlyList<AipExpenditureDto>>.NotFound(NotFound(activityId));
@@ -95,11 +101,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (ctx is null)
             return ServiceResult<AipExpenditureWriteResultDto>.NotFound(NotFound(activityId));
 
-        ServiceResult<AipExpenditureWriteResultDto>? refused =
-            await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
-                ctx.Office, caller, _aipRepo, NotFound(activityId), ct);
+        (ServiceResult<AipExpenditureWriteResultDto>? refused, string? reviewerReason) =
+            await CheckWriteAsync(ctx, caller, dto.ReviewerReason, NotFound(activityId), "add to", ct);
         if (refused is not null) return refused;
-        if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
 
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
@@ -149,6 +153,11 @@ public sealed class AipExpenditureService : IAipExpenditureService
             "AIP expenditure added. ActivityId: {ActivityId}, ExpenditureId: {ExpenditureId}, Total: {Total}",
             activityId, line.Id, line.Total);
 
+        if (reviewerReason is not null)
+            await PostReviewerEditCommentAsync(ctx, line.Id, caller,
+                AipReviewerEditComment.Added(line.AccountNumberSnapshot, line.AccountTitleSnapshot,
+                    line.Ps, line.Mooe, line.Co, reviewerReason), ct);
+
         return await AfterWriteAsync(line, activityId, afterDelete: false, ct);
     }
 
@@ -166,12 +175,17 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (ctx is null)
             return ServiceResult<AipExpenditureWriteResultDto>.NotFound(NotFoundLine(expenditureId));
 
-        ServiceResult<AipExpenditureWriteResultDto>? refused =
-            await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
-                ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "edit");
+        (ServiceResult<AipExpenditureWriteResultDto>? refused, string? reviewerReason) =
+            await CheckWriteAsync(ctx, caller, dto.ReviewerReason, NotFoundLine(expenditureId), "edit", ct);
         if (refused is not null) return refused;
-        if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
         if (AipRowVersionRequired.Check<AipExpenditureWriteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
+
+        // Decision 3: a reviewer changes amounts, not what the line is. Another account or fund is a
+        // different line, which they add instead, so the comment can always name the account.
+        if (reviewerReason is not null
+            && (dto.AccountId != line.AccountId || dto.FundingSourceId != line.FundingSourceId))
+            return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(
+                "PPDO can change a line's amounts only. Add a new line for a different account or fund.");
 
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
@@ -249,6 +263,11 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
         await _audit.LogAsync("aip_expenditures", line.Id, AuditAction.Update, before,
             new { line.AccountId, line.FundingSourceId, line.Ps, line.Mooe, line.Co, line.Total }, ct);
+
+        if (reviewerReason is not null)
+            await PostReviewerEditCommentAsync(ctx, line.Id, caller,
+                AipReviewerEditComment.Edited(line.AccountNumberSnapshot, line.AccountTitleSnapshot,
+                    (stored.Ps, stored.Mooe, stored.Co), (line.Ps, line.Mooe, line.Co), reviewerReason), ct);
 
         return await AfterWriteAsync(line, line.ActivityId, afterDelete: false, ct);
     }
@@ -693,6 +712,77 @@ public sealed class AipExpenditureService : IAipExpenditureService
         e.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null);
 
     private sealed record AipContext(AipActivity Activity, AipOffice Office);
+
+    /// <summary>
+    /// Who may add or edit a line here, and on which rules (v1.9.0 — PPDO-212).
+    ///
+    /// <para>
+    /// A caller <see cref="ReviewerWriteGuard"/> would refuse (a non-SuperAdmin PPDO cross-office
+    /// reviewer) takes the <b>reviewer path</b>: <see cref="AipWriteGuard.CheckReviewerEditAsync{T}"/>
+    /// and a required reason, which is returned so the write can post its comment. Everyone else takes
+    /// the path they always took, and any reason they send is ignored (returned as null).
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ Only Add and Update call this. Delete keeps <see cref="AipWriteGuard.CheckAsync{T}"/> alone,
+    /// and its endpoint keeps the reviewer guard, so a reviewer can never remove a line.
+    /// </para>
+    /// </summary>
+    private async Task<(ServiceResult<AipExpenditureWriteResultDto>? Refused, string? ReviewerReason)> CheckWriteAsync(
+        AipContext ctx, User caller, string? reason, string notFoundMessage, string action, CancellationToken ct)
+    {
+        if (await ReviewerWriteGuard.DeniesWriteAsync(caller, _permissions, ct))
+        {
+            if (await AipWriteGuard.CheckReviewerEditAsync<AipExpenditureWriteResultDto>(
+                    ctx.Office, _aipRepo, ct) is { } stateRefused)
+                return (stateRefused, null);
+
+            return AipReviewerEditComment.NormaliseReason(reason) is string normalised
+                ? (null, normalised)
+                : (ServiceResult<AipExpenditureWriteResultDto>.BadRequest(
+                    AipReviewerEditComment.ReasonRequiredMessage), null);
+        }
+
+        if (await AipWriteGuard.CheckAsync<AipExpenditureWriteResultDto>(
+                ctx.Office, caller, _aipRepo, notFoundMessage, ct, action) is { } refused)
+            return (refused, null);
+
+        return (await CheckDivisionAsync(ctx, caller, ct), null);
+    }
+
+    /// <summary>
+    /// The PPDO comment a reviewer's edit leaves on the activity (spec decision 6).
+    ///
+    /// <para>
+    /// ⚠️ <b>Created already resolved</b>, by the reviewer. Only the side that wrote a comment may
+    /// resolve it (<see cref="AipReviewCommentService"/>), and unresolved PPDO comments feed the
+    /// office's soft re-submit gate and the dashboard's open-comment counts. An edit is a record of a
+    /// change, not a request the office could ever clear, so it must never count as open.
+    /// </para>
+    /// </summary>
+    private async Task PostReviewerEditCommentAsync(
+        AipContext ctx, int expenditureId, User caller, string body, CancellationToken ct)
+    {
+        DateTime now = DateTime.UtcNow;
+        await _comments.AddAsync(new AipReviewComment
+        {
+            AipOfficeId  = ctx.Office.Id,
+            NodeType     = AipCommentNodeType.Activity,
+            NodeId       = ctx.Activity.Id,
+            AuthorId     = caller.Id,
+            AuthorSide   = AipCommentSide.Ppdo,
+            Body         = body,
+            CreatedAt    = now,
+            ResolvedAt   = now,
+            ResolvedById = caller.Id,
+        }, ct);
+        await _comments.SaveChangesAsync(ct);
+
+        // Never the reason text or the amounts: the comment row is the record of those.
+        _logger.LogInformation(
+            "AIP expenditure edited by PPDO reviewer. ActivityId: {ActivityId}, ExpenditureId: {ExpenditureId}, OfficeId: {OfficeId}, UserId: {UserId}",
+            ctx.Activity.Id, expenditureId, ctx.Office.OfficeId, caller.Id);
+    }
 
     /// <summary>
     /// The activity's division lock (PPDO-148, spec "Expenditure lines follow their activity").
