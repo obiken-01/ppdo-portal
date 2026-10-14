@@ -33,6 +33,7 @@ import {
 import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { pendingLink, useAipNotifications } from "@/lib/aip-notifications";
+import { reviewerEditNotice } from "@/lib/aip-reviewer-edit";
 import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
@@ -69,6 +70,9 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
   const notifications = useAipNotifications(me);
   const pending = notifications ? pendingLink(notifications) : null;
   const returnedNotice = notifications?.returned[0] ?? null;
+  // PPDO-214 — PPDO edited this office's AIP. Shares the AIP Entry pill slot; Returned wins it,
+  // being the one that asks the office to act.
+  const editNotice = returnedNotice ? null : reviewerEditNotice(notifications);
 
   // Auto-expand inventory when navigating to an inventory route
   useEffect(() => {
@@ -442,7 +446,7 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                 <div className="relative">
                   <Link
                     href="/budget-planning/aip/entry"
-                    className={`${childLinkCls(isActive("/budget-planning/aip/entry"))}${returnedNotice ? " pr-24" : ""}`}
+                    className={`${childLinkCls(isActive("/budget-planning/aip/entry"))}${returnedNotice || editNotice ? " pr-24" : ""}`}
                   >
                     <span className="text-xs">•</span>
                     <span className="truncate">AIP Entry</span>
@@ -454,6 +458,15 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
                       className={SIDEBAR_PILL}
                     >
                       Returned
+                    </Link>
+                  )}
+                  {editNotice && (
+                    <Link
+                      href={`/budget-planning/aip/entry?fiscalYear=${editNotice.fiscalYear}`}
+                      title={`PPDO made ${editNotice.count} change${editNotice.count === 1 ? "" : "s"} to your FY ${editNotice.fiscalYear} AIP`}
+                      className={SIDEBAR_PILL}
+                    >
+                      PPDO edited
                     </Link>
                   )}
                 </div>

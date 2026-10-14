@@ -43,7 +43,7 @@ changed it, and why.
    dashboard's open-comment counts (`AipReviewCommentService.Tally`, `CountUnresolvedBySideAsync`).
    An edit is a record, not a request, so it must not show up as an open item the office cannot
    clear.
-7. **Dashboard notice for the office** (the PPDO-75 pattern): "PPDO edited N lines of your AIP"
+7. **Notice for the office** (the PPDO-75 pattern): "PPDO made N changes to your AIP"
    while any reviewer-edit comment is **unacknowledged**. Acknowledging is a separate action from
    resolving: any user who can read that office's AIP (encoder or department head) clicks
    **Mark as seen**, once, for all of the office's pending edit comments. It never touches the
@@ -83,7 +83,7 @@ changed it, and why.
 | 7 | Reviewer | `DELETE` an expenditure, or any program/project/activity write | 403 as today (`ReviewerWriteGuard`) |
 | 8 | Two reviewers edit the same line | Second saves with an old `rowVersion` | 409 conflict panel, as today |
 | 9 | Department-head reviewer or encoder of office X | Tries to edit in `SubmittedToPpdo`/`Consolidated` | 400 as today; nothing about their rules changes |
-| 10 | Office X user | Opens dashboard after a reviewer edit | Notice "PPDO edited N lines of your AIP" linking to their AIP; **Mark as seen** stamps every pending edit comment of office X and the notice clears |
+| 10 | Office X user | Opens AIP Entry after a reviewer edit | Notice "PPDO made N changes to your AIP" linking to their AIP; **Mark as seen** stamps every pending edit comment of office X and the notice clears |
 | 10a | Reviewer edit posted | Office X is later returned and re-submits | Edit comments do not count as unresolved; the soft re-submit gate and the dashboard's open-comment counts are unchanged by edits |
 | 11 | Office Y user | Anything | Never sees office X's notice or comments (office scope unchanged) |
 | 12 | Encoder sends `reviewerReason` | Normal save in `Draft` | Field ignored; no comment posted |
@@ -145,8 +145,14 @@ for PPDO (not their own office) gets 403: the acknowledgement belongs to the off
 - After save: the row's totals update in place and the new comment appears in the thread.
 
 ### Office side
-- Reviewer-edit comments render with an "Edited by PPDO" tag (reads `is_reviewer_edit`).
-- Dashboard notice per decision 7 with **Mark as seen**; hidden when nothing is unacknowledged.
+- Reviewer-edit comments render with an "Edited by PPDO" tag (reads `is_reviewer_edit`) and "Seen by …" /
+  "Not yet marked as seen by the office" instead of "resolved"; a row's comment button counts them as
+  "N PPDO edits", never as resolved.
+- ↩️ **Where the notice lives (as built, PPDO-214):** the PPDO-75 "Returned" pattern rather than a
+  dashboard card. A **"PPDO edited" pill** beside AIP Entry in the sidebar (every page; Returned takes
+  the slot when both apply) and a **banner with Mark as seen** at the top of AIP Entry for that year.
+  "Changes", not "lines": one line edited twice is two changes.
+- Notice per decision 7 with **Mark as seen**; hidden when nothing is unacknowledged.
   Mark as seen: button shows a spinner and disables while saving; on error the notice stays with an
   inline "Couldn't mark as seen. Try again."
 

@@ -71,8 +71,8 @@ remain.
   consolidation. A PPDO reviewer may raise an activity's amounts during the LFC adjustment (PPDO-212),
   and the next `GET external/v1/aip` returns the new figures. Nothing in the API contract changes.
 - [ ] **Office encoders and department heads:** PPDO may edit their AIP after it is submitted. Each
-  change appears as an "Edited by PPDO" comment with the reason, and the dashboard shows a notice until
-  someone in the office clicks **Mark as seen**.
+  change appears as an "Edited by PPDO" comment with the reason, and AIP Entry (plus a sidebar pill)
+  shows a notice until someone in the office clicks **Mark as seen**.
 
 ## 3. After the deploy (UAT, then production)
 
@@ -80,7 +80,7 @@ remain.
   change a line with a reason, and save. The office's state does not change.
 - [ ] Saving without a reason is refused. Delete is not offered.
 - [ ] As that office's encoder: the "Edited by PPDO" comment shows the old → new figure and the reason;
-  the dashboard notice shows; **Mark as seen** clears it.
+  the AIP Entry banner and the "PPDO edited" sidebar pill show; **Mark as seen** clears both.
 - [ ] The office's open-comment count and re-submit warning did **not** go up because of the edit.
 - [ ] A user of another office sees none of it.
 

@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
 import { getAipHistory } from "@/lib/aip-comments";
 import { aipErrorMessage } from "@/lib/aip";
 import { AIP_WORKFLOW } from "@/lib/aip-workflow";
@@ -254,14 +255,17 @@ function CommentGroup({ comments, period }: { comments: AipReviewComment[]; peri
 }
 
 function HistoryComment({ comment }: { comment: AipReviewComment }) {
-  const resolved = comment.resolvedAt != null;
+  // PPDO-214 — a reviewer edit is born resolved; it reports whether the office saw it instead.
+  const edit = comment.isReviewerEdit;
+  const resolved = comment.resolvedAt != null && !edit;
 
   return (
     <li className="text-xs">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium text-slate-800">{comment.authorName}</span>
         <SidePill label={COMMENT_SIDE_LABEL[comment.authorSide]} />
-        {!resolved && (
+        {edit && <AipReviewerEditTag />}
+        {!resolved && !edit && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
             Unresolved
           </span>
@@ -283,6 +287,12 @@ function HistoryComment({ comment }: { comment: AipReviewComment }) {
         <p className="mt-1 text-slate-600">
           Resolved{comment.resolvedByName ? ` by ${comment.resolvedByName}` : ""} ·{" "}
           {formatWhen(comment.resolvedAt!)}
+        </p>
+      )}
+      {edit && (
+        <p className="mt-1 text-slate-600">
+          {reviewerEditSeenLine(comment.acknowledgedByName, comment.acknowledgedAt)}
+          {comment.acknowledgedAt && <> · {formatWhen(comment.acknowledgedAt)}</>}
         </p>
       )}
     </li>
