@@ -50,26 +50,26 @@ describe("reviewerReasonProblem", () => {
 });
 
 describe("reviewerEditNotice", () => {
-  const base = { reviewerEditCount: 3, reviewerEditFiscalYear: 2028 } as AipReviewNotifications;
+  const base = { reviewerEditCount: 3, reviewerEditFiscalYear: 2030 } as AipReviewNotifications;
 
   it("shows on the year the edits are in", () => {
-    expect(reviewerEditNotice(base, 2028)).toEqual({ count: 3, fiscalYear: 2028 });
+    expect(reviewerEditNotice(base, 2030)).toEqual({ count: 3, fiscalYear: 2030 });
   });
 
   it("stays off another year's page", () => {
-    expect(reviewerEditNotice(base, 2029)).toBeNull();
+    expect(reviewerEditNotice(base, 2031)).toBeNull();
   });
 
   it("is hidden at zero", () => {
-    expect(reviewerEditNotice({ ...base, reviewerEditCount: 0, reviewerEditFiscalYear: null }, 2028)).toBeNull();
+    expect(reviewerEditNotice({ ...base, reviewerEditCount: 0, reviewerEditFiscalYear: null }, 2030)).toBeNull();
   });
 
   it("is hidden while notifications are not loaded", () => {
-    expect(reviewerEditNotice(null, 2028)).toBeNull();
+    expect(reviewerEditNotice(null, 2030)).toBeNull();
   });
 
   // Without a page year (the sidebar), it shows wherever the edits are.
   it("ignores the year when none is given", () => {
-    expect(reviewerEditNotice(base)).toEqual({ count: 3, fiscalYear: 2028 });
+    expect(reviewerEditNotice(base)).toEqual({ count: 3, fiscalYear: 2030 });
   });
 });
