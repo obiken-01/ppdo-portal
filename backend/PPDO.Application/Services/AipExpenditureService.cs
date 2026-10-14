@@ -171,6 +171,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "edit");
         if (refused is not null) return refused;
         if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipExpenditureWriteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
@@ -231,7 +232,6 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (dto.ProcurementItems is not null)
             await _expRepo.ReplaceProcurementItemsAsync(line.Id, BuildItems(dto.ProcurementItems), ct);
 
-        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "expenditure", line.Id, "update", caller.Id);
 
         // Declared immediately before the save that matters. An intervening SaveChanges — the
         // audit service performs its own — calls AcceptAllChanges and copies current values over
@@ -274,6 +274,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "delete from");
         if (refused is not null) return refused;
         if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
+        if (AipRowVersionRequired.Check<AipExpenditureWriteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         // Snapshot BEFORE the delete, log AFTER it — the values are still readable on the
         // detached entity afterwards.
@@ -287,7 +288,6 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
         await _expRepo.DeleteAsync(line, ct);
 
-        AipUnguardedWrite.WarnIfMissing(_logger, expectedRowVersion, "expenditure", expenditureId, "delete", caller.Id);
 
         // Declared here, not earlier: the audit service's own SaveChanges would otherwise call
         // AcceptAllChanges and discard the expectation before it could be used.

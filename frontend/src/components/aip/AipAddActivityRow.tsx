@@ -100,7 +100,7 @@ export default function AddActivityRow({
       <td className="px-2 py-1.5 pl-12 font-mono text-[11px] text-slate-400">auto</td>
       <td className="px-2 py-1.5">
         <textarea ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} rows={2}
-          placeholder="Activity description" className={`${inputCls} overflow-y-auto`} />
+          placeholder="Activity title" className={`${inputCls} overflow-y-auto`} />
         <AipActivityNameCounter name={name} />
       </td>
       <td className="px-2 py-1.5">

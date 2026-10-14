@@ -178,7 +178,7 @@ public sealed class AipExpenditureConflictTests
     {
         ArrangeActivityVersionBump();
 
-        ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(LineId, Dto(), Encoder);
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(LineId, Dto(), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(Convert.ToBase64String(ActivityAfter), result.Value!.ActivityRowVersion);
@@ -189,7 +189,7 @@ public sealed class AipExpenditureConflictTests
     {
         ArrangeActivityVersionBump();
 
-        ServiceResult<AipExpenditureWriteResultDto> result = await Build().DeleteAsync(LineId, Encoder);
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().DeleteAsync(LineId, Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.Equal(Convert.ToBase64String(ActivityAfter), result.Value!.ActivityRowVersion);
@@ -225,7 +225,7 @@ public sealed class AipExpenditureConflictTests
     [Fact]
     public async Task Update_StampsTheActorSoTheNextConflictCanNameThem()
     {
-        await Build().UpdateAsync(LineId, Dto(), Encoder);
+        await Build().UpdateAsync(LineId, Dto(), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(Encoder.Id, _line.UpdatedById);
     }
@@ -243,7 +243,7 @@ public sealed class AipExpenditureConflictTests
         await Build().UpdateAsync(
             LineId,
             Dto(items: [new SaveAipProcurementItemDto(null, "Bond paper", "ream", 250m, 8m, 1m, 1)]),
-            Encoder);
+            Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.NotEqual(before, _line.UpdatedAt);
         Assert.Equal(Encoder.Id, _line.UpdatedById);
@@ -281,7 +281,7 @@ public sealed class AipExpenditureConflictTests
     public async Task Delete_WhenItSucceeds_StillWritesItsAuditRow()
     {
         // The other half of the reorder: moving the audit later must not lose it.
-        await Build().DeleteAsync(LineId, Encoder);
+        await Build().DeleteAsync(LineId, Encoder, expectedRowVersion: AipTestVersion.Any);
 
         _audit.Verify(a => a.LogAsync(
             "aip_expenditures", LineId, AuditAction.Delete,
@@ -296,37 +296,45 @@ public sealed class AipExpenditureConflictTests
         _expRepo.Verify(r => r.ExpectRowVersion(_line, StaleVersion), Times.Once);
     }
 
-    // ── PPDO-193: the unguarded-write warning PPDO-121 waits on ───────────────
+    // ── PPDO-121: a write with no version is refused ──────────────────────────
 
     [Fact]
-    public async Task Update_WithNoVersion_LogsTheUnguardedWarning()
+    public async Task Update_WithNoVersion_IsRefusedAndNothingIsSaved()
     {
-        await Build().UpdateAsync(LineId, Dto(), Encoder);
+        // Red-test by removing AipRowVersionRequired.Check from UpdateAsync.
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().UpdateAsync(LineId, Dto(), Encoder);
 
-        UnguardedWriteWarning.Verify(_logger, Times.Once());
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("rowVersion", result.Error);
+        _expRepo.Verify(r => r.UpdateAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+        _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Update_WithAVersion_LogsNoUnguardedWarning()
+    public async Task Delete_WithNoVersion_IsRefusedAndNothingIsDeleted()
     {
-        await Build().UpdateAsync(LineId, Dto(), Encoder, StaleVersion);
+        // Red-test by removing AipRowVersionRequired.Check from DeleteAsync.
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().DeleteAsync(LineId, Encoder);
 
-        UnguardedWriteWarning.Verify(_logger, Times.Never());
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        _expRepo.Verify(r => r.DeleteAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Delete_WithNoVersion_LogsTheUnguardedWarning()
+    public async Task Writes_CallerOutsideTheOfficeWithNoVersion_AreRefusedAsNotPermittedNotAsBadRequest()
     {
-        await Build().DeleteAsync(LineId, Encoder);
+        // ⚠️ The ordering guard: scope first, the version is never looked at. Red-test by moving the
+        // Check above the guard.
+        User stranger = new()
+        {
+            Id = Guid.NewGuid(), Role = UserRole.Staff, OfficeId = ConfigOffice + 1,
+            Office = new Office { Id = ConfigOffice + 1, OfficeCode = "OTH" },
+        };
 
-        UnguardedWriteWarning.Verify(_logger, Times.Once());
-    }
+        ServiceResult<AipExpenditureWriteResultDto> update = await Build().UpdateAsync(LineId, Dto(), stranger);
+        ServiceResult<AipExpenditureWriteResultDto> delete = await Build().DeleteAsync(LineId, stranger);
 
-    [Fact]
-    public async Task Delete_WithAVersion_LogsNoUnguardedWarning()
-    {
-        await Build().DeleteAsync(LineId, Encoder, StaleVersion);
-
-        UnguardedWriteWarning.Verify(_logger, Times.Never());
+        Assert.NotEqual(ServiceErrorCode.BadRequest, update.Code);
+        Assert.NotEqual(ServiceErrorCode.BadRequest, delete.Code);
     }
 }

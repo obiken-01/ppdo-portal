@@ -11,9 +11,9 @@ namespace PPDO.Application.Common;
 /// </para>
 /// <list type="bullet">
 /// <item><b>DECISION 9</b> — every figure rounded <b>up</b> to the thousand, then summed.</item>
-/// <item><b>DECISION G</b> — MOOE and CO carry a fixed +30% uplift, FY2028+ only, presentation-only.
-/// PS prints as entered. The climate-change columns are not uplifted either: the uplift is on MOOE
-/// and CO (<c>AIP_Form_Spec.md</c> §6 #4).</item>
+/// <item><b>DECISION G</b> — PS, MOOE and CO carry a fixed +30% uplift, FY2028+ only,
+/// presentation-only (PS joined in v1.8.4 — PPDO-210). The climate-change columns are not uplifted:
+/// the uplift is on PS, MOOE and CO (<c>AIP_Form_Spec.md</c> §6 #4).</item>
 /// </list>
 ///
 /// <para>
@@ -58,7 +58,7 @@ public static class AipPrintedFigures
         if (!AppliesTo(fiscalYear))
             return new AipPrintedAmountsDto(ps, mooe, co, ps + mooe + co, cca, ccm);
 
-        decimal printedPs   = AipRounding.UpToThousand(ps);
+        decimal printedPs   = AipRounding.UpToThousand(ps * UpliftRate);
         decimal printedMooe = AipRounding.UpToThousand(mooe * UpliftRate);
         decimal printedCo   = AipRounding.UpToThousand(co * UpliftRate);
 

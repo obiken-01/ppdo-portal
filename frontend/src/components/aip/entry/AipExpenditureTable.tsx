@@ -28,6 +28,7 @@ import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
 import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
+import { shouldDefaultToProcurement } from "@/lib/aip-default-nature";
 import { fmtThousands, fmtPesos } from "@/lib/aip-units";
 import {
   addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipConflict, aipErrorMessage,
@@ -1013,7 +1014,7 @@ export default function AipExpenditureTable({
               )
             )}
             {adding && (
-              <EditRow draft={draft} setDraft={setDraft} accounts={accounts}
+              <EditRow isNew draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
@@ -1028,9 +1029,11 @@ export default function AipExpenditureTable({
 }
 
 function EditRow({
-  draft, setDraft, accounts, fundingSources, generalFundId, showFund, activityFundMissing, busy,
+  isNew = false, draft, setDraft, accounts, fundingSources, generalFundId, showFund, activityFundMissing, busy,
   lockedFundCode = null, priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
 }: {
+  /** A line being added, not one being edited — only a new line takes the account's default nature (PPDO-209). */
+  isNew?: boolean;
   draft: Draft;
   setDraft: (d: Draft) => void;
   accounts: AccountResponse[];
@@ -1086,17 +1089,34 @@ function EditRow({
   // The column count, so the procurement panel's cell spans the whole row.
   const columns = showFund ? 7 : 6;
 
-  function toggleItemised(on: boolean) {
-    setDraft(on
+  function withItemised(base: Draft, on: boolean): Draft {
+    return on
       ? {
-          ...draft,
+          ...base,
           procurementItems: [
             { periodNo: 1, priceIndexItemId: null, name: "", unit: "", unitPrice: 0, qty: 1, numberOfDays: 1 },
           ],
         }
       // ⚠️ Turning it off empties the items AND leaves the typed figures where they are, so the
       // line falls back to what the encoder had entered rather than to zero.
-      : { ...draft, procurementItems: [] });
+      : { ...base, procurementItems: [] };
+  }
+
+  function toggleItemised(on: boolean) {
+    setDraft(withItemised(draft, on));
+  }
+
+  /**
+   * Picking an account (PPDO-209). A Procurement default nature opens the line in Price Index entry,
+   * the way the WFP wizard pre-fills its Nature — a default only: the checkbox below still undoes it.
+   */
+  function pickAccount(id: number | null) {
+    const next = withAccount(draft, id, accounts);
+    const defaultNature = accounts.find((a) => a.id === id)?.defaultNature;
+    const hasAmount = (draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) > 0;
+    setDraft(shouldDefaultToProcurement(defaultNature, { isNewLine: isNew, hasItems: itemised, hasAmount })
+      ? withItemised(next, true)
+      : next);
   }
 
   return (
@@ -1108,7 +1128,7 @@ function EditRow({
           <Lookup
             items={accounts}
             value={accountId}
-            onChange={(id) => setDraft(withAccount(draft, id, accounts))}
+            onChange={pickAccount}
             getId={(a) => a.id}
             getLabel={accountLabel}
             getSearchText={accountSearch}

@@ -5,7 +5,7 @@ using PPDO.Domain.Entities;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// The figures the AIP form prints (PPDO-73): round up per figure, the +30% on MOOE and CO applied
+/// The figures the AIP form prints (PPDO-73): round up per figure, the +30% on PS, MOOE and CO applied
 /// before rounding, and every level a sum of the level below.
 ///
 /// ⚠️ Nothing here asserts <c>printed == 1.3 × base</c> — once rounded they are not, by design
@@ -32,9 +32,18 @@ public sealed class AipPrintedFiguresTests
     }
 
     [Fact]
-    public void ForActivity_Fy2028_PsIsRoundedButNeverUplifted()
+    public void ForActivity_Fy2028_PsIsUpliftedThirtyPercent()
     {
-        AipPrintedAmountsDto printed = AipPrintedFigures.ForActivity(Activity(ps: 1_200m), 2028);
+        AipPrintedAmountsDto printed = AipPrintedFigures.ForActivity(Activity(ps: 100_000m), 2028);
+
+        Assert.Equal(130_000m, printed.Ps);
+    }
+
+    [Fact]
+    public void ForActivity_Fy2028_PsIsUpliftedThenRoundedUp()
+    {
+        // 1,000 × 1.3 = 1,300 → up to 2,000. Without the uplift it would have stayed 1,000.
+        AipPrintedAmountsDto printed = AipPrintedFigures.ForActivity(Activity(ps: 1_000m), 2028);
 
         Assert.Equal(2_000m, printed.Ps);
     }
@@ -48,7 +57,7 @@ public sealed class AipPrintedFiguresTests
         Assert.Equal(2_000m, printed.Co);
     }
 
-    /// <summary>The uplift is on MOOE and CO only; the climate-change columns round but do not grow.</summary>
+    /// <summary>The uplift is on PS, MOOE and CO only; the climate-change columns round but do not grow.</summary>
     [Fact]
     public void ForActivity_Fy2028_ClimateChangeColumnsAreRoundedNotUplifted()
     {
@@ -63,10 +72,10 @@ public sealed class AipPrintedFiguresTests
     public void ForActivity_Fy2028_TotalIsTheSumOfThePrintedColumns()
     {
         AipPrintedAmountsDto printed = AipPrintedFigures.ForActivity(
-            Activity(ps: 1_200m, mooe: 1_000_400m, co: 1_000m), 2028);
+            Activity(ps: 1_000m, mooe: 1_000_400m, co: 1_000m), 2028);
 
         Assert.Equal(printed.Ps + printed.Mooe + printed.Co, printed.Total);
-        Assert.Equal(1_305_000m, printed.Total);
+        Assert.Equal(1_305_000m, printed.Total); // 2,000 + 1,301,000 + 2,000
     }
 
     [Fact]

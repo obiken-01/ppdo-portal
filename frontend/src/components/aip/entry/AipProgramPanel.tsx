@@ -40,7 +40,7 @@ export default function AipProgramPanel({
   //
   // ↩️ This said "a program prints BLANK in the form's money columns" — true until PPDO-98 put
   // subtotals on the program and project rows. The strip is still not the printed figure, though:
-  // this sums amounts **as encoded**, and the sheet rounds up and uplifts MOOE and CO.
+  // this sums amounts **as encoded**, and the sheet rounds up and uplifts PS, MOOE and CO.
   const amounts = useMemo(
     () => sumActivityAmounts(program.projects.flatMap((p) => p.activities)),
     [program]

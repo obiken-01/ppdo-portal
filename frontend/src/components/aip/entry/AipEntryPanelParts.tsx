@@ -201,7 +201,7 @@ export function AipChildList({
  * never discarded — discarding it is what forced the reload that read as the page refreshing.
  */
 export function AipInlineAdd({
-  label, placeholder, onAdd, disabled, disabledReason,
+  label, placeholder, onAdd, disabled, disabledReason, multiline,
 }: {
   label: string;
   placeholder: string;
@@ -209,6 +209,11 @@ export function AipInlineAdd({
   disabled?: boolean;
   /** ⚠️ Why it is disabled, never a bare greyed-out control — names who holds the work. */
   disabledReason?: string;
+  /**
+   * A wrapping textarea in place of the one-line input — for a name that can run to several lines
+   * (the activity title, PPDO-208). Enter inserts a line break; only the Add button submits.
+   */
+  multiline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -234,9 +239,15 @@ export function AipInlineAdd({
     );
   }
   return (
-    <div className="flex gap-2">
-      <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
-        className="flex-1 border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+    <div className={multiline ? "flex w-full items-start gap-2" : "flex gap-2"}>
+      {multiline ? (
+        <textarea autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
+          rows={2}
+          className="min-h-[44px] max-h-[88px] flex-1 resize-y overflow-y-auto border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+      ) : (
+        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
+          className="flex-1 border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+      )}
       <button type="button" disabled={busy || !name.trim()}
         onClick={async () => {
           setBusy(true);

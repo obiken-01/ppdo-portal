@@ -227,7 +227,7 @@ export default function AipActivityFields({
    *   totals recompute), and the page stores the new one from that write's result.
    */
   async function save(rowVersion: string | null = restoredBase.current ?? activity.rowVersion ?? null) {
-    if (!name.trim()) { setError("The activity description is required."); return; }
+    if (!name.trim()) { setError("The activity title is required."); return; }
     setSaving(true);
     setError(null);
     try {
@@ -276,7 +276,7 @@ export default function AipActivityFields({
       if (a !== b) rows.push({ label, mine: a, theirs: b });
     };
     const pesos = (v: number | null | undefined) => (v == null ? null : fmtThousands(v));
-    add("Description", name, theirs.name);
+    add("Activity title", name, theirs.name);
     add("eSRE code", esreCode, theirs.esreCode);
     add("Implementing office", joinCodes(withProponent(implementingOffices, proponentOfficeCode)),
       theirs.implementingOffice);
@@ -384,9 +384,9 @@ export default function AipActivityFields({
       {banner}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="sm:col-span-3">
-          <Label>Activity description</Label>
+          <Label>Activity title</Label>
           <textarea ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} rows={2}
-            className={`${inputCls} overflow-y-auto`} />
+            className={`${inputCls} min-h-[44px] max-h-[88px] resize-y overflow-y-auto`} />
           <AipActivityNameCounter name={name} />
         </div>
 

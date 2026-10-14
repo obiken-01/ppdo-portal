@@ -30,7 +30,7 @@ public static class Csv
 
         void EndField()
         {
-            current.Add(field.ToString());
+            current.Add(UnneutraliseFormula(field.ToString()));
             field.Clear();
         }
 
@@ -116,11 +116,44 @@ public static class Csv
 
     private static string Escape(string? field)
     {
-        field ??= string.Empty;
+        field = NeutraliseFormula(field ?? string.Empty);
         bool mustQuote = field.Contains('"') || field.Contains(',')
                       || field.Contains('\n') || field.Contains('\r');
         return mustQuote ? $"\"{field.Replace("\"", "\"\"")}\"" : field;
     }
+
+    // ── Spreadsheet formulas (PPDO-199) ──────────────────────────────────────────
+    //
+    // Excel runs a CSV cell that starts with = + - @ (or a tab / CR) as a formula, so a value like
+    // =HYPERLINK(...) typed into a config name would run on whoever opens the export. Write puts a
+    // ' in front of such a cell, which Excel shows as text. These files are also imported back, so
+    // Parse removes exactly that ' again and a round trip never changes the data.
+    //
+    // ⚠️ The rule is "any run of quotes, then a formula character": a value that already starts
+    // with '= gets one more quote, so Parse can tell the added quote from one that was there. A
+    // quote followed by anything else ('quoted text) is left alone both ways. Plain numbers such as
+    // -500 are not formulas, and are left as numbers.
+
+    private static bool IsFormulaStart(char c) => c is '=' or '+' or '-' or '@' or '\t' or '\r';
+
+    /// <summary>True for values Excel would run: optional leading quotes, then a formula character.</summary>
+    private static bool StartsLikeFormula(string value)
+    {
+        int quotes = 0;
+        while (quotes < value.Length && value[quotes] == '\'') quotes++;
+        return quotes < value.Length && IsFormulaStart(value[quotes]);
+    }
+
+    private static bool IsPlainNumber(string value) =>
+        decimal.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign
+                              | System.Globalization.NumberStyles.AllowDecimalPoint,
+                         System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    private static string NeutraliseFormula(string value) =>
+        StartsLikeFormula(value) && !IsPlainNumber(value) ? "'" + value : value;
+
+    private static string UnneutraliseFormula(string value) =>
+        value.Length > 1 && value[0] == '\'' && StartsLikeFormula(value[1..]) ? value[1..] : value;
 
     /// <summary>
     /// Parses a CSV is_active cell. Accepts true/false/1/0/yes/no (case-insensitive).

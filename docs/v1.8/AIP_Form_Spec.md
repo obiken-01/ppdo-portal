@@ -146,7 +146,7 @@ FY2027 file.
 | 1 | **Round every figure UP to the thousand, then sum the rounded figures** — across and down. The FY2027 file does not round at all: it carries thousands to two decimals (`8798.65` = ₱8,798,650) | DECISION 9 / A2-1 / A3 |
 | 2 | **One fund source per line** in column `K`. 60% of FY2027 money lines name several funds against one un-split amount (`20% DF/NGAs` ×591), which makes a General-Fund ceiling uncomputable | Settled 2026-08-14 |
 | 3 | **`K` becomes a pick-list, not free text** — the FY2027 file has 15 spellings of the General Fund | — |
-| 4 | **+30% uplift on MOOE and CO**, FY2028+ only, applied at render time from a stored base | DECISION G |
+| 4 | **+30% uplift on PS, MOOE and CO**, FY2028+ only, applied at render time from a stored base (PS added in v1.8.4 — PPDO-210; before that, MOOE and CO only) | DECISION G |
 | 5 | **State the units in the `L8:O8` AMOUNT header.** The FY2027 form declares "(In Thousand Pesos)" over the *climate-change* block `P8:R8` and says **nothing** over the main AMOUNT block — the one place the ₱000-vs-pesos ambiguity actually lives | DECISION E |
 
 ### ✅ 6.1 The uplift shows in `M` and `N`, not only in `O`
@@ -158,7 +158,7 @@ ceiling."*
 So the row keeps the structure it has always had:
 
 > `O = SUM(L:N)` — and, because `M` and `N` carry the uplift, `O` also equals
-> `PS + 1.3 × (MOOE + CO)`, satisfying tracker G6 at the same time.
+> `1.3 × (PS + MOOE + CO)`, satisfying tracker G6 at the same time.
 
 The rejected alternative — base `M`/`N` with only `O` uplifted — would have made `L + M + N ≠ O` on
 every row carrying MOOE or CO, with column `O` contradicting its own printed label `8+9+10` in a
@@ -185,7 +185,7 @@ Before rounding the ratio is exactly 1.3; after rounding it is not, and by how m
 ### ⚠️ 6.2 The ceiling exceedance is visible — and still needs explaining
 
 With `M` and `N` uplifted (§6.1), an office encoding exactly to a ₱10,000,000 ceiling passes every
-check in the system and prints an AIP whose MOOE + CO reads about ₱13,000,000. **That is intended**,
+check in the system and prints an AIP whose MOOE + CO reads about ₱13,000,000 (and its PS about 30% above what was encoded). **That is intended**,
 and §6.1 is the reason it is now visible **in the money columns** rather than buried inside a Total
 that does not reconcile — which is the better of the two failure modes, but it is still a figure
 that reads as an overspend.
@@ -194,10 +194,10 @@ A PDC member or board member has no way to know the excess is deliberate. **The 
 note printed with it, must say so** — this is the room where it would otherwise be raised as an
 error. Wording to be agreed with PPDC; see `Phase_Plan.md` §12.2.
 
-ℹ️ **The uplift and the ceiling govern exactly the same figures**, which is why this is sharper than
-a general rounding caveat: the uplift applies to MOOE and CO (PS prints as entered), and the ceiling
-applies to MOOE and CO (PS is exempt as an expense class, tracker A6-2). There is no dilution — the
-gap between the printed figure and the checked figure *is* the ceiling gap.
+ℹ️ **Since v1.8.4 (PPDO-210) the uplift is wider than the ceiling.** The uplift applies to PS, MOOE
+and CO; the ceiling still checks MOOE and CO only (PS is exempt as an expense class, tracker A6-2), on
+base figures. The MOOE + CO gap between printed and checked *is* the ceiling gap; printed PS also
+reads 30% above its encoded base but is not ceiling-checked.
 
 ---
 
@@ -259,7 +259,7 @@ sheets, columns A–R — from the Consolidated AIP page, and it matches that pa
    Activity `L`/`M`/`N`/`P`/`Q` hold **values**. Tests pin every formula's result to the system's
    figure, so a formula cannot quietly disagree with the grid.
 5. **Printed figures only, from `AipFormRowBuilder` / `AipPrintedFigures`** — never re-derived in the
-   writer. Round up per figure, +30% on MOOE and CO, uplift then round (§6, tracker G5 provisional).
+   writer. Round up per figure, +30% on PS, MOOE and CO, uplift then round (§6, tracker G5 provisional).
    Which figure every screen, API field and file shows — full, rounded, or rounded with +30% — is
    tabulated in [AIP_Amount_States.md](AIP_Amount_States.md).
 6. **Amounts in thousands, two decimals** — ₱1,301,000 is written `1301` and shows `1,301.00`, as the
@@ -370,9 +370,9 @@ labels — **except column F**, which carries none. `L8:O8` reads `AMOUNT (In Th
 Two rows under `TOTAL`, merged `A:R`, italic, wrapped, **inside the print area** so it prints with the
 form. Draft wording (PPDC to agree), from one constant:
 
-> Note: Maintenance and Other Operating Expenses (MOOE) and Capital Outlay (CO) include a 30%
+> Note: Personal Services (PS), Maintenance and Other Operating Expenses (MOOE) and Capital Outlay (CO) include a 30%
 > adjustment. Budget ceilings are checked against the amounts before the adjustment, so an office's
-> printed MOOE and CO may exceed its ceiling by up to 30%. Amounts are rounded up to the nearest
+> printed PS, MOOE and CO may exceed its ceiling by up to 30%. Amounts are rounded up to the nearest
 > thousand pesos, and every total is the sum of the rounded figures.
 
 ### 13.5 Page setup — every sheet

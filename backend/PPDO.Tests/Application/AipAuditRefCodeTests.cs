@@ -58,7 +58,7 @@ public sealed partial class AipServiceTests
         var (sut, activity, audits) = BuildCapturingAudits();
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, ConflictActivityId, UpdateActivity(), WriteHostCaller());
+            AipRecordId, ConflictActivityId, UpdateActivity(), WriteHostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         AssertRefCodeOnBothSides(Assert.Single(audits, a => a.Action == AuditAction.Update), activity.RefCode);
@@ -72,7 +72,7 @@ public sealed partial class AipServiceTests
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
             ConflictActivityId,
             new UpdateAipActivityDetailsDto("Renamed", null, null, null, null, null, null, null, null),
-            WriteHostCaller());
+            WriteHostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         AssertRefCodeOnBothSides(Assert.Single(audits, a => a.Action == AuditAction.Update), activity.RefCode);
@@ -84,7 +84,7 @@ public sealed partial class AipServiceTests
         var (sut, activity, audits) = BuildCapturingAudits();
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteHostCaller());
+            await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteHostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         AssertRefCodeOnBothSides(Assert.Single(audits, a => a.Action == AuditAction.Update), activity.RefCode);
@@ -96,7 +96,7 @@ public sealed partial class AipServiceTests
         // The reason for the old side: the Audit Log's description diffs old against new.
         var (sut, _, audits) = BuildCapturingAudits();
 
-        await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteHostCaller());
+        await sut.UpdateActivityIsCreationAsync(ConflictActivityId, true, WriteHostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         var row = Assert.Single(audits, a => a.Action == AuditAction.Update);
         string description = AuditDescriptionBuilder.Build(row.Action, row.Old, row.New);
