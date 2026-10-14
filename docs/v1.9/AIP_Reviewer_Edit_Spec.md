@@ -1,14 +1,14 @@
 ---
 status: draft
 version: v1.9.0
-tickets: TBD
+tickets: PPDO-211 (epic), PPDO-212 T1, PPDO-213 T2, PPDO-214 T3, PPDO-215 T4
 supersedes: AIP_Review_Spec.md decision 5 (in part), Permission_Matrix.md §5 (in part)
 ---
 
 # v1.9.0 — PPDO Reviewer Edits to a Submitted AIP
 
 > Source: Demo 3 / meeting, 2026-10-13 ("Half AIP edit by LFC"). Settled with Ralph 2026-10-14.
-> **Must be ready for the November 2026 user training.** Revised 2026-10-15: edit comments are
+> **Must be ready for the November 2026 user training.** Revised 2026-10-14: edit comments are
 > created resolved and the office acknowledges them separately (see decisions 6, 7).
 
 ## 1. Goal
@@ -65,7 +65,7 @@ changed it, and why.
   Jan–Dec? *Default:* **no**, schedule stays the office's (decision 3); the reason text records it.
 - **C. Undoing a mistaken added line.** Delete stays denied. *Default:* the reviewer edits it to the
   correct figure; if the line should not exist, Return the office (existing flow) or ask SuperAdmin.
-- ~~**D. Who resolves a reviewer-edit comment.**~~ Settled by checking the code (2026-10-15): only
+- ~~**D. Who resolves a reviewer-edit comment.**~~ Settled by checking the code (2026-10-14): only
   the authoring side may resolve, by design. See decisions 6 and 7: the comment is created resolved,
   and the office acknowledges it instead.
 
