@@ -186,7 +186,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut();
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteGuestCaller(), ct: CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteGuestCaller(), ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -198,7 +198,7 @@ public sealed partial class AipServiceTests
         AipService sut = BuildSut();
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(
-            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None);
+            AipRecordId, 40, UpdateActivity(), WriteHostCaller(), ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
     }

@@ -1563,7 +1563,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), ct: CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(501, true, HostCaller(), ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.IsCreation);
@@ -1577,7 +1577,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], [], officeSeed: [new AipOffice { Id = 201, AipRecordId = 1, RefCode = "O", Name = "Office", Sector = "GENERAL", OfficeId = 1 }], programSeed: [new AipProgram { Id = 301, OfficeId = 201, RefCode = "P", Name = "Prog" }], projectSeed: [new AipProject { Id = 401, ProgramId = 301, RefCode = "J", Name = "Proj" }], actSeed: [act]);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), ct: CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(502, false, HostCaller(), ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.IsCreation);
@@ -1590,7 +1590,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         ServiceResult<AipActivityDto> result =
-            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), ct: CancellationToken.None);
+            await sut.UpdateActivityIsCreationAsync(999, true, HostCaller(), ct: CancellationToken.None, expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2629,7 +2629,7 @@ public sealed partial class AipServiceTests
             "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 1,
             2000m, 1000m, 500m, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("Updated Name", result.Value!.Name);
@@ -2654,7 +2654,7 @@ public sealed partial class AipServiceTests
         UpdateAipActivityDto dto = new(
             "Name", null, null, null, null, null, null, null, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.FundingSourceId);
@@ -2690,7 +2690,7 @@ public sealed partial class AipServiceTests
         UpdateAipActivityDto dto = new(
             "Name", null, null, null, null, null, 4, 100m, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
         // ⚠️ Worded exactly like a fund that does not exist — see FundingSourceScope.NotFoundMessage.
@@ -2711,7 +2711,7 @@ public sealed partial class AipServiceTests
         UpdateAipActivityDto dto = new(
             "Name", null, null, null, null, null, 3, 100m, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("GSOX", result.Value!.FundingSourceSnapshot);
@@ -2728,7 +2728,7 @@ public sealed partial class AipServiceTests
         UpdateAipActivityDto dto = new(
             "Name", null, null, null, null, null, 1, 100m, null, null, null, null, null);
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("GF", result.Value!.FundingSourceSnapshot);
@@ -2788,7 +2788,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Null(result.Value!.Total);
@@ -2802,7 +2802,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("   ", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2816,7 +2816,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", "ZZ", null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2830,7 +2830,7 @@ public sealed partial class AipServiceTests
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, 999, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2844,7 +2844,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -2856,7 +2856,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 999, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(1, 999, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2870,7 +2870,7 @@ public sealed partial class AipServiceTests
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
         UpdateAipActivityDto dto = new("Name", null, null, null, null, null, null, null, null, null, null, null, null);
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(999, 50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityAsync(999, 50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -2904,7 +2904,7 @@ public sealed partial class AipServiceTests
         UpdateAipActivityDetailsDto dto = new(
             "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 10m, 5m, "TYP1");
 
-        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(50, dto, HostCaller());
+        ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(50, dto, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         // The descriptive fields did change.
@@ -2939,7 +2939,7 @@ public sealed partial class AipServiceTests
         Assert.Null(activities[0].CcTypologyCode);
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
-            50, new("Activity", "SS", null, null, null, null, null, null, "CCA-1"), HostCaller());
+            50, new("Activity", "SS", null, null, null, null, null, null, "CCA-1"), HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         Assert.Equal("SS", result.Value!.EsreCode);
@@ -2956,12 +2956,12 @@ public sealed partial class AipServiceTests
                   projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipActivityDto> ok = await sut.UpdateActivityDetailsAsync(
-            50, new("Activity", "es", null, null, null, null, null, null, null), HostCaller());
+            50, new("Activity", "es", null, null, null, null, null, null, null), HostCaller(), expectedRowVersion: AipTestVersion.Any);
         Assert.True(ok.IsSuccess);
         Assert.Equal("ES", ok.Value!.EsreCode);
 
         ServiceResult<AipActivityDto> bad = await sut.UpdateActivityDetailsAsync(
-            50, new("Activity", "XX", null, null, null, null, null, null, null), HostCaller());
+            50, new("Activity", "XX", null, null, null, null, null, null, null), HostCaller(), expectedRowVersion: AipTestVersion.Any);
         Assert.False(bad.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, bad.Code);
     }
@@ -2987,7 +2987,7 @@ public sealed partial class AipServiceTests
                   projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
-            50, new("Renamed", null, null, null, null, null, null, null, null), HostCaller());
+            50, new("Renamed", null, null, null, null, null, null, null, null), HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -3002,7 +3002,7 @@ public sealed partial class AipServiceTests
                   projectSeed: projects, actSeed: activities);
 
         ServiceResult<AipActivityDto> result = await sut.UpdateActivityDetailsAsync(
-            50, new("   ", null, null, null, null, null, null, null, null), HostCaller());
+            50, new("   ", null, null, null, null, null, null, null, null), HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
@@ -3096,7 +3096,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.True(result.IsSuccess);
         activityRepo.Verify(r => r.DeleteAsync(
@@ -3109,7 +3109,7 @@ public sealed partial class AipServiceTests
     {
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) = Build([], []);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(999, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(999, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.NotFound, result.Code);
@@ -3122,7 +3122,7 @@ public sealed partial class AipServiceTests
         var (sut, _, _, _, _, _, _, _, _, _, _, activityRepo, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities);
 
-        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller());
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(50, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
