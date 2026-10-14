@@ -508,6 +508,13 @@ export interface AipReviewNotifications {
   departmentHeadFiscalYear: number | null;
   /** Years in which the user's own office is returned to them, earliest first. */
   returned: AipReturnedNotice[];
+  /**
+   * PPDO-213 — PPDO reviewer edits to the user's OWN office that nobody there has marked as seen,
+   * across open years. Own office only, for every reader (a PPDO reviewer included).
+   */
+  reviewerEditCount: number;
+  /** The earliest year with such an edit — where the notice links. Null at zero. */
+  reviewerEditFiscalYear: number | null;
 }
 
 /** "Ppdo": the office is ReturnedByPpdo. "DepartmentHead": Draft, last hand-off RETURN_DH (encoders only). */
@@ -1408,6 +1415,12 @@ export interface SaveAipExpenditureRequest {
   procurementItems?: SaveAipProcurementItemRequest[];
 
   /**
+   * PPDO-212 — why a PPDO reviewer is making this change (1–500 characters). Required from a PPDO
+   * reviewer on a submitted or consolidated office; ignored for everyone else.
+   */
+  reviewerReason?: string;
+
+  /**
    * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
    * (V18-71 / PPDO-120). Send it on every write.
    *
@@ -1786,6 +1799,13 @@ export interface AipReviewComment {
   canResolve: boolean;
   /** The anchored row is gone. Render as orphaned; never drop the comment. */
   isOrphaned: boolean;
+  /**
+   * PPDO-213 — written by the system when a PPDO reviewer edited an expenditure line. Created
+   * resolved; the office acknowledges it instead (`acknowledgedAt`). Rendered with "Edited by PPDO".
+   */
+  isReviewerEdit: boolean;
+  acknowledgedAt: string | null;
+  acknowledgedByName: string | null;
 }
 
 /** ⚠️ Two numbers, never merged — the reader can resolve neither set themselves. */

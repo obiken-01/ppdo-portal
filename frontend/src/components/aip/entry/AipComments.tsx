@@ -27,6 +27,7 @@ import type {
 } from "@/types";
 import { getAipComments, addAipComment, resolveAipComment } from "@/lib/aip-comments";
 import { aipErrorMessage } from "@/lib/aip";
+import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
 
 const SIDE_LABEL: Record<AipCommentSide, string> = {
   DepartmentHead: "department head",
@@ -352,7 +353,7 @@ export function AipCommentAnchor({
           ? "Comment"
           : unresolved.length > 0
             ? `${unresolved.length} unresolved`
-            : `${comments.length} resolved`}
+            : closedLabel(comments)}
       </button>
 
       {expanded && (
@@ -501,6 +502,19 @@ function CommentThread({
   );
 }
 
+/**
+ * The closed-thread label. ⚠️ PPDO-214 — a reviewer edit is created resolved but is not a resolved
+ * request, so it is counted as an edit: "2 resolved · 1 PPDO edit", never "3 resolved".
+ */
+function closedLabel(comments: AipReviewComment[]): string {
+  const edits = comments.filter((c) => c.isReviewerEdit).length;
+  const resolved = comments.length - edits;
+  const parts: string[] = [];
+  if (resolved > 0) parts.push(`${resolved} resolved`);
+  if (edits > 0) parts.push(`${edits} PPDO edit${edits === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
 function CommentRow({
   comment,
   onResolve,
@@ -508,7 +522,10 @@ function CommentRow({
   comment: AipReviewComment;
   onResolve: () => void;
 }) {
-  const resolved = comment.resolvedAt != null;
+  // ⚠️ PPDO-214 — a reviewer edit is created resolved, but it is a record of a change, not a closed
+  // request: it is never dimmed and never labelled "resolved". It says whether the office has seen it.
+  const edit = comment.isReviewerEdit;
+  const resolved = comment.resolvedAt != null && !edit;
 
   return (
     <div className={`text-xs ${resolved ? "opacity-60" : ""}`}>
@@ -517,6 +534,12 @@ function CommentRow({
         <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
           {SIDE_LABEL[comment.authorSide]}
         </span>
+        {edit && <AipReviewerEditTag />}
+        {edit && (
+          <span className="text-[10px] text-slate-600">
+            {reviewerEditSeenLine(comment.acknowledgedByName, comment.acknowledgedAt)}
+          </span>
+        )}
         {resolved && (
           <span className="text-[10px] text-slate-600">
             resolved{comment.resolvedByName ? ` by ${comment.resolvedByName}` : ""}

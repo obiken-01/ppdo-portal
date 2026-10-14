@@ -76,3 +76,18 @@ export async function resolveAipComment(commentId: number): Promise<AipReviewCom
   );
   return unwrap(data);
 }
+
+/**
+ * PPDO-213 — the edited office's "Mark as seen" on every PPDO reviewer edit it has not seen yet.
+ * Returns how many it stamped; 0 is a success (nothing was pending).
+ *
+ * ⚠️ The office's own action: a PPDO reviewer or host-office user calling it for another office gets
+ * a 403, by design.
+ */
+export async function acknowledgeAipReviewerEdits(aipId: number, officeId: number): Promise<number> {
+  const { data } = await api.post<ApiResponse<{ acknowledged: number }>>(
+    `/budget-planning/aip/${aipId}/offices/${officeId}/comments/acknowledge-edits`,
+    {}
+  );
+  return unwrap(data).acknowledged;
+}
