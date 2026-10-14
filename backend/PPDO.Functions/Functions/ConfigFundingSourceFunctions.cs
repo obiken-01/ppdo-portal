@@ -209,7 +209,11 @@ public sealed class ConfigFundingSourceFunctions
             body = body with { OfficeId = caller.OfficeId };
         }
 
-        return await ConfigHttp.FromResultAsync(req, await _funding.CreateAsync(body, ct), ct, HttpStatusCode.Created);
+        // PPDO-216 — whether this caller may change "Enforce AIP ceiling". The service decides whether
+        // the request actually changes it; omitted or unchanged never needs the grant.
+        bool canSetCeiling = await _permissions.CanManageOfficeCeilingsAsync(caller, ct);
+        return await ConfigHttp.FromResultAsync(req,
+            await _funding.CreateAsync(body, ct, canSetCeiling), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/config/funding-sources/csv  (upsert) ──
@@ -257,7 +261,8 @@ public sealed class ConfigFundingSourceFunctions
             body = body with { OfficeId = caller.OfficeId };
         }
 
-        return await ConfigHttp.FromResultAsync(req, await _funding.UpdateAsync(id, body, ct), ct);
+        return await ConfigHttp.FromResultAsync(req, await _funding.UpdateAsync(id, body, ct,
+                canSetCeilingEnforcement: await _permissions.CanManageOfficeCeilingsAsync(caller, ct)), ct);
     }
 
     // ── DELETE /api/config/funding-sources/{id}  (soft delete) ──

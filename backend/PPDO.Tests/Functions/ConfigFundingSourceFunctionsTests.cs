@@ -262,8 +262,8 @@ public sealed class ConfigFundingSourceFunctionsTests
     {
         AuthenticateDepartmentHead();
         UpsertFundingSourceDto? captured = null;
-        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
-            .Callback((UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((UpsertFundingSourceDto dto, CancellationToken _, bool _) => captured = dto)
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
 
         HttpResponseData response = await Sut.Create(
@@ -280,8 +280,8 @@ public sealed class ConfigFundingSourceFunctionsTests
         // department head add to PPDO's list, which is the one thing D5 keeps for PPDO.
         AuthenticateDepartmentHead();
         UpsertFundingSourceDto? captured = null;
-        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
-            .Callback((UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((UpsertFundingSourceDto dto, CancellationToken _, bool _) => captured = dto)
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
 
         await Sut.Create(
@@ -301,7 +301,7 @@ public sealed class ConfigFundingSourceFunctionsTests
             FunctionHttp.Post("config/funding-sources", Body(OwnOffice)), CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        _funding.Verify(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()), Times.Never);
+        _funding.Verify(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()), Times.Never);
     }
 
     [Fact]
@@ -310,8 +310,8 @@ public sealed class ConfigFundingSourceFunctionsTests
         // PPDO may create a fund on an office's behalf — the body is theirs to set.
         AuthenticateConfigManager();
         UpsertFundingSourceDto? captured = null;
-        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
-            .Callback((UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((UpsertFundingSourceDto dto, CancellationToken _, bool _) => captured = dto)
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, ForeignOffice)));
 
         await Sut.Create(
@@ -339,7 +339,7 @@ public sealed class ConfigFundingSourceFunctionsTests
         AuthenticateDepartmentHead();
         _funding.Setup(s => s.GetByIdAsync(9, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
-        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
+        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
 
         HttpResponseData response = await Sut.Update(
@@ -365,8 +365,8 @@ public sealed class ConfigFundingSourceFunctionsTests
         UpsertFundingSourceDto? captured = null;
         _funding.Setup(s => s.GetByIdAsync(9, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
-        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
-            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _, bool _) => captured = dto)
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, OwnOffice)));
 
         await Sut.Update(
@@ -381,8 +381,8 @@ public sealed class ConfigFundingSourceFunctionsTests
         // PPDO-128 — PPDO may move a fund between shared and office-owned, so its body passes through.
         AuthenticateConfigManager();
         UpsertFundingSourceDto? captured = null;
-        _funding.Setup(s => s.UpdateAsync(1, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
-            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _) => captured = dto)
+        _funding.Setup(s => s.UpdateAsync(1, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((int _, UpsertFundingSourceDto dto, CancellationToken _, bool _) => captured = dto)
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(1, ForeignOffice, "GF")));
 
         await Sut.Update(
@@ -403,7 +403,7 @@ public sealed class ConfigFundingSourceFunctionsTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         _funding.Verify(s => s.UpdateAsync(
-            It.IsAny<int>(), It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()), Times.Never);
+            It.IsAny<int>(), It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()), Times.Never);
     }
 
     [Fact]
@@ -438,7 +438,7 @@ public sealed class ConfigFundingSourceFunctionsTests
     public async Task Update_AsConfigManager_OnASharedFund_IsAllowed()
     {
         AuthenticateConfigManager();
-        _funding.Setup(s => s.UpdateAsync(1, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>()))
+        _funding.Setup(s => s.UpdateAsync(1, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
             .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(1, null, "GF")));
 
         HttpResponseData response = await Sut.Update(
@@ -566,5 +566,46 @@ public sealed class ConfigFundingSourceFunctionsTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         _funding.Verify(s => s.ImportCsvAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-216: the ceiling grant reaches the service ───────────────────────────
+
+    /// <summary>
+    /// The handler resolves the caller's office-ceiling grant and hands it to the service, which
+    /// decides whether the request actually changes "Enforce AIP ceiling". Red-test: pass a constant
+    /// here and one of the two cases fails.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Update_PassesTheCallersOfficeCeilingGrantToTheService(bool grant)
+    {
+        User caller = AuthenticateConfigManager();
+        _permissions.Setup(p => p.CanManageOfficeCeilingsAsync(caller, It.IsAny<CancellationToken>())).ReturnsAsync(grant);
+        bool? passed = null;
+        _funding.Setup(s => s.UpdateAsync(9, It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((int _, UpsertFundingSourceDto _, CancellationToken _, bool canSet) => passed = canSet)
+            .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, null)));
+
+        await Sut.Update(FunctionHttp.Put(Body(null), path: "config/funding-sources/9"), 9, CancellationToken.None);
+
+        Assert.Equal(grant, passed);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Create_PassesTheCallersOfficeCeilingGrantToTheService(bool grant)
+    {
+        User caller = AuthenticateConfigManager();
+        _permissions.Setup(p => p.CanManageOfficeCeilingsAsync(caller, It.IsAny<CancellationToken>())).ReturnsAsync(grant);
+        bool? passed = null;
+        _funding.Setup(s => s.CreateAsync(It.IsAny<UpsertFundingSourceDto>(), It.IsAny<CancellationToken>(), It.IsAny<bool>()))
+            .Callback((UpsertFundingSourceDto _, CancellationToken _, bool canSet) => passed = canSet)
+            .ReturnsAsync(ServiceResult<FundingSourceDto>.Ok(Fund(9, null)));
+
+        await Sut.Create(FunctionHttp.Post("config/funding-sources", Body(null)), CancellationToken.None);
+
+        Assert.Equal(grant, passed);
     }
 }

@@ -18,7 +18,8 @@ public sealed record FundingSourceDto(
     string? Aliases    = null,
     int?    OfficeId   = null,
     string? OfficeCode = null,
-    string? OfficeName = null)
+    string? OfficeName = null,
+    bool    EnforceAipCeiling = false)
 {
     /// <summary>True for a province-wide fund — no owning office. Derived, never stored.</summary>
     public bool IsShared => OfficeId is null;
@@ -45,7 +46,9 @@ public sealed record UpsertFundingSourceDto(
     bool    IsActive = true,
     string? Aliases  = null,
     int?    OfficeId = null,
-    bool    ConfirmOwnershipChange = false);
+    bool    ConfirmOwnershipChange = false,
+    // v1.9.0 — PPDO-216. Null = leave as it is (a department head's own-fund edit never sends it).
+    bool?   EnforceAipCeiling = null);
 
 /// <summary>Other offices' lines naming a fund in one fiscal year (PPDO-128).</summary>
 public sealed record FundUsageYearDto(int FiscalYear, int Lines);

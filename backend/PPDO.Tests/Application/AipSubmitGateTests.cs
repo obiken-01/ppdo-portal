@@ -73,7 +73,7 @@ public sealed class AipSubmitGateTests
 
         // Default: the ceiling is satisfied. Individual tests override.
         _ceiling.Setup(c => c.GetStatusAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 500_000m, 500_000m, true));
+            .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 500_000m, 500_000m, true, []));
         _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 

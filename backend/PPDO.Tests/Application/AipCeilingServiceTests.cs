@@ -75,7 +75,26 @@ public sealed class AipCeilingServiceTests
     {
         _allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(id);
+        // v1.9.0 (PPDO-216) — no other fund is enforced unless a test says so.
+        GivenEnforcedFunds();
     }
+
+    /// <summary>The non-GF funds flagged "Enforce AIP ceiling" (PPDO-216).</summary>
+    private void GivenEnforcedFunds(params FundingSource[] funds)
+        => _allocation.Setup(a => a.GetEnforcedAipCeilingFundsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(funds);
+
+    private static FundingSource Fund(int id, string code, int? officeId = null)
+        => new() { Id = id, Code = code, Name = code + " fund", OfficeId = officeId, EnforceAipCeiling = true };
+
+    /// <summary>A ceiling on any fund; null = not set.</summary>
+    private void GivenFundCeiling(int fundId, string code, decimal? amount)
+        => _allocation.Setup(a => a.GetCeilingAsync(
+                ConfigOfficeId, FiscalYear, fundId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(amount is null
+                ? ServiceResult<BudgetCeilingDto>.NotFound("unset")
+                : ServiceResult<BudgetCeilingDto>.Ok(
+                    new BudgetCeilingDto(fundId, ConfigOfficeId, FiscalYear, fundId, code, code + " fund", amount.Value)));
 
     private void GivenCeiling(decimal? amount)
     {
@@ -634,4 +653,189 @@ public sealed class AipCeilingServiceTests
     [InlineData(1_000_400, 1_001_000)] // the worked example in AIP_Form_Spec §6.1
     public void UpToThousand_RoundsUpAndLeavesExactMultiplesAlone(decimal pesos, decimal expected)
         => Assert.Equal(expected, AipRounding.UpToThousand(pesos));
+
+    // ── v1.9.0 (PPDO-216): other funds flagged "Enforce AIP ceiling" ─────────────
+
+    private const int PhilHealthId = 9;
+    private const int OtherOfficeFundId = 12;
+
+    /// <summary>
+    /// The baseline every test below shares: the General Fund within its ceiling, so any refusal can
+    /// only come from the other fund.
+    /// </summary>
+    private void GivenGeneralFundWithin()
+    {
+        GivenOffice();
+        GivenGeneralFund();
+        GivenCeiling(1_000_000m);
+        GivenLines(GeneralFundId, (Mooe: 100_000m, Co: 0m));
+    }
+
+    [Fact]
+    public async Task GetStatus_AnEnforcedFund_IsReportedWithItsOwnCeilingAndEncodedTotal()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", 500_000m);
+        GivenLines(PhilHealthId, (Mooe: 400_200m, Co: 49_000m));   // rounds to 401,000 + 49,000
+
+        AipCeilingStatusDto status = await Build().GetStatusAsync(AipOfficeId);
+
+        AipFundCeilingStatusDto ph = Assert.Single(status.OtherFunds);
+        Assert.Equal(PhilHealthId, ph.FundingSourceId);
+        Assert.Equal("TF-PH", ph.Code);
+        Assert.True(ph.CeilingSet);
+        Assert.Equal(500_000m, ph.Ceiling);
+        Assert.Equal(450_000m, ph.EncodedBaseRounded);
+        Assert.Equal(50_000m, ph.Remaining);
+        Assert.True(ph.WithinCeiling);
+        // The General Fund figures are untouched by the other fund.
+        Assert.Equal(100_000m, status.EncodedBaseRounded);
+    }
+
+    /// <summary>A fund nobody flagged is not even queried (DECISION H stays withdrawn).</summary>
+    [Fact]
+    public async Task GetStatus_AnUnflaggedFund_IsNeverQueried()
+    {
+        GivenGeneralFundWithin();
+
+        AipCeilingStatusDto status = await Build().GetStatusAsync(AipOfficeId);
+
+        Assert.Empty(status.OtherFunds);
+        _expRepo.Verify(r => r.SumMooeCoByConfigOfficeAndFundAsync(
+            AipRecordId, ConfigOfficeId, GadFundId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>An enforced fund the office neither uses nor has a ceiling for is not listed at all.</summary>
+    [Fact]
+    public async Task GetStatus_AnEnforcedFundTheOfficeDoesNotUse_IsNotListed()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", null);
+        GivenLines(PhilHealthId);
+
+        AipCeilingStatusDto status = await Build().GetStatusAsync(AipOfficeId);
+
+        Assert.Empty(status.OtherFunds);
+    }
+
+    /// <summary>A ceiling set but nothing encoded is listed, and within (remaining = the ceiling).</summary>
+    [Fact]
+    public async Task GetStatus_ACeilingWithNothingEncoded_IsListedAndWithin()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", 300_000m);
+        GivenLines(PhilHealthId);
+
+        AipFundCeilingStatusDto ph = Assert.Single((await Build().GetStatusAsync(AipOfficeId)).OtherFunds);
+
+        Assert.Equal(300_000m, ph.Remaining);
+        Assert.True(ph.WithinCeiling);
+    }
+
+    /// <summary>Another office's own fund cannot hold this office's lines, so it is not checked here.</summary>
+    [Fact]
+    public async Task GetStatus_AnotherOfficesOwnFund_IsNotChecked()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(OtherOfficeFundId, "OWN-X", officeId: ConfigOfficeId + 1));
+
+        AipCeilingStatusDto status = await Build().GetStatusAsync(AipOfficeId);
+
+        Assert.Empty(status.OtherFunds);
+        _expRepo.Verify(r => r.SumMooeCoByConfigOfficeAndFundAsync(
+            AipRecordId, ConfigOfficeId, OtherOfficeFundId, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>Follow-up B: this office's OWN fund can be enforced like a shared one.</summary>
+    [Fact]
+    public async Task GetStatus_ThisOfficesOwnEnforcedFund_IsChecked()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(OtherOfficeFundId, "OWN-7", officeId: ConfigOfficeId));
+        GivenFundCeiling(OtherOfficeFundId, "OWN-7", 10_000m);
+        GivenLines(OtherOfficeFundId, (Mooe: 5_000m, Co: 0m));
+
+        Assert.Single((await Build().GetStatusAsync(AipOfficeId)).OtherFunds);
+    }
+
+    [Fact]
+    public async Task ValidateForSubmit_OverAnEnforcedFund_IsRefusedNamingThatFund()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", 500_000m);
+        GivenLines(PhilHealthId, (Mooe: 520_000m, Co: 0m));
+
+        string? error = await Build().ValidateForSubmitAsync(AipOfficeId);
+
+        Assert.Equal(
+            "TF-PH MOOE + CO totals ₱520,000.00, which is ₱20,000.00 over the ceiling of ₱500,000.00. "
+            + "Reduce the encoded amounts or ask PPDO to raise the ceiling.",
+            error);
+    }
+
+    /// <summary>Decision 3: unset is zero, and the message says the ceiling is missing, not "over".</summary>
+    [Fact]
+    public async Task ValidateForSubmit_EncodedOnAnEnforcedFundWithNoCeiling_SaysTheCeilingIsMissing()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", null);
+        GivenLines(PhilHealthId, (Mooe: 10_000m, Co: 0m));
+
+        string? error = await Build().ValidateForSubmitAsync(AipOfficeId);
+
+        Assert.NotNull(error);
+        Assert.StartsWith("There is no TF-PH ceiling set for this office for the fiscal year", error);
+    }
+
+    /// <summary>Follow-up A: PS is exempt on every fund — the repository is asked for MOOE and CO only.</summary>
+    [Fact]
+    public async Task ValidateForSubmit_AnEnforcedFundExactlyAtItsCeilingOnMooeAndCo_Passes()
+    {
+        GivenGeneralFundWithin();
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", 500_000m);
+        GivenLines(PhilHealthId, (Mooe: 300_000m, Co: 200_000m));
+
+        Assert.Null(await Build().ValidateForSubmitAsync(AipOfficeId));
+    }
+
+    /// <summary>Decision 5: every failing fund in one refusal, General Fund first.</summary>
+    [Fact]
+    public async Task ValidateForSubmit_GeneralFundAndAnEnforcedFundBothOver_NamesBothGeneralFundFirst()
+    {
+        GivenOffice();
+        GivenGeneralFund();
+        GivenCeiling(100_000m);
+        GivenLines(GeneralFundId, (Mooe: 150_000m, Co: 0m));
+        GivenEnforcedFunds(Fund(PhilHealthId, "TF-PH"));
+        GivenFundCeiling(PhilHealthId, "TF-PH", 500_000m);
+        GivenLines(PhilHealthId, (Mooe: 520_000m, Co: 0m));
+
+        string? error = await Build().ValidateForSubmitAsync(AipOfficeId);
+
+        Assert.NotNull(error);
+        int gf = error!.IndexOf("General Fund MOOE + CO", StringComparison.Ordinal);
+        int ph = error.IndexOf("TF-PH MOOE + CO", StringComparison.Ordinal);
+        Assert.True(gf >= 0 && ph > gf, error);
+    }
+
+    /// <summary>The General Fund's own messages are unchanged when no other fund fails.</summary>
+    [Fact]
+    public async Task ValidateForSubmit_OnlyTheGeneralFundOver_KeepsTheGeneralFundMessageExactly()
+    {
+        GivenOffice();
+        GivenGeneralFund();
+        GivenCeiling(100_000m);
+        GivenLines(GeneralFundId, (Mooe: 150_000m, Co: 0m));
+
+        Assert.Equal(
+            "General Fund MOOE + CO totals ₱150,000.00, which is ₱50,000.00 over the ceiling of ₱100,000.00. "
+            + "Reduce the encoded amounts or ask PPDO to raise the ceiling.",
+            await Build().ValidateForSubmitAsync(AipOfficeId));
+    }
 }

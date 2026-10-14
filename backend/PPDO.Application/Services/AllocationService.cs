@@ -22,7 +22,12 @@ namespace PPDO.Application.Services;
 /// </summary>
 public sealed class AllocationService : IAllocationService
 {
-    private const string GeneralFundCode = "GF";
+    /// <summary>The shared General Fund's code. Public so the fund config (PPDO-216) uses the same one.</summary>
+    public const string GeneralFundCode = "GF";
+
+    /// <summary>The one canonical General Fund: shared (no office) and coded <see cref="GeneralFundCode"/>.</summary>
+    public static bool IsGeneralFund(FundingSource f)
+        => f.OfficeId is null && f.Code.Equals(GeneralFundCode, StringComparison.OrdinalIgnoreCase);
 
     private readonly IBudgetCeilingRepository        _ceilingRepo;
     private readonly IDivisionAllocationRepository   _allocationRepo;
@@ -483,6 +488,14 @@ public sealed class AllocationService : IAllocationService
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<FundingSource>> GetEnforcedAipCeilingFundsAsync(CancellationToken ct = default)
+        // The General Fund is left out on purpose: the ceiling check handles it on its own path, and
+        // its stored flag is not what makes it enforced (PPDO-216 decision 1).
+        => (await GetAllFundingSourcesAsync(ct))
+            .Where(f => f.EnforceAipCeiling && !IsGeneralFund(f))
+            .OrderBy(f => f.Code, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
     public async Task<int?> GetGeneralFundIdAsync(CancellationToken ct = default)
     {
         IReadOnlyList<FundingSource> all = await GetAllFundingSourcesAsync(ct);

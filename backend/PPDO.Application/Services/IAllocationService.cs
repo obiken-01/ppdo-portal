@@ -1,3 +1,4 @@
+using PPDO.Domain.Entities;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 
@@ -17,6 +18,12 @@ public interface IAllocationService
     /// <summary>
     /// Returns the ceiling for (officeId, fiscalYear, fundingSourceId), or NotFound if unset.
     /// </summary>
+    /// <summary>
+    /// v1.9.0 — PPDO-216. Every fund flagged "Enforce AIP ceiling" other than the General Fund, shared
+    /// and office-owned alike (the caller narrows to what one office can use). Empty when none is.
+    /// </summary>
+    Task<IReadOnlyList<FundingSource>> GetEnforcedAipCeilingFundsAsync(CancellationToken ct = default);
+
     Task<ServiceResult<BudgetCeilingDto>> GetCeilingAsync(
         int officeId, int fiscalYear, int fundingSourceId, CancellationToken ct = default);
 
