@@ -70,9 +70,9 @@ public sealed class AipFormExcelService : IAipFormExcelService
     /// one-line change. Printed under TOTAL on every sheet.
     /// </summary>
     public const string UpliftNote =
-        "Note: Maintenance and Other Operating Expenses (MOOE) and Capital Outlay (CO) include a 30% " +
+        "Note: Personal Services (PS), Maintenance and Other Operating Expenses (MOOE) and Capital Outlay (CO) include a 30% " +
         "adjustment. Budget ceilings are checked against the amounts before the adjustment, so an office's " +
-        "printed MOOE and CO may exceed its ceiling by up to 30%. Amounts are rounded up to the nearest " +
+        "printed PS, MOOE and CO may exceed its ceiling by up to 30%. Amounts are rounded up to the nearest " +
         "thousand pesos, and every total is the sum of the rounded figures.";
 
     // index = column number (1-based); 0 = unused slot 0. From the province's file (§13.3).

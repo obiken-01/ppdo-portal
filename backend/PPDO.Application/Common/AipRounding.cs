@@ -18,7 +18,7 @@ namespace PPDO.Application.Common;
 /// ceiling check must use the first, because that is what the office's document will print.
 ///
 /// <h3>⚠️ This is the BASE figure, and the ceiling never sees the uplift</h3>
-/// DECISION G's +30% uplift on MOOE and CO is <b>presentation-only</b> (tracker G3). Two numbers
+/// DECISION G's +30% uplift on PS, MOOE and CO is <b>presentation-only</b> (tracker G3). Two numbers
 /// exist by design and neither is wrong:
 /// <list type="bullet">
 /// <item><b>Base, rounded</b> — what <see cref="UpToThousand"/> produces, and what the ceiling
