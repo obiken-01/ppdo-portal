@@ -307,15 +307,17 @@ export default function OfficeCeilingsPage() {
                     return (
                       <li key={l.fundId} className="py-2">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs text-slate-800" title={l.name}>
-                            {l.code}
+                          {/* Full fund name, cut with "…" when long; the title shows it whole. */}
+                          <span className="min-w-0 truncate text-xs text-slate-800" title={`${l.code} — ${l.name}`}>
+                            <span className="font-mono">{l.code}</span>
+                            <span className="ml-1.5 text-slate-600">{l.name}</span>
                           </span>
                           <MoneyInput
                             value={l.draft !== undefined ? l.draft : l.ceiling}
                             onChange={(value) => patchLine(card.officeId, l.fundId, { draft: value, error: null })}
                             disabled={card.saving}
                             placeholder="Not set"
-                            className="w-40 text-right"
+                            className="w-40 shrink-0 text-right"
                           />
                         </div>
                         {/* ⚠️ Null is absence, not zero: no AIP record for the year. */}
