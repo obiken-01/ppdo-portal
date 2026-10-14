@@ -16,13 +16,17 @@ public sealed class AipNotificationService : IAipNotificationService
     private readonly IAuditRepository   _auditRepo;
     private readonly IPermissionService _permissions;
     private readonly IAipDivisionSubmissionRepository _divisionSubmissions;
+    // PPDO-213 — the office's "PPDO edited your AIP" notice.
+    private readonly IAipReviewCommentRepository _comments;
 
     public AipNotificationService(
         IAipRepository     aipRepo,
         IAuditRepository   auditRepo,
         IPermissionService permissions,
-        IAipDivisionSubmissionRepository divisionSubmissions)
+        IAipDivisionSubmissionRepository divisionSubmissions,
+        IAipReviewCommentRepository comments)
     {
+        _comments    = comments;
         _aipRepo     = aipRepo;
         _auditRepo   = auditRepo;
         _permissions = permissions;
@@ -49,6 +53,8 @@ public sealed class AipNotificationService : IAipNotificationService
         }
 
         int  pendingForDeptHead = 0;
+        int  reviewerEdits      = 0;
+        int? reviewerEditYear   = null;
         int  divisionsSubmitted = 0;
         int? deptHeadYear       = null;
         List<AipReturnedNoticeDto> returned = [];
@@ -59,6 +65,21 @@ public sealed class AipNotificationService : IAipNotificationService
         {
             IReadOnlyList<AipOfficeStatusRow> rows = await _aipRepo.GetOfficeStatusesAsync(
                 own, PlanningStatus.Draft, firstYear, ct);
+
+            // PPDO-213 — PPDO reviewer edits nobody here has marked as seen. One GROUP BY over this
+            // office's own group rows, never anyone else's (a cross-office reviewer included: it is
+            // the edited office's notice).
+            if (rows.Count > 0)
+            {
+                IReadOnlyDictionary<int, int> pendingByGroup =
+                    await _comments.CountUnacknowledgedReviewerEditsAsync(rows.Select(r => r.GroupId).ToList(), ct);
+                foreach (AipOfficeStatusRow row in rows.OrderBy(r => r.FiscalYear))
+                {
+                    if (!pendingByGroup.TryGetValue(row.GroupId, out int n) || n == 0) continue;
+                    reviewerEdits    += n;
+                    reviewerEditYear ??= row.FiscalYear;
+                }
+            }
 
             foreach (IGrouping<(int AipRecordId, int FiscalYear), AipOfficeStatusRow> year in rows
                          .GroupBy(r => (r.AipRecordId, r.FiscalYear))
@@ -106,6 +127,7 @@ public sealed class AipNotificationService : IAipNotificationService
         }
 
         return ServiceResult<AipReviewNotificationsDto>.Ok(new AipReviewNotificationsDto(
-            pendingForPpdo, ppdoYear, pendingForDeptHead, deptHeadYear, returned, divisionsSubmitted));
+            pendingForPpdo, ppdoYear, pendingForDeptHead, deptHeadYear, returned, divisionsSubmitted,
+            reviewerEdits, reviewerEditYear));
     }
 }

@@ -158,6 +158,13 @@ public sealed class ReviewerWriteGuardCoverageTests
         // number, not an office's plan content, which is all the guard protects. Its gate is
         // CanManageOfficeCeilings, so the reviewer flag alone never reaches it.
         $"{nameof(AllocationFunctions)}.{nameof(AllocationFunctions.UpsertCeiling)}",
+
+        // v1.9.0 — PPDO-213. The edited office marks PPDO reviewer edits as seen. It stamps comment
+        // rows and touches no figures. It is here because a PPDO reviewer who sits in an office is
+        // still a member of it, and must be able to acknowledge edits made to their own office's
+        // AIP. The service refuses every caller outside that office, a reviewer included
+        // (AipReviewerEditNoticeTests).
+        $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.AcknowledgeEdits)}",
     ];
 
     /// <summary>
@@ -259,6 +266,7 @@ public sealed class ReviewerWriteGuardCoverageTests
     [Theory]
     [InlineData(nameof(AipReviewCommentFunctions.Create))]
     [InlineData(nameof(AipReviewCommentFunctions.Resolve))]
+    [InlineData(nameof(AipReviewCommentFunctions.AcknowledgeEdits))]
     public async Task CommentEndpoints_LetACrossOfficeReviewerThrough(string methodName)
     {
         string outcome = await OutcomeAsync(

@@ -61,7 +61,18 @@ public sealed class AipNotificationServiceTests
                 _divisionRows.Where(r => r.AipRecordId == recordId && offices.Contains(r.OfficeId)).ToList());
 
         return new AipNotificationService(
-            _aipRepo.Object, _auditRepo.Object, _permissions.Object, _divisionSubmissions.Object);
+            _aipRepo.Object, _auditRepo.Object, _permissions.Object, _divisionSubmissions.Object,
+            NoReviewerEdits());
+    }
+
+    /// <summary>PPDO-213's count, held at zero: these tests are about the other notices.</summary>
+    private static IAipReviewCommentRepository NoReviewerEdits()
+    {
+        Mock<IAipReviewCommentRepository> comments = new();
+        comments.Setup(r => r.CountUnacknowledgedReviewerEditsAsync(
+                It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<int, int>());
+        return comments.Object;
     }
 
     private static User Caller(int? officeId = OwnOffice) => new()

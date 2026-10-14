@@ -86,6 +86,23 @@ public sealed class AipReviewComment
     /// <summary>True while the comment still counts against the re-submit warning.</summary>
     public bool IsUnresolved => ResolvedAt is null;
 
+    /// <summary>
+    /// True for the comment the system writes when a PPDO reviewer edits an expenditure line
+    /// (v1.9.0 — PPDO-212/213). Such a comment is created resolved; the office acknowledges it
+    /// instead (<see cref="AcknowledgedAt"/>), and the dashboard notice counts the unacknowledged
+    /// ones.
+    /// </summary>
+    public bool IsReviewerEdit { get; set; }
+
+    /// <summary>
+    /// When the edited office marked this reviewer edit as seen, or null while it is pending.
+    /// ⚠️ Only ever set on <see cref="IsReviewerEdit"/> rows, and never the same thing as resolving.
+    /// </summary>
+    public DateTime? AcknowledgedAt { get; set; }
+
+    /// <summary>Who in the edited office marked it as seen.</summary>
+    public Guid? AcknowledgedById { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The office row this comment belongs to.</summary>
@@ -96,4 +113,7 @@ public sealed class AipReviewComment
 
     /// <summary>Who resolved it, if anyone.</summary>
     public User? ResolvedBy { get; set; }
+
+    /// <summary>Who marked a reviewer edit as seen, if anyone.</summary>
+    public User? AcknowledgedBy { get; set; }
 }

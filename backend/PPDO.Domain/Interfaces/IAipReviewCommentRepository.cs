@@ -55,4 +55,21 @@ public interface IAipReviewCommentRepository : IRepository<AipReviewComment>
     /// snapshot keeps its text.
     /// </summary>
     Task<int> DeleteByIdsAsync(IReadOnlyList<int> ids, CancellationToken ct = default);
+
+    /// <summary>
+    /// Unacknowledged PPDO reviewer-edit comments per office group row, computed in SQL (v1.9.0 —
+    /// PPDO-213). Groups with none are absent rather than zero. Runs on every portal page through
+    /// the notifications read, so it is a GROUP BY, never a fetch-and-count.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, int>> CountUnacknowledgedReviewerEditsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks every unacknowledged reviewer-edit comment on the given group rows as seen by
+    /// <paramref name="userId"/> at <paramref name="at"/>, in one set-based UPDATE (v1.9.0 —
+    /// PPDO-213). Returns how many rows it stamped; 0 when there was nothing pending, so a second
+    /// call is harmless. Ordinary comments and already-acknowledged rows are never touched.
+    /// </summary>
+    Task<int> AcknowledgeReviewerEditsAsync(
+        IReadOnlyList<int> aipOfficeIds, Guid userId, DateTime at, CancellationToken ct = default);
 }

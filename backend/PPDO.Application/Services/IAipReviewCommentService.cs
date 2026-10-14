@@ -72,6 +72,9 @@ public interface IAipReviewCommentService
     /// review screen. The review screen's resolver would refuse the office itself.
     /// </para>
     /// </summary>
+    Task<ServiceResult<AipReviewerEditsAcknowledgedDto>> AcknowledgeReviewerEditsAsync(
+        int aipRecordId, int officeId, User caller, CancellationToken ct = default);
+
     Task<ServiceResult<AipOfficeHistoryDto>> GetHistoryAsync(
         int aipRecordId, int officeId, User caller, CancellationToken ct = default);
 }

@@ -60,6 +60,18 @@ public sealed class AipReviewCommentConfiguration : IEntityTypeConfiguration<Aip
         builder.Property(e => e.ResolvedById)
             .HasColumnName("resolved_by_id");
 
+        // v1.9.0 — PPDO-213. A PPDO reviewer's edit comment, and the office's "seen" stamp on it.
+        builder.Property(e => e.IsReviewerEdit)
+            .HasColumnName("is_reviewer_edit")
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(e => e.AcknowledgedAt)
+            .HasColumnName("acknowledged_at");
+
+        builder.Property(e => e.AcknowledgedById)
+            .HasColumnName("acknowledged_by_id");
+
         // IsUnresolved is computed from ResolvedAt in C#; it is not a column.
         builder.Ignore(e => e.IsUnresolved);
 
@@ -67,6 +79,11 @@ public sealed class AipReviewCommentConfiguration : IEntityTypeConfiguration<Aip
         // on exactly this pair.
         builder.HasIndex(e => new { e.AipOfficeId, e.ResolvedAt })
             .HasDatabaseName("IX_aip_review_comments_office_resolved");
+
+        // The notice count runs on every portal page for the caller's own office (PPDO-213), and it
+        // filters on exactly this triple.
+        builder.HasIndex(e => new { e.AipOfficeId, e.IsReviewerEdit, e.AcknowledgedAt })
+            .HasDatabaseName("IX_aip_review_comments_office_reviewer_edit_ack");
 
         builder.HasOne(e => e.AipOffice)
             .WithMany()
@@ -88,6 +105,13 @@ public sealed class AipReviewCommentConfiguration : IEntityTypeConfiguration<Aip
             .WithMany()
             .HasForeignKey(e => e.ResolvedById)
             .HasConstraintName("FK_aip_review_comments_Users_resolved_by_id")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Restrict for the same multiple-cascade-paths reason as the two above.
+        builder.HasOne(e => e.AcknowledgedBy)
+            .WithMany()
+            .HasForeignKey(e => e.AcknowledgedById)
+            .HasConstraintName("FK_aip_review_comments_Users_acknowledged_by_id")
             .OnDelete(DeleteBehavior.Restrict);
 
         // ⚠️ No FK on (node_type, node_id) — a polymorphic anchor across three tables cannot have

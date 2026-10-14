@@ -189,6 +189,9 @@ public sealed class AipExpenditureReviewerEditTests
         Assert.Equal(ActivityId, c.NodeId);
         Assert.Equal(reviewer.Id, c.AuthorId);
         Assert.Equal(AipCommentSide.Ppdo, c.AuthorSide);
+        // PPDO-213 — flagged, so the office's notice can count it; pending until the office sees it.
+        Assert.True(c.IsReviewerEdit);
+        Assert.Null(c.AcknowledgedAt);
         // ⚠️ The point of the design: born resolved, so it never counts as an open PPDO comment.
         Assert.NotNull(c.ResolvedAt);
         Assert.Equal(reviewer.Id, c.ResolvedById);
