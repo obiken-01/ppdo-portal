@@ -160,7 +160,12 @@ introducing a rule into a codebase that already violates it.
 
 ---
 
-## S1 🔵 Neutralise spreadsheet formulas in the config CSV exports (PPDO-199, item 3)
+## S1 ✅ Neutralise spreadsheet formulas in the config CSV exports (PPDO-199, item 3)
+
+> **Handed back 2026-10-14** while demo feedback took priority; Claude built it on
+> `fix/v1.8.4-ppdo-199-csv-formulas` (`Csv.cs` + `CsvFormulaTests.cs`). The brief below is kept
+> as written. It is still a good exercise to read the finished change against it, especially how
+> `Parse` tells an added `'` from one that was already there.
 
 **Taken 2026-10-13. Backend, one file plus tests. ~1–2 hours.** The other three PPDO-199 items
 shipped without it (PR for PPDO-199), so this is the last open piece of that ticket.
