@@ -8,19 +8,19 @@
  * (`Office_Setup_Spec.md` D3), and setting twenty offices one picker-selection at a time is the
  * wrong shape for that job. Allocation still SHOWS the ceiling, read-only.
  *
- * ⚠️ **Only the General Fund tab is rendered** (D4, Ralph 2026-09-19). The per-fund tab strip is
- * built because `budget_ceilings` has been per fund since v1.4.3 and the province may carry ceilings
- * on other funds later — but the current direction is that only the GF carries one, and showing four
- * empty tabs would invite ceilings nobody asked for. Flip {@link SHOW_ALL_FUND_TABS} to reveal them;
- * everything below already works per fund.
+ * ⚠️ **Tabs: the General Fund, plus the funds finance flagged "Enforce AIP ceiling"** (v1.9.0 —
+ * PPDO-217, `Fund_Source_Ceiling_Spec.md`). ↩️ D4 (Ralph 2026-09-19) hid every fund but the GF behind
+ * a constant, because empty tabs would invite ceilings nobody asked for. That reasoning still holds,
+ * so the flag replaces the constant rather than revealing every fund: a fund that needs no ceiling
+ * never gets a tab (Ralph, 2026-10-14). With only the GF enforced the strip is not drawn at all.
  *
  * ⚠️ **A ceiling cut below what the office has already encoded is allowed** (A5-b, non-destructive).
  * The row turns amber and the office fails its own submit gate — the alternative, refusing the save,
  * would leave finance unable to record a cut that has actually happened.
  *
  * ⚠️ **Two reads per office, issued in parallel.** `ceilings` is the authority on the amount (per
- * fund); `ceiling-usage` is what the office has encoded against the GF, and is the *same* figure the
- * office's own submit gate uses, so the two screens cannot disagree. The office band's `costedInAip`
+ * fund); `ceiling-usage` is what the office has encoded against the GF and each enforced fund
+ * (`otherFunds`, PPDO-216), and is the *same* figure the office's own submit gate uses, so the two screens cannot disagree. The office band's `costedInAip`
  * was not used for that column: it is an all-funds, PS-inclusive total and would disagree. Same
  * precedent as `BulkCeilingModal`; if the province grows past a few dozen offices, this wants one
  * batch endpoint rather than a loop (`PERFORMANCE_GUIDELINES.md`).
@@ -37,12 +37,10 @@ import { allocationErrorMessage, getCeilingUsage, getCeilings, upsertCeiling } f
 import { getDashboardOffices, getFiscalYears } from "@/lib/budget-planning";
 import { budgetPlanningFallback, canOpenOfficeCeilings } from "@/lib/budget-planning-access";
 import { findGeneralFund, listFundingSources } from "@/lib/config";
+import { ceilingFundTabs, encodedForFund, officesForFundTab } from "@/lib/fund-ceilings";
 import { useMe } from "@/lib/me-cache";
 import { formatMoney } from "@/lib/money";
 import type { FundingSourceResponse, OfficeSummary } from "@/types";
-
-/** ⚠️ See the file header (D4). `true` reveals the other funds' tabs; nothing else need change. */
-const SHOW_ALL_FUND_TABS = false;
 
 interface Row {
   officeId: number;
@@ -50,7 +48,7 @@ interface Row {
   officeName: string;
   /** Null = no ceiling set for this fund. ⚠️ Rendered as "Not set", never ₱0.00. */
   ceiling: number | null;
-  /** What the office has encoded against the GF ceiling. Null = no AIP record for the year. */
+  /** What the office has encoded against this tab's fund ceiling. Null = no AIP record for the year. */
   encoded: number | null;
   /** Unsaved edit, or undefined when the row is untouched. */
   draft?: number | null;
@@ -73,15 +71,9 @@ export default function OfficeCeilingsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkNotice, setBulkNotice] = useState<string | null>(null);
 
-  // The fund tabs, in config order. Only the GF is offered until D4 is lifted, and the GF is
-  // selected outright rather than defaulting to funds[0] — config order is not a promise.
-  const tabs = useMemo(
-    () =>
-      SHOW_ALL_FUND_TABS
-        ? funds
-        : funds.filter((f) => f.id === findGeneralFund(funds)?.id),
-    [funds]
-  );
+  // The fund tabs: the GF first, then each fund flagged "Enforce AIP ceiling" (PPDO-217). Funds that
+  // need no ceiling are not offered at all.
+  const tabs = useMemo(() => ceilingFundTabs(funds), [funds]);
 
   useEffect(() => {
     if (!me) return;
@@ -95,7 +87,7 @@ export default function OfficeCeilingsPage() {
       .then((all) => {
         setFunds(all);
         // Selected outright rather than defaulting to funds[0]: config order is not a promise, and
-        // the General Fund is the one fund this page is about until D4 is lifted.
+        // the General Fund is the first tab and the one every office is held to.
         setFundId(findGeneralFund(all)?.id ?? null);
       })
       .catch(() => setError("Could not load funding sources."));
@@ -108,7 +100,8 @@ export default function OfficeCeilingsPage() {
     getDashboardOffices(fiscalYear)
       .then((offices) =>
         Promise.all(
-          offices.map(async (office: OfficeSummary) => {
+          // An office's own fund lists only that office (PPDO-217).
+          officesForFundTab(offices, funds.find((f) => f.id === fundId) ?? null).map(async (office: OfficeSummary) => {
             const [ceilings, usage] = await Promise.all([
               getCeilings(office.officeId, fiscalYear),
               getCeilingUsage(office.officeId, fiscalYear),
@@ -119,7 +112,8 @@ export default function OfficeCeilingsPage() {
               officeCode: office.officeCode,
               officeName: office.officeName,
               ceiling: own?.amount ?? null,
-              encoded: usage?.encodedBaseRounded ?? null,
+              // The tab's own fund: the GF figure, or that fund's entry in `otherFunds` (PPDO-217).
+              encoded: encodedForFund(usage, fundId),
             } satisfies Row;
           })
         )
@@ -127,7 +121,7 @@ export default function OfficeCeilingsPage() {
       .then(setRows)
       .catch(() => setError("Could not load this year's ceilings."))
       .finally(() => setLoading(false));
-  }, [fiscalYear, fundId]);
+  }, [fiscalYear, fundId, funds]);
 
   useEffect(load, [load]);
 
@@ -255,7 +249,7 @@ export default function OfficeCeilingsPage() {
     <div className="p-6 space-y-4">
       <ConfigPageHeader
         title="Office Ceilings"
-        description="The General Fund ceiling each office plans against, per fiscal year."
+        description="The ceiling each office plans against, per fiscal year: the General Fund, and any fund PPDO finance has set to enforce one."
         actions={
           <div className="flex items-center gap-2">
             {/* ⚠️ `aria-label`, never an `sr-only` label: Tailwind's `sr-only` is `position:

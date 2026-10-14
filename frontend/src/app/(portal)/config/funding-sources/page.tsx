@@ -36,6 +36,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchMe } from "@/lib/me-cache";
+import { ceilingFlagControl, ceilingFlagPayload } from "@/lib/fund-ceilings";
 import {
   configErrorMessage,
   createFundingSource,
@@ -112,6 +113,8 @@ interface FormState {
    * department head's fund is always their own office's, and the server pins it (PPDO-128).
    */
   officeId: string;
+  /** PPDO-217 — "Enforce AIP ceiling". Sent only when it changed (`ceilingFlagPayload`). */
+  enforceAipCeiling: boolean;
 }
 
 const blankForm = (): FormState => ({
@@ -122,6 +125,7 @@ const blankForm = (): FormState => ({
   noColor: true,
   aliases: "",
   officeId: "",
+  enforceAipCeiling: false,
 });
 
 // ---------------------------------------------------------------------------
@@ -140,6 +144,8 @@ export default function FundingSourceConfigPage() {
    * keeps those routes for config managers).
    */
   const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
+  // PPDO-217 — PPDO finance's office-ceiling grant: the only callers who may change the ceiling flag.
+  const [canManageOfficeCeilings, setCanManageOfficeCeilings] = useState(false);
   const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
   // For the config manager's ownership picker (PPDO-128). Never loaded for a department head.
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
@@ -178,6 +184,7 @@ export default function FundingSourceConfigPage() {
           router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
           return;
         }
+        setCanManageOfficeCeilings(data.canManageOfficeCeilings);
         // A config manager who also holds the setup grant keeps the full page — the narrower view is
         // for callers who hold ONLY the setup grant, matching the server's own test.
         if (!data.canManageConfig) {
@@ -239,6 +246,7 @@ export default function FundingSourceConfigPage() {
       noColor: source.color == null,
       aliases: source.aliases ?? "",
       officeId: source.officeId != null ? String(source.officeId) : "",
+      enforceAipCeiling: source.enforceAipCeiling,
     });
     setFormError(null);
     setCodeError(null);
@@ -293,6 +301,8 @@ export default function FundingSourceConfigPage() {
       // READS it on update, so omitting it would make every edit turn an office's fund into a
       // shared one. A department head sends nothing — the server pins their own office.
       ...(ownOfficeOnly ? {} : { officeId: form.officeId ? Number(form.officeId) : null }),
+      // PPDO-217 — only when it changed, so an edit that does not touch it can never be refused for it.
+      ...ceilingFlagPayload(editTarget?.enforceAipCeiling ?? false, form.enforceAipCeiling),
     };
 
     // ── PPDO-128: warn, then allow ──
@@ -434,7 +444,20 @@ export default function FundingSourceConfigPage() {
       header: "Code",
       sortable: true,
       className: "whitespace-nowrap",
-      render: (s) => <span className="font-mono font-medium text-slate-800">{s.code}</span>,
+      render: (s) => (
+        <span className="inline-flex items-center gap-2">
+          <span className="font-mono font-medium text-slate-800">{s.code}</span>
+          {/* PPDO-217 — the funds an office is held to a ceiling on. */}
+          {s.enforceAipCeiling && (
+            <span
+              className="rounded-full bg-info-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-800"
+              title="Enforce AIP ceiling is on: offices cannot send their AIP to PPDO while over this fund's ceiling."
+            >
+              Ceiling
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "name",
@@ -813,6 +836,35 @@ export default function FundingSourceConfigPage() {
                 <span className="font-mono">GF/20% DF</span> are never matched here.
               </p>
             </div>
+
+            {/* PPDO-217 — "Enforce AIP ceiling" (Fund_Source_Ceiling_Spec.md §6). */}
+            {(() => {
+              const control = ceilingFlagControl(editTarget, canManageOfficeCeilings);
+              return (
+                <div>
+                  <label
+                    className={`flex items-start gap-2 text-sm ${control.disabled ? "text-slate-600" : "text-slate-800"}`}
+                    title={control.note ?? undefined}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={form.enforceAipCeiling}
+                      disabled={control.disabled}
+                      onChange={(e) => setForm((f) => ({ ...f, enforceAipCeiling: e.target.checked }))}
+                    />
+                    <span>
+                      <span className="font-medium">Enforce AIP ceiling</span>
+                      {control.note && <span className="ml-2 text-xs text-slate-600">({control.note})</span>}
+                    </span>
+                  </label>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    Offices cannot send their AIP to PPDO while over this fund&rsquo;s ceiling. Set each
+                    office&rsquo;s ceiling on Office Ceilings.
+                  </p>
+                </div>
+              );
+            })()}
 
             {formError && (
               <div className="bg-danger-100 border border-danger-500/30 px-4 py-3">

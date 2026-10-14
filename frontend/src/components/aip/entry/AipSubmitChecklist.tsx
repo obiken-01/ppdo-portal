@@ -394,6 +394,27 @@ export default function AipSubmitChecklist({
         </div>
       )}
 
+      {/* PPDO-217 — one row per other fund finance flagged "Enforce AIP ceiling", in the General
+          Fund's shape. The server lists a fund only once this office has encoded on it or has a
+          ceiling for it, so an enforced fund the office never uses adds nothing here. */}
+      {ceiling?.otherFunds?.map((fund) => (
+        <div key={fund.fundingSourceId}
+          className="grid grid-cols-1 gap-px border-b border-slate-200 bg-slate-200 sm:grid-cols-3">
+          <Figure label={`${fund.code} ceiling (in thousand pesos)`}
+            value={fund.ceilingSet ? fmtThousandsReadout(fund.ceiling) : "Not set"}
+            hint={fund.ceilingSet ? undefined : "PPDO has not set this ceiling — treated as ₱0"} />
+          <Figure label={`${fund.code} encoded (MOOE + CO) (in thousand pesos)`}
+            value={fmtThousandsReadout(fund.encodedBaseRounded)}
+            hint="Rounded up to the thousand per activity, PS exempt" />
+          <Figure
+            label={`${fund.code} remaining (in thousand pesos)`}
+            value={fmtThousandsReadout(fund.remaining)}
+            negative={fund.remaining < 0}
+            hint={fund.remaining < 0 ? "Over ceiling — blocks sending to PPDO" : undefined}
+          />
+        </div>
+      ))}
+
       {/* PPDO-113 — the figures above are from the last good read, not now. Amber caution, the
           token AipActivityNameCounter uses for non-blocking warnings. Never presented as current. */}
       {ceiling && staleSince && (
