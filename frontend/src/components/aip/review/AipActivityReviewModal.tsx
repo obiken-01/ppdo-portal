@@ -265,6 +265,7 @@ export default function AipActivityReviewModal({
                     offices={offices}
                     // The office being reviewed, never the reviewer’s own.
                     proponentOfficeCode={review.officeCode || null}
+                    fundingSources={funds}
                   />
                 </div>
               </section>

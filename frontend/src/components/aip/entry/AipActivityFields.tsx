@@ -57,7 +57,8 @@ import {
   type ActivityDraft, type ActivityDraftFields,
 } from "@/lib/activity-drafts";
 import AipDraftBanner, { draftTimeLabel } from "./AipDraftBanner";
-import type { AipActivityDetail, AipConflict, OfficeResponse } from "@/types";
+import type { AipActivityDetail, AipConflict, FundingSourceResponse, OfficeResponse } from "@/types";
+import { activityFundNames } from "@/lib/aip-activity-fund";
 
 /** The form's values for a saved activity — exactly what `beginEdit` loads. */
 function formFromActivity(activity: AipActivityDetail, proponentOfficeCode: string | null): ActivityDraftFields {
@@ -75,7 +76,7 @@ function formFromActivity(activity: AipActivityDetail, proponentOfficeCode: stri
 }
 
 export default function AipActivityFields({
-  activity, canEdit, onSaved, offices, proponentOfficeCode, draftUserId = null,
+  activity, canEdit, onSaved, offices, proponentOfficeCode, draftUserId = null, fundingSources = [],
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
@@ -100,6 +101,11 @@ export default function AipActivityFields({
    * text. Null (the review screens) means no draft is read or written.
    */
   draftUserId?: string | null;
+  /**
+   * PPDO-218 — the fund list, to name the funds in the read view's "Funding source" field. Empty
+   * still shows the codes; it only loses the names.
+   */
+  fundingSources?: FundingSourceResponse[];
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
@@ -361,6 +367,13 @@ export default function AipActivityFields({
             <div className="col-span-2 sm:col-span-3">
               <Field label="Expected outputs" value={activity.expectedOutputs} />
             </div>
+            {/* PPDO-218 — the form's column (7), labelled and named. The header pill alone was
+                missed: it shows bare codes and scrolls away in the review modal. */}
+            <div className="sm:col-span-2">
+              <Field label="Funding source" value={activityFundNames(activity, fundingSources).join(", ") || null} />
+            </div>
+            {/* PPDO-218 — only when tagged; an office without divisions has nothing to show here. */}
+            {activity.divisionName && <Field label="Division" value={activity.divisionName} />}
             <Field label="CC adaptation (in thousand pesos)" value={money(activity.ccAdaptation)} />
             <Field label="CC mitigation (in thousand pesos)" value={money(activity.ccMitigation)} />
             {/* ⚠️ Not `required` — an em dash here means "no climate-change component", which is
