@@ -302,10 +302,10 @@ export default function OfficeCeilingsPage() {
                 <table className="w-full table-fixed text-sm">
                   {/* Fixed widths: a long figure must not push the table past the card edge. */}
                   <colgroup>
-                    <col className="w-20" />
-                    <col />
-                    <col className="w-32" />
-                    <col className="w-32" />
+                    <col className="w-14" />
+                    <col className="min-w-0" />
+                    <col className="w-28" />
+                    <col className="w-28" />
                   </colgroup>
                   <thead>
                     <tr className="text-xs text-slate-600">
@@ -334,11 +334,11 @@ export default function OfficeCeilingsPage() {
                             {l.error && <p className="mt-1 text-xs text-red-600">{l.error}</p>}
                           </td>
                           {/* ⚠️ Null is absence, not zero: no AIP record for the year. */}
-                          <td className="py-1.5 pl-2 text-right tabular-nums text-slate-600">
+                          <td className="truncate py-1.5 pl-2 text-right tabular-nums text-slate-600">
                             {l.encoded == null ? "—" : formatMoney(l.encoded)}
                           </td>
                           <td
-                            className={`py-1.5 pl-2 text-right tabular-nums ${
+                            className={`truncate py-1.5 pl-2 text-right tabular-nums ${
                               remaining != null && remaining < 0 ? "font-medium text-amber-700" : "text-slate-600"
                             }`}
                           >
