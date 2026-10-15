@@ -147,10 +147,21 @@ job table carries the base columns plus its own.
 | `expires_at` | datetime2 | yes | |
 
 Indexes on `initial_wfp_export_jobs`: `(fiscal_year, status)` for "active job for this year";
-`(status, claimed_at)` for the claim and stuck-job queries.
+`(status, created_at)` for the claim and stuck-job queries.
+
+↩️ **Changed in PPDO-228 (2026-10-15):**
+- The claim index is `(status, created_at)`, not `(status, claimed_at)`. The claim takes the oldest
+  Queued job; with no index in that order SQL Server sorted every Queued row under an update lock, so a
+  concurrent claimer found them all locked and got nothing (seen in `BackgroundJobClaimSqlServerTests`).
+- Decision 5 is also held by the database: a **filtered unique index** on `fiscal_year` where
+  `status IN ('Queued','Running')`. Two simultaneous requests can no longer both create a job.
+- `id` defaults to `NEXT VALUE FOR background_job_ids`; `created_at` is stamped by `AppDbContext` on save.
 
 Setting: `FileStore__Provider` = `Blob` | `Local`; `FileStore__BlobContainer` (Azure) or
-`FileStore__LocalPath` (local). Local dev defaults to `Local` under a git-ignored folder.
+`FileStore__LocalPath` (local). Local dev defaults to `Local`. ↩️ With no `LocalPath` the files go under
+the OS temp folder, **not** a folder beside the host: the Functions host restarts on any file created in
+its own folder (PPDO-228, found live). `local.settings.json.example` points at `backend/.file-store`,
+which is git-ignored.
 
 ## 6. UI states
 

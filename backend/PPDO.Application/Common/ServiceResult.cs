@@ -51,6 +51,10 @@ public sealed class ServiceResult<T>
     public static ServiceResult<T> BadRequest(string error, object? details = null)
         => new(default, error, ServiceErrorCode.BadRequest, details);
 
+    /// <summary>The thing existed but is gone for good, e.g. an expired export (PPDO-228): HTTP 410.</summary>
+    public static ServiceResult<T> Gone(string error)
+        => new(default, error, ServiceErrorCode.Gone);
+
     /// <summary>
     /// Propagates an error from a <see cref="ServiceResult{TSource}"/> of a different type.
     /// Preserves the original error code and message — used when one service method
@@ -69,4 +73,5 @@ public enum ServiceErrorCode
     Forbidden  = 2,
     Conflict   = 3,
     BadRequest = 4,
+    Gone       = 5,
 }

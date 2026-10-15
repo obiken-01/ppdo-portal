@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -266,6 +267,41 @@ var host = new HostBuilder()
         services.AddScoped<IAipReviewService, AipReviewService>();
         services.AddScoped<IAipConsolidatedService, AipConsolidatedService>();
         services.AddScoped<IAipNotificationService, AipNotificationService>();
+
+        // -- v1.9.0 — Bulk initial WFP export, background jobs (PPDO-228) -------
+        // docs/v1.9/Bulk_Initial_WFP_Export_Spec.md. One generic repository for the queue operations
+        // every job kind shares (the claim SQL lives there), one per kind for its own reads.
+        services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
+        services.AddScoped<IInitialWfpExportJobRepository, InitialWfpExportJobRepository>();
+        services.AddScoped<IInitialWfpExportService, InitialWfpExportService>();
+        // ⚠️ A stub that does nothing until PPDO-229 replaces it: jobs stay Queued.
+        services.AddScoped<IExportJobWorker, StubExportJobWorker>();
+
+        // The file store: where finished ZIPs are kept. Chosen once, here, by FileStore__Provider;
+        // nothing else knows which one is in use. Local is the default, so a dev machine needs no
+        // setting (files go under the OS temp folder, see FileStoreSettings.LocalPath); Azure sets Blob
+        // (spec §8). The Blob store builds its own Azure client, so no Azure type appears here.
+        IConfigurationSection fileStoreSection = context.Configuration.GetSection(FileStoreSettings.SectionName);
+        services.Configure<FileStoreSettings>(fileStoreSection);
+        FileStoreSettings fileStore = fileStoreSection.Get<FileStoreSettings>() ?? new FileStoreSettings();
+
+        if (string.Equals(fileStore.Provider, FileStoreSettings.LocalProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IFileStore, LocalFileStore>();
+        }
+        else if (string.Equals(fileStore.Provider, FileStoreSettings.BlobProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            string storage = context.Configuration["AzureWebJobsStorage"]
+                ?? throw new InvalidOperationException("FileStore__Provider is Blob but AzureWebJobsStorage is not set.");
+            if (string.IsNullOrWhiteSpace(fileStore.BlobContainer))
+                throw new InvalidOperationException("FileStore__Provider is Blob but FileStore__BlobContainer is not set.");
+            services.AddSingleton<IFileStore>(new BlobFileStore(storage, fileStore.BlobContainer));
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"FileStore__Provider '{fileStore.Provider}' is not known. Use Local or Blob.");
+        }
     })
     .ConfigureLogging((context, logging) =>
     {

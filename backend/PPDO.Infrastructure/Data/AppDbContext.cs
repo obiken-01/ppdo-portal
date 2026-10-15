@@ -121,6 +121,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<InvestmentProposalComment> InvestmentProposalComments { get; set; } = null!;
     public DbSet<Notification> Notifications { get; set; } = null!;
 
+    // ── v1.9.0 — Background jobs (PPDO-228). TPC: one table per kind, none for the base ──
+    public DbSet<BackgroundJob> BackgroundJobs { get; set; } = null!;
+    public DbSet<InitialWfpExportJob> InitialWfpExportJobs { get; set; } = null!;
+
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 
     public DbSet<PartnerApiKey> PartnerApiKeys { get; set; } = null!;

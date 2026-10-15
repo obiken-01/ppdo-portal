@@ -22,6 +22,8 @@ namespace PPDO.Infrastructure.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.HasSequence("background_job_ids");
+
             modelBuilder.Entity("PPDO.Domain.Entities.Account", b =>
                 {
                     b.Property<int>("Id")
@@ -934,6 +936,62 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_audit_log_table_record");
 
                     b.ToTable("audit_log", (string)null);
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.BackgroundJob", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("NEXT VALUE FOR [background_job_ids]");
+
+                    SqlServerPropertyBuilderExtensions.UseSequence(b.Property<int>("Id"), "background_job_ids");
+
+                    b.Property<int>("Attempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime?>("ClaimedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("finished_at");
+
+                    b.Property<DateTime?>("HeartbeatAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("heartbeat_at");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasColumnName("message");
+
+                    b.Property<Guid>("RequestedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("requested_by_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestedById");
+
+                    b.ToTable((string)null);
+
+                    b.UseTpcMappingStrategy();
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.BudgetCeiling", b =>
@@ -4180,6 +4238,53 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("wfp_records", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.InitialWfpExportJob", b =>
+                {
+                    b.HasBaseType("PPDO.Domain.Entities.BackgroundJob");
+
+                    b.Property<int>("DoneCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("done_count");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("FileKey")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasColumnName("file_key");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int")
+                        .HasColumnName("fiscal_year");
+
+                    b.Property<string>("ProblemsJson")
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("problems_json");
+
+                    b.Property<int>("TotalCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("total_count");
+
+                    b.HasIndex("FiscalYear")
+                        .IsUnique()
+                        .HasDatabaseName("IX_initial_wfp_export_jobs_fiscal_year_active")
+                        .HasFilter("[status] IN (N'Queued', N'Running')");
+
+                    b.HasIndex("FiscalYear", "Status")
+                        .HasDatabaseName("IX_initial_wfp_export_jobs_fiscal_year_status");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("IX_initial_wfp_export_jobs_status_created_at");
+
+                    b.ToTable("initial_wfp_export_jobs", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.AipActivity", b =>
                 {
                     b.HasOne("PPDO.Domain.Entities.Division", "Division")
@@ -4476,6 +4581,17 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_audit_log_Users_changed_by");
 
                     b.Navigation("ChangedBy");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.BackgroundJob", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RequestedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.BudgetCeiling", b =>

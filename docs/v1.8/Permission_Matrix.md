@@ -352,6 +352,14 @@ Pinned by `PermissionMatrixTests.InitialWfp_WhoReadsWhichOffice` (the office row
 `WfpInitialReportTests` (gate, scope and division through the service) and `WfpReportFunctionsTests`
 (the FY ≤ 2027 gate is still `CanAccessWfp`).
 
+**Bulk export of every office's initial WFP (v1.9.0 — PPDO-228).** `…/wfp/report/bulk-exports` (request,
+latest, by id, download) is the **PPDO** half of the rule above only: `CanAccessWfp`, the readers who reach
+every office ([Bulk_Initial_WFP_Export_Spec.md](../v1.9/Bulk_Initial_WFP_Export_Spec.md) decision 4).
+Office users keep their per-office export and get 403 on all four. Checked in the handler and again in
+`InitialWfpExportService`. Jobs are per fiscal year, so any `CanAccessWfp` holder reads any job. Not
+subject to `ReviewerWriteGuard`: queuing a download changes no plan content. Pinned by
+`InitialWfpExportServiceTests` and `WfpBulkExportFunctionsTests`.
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)

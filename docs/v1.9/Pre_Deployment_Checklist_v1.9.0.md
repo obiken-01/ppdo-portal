@@ -1,7 +1,7 @@
 ---
 status: draft
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-224
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-224, PPDO-228
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
@@ -16,7 +16,7 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, P
 
 - [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
   `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-221 there are four. Re-check rather than trust this page:
+- [ ] **Migration count.** As of PPDO-228 there are five. Re-check rather than trust this page:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -71,6 +71,21 @@ recipient per event, behind the top-bar bell.
 
 Additive and empty at creation. **Nothing is back-filled**: the bell starts empty on deploy (spec §8).
 
+`20261015084843_AddInitialWfpExportJobs` (PPDO-228): the bulk initial WFP export's job queue
+([Bulk_Initial_WFP_Export_Spec.md](Bulk_Initial_WFP_Export_Spec.md) §5). A **sequence** and a **new table**:
+
+| Change | Detail |
+|---|---|
+| Sequence `background_job_ids` | Ids for every job table (EF Core TPC: one table per job kind, ids unique across all of them) |
+| Table `initial_wfp_export_jobs` | `id` (`DEFAULT NEXT VALUE FOR background_job_ids`), `status`, `requested_by_id`, `created_at`, `claimed_at`, `heartbeat_at`, `attempts`, `message`, `finished_at`, `fiscal_year`, `done_count`, `total_count`, `problems_json`, `file_key`, `expires_at` |
+| FK `requested_by_id` → `Users.Id` | `ON DELETE RESTRICT` |
+| Indexes | `IX_initial_wfp_export_jobs_fiscal_year_status`; `IX_initial_wfp_export_jobs_status_created_at` (the claim); **filtered unique** `IX_initial_wfp_export_jobs_fiscal_year_active` on `fiscal_year` where `status IN ('Queued','Running')`: one active export per year |
+
+Additive and empty at creation.
+
+⚠️ The filtered index needs `QUOTED_IDENTIFIER ON` for any write to the table. EF and the app always
+connect that way; a hand-run `sqlcmd` does not unless given `-I`.
+
 ### Steps (UAT first, then production)
 
 - [ ] ⚠️ **Run it BEFORE the code deploys.** The new code reads `is_reviewer_edit` on every portal page
@@ -78,7 +93,8 @@ Additive and empty at creation. **Nothing is back-filled**: the bell starts empt
   kind of dependency: the proposals list and Finalize read `investment_proposal_comments`, so code
   without the table fails both. So does PPDO-221: commenting on a proposal, every AIP hand-off and every
   PPDO reviewer edit write `notifications` in the same save, so code without the table fails all of
-  them. **CI does not run migrations.**
+  them. PPDO-228's endpoints read `initial_wfp_export_jobs`, and its 30-second timer starts with the
+  code. **CI does not run migrations.**
 - [ ] **Apply.** From `backend/`, with `SqlConnectionString` pointing at the target database:
 
   ```bash
@@ -109,6 +125,15 @@ Additive and empty at creation. **Nothing is back-filled**: the bell starts empt
   -- expect PK_notifications and IX_notifications_user_read_created
   ```
 
+- [ ] **Verify (PPDO-228).** The sequence and table exist, the table is empty, the active-job index is filtered:
+
+  ```sql
+  SELECT name, CAST(current_value AS int) AS current_value FROM sys.sequences WHERE name = 'background_job_ids';
+  SELECT COUNT(*) AS jobs FROM initial_wfp_export_jobs;   -- expect 0
+  SELECT name, is_unique, filter_definition FROM sys.indexes WHERE object_id = OBJECT_ID('initial_wfp_export_jobs');
+  -- expect IX_..._fiscal_year_active: is_unique 1, filter ([status]=N'Queued' OR [status]=N'Running')
+  ```
+
 - [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
 
   ```sql
@@ -121,10 +146,31 @@ Additive and empty at creation. **Nothing is back-filled**: the bell starts empt
 
 ### Rollback
 
-`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all four migrations' columns,
-indexes and the `investment_proposal_comments` and `notifications` tables. Run it only **after** rolling the code back,
+`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all five migrations' columns,
+indexes, the `investment_proposal_comments`, `notifications` and `initial_wfp_export_jobs` tables and the
+`background_job_ids` sequence. Run it only **after** rolling the code back,
 because the code needs them. Acknowledgements and reviewer-edit flags recorded since the deploy are
-lost, and so is **every Investment Proposal comment** (PPDO-219) and **every notification** (PPDO-221). The AIP comments themselves remain.
+lost, and so is **every Investment Proposal comment** (PPDO-219), **every notification** (PPDO-221) and the
+**export job history** (PPDO-228; finished ZIPs left in Blob storage then belong to no job: delete the
+`initial-wfp-exports/` folder in the container). The AIP comments themselves remain.
+
+### File storage (PPDO-228)
+
+Finished bulk-export ZIPs are kept in Blob storage for 7 days. Set this up **before** the code deploys.
+⚠️ With no `FileStore__Provider` the app falls back to `Local`, a folder in the instance's temp
+directory: it starts fine, but each instance has its own folder and loses it on restart, so downloads
+would randomly answer "expired". `Blob` without a container name, or an unknown provider, stops the app
+at startup instead.
+
+- [ ] **Create the container** in `ppdoportalstorage` (the `AzureWebJobsStorage` account), private
+  access: e.g. `wfp-exports` (UAT: `wfp-exports-uat` if UAT shares the account).
+- [ ] **App settings** on `ppdo-portal-api-sea` (and the UAT Function App):
+  `FileStore__Provider` = `Blob`, `FileStore__BlobContainer` = the container's name. Leave
+  `FileStore__LocalPath` unset in Azure.
+- [ ] **No other new setting.** The Blob store uses the existing `AzureWebJobsStorage` connection.
+
+⚠️ Until PPDO-229 ships the worker, the timer runs a stub: a requested export stays **Queued** and nothing
+is written to the container. Ship PPDO-228 and PPDO-229 together, or expect that.
 
 ## 2. Tell people first
 
@@ -181,6 +227,12 @@ lost, and so is **every Investment Proposal comment** (PPDO-219) and **every not
   as done yet." Once it is Consolidated: each fund block's net equals the office's AIP total for that fund
   (base figures), PS lines carry no reserve, and the export's title row reads "INITIAL WFP (FROM AIP)". As a
   user of that office the report opens for their own office; another office's id answers 404.
+
+- [ ] **Bulk export plumbing (PPDO-228).** As `ppdo.finance`: `POST /api/budget-planning/wfp/report/bulk-exports`
+  `{ "fiscalYear": 2027 }` is 400; for a year with no office Consolidated it is 409 and no row is created;
+  for a year with one it is 202 and a Queued job, and a second POST is 200 with the **same** id. As an office
+  user, every bulk-exports call is 403. `GET …/bulk-exports?fiscalYear=` for a year with no job is 204. In
+  Application Insights, `Functions.ExportJobTimer` runs every 30 s and succeeds.
 
 ## Rollback summary
 
