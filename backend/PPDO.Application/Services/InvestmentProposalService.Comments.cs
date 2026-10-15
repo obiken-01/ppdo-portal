@@ -16,6 +16,10 @@ public sealed partial class InvestmentProposalService
     public const string CommentTooLongMessage  = "A comment is at most 2,000 characters.";
     public const string AlreadyResolvedMessage = "This comment is already resolved.";
     public const string CommentNotFoundMessage = "Comment not found.";
+    public const string ParentNotFoundMessage     = "The comment to reply to was not found on this proposal.";
+    public const string ReplyToReplyMessage       = "Reply to the thread's first comment.";
+    public const string ThreadResolvedMessage     = "This thread is resolved. Start a new one.";
+    public const string HeadOnlyResolveMessage    = "Only a thread's first comment can be resolved.";
     public const string OnlyPpdoResolvesMessage   = "Only PPDO can resolve a PPDO comment.";
     public const string OnlyOfficeResolvesMessage = "Only the proposal's office can resolve an Office comment.";
 
@@ -36,7 +40,7 @@ public sealed partial class InvestmentProposalService
     }
 
     public async Task<ServiceResult<ProposalCommentDto>> AddCommentAsync(
-        int proposalId, string? body, User caller, CancellationToken ct = default)
+        int proposalId, string? body, int? parentCommentId, User caller, CancellationToken ct = default)
     {
         // Scope first: a proposal the caller cannot see is a 404 whatever the body says.
         (InvestmentProposal? proposal, ProjectContext? ctx) = await LoadReadableAsync(proposalId, caller, ct);
@@ -46,10 +50,24 @@ public sealed partial class InvestmentProposalService
         if (text.Length == 0) return ServiceResult<ProposalCommentDto>.BadRequest(CommentRequiredMessage);
         if (text.Length > MaxCommentLength) return ServiceResult<ProposalCommentDto>.BadRequest(CommentTooLongMessage);
 
+        // A reply goes under an OPEN HEAD of this proposal. Anyone who can read the proposal may reply,
+        // from either side; the reply carries its author's own side.
+        if (parentCommentId is int parentId)
+        {
+            InvestmentProposalComment? parent = await _comments.GetByIdAsync(parentId, ct);
+            if (parent is null || parent.ProposalId != proposal.Id)
+                return ServiceResult<ProposalCommentDto>.BadRequest(ParentNotFoundMessage);
+            if (!parent.IsHead)
+                return ServiceResult<ProposalCommentDto>.BadRequest(ReplyToReplyMessage);
+            if (!parent.IsOpen)
+                return ServiceResult<ProposalCommentDto>.BadRequest(ThreadResolvedMessage);
+        }
+
         ProposalCommentSide side = SideOf(caller, ctx);
         InvestmentProposalComment comment = new()
         {
             ProposalId = proposal.Id,
+            ParentCommentId = parentCommentId,
             Body       = text,
             AuthorSide = side,
             AuthorId   = caller.Id,
@@ -79,7 +97,11 @@ public sealed partial class InvestmentProposalService
         if (comment is null || comment.ProposalId != proposal.Id)
             return ServiceResult<ProposalCommentDto>.NotFound(CommentNotFoundMessage);
 
-        // ⚠️ The side rule. Only the side that wrote it resolves it; otherwise the office could clear
+        // Resolving closes a THREAD, so it is the head's act. A reply is never resolved on its own.
+        if (!comment.IsHead)
+            return ServiceResult<ProposalCommentDto>.BadRequest(HeadOnlyResolveMessage);
+
+        // ⚠️ The side rule. Only the side that started the thread resolves it; otherwise the office could clear
         // PPDO's remark and the Finalize gate would be self-marking.
         ProposalCommentSide side = SideOf(caller, ctx);
         if (side != comment.AuthorSide)
@@ -113,8 +135,8 @@ public sealed partial class InvestmentProposalService
             : ProposalCommentSide.Ppdo;
 
     private static ProposalCommentDto MapComment(InvestmentProposalComment c, ProposalCommentSide callerSide) => new(
-        c.Id, c.Body, c.AuthorSide.ToString(), c.Author?.FullName ?? "Unknown",
+        c.Id, c.ParentCommentId, c.Body, c.AuthorSide.ToString(), c.Author?.FullName ?? "Unknown",
         DateTime.SpecifyKind(c.CreatedAt, DateTimeKind.Utc),
         AsUtc(c.ResolvedAt), c.ResolvedBy?.FullName,
-        CanResolve: c.IsOpen && callerSide == c.AuthorSide);
+        CanResolve: c.IsHead && c.IsOpen && callerSide == c.AuthorSide);
 }

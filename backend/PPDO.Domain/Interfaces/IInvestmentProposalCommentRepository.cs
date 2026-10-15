@@ -14,10 +14,10 @@ public interface IInvestmentProposalCommentRepository
     /// <summary>One comment, <b>tracked</b> so it can be resolved in place. Null when there is none.</summary>
     Task<InvestmentProposalComment?> GetByIdAsync(int id, CancellationToken ct = default);
 
-    /// <summary>The proposal's open comments: one <c>COUNT</c> (the Finalize gate).</summary>
+    /// <summary>The proposal's open <b>head</b> comments, replies excluded: one <c>COUNT</c> (the Finalize gate).</summary>
     Task<int> CountOpenAsync(int proposalId, CancellationToken ct = default);
 
-    /// <summary>Open comments per proposal, for the list pill: one grouped query. Proposals with none are absent.</summary>
+    /// <summary>Open head comments per proposal, for the list pill: one grouped query. Proposals with none are absent.</summary>
     Task<IReadOnlyDictionary<int, int>> CountOpenByProposalIdsAsync(
         IReadOnlyList<int> proposalIds, CancellationToken ct = default);
 

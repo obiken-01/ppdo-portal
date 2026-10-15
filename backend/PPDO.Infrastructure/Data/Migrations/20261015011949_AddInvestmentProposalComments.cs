@@ -18,6 +18,7 @@ namespace PPDO.Infrastructure.Data.Migrations
                     id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     proposal_id = table.Column<int>(type: "int", nullable: false),
+                    parent_comment_id = table.Column<int>(type: "int", nullable: true),
                     body = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
                     author_side = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
                     author_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
@@ -41,6 +42,11 @@ namespace PPDO.Infrastructure.Data.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
+                        name: "FK_investment_proposal_comments_investment_proposal_comments_parent_comment_id",
+                        column: x => x.parent_comment_id,
+                        principalTable: "investment_proposal_comments",
+                        principalColumn: "id");
+                    table.ForeignKey(
                         name: "FK_investment_proposal_comments_investment_proposals_proposal_id",
                         column: x => x.proposal_id,
                         principalTable: "investment_proposals",
@@ -52,6 +58,11 @@ namespace PPDO.Infrastructure.Data.Migrations
                 name: "IX_investment_proposal_comments_author_id",
                 table: "investment_proposal_comments",
                 column: "author_id");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_investment_proposal_comments_parent_comment_id",
+                table: "investment_proposal_comments",
+                column: "parent_comment_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_investment_proposal_comments_proposal_resolved",

@@ -46,14 +46,16 @@ Additive only: no existing value changes, so no baseline sums are needed.
 Additive. Every other fund stays unenforced until finance turns it on, so no office's checks change
 at deploy time.
 
-`20261015004606_AddInvestmentProposalComments` (PPDO-219): a **new table**, `investment_proposal_comments`
+`20261015011949_AddInvestmentProposalComments` (PPDO-219): a **new table**, `investment_proposal_comments`
 (`id`, `proposal_id`, `body nvarchar(2000)`, `author_side`, `author_id`, `created_at`, `resolved_at`,
-`resolved_by_id`).
+`resolved_by_id`, `parent_comment_id`). Threaded: a null `parent_comment_id` is a head comment, and only
+open heads block Finalize.
 
 | Change | Detail |
 |---|---|
 | FK `proposal_id` → `investment_proposals.id` | `ON DELETE CASCADE`: deleting a Draft proposal deletes its comments |
 | FKs `author_id`, `resolved_by_id` → `Users.Id` | `ON DELETE RESTRICT` |
+| FK `parent_comment_id` → the same table | `NO ACTION`; the proposal cascade still removes a head and its replies in one delete |
 | Index | `IX_investment_proposal_comments_proposal_resolved` on `(proposal_id, resolved_at)`, plus the two user-FK indexes |
 
 Additive only and empty at creation: no existing row changes, so no baseline sums are needed.
@@ -84,7 +86,7 @@ Additive only and empty at creation: no existing row changes, so no baseline sum
   SELECT COUNT(*) AS comments FROM investment_proposal_comments;   -- expect 0
   SELECT name, delete_referential_action_desc FROM sys.foreign_keys
   WHERE parent_object_id = OBJECT_ID('investment_proposal_comments');
-  -- expect proposal_id -> CASCADE; author_id and resolved_by_id -> NO_ACTION
+  -- expect proposal_id -> CASCADE; author_id, resolved_by_id and parent_comment_id -> NO_ACTION
   ```
 
 - [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
@@ -118,9 +120,9 @@ lost, and so is **every Investment Proposal comment** (PPDO-219). The AIP commen
   Set those offices' ceilings on Office Ceilings straight after turning the flag on.
 
 - [ ] **Office encoders, department heads and PPDO reviewers (PPDO-219):** a proposal now has a
-  comments thread. An **open** comment blocks **Finalize**, and only the side that wrote a comment
-  (PPDO or the office) can resolve it, so an open PPDO comment holds the office's Finalize until a PPDO
-  reviewer resolves it.
+  comments section made of threads. Either side may reply to an open thread. An **open thread** blocks
+  **Finalize**, and only the side that started it (PPDO or the office) can resolve it, so an open PPDO
+  thread holds the office's Finalize until a PPDO reviewer resolves it.
 
 ## 3. After the deploy (UAT, then production)
 
@@ -133,8 +135,9 @@ lost, and so is **every Investment Proposal comment** (PPDO-219). The AIP commen
 - [ ] A user of another office sees none of it.
 - [ ] **Proposal comments (PPDO-219).** As an office encoder, `POST` a comment on a Draft proposal: it
   is side `Office`, open. As `ppdo.finance`, comment on another office's proposal: side `Ppdo`.
-  Finalize as the office is refused with "Resolve the 1 open comment before finalizing." (409, nothing
-  changes). The office cannot resolve the PPDO comment (403); PPDO resolves it, the office resolves its
+  Reply to it from the other side (allowed); a reply to a reply, or to a resolved thread, is a 400, and
+  so is resolving a reply. Finalize as the office is refused with "Resolve the 1 open comment before
+  finalizing." (409, nothing changes; replies are not counted). The office cannot resolve the PPDO comment (403); PPDO resolves it, the office resolves its
   own, and Finalize then succeeds. A user of another office gets 404 on the thread.
 
 ## Rollback summary
