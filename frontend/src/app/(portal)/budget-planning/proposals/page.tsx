@@ -176,7 +176,22 @@ export default function InvestmentProposalsPage() {
       key: "projectCost", header: "Cost", align: "right", className: "whitespace-nowrap tabular-nums",
       render: (r) => `₱${formatMoney(r.projectCost)}`,
     },
-    { key: "status", header: "Status", render: (r) => <ProposalStatusPill status={r.status} /> },
+    {
+      key: "status", header: "Status",
+      render: (r) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <ProposalStatusPill status={r.status} />
+          {r.openCommentCount > 0 && (
+            <span
+              className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-amber-500"
+              title="Open comment threads. Resolve them before finalizing."
+            >
+              {r.openCommentCount} open
+            </span>
+          )}
+        </span>
+      ),
+    },
     {
       key: "updatedAt", header: "Updated", className: "whitespace-nowrap text-xs",
       render: (r) => r.updatedAt ? (

@@ -39,6 +39,8 @@ import type { Proposal, ProposalContent } from "@/types";
 import ProposalRail from "./ProposalRail";
 import ProposalSectionCard, { SectionSkeleton, primaryBtn, secondaryBtn, type SectionStatus } from "./ProposalSectionCard";
 import ProposalWorkPlanEditor from "./ProposalWorkPlanEditor";
+import ProposalComments, { COMMENTS_PANEL_ID } from "./ProposalComments";
+import { openCommentsNote } from "@/lib/proposal-comments";
 import AnnexH1Preview from "./AnnexH1Preview";
 import {
   SectionA, SectionB, SectionC, SectionD, SectionE, SectionF, SectionI, SectionJ, SectionK, SectionL, SectionM, SectionS,
@@ -119,6 +121,9 @@ export default function ProposalEditor({
   const [collapsed, setCollapsed] = useState<Set<SectionKey>>(() => new Set());
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // PPDO-220: open comment threads (from the panel) and a bump that makes the panel re-read.
+  const [openThreads, setOpenThreads] = useState(0);
+  const [commentsReload, setCommentsReload] = useState(0);
   // The section the reader last worked in — what Ctrl+S saves in the all-cards view.
   const lastTouched = useRef<SectionKey>("A");
 
@@ -265,6 +270,13 @@ export default function ProposalEditor({
         onLifecycle();
       } else {
         toast.error(outcome.message);
+        // PPDO-220: Finalize refused for open comments (a 409 with no row version). Re-read the thread
+        // and bring the panel into view, so the reader sees what is open.
+        if (outcome.kind === "failed" && outcome.status === 409) {
+          setCommentsReload((n) => n + 1);
+          requestAnimationFrame(() =>
+            document.getElementById(COMMENTS_PANEL_ID)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        }
       }
     } finally {
       setBusy(false);
@@ -385,10 +397,17 @@ export default function ProposalEditor({
             )}
             <button type="button" onClick={startExport} disabled={busy} className={secondaryBtn}>Export Word</button>
             {proposal.canEdit && !isFinal && (
-              <button type="button" onClick={() => setDialog({ kind: "finalize" })} disabled={busy || dirtyKeys.length > 0}
-                title={dirtyKeys.length > 0 ? "Save or discard every section first." : undefined} className={primaryBtn}>
-                Finalize
-              </button>
+              <div className="flex flex-col items-end">
+                <button type="button" onClick={() => setDialog({ kind: "finalize" })} disabled={busy || dirtyKeys.length > 0}
+                  title={dirtyKeys.length > 0 ? "Save or discard every section first." : undefined} className={primaryBtn}>
+                  Finalize
+                </button>
+                {openThreads > 0 && (
+                  <a href={`#${COMMENTS_PANEL_ID}`} className="mt-0.5 text-xs text-slate-600 hover:underline">
+                    {openCommentsNote(openThreads)}
+                  </a>
+                )}
+              </div>
             )}
             {isFinal && proposal.canReopen && (
               <button type="button" onClick={() => setDialog({ kind: "reopen" })} disabled={busy} className={secondaryBtn}>Reopen</button>
@@ -438,7 +457,7 @@ export default function ProposalEditor({
       )}
 
       {/* ── Rail + sections ── */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[14rem_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[14rem_1fr] xl:grid-cols-[14rem_1fr_22rem]">
         <div className="lg:sticky lg:top-28 lg:self-start">
           <ProposalRail current={oneAtATime ? current : null} statuses={statuses} onSelect={goTo} loading={false} />
         </div>
@@ -450,6 +469,10 @@ export default function ProposalEditor({
             </div>
           )}
           {oneAtATime ? card(current) : SECTIONS.map((s) => card(s.key))}
+        </div>
+        {/* Comments: a third column on wide screens, below the sections otherwise (spec §6). */}
+        <div className="min-w-0 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-28 xl:self-start">
+          <ProposalComments key={proposal.id} proposalId={proposal.id} onOpenCount={setOpenThreads} reloadSignal={commentsReload} />
         </div>
       </div>
 
