@@ -937,7 +937,7 @@ export interface EnsureWfpActivityRequest {
 export interface WfpActivityRefDto {
   wfpRecordId: number;
   wfpActivityId: number;
-  wfpStatus: "Draft" | "Final";
+  wfpStatus: "Draft" | "Final" | "Consolidated";
 }
 
 // ── WFP Report preview (RAL-132) ───────────────────────────────────────────────
@@ -1026,6 +1026,11 @@ export interface WfpReportDto {
   officeName: string;
   reserveRate: number;
   fundSourceReports: WfpReportFundSourceDto[];
+  /**
+   * PPDO-225 — `"Aip"` on the initial WFP (an entered year, read off the consolidated AIP). ⚠️ The
+   * server leaves it OUT of the FY ≤ 2027 JSON, so a missing value means `"Wfp"`.
+   */
+  source?: "Wfp" | "Aip";
 }
 
 // ── PPMP Report preview (RAL-183) ──────────────────────────────────────────────
