@@ -195,6 +195,46 @@ red-test it: remove your prefix and watch it fail. Finally, download a config CS
 
 ---
 
+## J1 📖 Background job worker for the bulk initial WFP export (PPDO-229) — read, not write
+
+> **Changed 2026-10-15:** Ralph decided Claude codes it. Kept as a **code-reading exercise**: read
+> the merged worker against the brief below, especially the per-office catch, the heartbeat and
+> the log scope.
+
+**Banked 2026-10-15, at Ralph's request. Backend, one class plus tests. ~1 day.** Starts once
+PPDO-228 (the plumbing: job tables, claim SQL, `IFileStore`, timer wrapper, a stub worker) is merged.
+Spec: `docs/v1.9/Bulk_Initial_WFP_Export_Spec.md` (decisions 7–12, §3, §11).
+
+You write `ExportJobWorker.RunOnceAsync` in `PPDO.Application`: one pass that cleans up expired
+ZIPs, puts stuck jobs back in the queue (with an attempt cap), claims one queued job, builds each
+office's Excel as the person who asked for it, zips them with a README of skipped offices, reports
+progress as it goes, and finishes the job.
+
+- **Where:** replace the stub `IExportJobWorker` that PPDO-228 registers.
+- **The catch, and the real exercise:** one office failing must not lose the other eleven (catch per
+  office, not per job); a crash mid-job must be recoverable (heartbeat + stuck-job rule); and the
+  class must not know it runs on Azure (only `IFileStore` and the repository).
+- **Siblings:** the per-office export in `WfpReportFunctions` (the build you loop over),
+  `NotificationService` (the bell entry), `InvestmentProposalService.Comments` (ServiceResult +
+  structured logging style).
+
+- **You already know this pattern** from DCE (a Windows service polling job tables). New here: the
+  job tables share an EF Core TPC base class, and logging is structured: wrap each job in
+  `_logger.BeginScope(new { JobId, JobKind })` and search by `JobId` in Seq instead of reading log
+  files (spec decision 15).
+
+**What you'll learn:** the queue-and-worker pattern without a message broker (a database table as the
+queue, atomic claiming, heartbeats, retries with a cap), failure isolation, and keeping
+infrastructure behind an interface so the host can change.
+
+**Verify:** `dotnet test --filter ExportJobWorker` with fakes for the repository, file store and
+report service: one office throws → ZIP has the rest + README; a job with an old heartbeat goes back
+to Queued, and a third failure marks it Failed; an expired job's file is deleted. Red-test each:
+remove the per-office catch and watch the isolation test fail. Then run it locally (LocalFileStore)
+and open the ZIP.
+
+---
+
 ## ✅ Done
 
 Hand-coded tickets that have merged. They were picked during normal ticket planning rather than
