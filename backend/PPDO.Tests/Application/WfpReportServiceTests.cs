@@ -138,9 +138,13 @@ public sealed class WfpReportServiceTests
                 return map;
             });
 
+        // PPDO-224's two dependencies are only read by the initial-WFP path (WfpInitialReportTests);
+        // a strict mock fails any FY <= 2027 test that reaches them.
         WfpReportService sut = new(
             aipRepo.Object, wfpRepo.Object, expenditures.Object,
-            officeRepo.Object, accountRepo.Object);
+            officeRepo.Object, accountRepo.Object,
+            new Mock<IAipExpenditureRepository>(MockBehavior.Strict).Object,
+            new Mock<IPermissionService>(MockBehavior.Strict).Object);
 
         return new Fixture(sut, aipRepo, wfpRepo, expenditures, offices, accounts);
     }
