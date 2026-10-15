@@ -195,7 +195,11 @@ red-test it: remove your prefix and watch it fail. Finally, download a config CS
 
 ---
 
-## J1 🟢 Background job worker for the bulk initial WFP export (PPDO-229)
+## J1 📖 Background job worker for the bulk initial WFP export (PPDO-229) — read, not write
+
+> **Changed 2026-10-15:** Ralph decided Claude codes it. Kept as a **code-reading exercise**: read
+> the merged worker against the brief below, especially the per-office catch, the heartbeat and
+> the log scope.
 
 **Banked 2026-10-15, at Ralph's request. Backend, one class plus tests. ~1 day.** Starts once
 PPDO-228 (the plumbing: job tables, claim SQL, `IFileStore`, timer wrapper, a stub worker) is merged.

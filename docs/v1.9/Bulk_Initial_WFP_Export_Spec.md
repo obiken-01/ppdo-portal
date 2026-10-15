@@ -1,7 +1,7 @@
 ---
 status: accepted — 2026-10-15
 version: v1.9.0
-tickets: PPDO-227 (epic) — PPDO-228 (T1 plumbing), PPDO-229 (T2 worker, Ralph), PPDO-230 (T3 UI)
+tickets: PPDO-227 (epic) — PPDO-228 (T1 plumbing), PPDO-229 (T2 worker), PPDO-230 (T3 UI)
 supersedes: —
 ---
 
@@ -10,7 +10,7 @@ supersedes: —
 Ralph, 2026-10-15: the initial WFP report stays per office (`Initial_WFP_Report_Spec.md`); add a
 **Download all** that produces one ZIP with one Excel file per Consolidated office. Built as a
 background job, **host-portable** (nothing Azure-specific in the core, in case the portal leaves
-Azure). Ralph hand-codes the worker.
+Azure). Claude implements all of it; Ralph reviews the worker's code closely.
 
 ## 1. Goal
 
@@ -181,7 +181,7 @@ On the Report page, initial WFP view, PPDO only:
 | Ticket | Scope | Who / model |
 |---|---|---|
 | T1 Plumbing | `BackgroundJob` base + `InitialWfpExportJob` (TPC) + migration; generic job repository (claim SQL, stuck-job and expiry queries) ; `IFileStore` + `LocalFileStore` + `BlobFileStore`; settings; POST/GET/download endpoints; TimerTrigger wrapper; interface `IExportJobWorker` with a stub | Claude, Opus (storage, concurrency SQL) |
-| T2 Worker | `ExportJobWorker.RunOnceAsync`: cleanup, recover stuck, claim, build each office as the requester, zip + README, progress/heartbeat, Done/DoneWithProblems/Failed, bell notification; tests with fakes | **Ralph hand-codes** (guidance ladder 1) |
+| T2 Worker | `ExportJobWorker.RunOnceAsync`: cleanup, recover stuck, claim, build each office as the requester, zip + README, progress/heartbeat, Done/DoneWithProblems/Failed, bell notification; tests with fakes | Claude, Opus. ↩️ Ralph decided (2026-10-15) Claude codes it; he reads the worker closely in review |
 | T3 UI | Download all, job states, polling | Claude, Sonnet |
 
 T1 → T2 → T3. T2 depends only on T1's interfaces; it can be tested before T3 exists.
