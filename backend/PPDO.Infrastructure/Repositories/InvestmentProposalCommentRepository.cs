@@ -33,7 +33,7 @@ public sealed class InvestmentProposalCommentRepository : IInvestmentProposalCom
     /// <inheritdoc />
     public Task<int> CountOpenAsync(int proposalId, CancellationToken ct = default)
         => _context.InvestmentProposalComments
-            .CountAsync(c => c.ProposalId == proposalId && c.ResolvedAt == null, ct);
+            .CountAsync(c => c.ProposalId == proposalId && c.ParentCommentId == null && c.ResolvedAt == null, ct);
 
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<int, int>> CountOpenByProposalIdsAsync(
@@ -42,7 +42,7 @@ public sealed class InvestmentProposalCommentRepository : IInvestmentProposalCom
         if (proposalIds.Count == 0) return new Dictionary<int, int>();
 
         List<KeyValuePair<int, int>> rows = await _context.InvestmentProposalComments
-            .Where(c => proposalIds.Contains(c.ProposalId) && c.ResolvedAt == null)
+            .Where(c => proposalIds.Contains(c.ProposalId) && c.ParentCommentId == null && c.ResolvedAt == null)
             .GroupBy(c => c.ProposalId)
             .Select(g => new KeyValuePair<int, int>(g.Key, g.Count()))
             .ToListAsync(ct);

@@ -62,11 +62,11 @@ public interface IInvestmentProposalService
     Task<ServiceResult<IReadOnlyList<ProposalCommentDto>>> ListCommentsAsync(
         int proposalId, User caller, CancellationToken ct = default);
 
-    /// <summary>Adds a comment on the caller's side (Office when their office owns the proposal, else PPDO). Allowed on a Final proposal.</summary>
+    /// <summary>Adds a head comment, or a reply when <paramref name="parentCommentId"/> names an open head of this proposal (400 otherwise). On the caller's side (Office when their office owns the proposal, else PPDO). Allowed on a Final proposal.</summary>
     Task<ServiceResult<ProposalCommentDto>> AddCommentAsync(
-        int proposalId, string? body, User caller, CancellationToken ct = default);
+        int proposalId, string? body, int? parentCommentId, User caller, CancellationToken ct = default);
 
-    /// <summary>Resolves an open comment. ⚠️ Only the side that wrote it may (403 otherwise).</summary>
+    /// <summary>Resolves an open thread by its head comment (400 for a reply). ⚠️ Only the side that started the thread may (403 otherwise).</summary>
     Task<ServiceResult<ProposalCommentDto>> ResolveCommentAsync(
         int proposalId, int commentId, User caller, CancellationToken ct = default);
 }

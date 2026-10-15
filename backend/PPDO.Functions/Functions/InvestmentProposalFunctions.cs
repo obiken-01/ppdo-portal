@@ -210,7 +210,7 @@ public sealed class InvestmentProposalFunctions
         return await ConfigHttp.FromResultAsync(req, await _proposals.ListCommentsAsync(id, caller!, ct), ct);
     }
 
-    // ── POST /api/budget-planning/proposals/{id}/comments — body { body } ──
+    // ── POST /api/budget-planning/proposals/{id}/comments — body { body, parentCommentId? } ──
     [Function("InvestmentProposalCommentCreate")]
     public async Task<HttpResponseData> CreateComment(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/proposals/{id:int}/comments")] HttpRequestData req,
@@ -226,7 +226,7 @@ public sealed class InvestmentProposalFunctions
                 ApiResponse<ProposalCommentDto>.Fail("Request body is missing or malformed."), ct);
 
         return await ConfigHttp.FromResultAsync(req,
-            await _proposals.AddCommentAsync(id, body.Body, caller!, ct), ct, HttpStatusCode.Created);
+            await _proposals.AddCommentAsync(id, body.Body, body.ParentCommentId, caller!, ct), ct, HttpStatusCode.Created);
     }
 
     // ── POST /api/budget-planning/proposals/{id}/comments/{commentId}/resolve ──

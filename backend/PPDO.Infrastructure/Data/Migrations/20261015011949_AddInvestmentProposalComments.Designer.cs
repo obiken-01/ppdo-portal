@@ -12,7 +12,7 @@ using PPDO.Infrastructure.Data;
 namespace PPDO.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261015004606_AddInvestmentProposalComments")]
+    [Migration("20261015011949_AddInvestmentProposalComments")]
     partial class AddInvestmentProposalComments
     {
         /// <inheritdoc />
@@ -1853,6 +1853,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("datetime2")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("ParentCommentId")
+                        .HasColumnType("int")
+                        .HasColumnName("parent_comment_id");
+
                     b.Property<int>("ProposalId")
                         .HasColumnType("int")
                         .HasColumnName("proposal_id");
@@ -1868,6 +1872,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AuthorId");
+
+                    b.HasIndex("ParentCommentId");
 
                     b.HasIndex("ResolvedById");
 
@@ -4647,6 +4653,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_investment_proposal_comments_Users_author_id");
 
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposalComment", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_investment_proposal_comments_investment_proposal_comments_parent_comment_id");
+
                     b.HasOne("PPDO.Domain.Entities.InvestmentProposal", "Proposal")
                         .WithMany()
                         .HasForeignKey("ProposalId")
@@ -4661,6 +4673,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasConstraintName("FK_investment_proposal_comments_Users_resolved_by_id");
 
                     b.Navigation("Author");
+
+                    b.Navigation("Parent");
 
                     b.Navigation("Proposal");
 

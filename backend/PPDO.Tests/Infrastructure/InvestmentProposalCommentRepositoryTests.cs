@@ -36,7 +36,8 @@ public sealed class InvestmentProposalCommentRepositoryTests : IDisposable
                 author_id TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 resolved_at TEXT NULL,
-                resolved_by_id TEXT NULL
+                resolved_by_id TEXT NULL,
+                parent_comment_id INTEGER NULL
             );
             """);
 
@@ -44,14 +45,18 @@ public sealed class InvestmentProposalCommentRepositoryTests : IDisposable
         Seed(1, open: true); Seed(1, open: true); Seed(1, open: false);
         Seed(2, open: true);
         Seed(3, open: false);
+        // Replies never count: three open replies on proposal 1, and one on proposal 3 (whose only
+        // head is resolved).
+        Seed(1, open: true, parent: 1); Seed(1, open: true, parent: 1); Seed(1, open: true, parent: 1);
+        Seed(3, open: true, parent: 5);
     }
 
-    private void Seed(int proposalId, bool open)
+    private void Seed(int proposalId, bool open, int? parent = null)
     {
         using AppDbContext db = new(_options);
         db.InvestmentProposalComments.Add(new InvestmentProposalComment
         {
-            ProposalId = proposalId, Body = "x", AuthorSide = ProposalCommentSide.Ppdo, AuthorId = Author,
+            ProposalId = proposalId, ParentCommentId = parent, Body = "x", AuthorSide = ProposalCommentSide.Ppdo, AuthorId = Author,
             CreatedAt = DateTime.UtcNow,
             ResolvedAt = open ? null : DateTime.UtcNow, ResolvedById = open ? null : Author,
         });
@@ -59,7 +64,7 @@ public sealed class InvestmentProposalCommentRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task CountOpenAsync_CountsOnlyThisProposalsOpenComments()
+    public async Task CountOpenAsync_CountsOnlyThisProposalsOpenHeads_NotReplies()
     {
         using AppDbContext db = new(_options);
         InvestmentProposalCommentRepository repo = new(db);
