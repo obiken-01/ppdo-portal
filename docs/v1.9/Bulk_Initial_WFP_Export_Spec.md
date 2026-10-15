@@ -24,8 +24,11 @@ request, and can leave the page while it builds.
 1. **One ZIP, one `.xlsx` per office**, each exactly what the per-office export produces
    (`IWfpReportService.GetInitialReportAsync` → `IWfpReportExcelService.Export`).
 2. **Background job, portable design.**
-   - **Queue** = our own `export_jobs` table. No Azure Storage Queue, no Durable Functions, no
-     Hangfire (it needs an always-on server; revisit after a migration).
+   - **Queue** = our own job tables, **one table per job kind sharing an abstract base class**
+     (Ralph, 2026-10-15, from DHL's DCE; EF Core TPC, `UseTpcMappingStrategy()`). The base
+     `BackgroundJob` carries what every job has; each kind adds its own columns in its own table.
+     The first kind is `InitialWfpExportJob` → `initial_wfp_export_jobs`. No Azure Storage Queue,
+     no Durable Functions, no Hangfire (it needs an always-on server; revisit after a migration).
    - **Worker** = a plain class in `PPDO.Application` (`IExportJobWorker.RunOnceAsync`). It never
      references Azure.
    - **Host** = a thin wrapper that calls the worker: an Azure Functions **TimerTrigger** every
@@ -61,8 +64,25 @@ request, and can leave the page while it builds.
     jobs marked Expired. Job rows are kept (they are the history).
 13. **Names**: the ZIP is `Initial WFP FY{fy} - {yyyy-MM-dd HHmm}.zip` (Manila time); inside,
     `WFP_{OfficeCode}_{fy}.xlsx`, the per-office export's own name.
-14. **One job type for now** (`InitialWfpZip`) in a `type` column, so SAIP or other exports can
-    reuse the table later.
+14. **Claim, recover-stuck and expire are generic**, written once against `BackgroundJob`
+    (`ClaimNextAsync<TJob>()` and friends) and reused by every job table. A later kind (e.g. SAIP)
+    adds a class, a table and its own worker step; the existing kinds are untouched.
+15. **Logging: one scope per job** (Ralph's DCE habit of correlating by job id, made searchable).
+    The worker wraps each job in `_logger.BeginScope(new { JobId, JobKind })`, so every line
+    inside, including from services it calls, carries `JobId` (Seq locally, Application Insights in
+    Azure: `customDimensions.JobId`). Events: claimed (attempt n) Information; office built
+    (OfficeCode, ms) Information; office skipped (OfficeCode, reason) Warning; finished (status,
+    done/total, ms) Information; recovered from stuck (attempt) Warning; failed Error with the
+    exception. One Debug line per timer pass ("worker pass, n jobs") shows the timer is alive.
+16. **Where the code lives**: base class and job entities in `PPDO.Domain`; `IFileStore` and the
+    job repository interfaces beside the other contracts; the worker in `PPDO.Application`; the
+    job repository (claim SQL), `LocalFileStore` and `BlobFileStore` in `PPDO.Infrastructure`; the
+    timer trigger in `PPDO.Functions`. **Nothing is deployed outside the Function App.** After a
+    move off Functions, a small `PPDO.Worker` project (.NET Worker Service: Windows service,
+    Linux service or container) or a hosted service in an ASP.NET Core API calls the same worker.
+17. **Storage**: a ZIP is ~1–3 MB, built in memory and saved once at the end (a failed job leaves
+    nothing half-written). Seven-day expiry keeps Blob use small; revisit if it grows (Ralph:
+    "as long as we don't fill the Azure storage").
 
 ## 3. Behaviour
 
@@ -99,27 +119,35 @@ expiresAt? }`.
 
 ## 5. Data model
 
-Table **`export_jobs`** (migration `AddExportJobs`):
+Migration `AddInitialWfpExportJobs`. TPC: the base class has **no table of its own**; each concrete
+job table carries the base columns plus its own.
+
+**Base columns (`BackgroundJob`, in every job table):**
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
-| `id` | int identity | no | PK |
-| `type` | nvarchar(40) | no | `InitialWfpZip` |
-| `fiscal_year` | int | no | |
+| `id` | int | no | PK. ⚠️ TPC needs ids unique across job tables: use a shared sequence (`background_job_ids`), EF's TPC default |
 | `status` | nvarchar(20) | no | as §4 |
 | `requested_by_id` | uniqueidentifier | no | FK users |
 | `created_at` | datetime2 | no | UTC |
 | `claimed_at` | datetime2 | yes | |
 | `heartbeat_at` | datetime2 | yes | progress refresh |
-| `attempts` | int | no | default 0 |
+| `attempts` | int | no | default 0 (the retry count) |
+| `message` | nvarchar(400) | yes | failure text |
+| `finished_at` | datetime2 | yes | |
+
+**`initial_wfp_export_jobs`** (base columns plus):
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `fiscal_year` | int | no | |
 | `done_count` / `total_count` | int | no | default 0 |
 | `problems_json` | nvarchar(max) | yes | `[{ officeCode, reason }]` |
-| `message` | nvarchar(400) | yes | failure text |
 | `file_key` | nvarchar(400) | yes | the `IFileStore` key |
-| `finished_at` / `expires_at` | datetime2 | yes | |
+| `expires_at` | datetime2 | yes | |
 
-Index `(type, fiscal_year, status)` for "active job for this year"; `(status, claimed_at)` for the
-claim and stuck-job queries.
+Indexes on `initial_wfp_export_jobs`: `(fiscal_year, status)` for "active job for this year";
+`(status, claimed_at)` for the claim and stuck-job queries.
 
 Setting: `FileStore__Provider` = `Blob` | `Local`; `FileStore__BlobContainer` (Azure) or
 `FileStore__LocalPath` (local). Local dev defaults to `Local` under a git-ignored folder.
@@ -142,7 +170,7 @@ On the Report page, initial WFP view, PPDO only:
 
 ## 8. Deployment notes
 
-- Migration `AddExportJobs`, before the code; add to `Pre_Deployment_Checklist_v1.9.0.md`.
+- Migration `AddInitialWfpExportJobs`, before the code; add to `Pre_Deployment_Checklist_v1.9.0.md`.
 - App settings on the Function App: `FileStore__Provider=Blob`, `FileStore__BlobContainer`
   (create the container in `ppdoportalstorage`). Local: `Local` + a path in `local.settings.json`.
 - The timer runs every 30 s on the Consumption plan: negligible cost, but it keeps the worker
@@ -152,7 +180,7 @@ On the Report page, initial WFP view, PPDO only:
 
 | Ticket | Scope | Who / model |
 |---|---|---|
-| T1 Plumbing | Entity + migration + repo (incl. the claim SQL and stuck-job query); `IFileStore` + `LocalFileStore` + `BlobFileStore`; settings; POST/GET/download endpoints; TimerTrigger wrapper; interface `IExportJobWorker` with a stub | Claude, Opus (storage, concurrency SQL) |
+| T1 Plumbing | `BackgroundJob` base + `InitialWfpExportJob` (TPC) + migration; generic job repository (claim SQL, stuck-job and expiry queries) ; `IFileStore` + `LocalFileStore` + `BlobFileStore`; settings; POST/GET/download endpoints; TimerTrigger wrapper; interface `IExportJobWorker` with a stub | Claude, Opus (storage, concurrency SQL) |
 | T2 Worker | `ExportJobWorker.RunOnceAsync`: cleanup, recover stuck, claim, build each office as the requester, zip + README, progress/heartbeat, Done/DoneWithProblems/Failed, bell notification; tests with fakes | **Ralph hand-codes** (guidance ladder 1) |
 | T3 UI | Download all, job states, polling | Claude, Sonnet |
 

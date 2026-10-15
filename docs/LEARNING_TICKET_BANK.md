@@ -198,7 +198,7 @@ red-test it: remove your prefix and watch it fail. Finally, download a config CS
 ## J1 🟢 Background job worker for the bulk initial WFP export (PPDO-229)
 
 **Banked 2026-10-15, at Ralph's request. Backend, one class plus tests. ~1 day.** Starts once
-PPDO-228 (the plumbing: table, claim SQL, `IFileStore`, timer wrapper, a stub worker) is merged.
+PPDO-228 (the plumbing: job tables, claim SQL, `IFileStore`, timer wrapper, a stub worker) is merged.
 Spec: `docs/v1.9/Bulk_Initial_WFP_Export_Spec.md` (decisions 7–12, §3, §11).
 
 You write `ExportJobWorker.RunOnceAsync` in `PPDO.Application`: one pass that cleans up expired
@@ -213,6 +213,11 @@ progress as it goes, and finishes the job.
 - **Siblings:** the per-office export in `WfpReportFunctions` (the build you loop over),
   `NotificationService` (the bell entry), `InvestmentProposalService.Comments` (ServiceResult +
   structured logging style).
+
+- **You already know this pattern** from DCE (a Windows service polling job tables). New here: the
+  job tables share an EF Core TPC base class, and logging is structured: wrap each job in
+  `_logger.BeginScope(new { JobId, JobKind })` and search by `JobId` in Seq instead of reading log
+  files (spec decision 15).
 
 **What you'll learn:** the queue-and-worker pattern without a message broker (a database table as the
 queue, atomic claiming, heartbeats, retries with a cap), failure isolation, and keeping
