@@ -93,8 +93,8 @@ New table **`notifications`** (migration `AddNotifications`):
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | bigint identity | no | PK |
-| `user_id` | int | no | FK users, on delete cascade |
-| `type` | nvarchar(40) | no | e.g. `ProposalComment`, `AipReturned` |
+| `user_id` | uniqueidentifier | no | FK users, on delete cascade (`Users.Id` is a GUID; corrected in PPDO-221) |
+| `type` | nvarchar(40) | no | `ProposalComment`, `ProposalReply`, `ProposalResolved`, `AipReturnedByPpdo`, `AipReturnedByDepartmentHead`, `AipSentToPpdo`, `AipDivisionSubmitted`, `AipReviewerEdit` (`NotificationTypes`) |
 | `text` | nvarchar(400) | no | frozen |
 | `link` | nvarchar(400) | no | portal-relative path |
 | `created_at` | datetime2 | no | UTC |

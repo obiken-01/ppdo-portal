@@ -2473,6 +2473,54 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.ToTable("ldip_records", (string)null);
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.Notification", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Link")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasColumnName("link");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ReadAt", "CreatedAt")
+                        .IsDescending(false, false, true)
+                        .HasDatabaseName("IX_notifications_user_read_created");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.Office", b =>
                 {
                     b.Property<int>("Id")
@@ -4812,6 +4860,18 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.Navigation("Office");
 
                     b.Navigation("Source");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_notifications_Users_user_id");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.PRItem", b =>

@@ -53,6 +53,8 @@ public sealed partial class InvestmentProposalService : IInvestmentProposalServi
     private readonly IInvestmentPlanningSettingsRepository _settings;
     private readonly IUserRepository                       _users;
     private readonly IAuditService                         _audit;
+    // PPDO-221 — comment events go to the notification feed.
+    private readonly INotificationService                  _notifications;
     private readonly ILogger<InvestmentProposalService>    _logger;
     private readonly TimeProvider                          _clock;
 
@@ -67,6 +69,7 @@ public sealed partial class InvestmentProposalService : IInvestmentProposalServi
         IInvestmentPlanningSettingsRepository settings,
         IUserRepository                       users,
         IAuditService                         audit,
+        INotificationService                  notifications,
         ILogger<InvestmentProposalService>    logger,
         TimeProvider?                         clock = null)
     {
@@ -80,6 +83,7 @@ public sealed partial class InvestmentProposalService : IInvestmentProposalServi
         _settings     = settings;
         _users        = users;
         _audit        = audit;
+        _notifications = notifications;
         _logger       = logger;
         _clock        = clock ?? TimeProvider.System;
     }
@@ -501,13 +505,15 @@ public sealed partial class InvestmentProposalService : IInvestmentProposalServi
     /// </summary>
     private async Task<bool> CanReadAsync(ProjectContext ctx, User caller, CancellationToken ct)
     {
-        if (!(await ReadOfficeScopeAsync(caller, ct)).Permits(ctx.Office.OfficeId)) return false;
+        bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        if (!OfficeScope.ResolveForReview(caller, crossOffice).Permits(ctx.Office.OfficeId)) return false;
 
+        // PPDO-221: the rule itself is ProposalReadRule, which the notification audience also uses.
         AipReadScope read = AipReadScope.Resolve(caller);
         IReadOnlyList<ProgramDivision> own = read.OfficeIdForAssignments is int ownOfficeId
             ? await _allocation.GetProgramDivisionsByOfficeIdAsync(ownOfficeId, ct)
             : [];
-        return read.FilterPrograms([ctx.Program], [ctx.Office], own).Count == 1;
+        return ProposalReadRule.Permits(caller, crossOffice, ctx.Office, ctx.Program, own);
     }
 
     /// <summary>

@@ -7,6 +7,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -28,8 +30,11 @@ namespace PPDO.Tests.Application;
 /// <c>ResolveForReview</c>.
 /// </para>
 /// </summary>
-public sealed class AipExpenditureReviewerEditTests
+public sealed partial class AipExpenditureReviewerEditTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
     private const int ActivityId  = 41;
     private const int ProjectId   = 31;
     private const int ProgramId   = 21;
@@ -114,7 +119,7 @@ public sealed class AipExpenditureReviewerEditTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, _permissions.Object,
         AipDivisionLockFixture.None(_aipRepo.Object, _permissions.Object),
-        _users.Object, _comments.Object, NullLogger<AipExpenditureService>.Instance);
+        _users.Object, _comments.Object, _notifications, NullLogger<AipExpenditureService>.Instance);
 
     // ── Callers ───────────────────────────────────────────────────────────────
 

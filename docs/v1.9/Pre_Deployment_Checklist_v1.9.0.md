@@ -1,7 +1,7 @@
 ---
 status: draft
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
@@ -16,7 +16,7 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219
 
 - [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
   `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-219 there are three. Re-check rather than trust this page:
+- [ ] **Migration count.** As of PPDO-221 there are four. Re-check rather than trust this page:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -60,13 +60,25 @@ open heads block Finalize.
 
 Additive only and empty at creation: no existing row changes, so no baseline sums are needed.
 
+`20261015025922_AddNotifications` (PPDO-221): a **new table**, `notifications` (`id bigint`, `user_id`,
+`type nvarchar(40)`, `text nvarchar(400)`, `link nvarchar(400)`, `created_at`, `read_at`), one row per
+recipient per event, behind the top-bar bell.
+
+| Change | Detail |
+|---|---|
+| FK `user_id` → `Users.Id` | `ON DELETE CASCADE`. `user_id` is a `uniqueidentifier` (`Users.Id` is a GUID; the spec's "int" was a slip) |
+| Index | `IX_notifications_user_read_created` on `(user_id, read_at, created_at DESC)` for the unread count and the newest-first list |
+
+Additive and empty at creation. **Nothing is back-filled**: the bell starts empty on deploy (spec §8).
+
 ### Steps (UAT first, then production)
 
 - [ ] ⚠️ **Run it BEFORE the code deploys.** The new code reads `is_reviewer_edit` on every portal page
   (the notifications read), so code without the column fails every page load. PPDO-219 is the same
   kind of dependency: the proposals list and Finalize read `investment_proposal_comments`, so code
-  without the table fails both. **CI does not run
-  migrations.**
+  without the table fails both. So does PPDO-221: commenting on a proposal, every AIP hand-off and every
+  PPDO reviewer edit write `notifications` in the same save, so code without the table fails all of
+  them. **CI does not run migrations.**
 - [ ] **Apply.** From `backend/`, with `SqlConnectionString` pointing at the target database:
 
   ```bash
@@ -89,6 +101,14 @@ Additive only and empty at creation: no existing row changes, so no baseline sum
   -- expect proposal_id -> CASCADE; author_id, resolved_by_id and parent_comment_id -> NO_ACTION
   ```
 
+- [ ] **Verify (PPDO-221).** The table exists, is empty, and its index is there:
+
+  ```sql
+  SELECT COUNT(*) AS notifications FROM notifications;   -- expect 0
+  SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('notifications');
+  -- expect PK_notifications and IX_notifications_user_read_created
+  ```
+
 - [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
 
   ```sql
@@ -101,10 +121,10 @@ Additive only and empty at creation: no existing row changes, so no baseline sum
 
 ### Rollback
 
-`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all three migrations' columns,
-indexes and the `investment_proposal_comments` table. Run it only **after** rolling the code back,
+`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all four migrations' columns,
+indexes and the `investment_proposal_comments` and `notifications` tables. Run it only **after** rolling the code back,
 because the code needs them. Acknowledgements and reviewer-edit flags recorded since the deploy are
-lost, and so is **every Investment Proposal comment** (PPDO-219). The AIP comments themselves remain.
+lost, and so is **every Investment Proposal comment** (PPDO-219) and **every notification** (PPDO-221). The AIP comments themselves remain.
 
 ## 2. Tell people first
 
@@ -139,6 +159,16 @@ lost, and so is **every Investment Proposal comment** (PPDO-219). The AIP commen
   so is resolving a reply. Finalize as the office is refused with "Resolve the 1 open comment before
   finalizing." (409, nothing changes; replies are not counted). The office cannot resolve the PPDO comment (403); PPDO resolves it, the office resolves its
   own, and Finalize then succeeds. A user of another office gets 404 on the thread.
+- [ ] **Notifications (PPDO-221).** After the proposal comment above, `GET /api/notifications/unread-count`
+  as one of that office's users is 1 or more, and as the commenter it is unchanged. Reply to the thread:
+  only the thread's starter and earlier repliers get a `ProposalReply` row. Return an office's AIP as a
+  PPDO reviewer: its users get "PPDO returned your FY … AIP …". `POST /api/notifications/{id}/read` with
+  another user's id is 404; with your own it is 204, twice. Spot-check who received an event:
+
+  ```sql
+  SELECT u.Username, n.type, n.created_at FROM notifications n JOIN Users u ON u.Id = n.user_id
+  ORDER BY n.id DESC;
+  ```
 
 ## Rollback summary
 

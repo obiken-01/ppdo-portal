@@ -7,6 +7,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -31,8 +33,11 @@ namespace PPDO.Tests.Application;
 /// over-ceiling department-head submit that is refused, or a send to PPDO that is not, both fail.
 /// </para>
 /// </summary>
-public sealed class AipSubmitGateTests
+public sealed partial class AipSubmitGateTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
     private const int RecordId = 300;
     private const int OfficeId = 7;
     private const int GroupA   = 400;
@@ -83,7 +88,7 @@ public sealed class AipSubmitGateTests
         return new AipSubmitService(
             _aipRepo.Object, _expRepo.Object, _ceiling.Object, _officeRepo.Object,
             _audit.Object, _divisions.Repo.Object, _divisions.Workflow(_audit.Object),
-            new PermissionService(), _userRepo.Object, NullLogger<AipSubmitService>.Instance);
+            new PermissionService(), _userRepo.Object, _notifications, NullLogger<AipSubmitService>.Instance);
     }
 
     /// <summary>An activity that passes every check.</summary>

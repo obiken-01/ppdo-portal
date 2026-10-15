@@ -7,6 +7,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -17,6 +19,9 @@ namespace PPDO.Tests.Application;
 /// </summary>
 public sealed class AipExpenditureDivisionLockTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
     private const int ActivityId    = 41;
     private const int ProjectId     = 31;
     private const int ProgramId     = 21;
@@ -89,7 +94,7 @@ public sealed class AipExpenditureDivisionLockTests
         _aipRepo.Object, _expRepo.Object, _totals.Object, _ceiling.Object,
         _accounts.Object, _funds.Object, _audit.Object, new PermissionService(),
         _divisions.Build(_aipRepo.Object, new PermissionService()),
-        new Mock<IUserRepository>().Object, new Mock<IAipReviewCommentRepository>().Object,
+        new Mock<IUserRepository>().Object, new Mock<IAipReviewCommentRepository>().Object, _notifications,
         NullLogger<AipExpenditureService>.Instance);
 
     private static User Staff(int? divisionId, bool departmentHead = false) => new()
