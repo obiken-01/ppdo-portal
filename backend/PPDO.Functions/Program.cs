@@ -221,6 +221,10 @@ var host = new HostBuilder()
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         services.AddScoped<IInvestmentProposalRepository, InvestmentProposalRepository>();
         services.AddScoped<IInvestmentProposalCommentRepository, InvestmentProposalCommentRepository>();
+        // PPDO-221 — the notification feed. Staged by the proposal, AIP workflow and reviewer-edit services.
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<INotificationAudience, NotificationAudience>();
+        services.AddScoped<INotificationService, NotificationService>();
         // PPDO-148 — the division lock AipService and AipExpenditureService consult on every write.
         services.AddScoped<IAipDivisionLock, AipDivisionLock>();
         // PPDO-149 — division state + reopen-all, shared by AipSubmitService and AipReviewService.

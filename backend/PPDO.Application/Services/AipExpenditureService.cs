@@ -24,6 +24,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private readonly IUserRepository           _userRepo;
     // PPDO-212 — a PPDO reviewer's edit leaves a comment on the activity.
     private readonly IAipReviewCommentRepository _comments;
+    // PPDO-221 — a reviewer edit goes to the office's notification feed.
+    private readonly INotificationService _notifications;
     private readonly ILogger<AipExpenditureService> _logger;
 
     public AipExpenditureService(
@@ -38,8 +40,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         IAipDivisionLock           divisionLock,
         IUserRepository            userRepo,
         IAipReviewCommentRepository comments,
+        INotificationService notifications,
         ILogger<AipExpenditureService> logger)
     {
+        _notifications = notifications;
         _divisionLock = divisionLock;
         _aipRepo     = aipRepo;
         _expRepo     = expRepo;
@@ -156,7 +160,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (reviewerReason is not null)
             await PostReviewerEditCommentAsync(ctx, line.Id, caller,
                 AipReviewerEditComment.Added(line.AccountNumberSnapshot, line.AccountTitleSnapshot,
-                    line.Ps, line.Mooe, line.Co, reviewerReason), ct);
+                    line.Ps, line.Mooe, line.Co, reviewerReason),
+                NotificationText.AipReviewerAdded(
+                    AipReviewerEditComment.Account(line.AccountNumberSnapshot, line.AccountTitleSnapshot),
+                    ctx.Activity.Name), ct);
 
         return await AfterWriteAsync(line, activityId, afterDelete: false, ct);
     }
@@ -267,7 +274,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (reviewerReason is not null)
             await PostReviewerEditCommentAsync(ctx, line.Id, caller,
                 AipReviewerEditComment.Edited(line.AccountNumberSnapshot, line.AccountTitleSnapshot,
-                    (stored.Ps, stored.Mooe, stored.Co), (line.Ps, line.Mooe, line.Co), reviewerReason), ct);
+                    (stored.Ps, stored.Mooe, stored.Co), (line.Ps, line.Mooe, line.Co), reviewerReason),
+                NotificationText.AipReviewerEdited(ctx.Activity.Name,
+                    AipReviewerEditComment.Account(line.AccountNumberSnapshot, line.AccountTitleSnapshot) + " "
+                    + AipReviewerEditComment.Changes((stored.Ps, stored.Mooe, stored.Co), (line.Ps, line.Mooe, line.Co))), ct);
 
         return await AfterWriteAsync(line, line.ActivityId, afterDelete: false, ct);
     }
@@ -452,7 +462,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (program is null) return null;
 
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
-        return office is null ? null : new AipContext(activity, office);
+        return office is null ? null : new AipContext(activity, office, project, program);
     }
 
     /// <summary>
@@ -711,7 +721,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         // every read path carries the token.
         e.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null);
 
-    private sealed record AipContext(AipActivity Activity, AipOffice Office);
+    // Project and Program ride along for the reviewer-edit notification's link and audience (PPDO-221);
+    // ResolveAsync loads them anyway.
+    private sealed record AipContext(AipActivity Activity, AipOffice Office, AipProject Project, AipProgram Program);
 
     /// <summary>
     /// Who may add or edit a line here, and on which rules (v1.9.0 — PPDO-212).
@@ -761,7 +773,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
     /// </para>
     /// </summary>
     private async Task PostReviewerEditCommentAsync(
-        AipContext ctx, int expenditureId, User caller, string body, CancellationToken ct)
+        AipContext ctx, int expenditureId, User caller, string body, string notificationText, CancellationToken ct)
     {
         DateTime now = DateTime.UtcNow;
         await _comments.AddAsync(new AipReviewComment
@@ -777,6 +789,16 @@ public sealed class AipExpenditureService : IAipExpenditureService
             ResolvedById = caller.Id,
             // PPDO-213 — what the office's notice counts until someone there marks it as seen.
             IsReviewerEdit = true,
+        }, ct);
+        // PPDO-221 — the office's users who can open this activity are told, in the comment's save.
+        await _notifications.StageAsync(NotificationTypes.AipReviewerEdit, caller, async (audience, token) =>
+        {
+            AipRecord? record = await _aipRepo.GetByIntIdAsync(ctx.Office.AipRecordId, token);
+            if (record is null) return null;
+            return new NotificationBatch(
+                notificationText,
+                NotificationLinks.AipActivity(record.FiscalYear, ctx.Program.Id, ctx.Project.Id, ctx.Activity.Id),
+                await audience.ActivityReadersAsync(ctx.Office, ctx.Program, token));
         }, ct);
         await _comments.SaveChangesAsync(ct);
 

@@ -83,4 +83,20 @@ public interface IUserRepository : IRepository<User>
     /// </summary>
     Task<IReadOnlyDictionary<int, string>> GetReviewerNamesByOfficeAsync(
         IReadOnlyList<int> officeIds, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The active users who <i>might</i> receive a notification about <paramref name="officeId"/>'s
+    /// work (v1.9.0 — PPDO-221), with <see cref="User.Division"/> and <see cref="User.Office"/>
+    /// included so <c>PermissionService</c> and the scope types can decide in memory. One query per
+    /// event, never one per user.
+    ///
+    /// <para>
+    /// A superset, filtered by the caller: the office's own users when <paramref name="officeId"/> is
+    /// set, plus, when <paramref name="includeCrossOffice"/>, everyone whose read scope can reach
+    /// another office: host-office users, SuperAdmins, and holders of the stored
+    /// <see cref="User.OverrideCanReviewAllOffices"/> grant. ⚠️ If a new way to read another office's
+    /// AIP is ever added, it must be added here too, or its holders silently stop being notified.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<User>> GetNotificationCandidatesAsync(
+        int? officeId, bool includeCrossOffice, CancellationToken cancellationToken = default);
 }

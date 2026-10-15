@@ -8,6 +8,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -18,6 +20,9 @@ namespace PPDO.Tests.Application;
 /// </summary>
 public sealed partial class InvestmentProposalServiceTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
     private const int HostOffice  = 1;    // PPDO
     private const int GuestOffice = 7;    // the project's office
     private const int OtherOffice = 8;
@@ -115,7 +120,7 @@ public sealed partial class InvestmentProposalServiceTests
 
         _sut = new InvestmentProposalService(
             _store, _commentStore, _aip.Object, _exp.Object, allocation.Object, _lock.Object, new PermissionService(),
-            _settings.Object, _users.Object, new Mock<IAuditService>().Object,
+            _settings.Object, _users.Object, new Mock<IAuditService>().Object, _notifications,
             NullLogger<InvestmentProposalService>.Instance);
     }
 

@@ -34,6 +34,13 @@ public static class AipReviewerEditComment
         (decimal Ps, decimal Mooe, decimal Co) before,
         (decimal Ps, decimal Mooe, decimal Co) after,
         string reason)
+        => $"PPDO edited {Account(accountNumber, accountTitle)}: {Changes(before, after)}. Reason: {reason}";
+
+    /// <summary>
+    /// "MOOE ₱60,000.00 → ₱120,000.00", one entry per changed column. Shared with the notification
+    /// sentence (PPDO-221), so the bell and the comment never describe one edit differently.
+    /// </summary>
+    public static string Changes((decimal Ps, decimal Mooe, decimal Co) before, (decimal Ps, decimal Mooe, decimal Co) after)
     {
         List<string> changes = [];
         void Compare(string column, decimal old, decimal now)
@@ -44,8 +51,7 @@ public static class AipReviewerEditComment
         Compare("MOOE", before.Mooe, after.Mooe);
         Compare("CO",   before.Co,   after.Co);
 
-        string what = changes.Count == 0 ? "amounts unchanged" : string.Join("; ", changes);
-        return $"PPDO edited {Account(accountNumber, accountTitle)}: {what}. Reason: {reason}";
+        return changes.Count == 0 ? "amounts unchanged" : string.Join("; ", changes);
     }
 
     /// <summary>"PPDO added 5-02-01-010 Traveling Expenses - Local: MOOE ₱45,500.00. Reason: …"</summary>
@@ -61,7 +67,8 @@ public static class AipReviewerEditComment
         return $"PPDO added {Account(accountNumber, accountTitle)}: {what}. Reason: {reason}";
     }
 
-    private static string Account(string? number, string? title)
+    /// <summary>"5-02-03-010 Office Supplies", or "a line with no account".</summary>
+    public static string Account(string? number, string? title)
     {
         string label = $"{number} {title}".Trim();
         return label.Length == 0 ? "a line with no account" : label;
