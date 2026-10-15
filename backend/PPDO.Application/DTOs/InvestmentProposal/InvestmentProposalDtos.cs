@@ -17,7 +17,8 @@ public sealed record ProposalListItemDto(
     int?      ProposalId,
     string    Status,
     DateTime? UpdatedAt,
-    string?   UpdatedByName);
+    string?   UpdatedByName,
+    int       OpenCommentCount);
 
 /// <summary>
 /// PPDO-180 — projects by proposal status, for the dashboard: a <c>Final</c> proposal, a
@@ -235,3 +236,23 @@ public sealed record ProposalValidationErrorsDto(IReadOnlyDictionary<string, IRe
 
 /// <summary>The Word file of <c>GET /proposals/{id}/export</c> (PPDO-158).</summary>
 public sealed record ProposalExportFileDto(string FileName, byte[] Content);
+
+// ── Comments (v1.9.0 — PPDO-219) ──────────────────────────────────────────────
+
+/// <summary>Body of <c>POST /proposals/{id}/comments</c>.</summary>
+public sealed record CreateProposalCommentDto(string? Body);
+
+/// <summary>
+/// One comment in a proposal's single thread. <paramref name="Side"/> is <c>Ppdo</c> or <c>Office</c>.
+/// <paramref name="CanResolve"/> is true only while open and only for a caller on the comment's
+/// side: the page hides the control on false, the service enforces it.
+/// </summary>
+public sealed record ProposalCommentDto(
+    int       Id,
+    string    Body,
+    string    Side,
+    string    AuthorName,
+    DateTime  CreatedAt,
+    DateTime? ResolvedAt,
+    string?   ResolvedByName,
+    bool      CanResolve);

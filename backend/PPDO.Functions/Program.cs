@@ -220,6 +220,7 @@ var host = new HostBuilder()
         services.AddScoped<IInvestmentPlanningSettingsRepository, InvestmentPlanningSettingsRepository>();
         services.AddScoped<IAipDivisionSubmissionRepository, AipDivisionSubmissionRepository>();
         services.AddScoped<IInvestmentProposalRepository, InvestmentProposalRepository>();
+        services.AddScoped<IInvestmentProposalCommentRepository, InvestmentProposalCommentRepository>();
         // PPDO-148 — the division lock AipService and AipExpenditureService consult on every write.
         services.AddScoped<IAipDivisionLock, AipDivisionLock>();
         // PPDO-149 — division state + reopen-all, shared by AipSubmitService and AipReviewService.

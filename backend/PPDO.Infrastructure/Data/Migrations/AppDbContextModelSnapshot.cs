@@ -1821,6 +1821,59 @@ namespace PPDO.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalComment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("author_id");
+
+                    b.Property<string>("AuthorSide")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasColumnName("author_side");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("int")
+                        .HasColumnName("proposal_id");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedById")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("resolved_by_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("ResolvedById");
+
+                    b.HasIndex("ProposalId", "ResolvedAt")
+                        .HasDatabaseName("IX_investment_proposal_comments_proposal_resolved");
+
+                    b.ToTable("investment_proposal_comments", (string)null);
+                });
+
             modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalGroup", b =>
                 {
                     b.Property<int>("Id")
@@ -4580,6 +4633,35 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("FK_investment_proposal_benefits_investment_proposals_proposal_id");
+                });
+
+            modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalComment", b =>
+                {
+                    b.HasOne("PPDO.Domain.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_comments_Users_author_id");
+
+                    b.HasOne("PPDO.Domain.Entities.InvestmentProposal", "Proposal")
+                        .WithMany()
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_investment_proposal_comments_investment_proposals_proposal_id");
+
+                    b.HasOne("PPDO.Domain.Entities.User", "ResolvedBy")
+                        .WithMany()
+                        .HasForeignKey("ResolvedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_investment_proposal_comments_Users_resolved_by_id");
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Proposal");
+
+                    b.Navigation("ResolvedBy");
                 });
 
             modelBuilder.Entity("PPDO.Domain.Entities.InvestmentProposalGroup", b =>

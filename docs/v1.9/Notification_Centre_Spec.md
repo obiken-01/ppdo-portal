@@ -48,8 +48,9 @@ there in one click. Today each feature signals on its own (sidebar pills, banner
 
 | Event | Recipients | Text | Link |
 |---|---|---|---|
-| Proposal comment added | Everyone who can open the proposal, except the author | "{Side} commented on the proposal for {ref} — {project}: "{first 80 chars}"" | The proposal, comments panel |
-| Proposal comment resolved | The comment's author, if not the resolver | "{Name} resolved your comment on the proposal for {ref} — {project}" | Same |
+| Proposal thread started | Everyone who can open the proposal, except the author | "{Side} commented on the proposal for {ref} — {project}: "{first 80 chars}"" | The proposal, comments panel |
+| Reply in a proposal thread (2026-10-15) | The thread's starter and everyone who has replied, except the replier | "{Name} replied on the proposal for {ref} — {project}: "{first 80 chars}"" | Same |
+| Proposal thread resolved | The thread's starter and everyone who has replied, except the resolver | "{Name} resolved your comment on the proposal for {ref} — {project}" | Same |
 | AIP returned by PPDO | Every user of the office who can open its AIP | "PPDO returned your FY {fy} AIP with {n} comments" | AIP Entry, that year |
 | AIP returned by the department head | The users of the returned division(s) | "{Name} returned your FY {fy} AIP work" | AIP Entry |
 | AIP sent to PPDO | PPDO cross-office reviewers (`CanReviewAllOffices`) | "{Office} sent its FY {fy} AIP to PPDO" | AIP Review, that office |

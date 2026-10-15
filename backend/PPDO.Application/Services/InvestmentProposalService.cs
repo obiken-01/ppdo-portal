@@ -11,7 +11,7 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <inheritdoc />
-public sealed class InvestmentProposalService : IInvestmentProposalService
+public sealed partial class InvestmentProposalService : IInvestmentProposalService
 {
     public const string NotFoundMessage        = "Proposal not found.";
     public const string ProjectNotFoundMessage = "Project not found.";
@@ -44,6 +44,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     };
 
     private readonly IInvestmentProposalRepository         _proposals;
+    private readonly IInvestmentProposalCommentRepository  _comments;
     private readonly IAipRepository                        _aip;
     private readonly IAipExpenditureRepository             _expenditures;
     private readonly IAllocationRepository                 _allocation;
@@ -57,6 +58,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
 
     public InvestmentProposalService(
         IInvestmentProposalRepository         proposals,
+        IInvestmentProposalCommentRepository  comments,
         IAipRepository                        aip,
         IAipExpenditureRepository             expenditures,
         IAllocationRepository                 allocation,
@@ -69,6 +71,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
         TimeProvider?                         clock = null)
     {
         _proposals    = proposals;
+        _comments     = comments;
         _aip          = aip;
         _expenditures = expenditures;
         _allocation   = allocation;
@@ -103,10 +106,15 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             search, (page - 1) * pageSize, pageSize, ct);
         ProposalProjectPage result = await _proposals.ListProjectsAsync(query, ct);
 
+        // One grouped COUNT for the page (PPDO-219): the "N open" pill on each row.
+        IReadOnlyDictionary<int, int> openComments = await _comments.CountOpenByProposalIdsAsync(
+            result.Items.Where(r => r.ProposalId is not null).Select(r => r.ProposalId!.Value).ToList(), ct);
+
         List<ProposalListItemDto> items = result.Items
             .Select(r => new ProposalListItemDto(
                 r.AipProjectId, r.ProjectRefCode, r.ProjectName, r.ProgramName, r.OfficeName,
-                r.ProjectCost, r.ProposalId, r.ProposalStatus ?? "None", AsUtc(r.UpdatedAt), r.UpdatedByName))
+                r.ProjectCost, r.ProposalId, r.ProposalStatus ?? "None", AsUtc(r.UpdatedAt), r.UpdatedByName,
+                r.ProposalId is int pid ? openComments.GetValueOrDefault(pid) : 0))
             .ToList();
         return ServiceResult<ProposalListPageDto>.Ok(new ProposalListPageDto(items, result.TotalCount, page, pageSize));
     }
@@ -359,6 +367,10 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             return ServiceResult<ProposalDto>.Forbidden(refusal);
         if (proposal.Status == InvestmentProposalStatus.Final)
             return ServiceResult<ProposalDto>.Conflict("This proposal is already final.");
+        // PPDO-219: an open comment blocks Finalize. Checked before the version so the user hears
+        // about the comments rather than a stale-save message.
+        if (await _comments.CountOpenAsync(proposal.Id, ct) is int open and > 0)
+            return ServiceResult<ProposalDto>.Conflict(OpenCommentsMessage(open));
         if (!proposal.RowVersion.AsSpan().SequenceEqual(version))
             return await StaleAsync<ProposalDto>(proposal.AipProjectId, ct);
 

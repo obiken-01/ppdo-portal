@@ -23,18 +23,27 @@ outside the portal.
 1. **Who comments: both.** Anyone who can open the proposal can comment on it: the office's own
    users (encoders, department head) and PPDO cross-office reviewers (`CanReviewAllOffices`, who
    are otherwise read-only on proposals).
-2. **One thread per proposal.** Not anchored to a section, field or activity.
-3. **Comments are resolved, and an open comment blocks Finalize.**
+2. ↩️ **Threads, several per proposal** (revised 2026-10-15; was "one thread per proposal"). A
+   comment is either a **head comment**, which starts a thread on one topic, or a **reply** inside a
+   thread. A proposal can hold any number of threads, because the department head and PPDO raise
+   different topics and each must close on its own. Threads are not anchored to a section, field or
+   activity.
+3. **Threads are resolved, and an open thread blocks Finalize.** Only a head comment is resolved;
+   resolving it closes the whole thread. Replies are never resolved on their own and never counted.
 
 ### Follow-ups — settled (Ralph, 2026-10-14; 4, 7 and 10 confirmed, the rest are the proposed defaults)
 
-4. **Each comment has a side, PPDO or Office, and only that side resolves it.** Copied from the AIP
+4. **Each comment has a side, PPDO or Office, and only the side that started a thread resolves it.** Copied from the AIP
    comments (PPDO-72). Side = **Office** when the caller's `users.office_id` is the proposal's
    office; otherwise **PPDO**. (A PPDO host-office user commenting on PPDO's own proposal is Office.)
    Reason: if the office could clear PPDO's remark, the Finalize gate would be self-marking.
    ⚠️ Consequence: an open PPDO comment blocks the office's Finalize until a PPDO reviewer resolves
    it. That is the AIP re-submit gate's behaviour too.
-5. **Any user on the author's side may resolve**, not only the author (a colleague can close it).
+5. **Any user on the thread starter's side may resolve** (Ralph, 2026-10-15), not only the author,
+   so a thread is not stuck while its author is away.
+5a. **Anyone who can read the proposal may reply**, on either side, to an open thread. A resolved
+   thread takes no replies (400 "This thread is resolved. Start a new one."); it stays readable,
+   collapsed. Replies are one level deep: a reply to a reply is refused (400).
 6. **No edit, no delete, no un-resolve.** A comment is a record. A wrong one is resolved with a
    follow-up comment. Matches the AIP comments.
 7. **Comments can be added to a Final proposal** (they do not reopen it). They block the next
@@ -61,6 +70,10 @@ outside the portal.
 | 7 | A Final proposal | A PPDO reviewer comments | 201. Stays Final. After a Reopen, Finalize is blocked until it is resolved |
 | 8 | Empty or 2,001-character body | Post | 400 with the message. Nothing written |
 | 9 | Already resolved | Resolve again | 400 "This comment is already resolved." |
+| 9a | Two open threads, one PPDO and one Office | Office resolves its own | 200. Finalize still refused: "Resolve the 1 open comment before finalizing." |
+| 9b | An open PPDO thread | An office encoder replies "Done, objective fixed" | 201, side Office, inside the thread. The thread stays open until PPDO resolves it |
+| 9c | A reply | Anyone tries to resolve the reply | 400 "Only a thread's first comment can be resolved." |
+| 9d | A resolved thread | Anyone replies | 400 "This thread is resolved. Start a new one." |
 | 10 | A proposal outside the caller's scope, or no such id | Read, post or resolve | 404 "Proposal not found." (existence never confirmed) |
 | 11 | A Draft with comments | Delete the proposal | 204. Comments gone with it |
 
@@ -83,15 +96,17 @@ comments have; the reflective `ReviewerWriteGuardCoverageTests` needs the endpoi
 
 All under the existing proposal scope rules (§3.2 of `../v1.8/Investment_Proposal_Spec.md`).
 
-- `GET /api/budget-planning/proposals/{id}/comments` → `200 [{ id, body, side: "Ppdo"|"Office",
-  authorName, createdAt, resolvedAt?, resolvedByName? }]`, oldest first.
-- `POST /api/budget-planning/proposals/{id}/comments` body `{ body }` → `201` the comment.
-  `400` empty / too long; `404` out of scope.
+- `GET /api/budget-planning/proposals/{id}/comments` → `200 [{ id, parentCommentId?, body,
+  side: "Ppdo"|"Office", authorName, createdAt, resolvedAt?, resolvedByName? }]`, oldest first.
+  The client groups replies under their head by `parentCommentId`.
+- `POST /api/budget-planning/proposals/{id}/comments` body `{ body, parentCommentId? }` → `201` the
+  comment. Without `parentCommentId` it starts a thread; with it, it is a reply. `400` empty / too
+  long / parent resolved / parent is itself a reply / parent on another proposal; `404` out of scope.
 - `POST /api/budget-planning/proposals/{id}/comments/{commentId}/resolve` → `200` the comment.
-  `403` wrong side; `400` already resolved; `404`.
+  `403` wrong side; `400` already resolved, or the comment is a reply; `404`.
 - Changed: `POST /proposals/{id}/finalize` → new `409` "Resolve the {n} open comment(s) before
   finalizing." checked before the row-version check.
-- Changed: the list rows (`GET /proposals`) gain `openCommentCount`.
+- Changed: the list rows (`GET /proposals`) gain `openCommentCount` (open **threads**).
 
 ## 5. Data model
 
@@ -102,11 +117,12 @@ New table **`investment_proposal_comments`** (snake_case, additive migration
 |---|---|---|---|
 | `id` | int identity | no | PK |
 | `proposal_id` | int | no | FK `investment_proposals.id`, **on delete cascade**; indexed |
+| `parent_comment_id` | int | yes | FK self, **no action** on delete (the proposal cascade removes both). Null = head comment |
 | `body` | nvarchar(2000) | no | |
 | `author_side` | nvarchar(10) | no | `Ppdo` / `Office` |
 | `author_id` | int | no | FK users |
 | `created_at` | datetime2 | no | UTC |
-| `resolved_at` | datetime2 | yes | |
+| `resolved_at` | datetime2 | yes | Head comments only; always null on a reply |
 | `resolved_by_id` | int | yes | FK users |
 
 ## 6. UI states
@@ -114,9 +130,10 @@ New table **`investment_proposal_comments`** (snake_case, additive migration
 On the proposal editor, a **Comments** panel (right side on wide screens, below on narrow):
 - **Loading**: skeleton rows. **Error**: "Could not load comments." + Retry.
 - **Empty**: "No comments yet."
-- Each comment: side tag (PPDO / Office), author, time, body; **Resolve** only for the caller's side;
-  resolved ones collapse under "N resolved".
-- Composer at the bottom with a 0/2000 counter. Shown for every caller who can read, including on a
+- Each **thread**: the head comment (side tag PPDO / Office, author, time, body) with its replies
+  indented beneath, oldest first, and a **Reply** box. **Resolve** on the head only, and only for
+  the thread starter's side. Resolved threads collapse under "N resolved" and show no Reply box.
+- **New comment** composer at the bottom (starts a thread) with a 0/2000 counter. Shown for every caller who can read, including on a
   Final proposal and to PPDO reviewers.
 - **Finalize** with open comments: the button stays enabled; clicking shows the 409 message and
   scrolls to the panel. A note under the button: "N open comments."
@@ -158,3 +175,4 @@ One additive migration (`AddInvestmentProposalComments`), run before the code. A
 - The Finalize gate (red-test: remove it).
 - Read-scope posting by a reviewer, and `ReviewerWriteGuardCoverageTests` listing the endpoint.
 - Cascade on proposal delete.
+- Threads: a reply cannot be resolved, cannot take a reply, and cannot land on a resolved thread or another proposal's thread; the Finalize count ignores replies.

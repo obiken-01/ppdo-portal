@@ -1,0 +1,120 @@
+using Microsoft.Extensions.Logging;
+using PPDO.Application.Common;
+using PPDO.Application.DTOs.InvestmentProposal;
+using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
+
+namespace PPDO.Application.Services;
+
+// Comments on an Investment Proposal (v1.9.0 — PPDO-219, docs/v1.9/Investment_Proposal_Comments_Spec.md).
+// Modelled on AipReviewCommentService (the side rule, the resolve rule), but one thread per proposal.
+public sealed partial class InvestmentProposalService
+{
+    public const int MaxCommentLength = 2000;
+
+    public const string CommentRequiredMessage = "Write a comment.";
+    public const string CommentTooLongMessage  = "A comment is at most 2,000 characters.";
+    public const string AlreadyResolvedMessage = "This comment is already resolved.";
+    public const string CommentNotFoundMessage = "Comment not found.";
+    public const string OnlyPpdoResolvesMessage   = "Only PPDO can resolve a PPDO comment.";
+    public const string OnlyOfficeResolvesMessage = "Only the proposal's office can resolve an Office comment.";
+
+    /// <summary>"Resolve the 1 open comment before finalizing."</summary>
+    public static string OpenCommentsMessage(int open)
+        => $"Resolve the {open} open {(open == 1 ? "comment" : "comments")} before finalizing.";
+
+    public async Task<ServiceResult<IReadOnlyList<ProposalCommentDto>>> ListCommentsAsync(
+        int proposalId, User caller, CancellationToken ct = default)
+    {
+        (InvestmentProposal? proposal, ProjectContext? ctx) = await LoadReadableAsync(proposalId, caller, ct);
+        if (proposal is null || ctx is null)
+            return ServiceResult<IReadOnlyList<ProposalCommentDto>>.NotFound(NotFoundMessage);
+
+        ProposalCommentSide callerSide = SideOf(caller, ctx);
+        IReadOnlyList<InvestmentProposalComment> rows = await _comments.GetByProposalIdAsync(proposal.Id, ct);
+        return ServiceResult<IReadOnlyList<ProposalCommentDto>>.Ok(rows.Select(c => MapComment(c, callerSide)).ToList());
+    }
+
+    public async Task<ServiceResult<ProposalCommentDto>> AddCommentAsync(
+        int proposalId, string? body, User caller, CancellationToken ct = default)
+    {
+        // Scope first: a proposal the caller cannot see is a 404 whatever the body says.
+        (InvestmentProposal? proposal, ProjectContext? ctx) = await LoadReadableAsync(proposalId, caller, ct);
+        if (proposal is null || ctx is null) return ServiceResult<ProposalCommentDto>.NotFound(NotFoundMessage);
+
+        string text = (body ?? string.Empty).Trim();
+        if (text.Length == 0) return ServiceResult<ProposalCommentDto>.BadRequest(CommentRequiredMessage);
+        if (text.Length > MaxCommentLength) return ServiceResult<ProposalCommentDto>.BadRequest(CommentTooLongMessage);
+
+        ProposalCommentSide side = SideOf(caller, ctx);
+        InvestmentProposalComment comment = new()
+        {
+            ProposalId = proposal.Id,
+            Body       = text,
+            AuthorSide = side,
+            AuthorId   = caller.Id,
+            CreatedAt  = Now(),
+            Author     = caller,
+        };
+        await _comments.AddAsync(comment, ct);
+        await _comments.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Investment proposal comment added. ProposalId: {ProposalId}, CommentId: {CommentId}, Side: {Side}, UserId: {UserId}",
+            proposal.Id, comment.Id, side, caller.Id);
+        await _audit.LogAsync("investment_proposal_comments", comment.Id, AuditAction.Create,
+            null, new { comment.ProposalId, Side = side.ToString() }, ct);
+
+        return ServiceResult<ProposalCommentDto>.Ok(MapComment(comment, side));
+    }
+
+    public async Task<ServiceResult<ProposalCommentDto>> ResolveCommentAsync(
+        int proposalId, int commentId, User caller, CancellationToken ct = default)
+    {
+        (InvestmentProposal? proposal, ProjectContext? ctx) = await LoadReadableAsync(proposalId, caller, ct);
+        if (proposal is null || ctx is null) return ServiceResult<ProposalCommentDto>.NotFound(NotFoundMessage);
+
+        // A comment id under another proposal is as missing as a wrong id.
+        InvestmentProposalComment? comment = await _comments.GetByIdAsync(commentId, ct);
+        if (comment is null || comment.ProposalId != proposal.Id)
+            return ServiceResult<ProposalCommentDto>.NotFound(CommentNotFoundMessage);
+
+        // ⚠️ The side rule. Only the side that wrote it resolves it; otherwise the office could clear
+        // PPDO's remark and the Finalize gate would be self-marking.
+        ProposalCommentSide side = SideOf(caller, ctx);
+        if (side != comment.AuthorSide)
+            return ServiceResult<ProposalCommentDto>.Forbidden(
+                comment.AuthorSide == ProposalCommentSide.Ppdo ? OnlyPpdoResolvesMessage : OnlyOfficeResolvesMessage);
+
+        if (comment.ResolvedAt is not null)
+            return ServiceResult<ProposalCommentDto>.BadRequest(AlreadyResolvedMessage);
+
+        comment.ResolvedAt   = Now();
+        comment.ResolvedById = caller.Id;
+        comment.ResolvedBy   = caller;
+        await _comments.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Investment proposal comment resolved. ProposalId: {ProposalId}, CommentId: {CommentId}, Side: {Side}, UserId: {UserId}",
+            proposal.Id, comment.Id, comment.AuthorSide, caller.Id);
+        await _audit.LogAsync("investment_proposal_comments", comment.Id, AuditAction.Update,
+            new { Resolved = false }, new { Resolved = true }, ct);
+
+        return ServiceResult<ProposalCommentDto>.Ok(MapComment(comment, side));
+    }
+
+    /// <summary>
+    /// Office when the caller's office owns the proposal, otherwise PPDO. ⚠️ A caller with no office
+    /// can only have got here as a cross-office reviewer, so they are PPDO.
+    /// </summary>
+    private static ProposalCommentSide SideOf(User caller, ProjectContext ctx)
+        => caller.OfficeId is int officeId && officeId == ctx.Office.OfficeId
+            ? ProposalCommentSide.Office
+            : ProposalCommentSide.Ppdo;
+
+    private static ProposalCommentDto MapComment(InvestmentProposalComment c, ProposalCommentSide callerSide) => new(
+        c.Id, c.Body, c.AuthorSide.ToString(), c.Author?.FullName ?? "Unknown",
+        DateTime.SpecifyKind(c.CreatedAt, DateTimeKind.Utc),
+        AsUtc(c.ResolvedAt), c.ResolvedBy?.FullName,
+        CanResolve: c.IsOpen && callerSide == c.AuthorSide);
+}

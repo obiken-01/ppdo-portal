@@ -191,6 +191,56 @@ public sealed class InvestmentProposalFunctions
             : await ConfigHttp.FromResultAsync(req, result, ct);
     }
 
+    // ── Comments (v1.9.0 — PPDO-219) ──────────────────────────────────────────
+    //
+    // ⚠️ Read-scope, so AuthorizeAsync and NEVER AuthorizeWriteAsync: ReviewerWriteGuard denies content
+    // writes to a cross-office reviewer, and commenting is that reviewer's whole job. A comment is not
+    // proposal content. ReviewerWriteGuardCoverageTests lists these two POSTs as exempt, and asserts
+    // the reviewer gets through. Scope, side and the 404s are the service's.
+
+    // ── GET /api/budget-planning/proposals/{id}/comments ──
+    [Function("InvestmentProposalCommentList")]
+    public async Task<HttpResponseData> ListComments(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "budget-planning/proposals/{id:int}/comments")] HttpRequestData req,
+        int id,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+        return await ConfigHttp.FromResultAsync(req, await _proposals.ListCommentsAsync(id, caller!, ct), ct);
+    }
+
+    // ── POST /api/budget-planning/proposals/{id}/comments — body { body } ──
+    [Function("InvestmentProposalCommentCreate")]
+    public async Task<HttpResponseData> CreateComment(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/proposals/{id:int}/comments")] HttpRequestData req,
+        int id,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        CreateProposalCommentDto? body = await ConfigHttp.ReadBodyAsync<CreateProposalCommentDto>(req, ct);
+        if (body is null)
+            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.BadRequest,
+                ApiResponse<ProposalCommentDto>.Fail("Request body is missing or malformed."), ct);
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _proposals.AddCommentAsync(id, body.Body, caller!, ct), ct, HttpStatusCode.Created);
+    }
+
+    // ── POST /api/budget-planning/proposals/{id}/comments/{commentId}/resolve ──
+    [Function("InvestmentProposalCommentResolve")]
+    public async Task<HttpResponseData> ResolveComment(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "budget-planning/proposals/{id:int}/comments/{commentId:int}/resolve")] HttpRequestData req,
+        int id, int commentId,
+        CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+        return await ConfigHttp.FromResultAsync(req, await _proposals.ResolveCommentAsync(id, commentId, caller!, ct), ct);
+    }
+
     // ── GET /api/budget-planning/proposals/{id}/export — the Word document (PPDO-158) ──
     //
     // Read-only, so no write guard: a cross-office reviewer may export what they may read. Scope and
