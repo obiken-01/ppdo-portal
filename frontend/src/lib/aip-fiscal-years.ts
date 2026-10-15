@@ -21,6 +21,11 @@
  */
 export const FIRST_ENTERED_FISCAL_YEAR = 2028;
 
+/** True from the break year on — the years whose plan is the entered AIP, not an uploaded one. */
+export function isEnteredFiscalYear(fiscalYear: number): boolean {
+  return fiscalYear >= FIRST_ENTERED_FISCAL_YEAR;
+}
+
 /**
  * The three entered years the AIP Entry, Review and Review Search pickers offer — the break year
  * and the two after it.

@@ -57,10 +57,13 @@ import { useMe } from "@/lib/me-cache";
 import { listDivisions, listOffices } from "@/lib/config";
 import {
   budgetPlanningFallback, canOpenAipReport, canOpenBudgetPlanningReport, canOpenWfpReport,
+  canOpenWfpReportForYear, wfpDivisionLocked,
 } from "@/lib/budget-planning-access";
 import { downloadAipConsolidatedExcel } from "@/lib/aip-review";
 import { aipErrorMessage } from "@/lib/aip";
-import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
+import {
+  ENTERED_FISCAL_YEAR_OPTIONS, FIRST_ENTERED_FISCAL_YEAR, isEnteredFiscalYear,
+} from "@/lib/aip-fiscal-years";
 import AipAnnexBReport from "@/components/aip/report/AipAnnexBReport";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
@@ -98,8 +101,11 @@ const REPORT_TYPES = [
   { value: "PPMP", label: "Project Procurement Management Plan (PPMP)" },
 ] as const;
 
-/** FY2028 onward — the AIP report renders the entered-year form, not the uploaded FY≤2027 shape. */
-const AIP_YEARS = [0, 1, 2].map((n) => FIRST_ENTERED_FISCAL_YEAR + n);
+/** The entered years — the AIP report renders the entered-year form, not the uploaded FY≤2027 shape. */
+const AIP_YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
+
+/** PPDO-225 — the title and note of the WFP read off the consolidated AIP (spec §6). */
+const INITIAL_WFP_TITLE = "Initial WFP (from AIP)";
 
 // ---------------------------------------------------------------------------
 // Flatten one fund source's nested sections into one row per Excel line (WFP
@@ -393,7 +399,7 @@ function FundSourceBlock({
       <div className="h-1.5 bg-green-800 border-x border-t border-slate-200" />
       <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x">
         <p className="text-base font-bold text-green-800">
-          WORK AND FINANCIAL PLAN FY {report.fiscalYear}
+          {report.source === "Aip" && "INITIAL WFP (FROM AIP) — "}WORK AND FINANCIAL PLAN FY {report.fiscalYear}
         </p>
         <p className="text-sm text-slate-600">
           DEPARTMENT/OFFICE: {report.officeCode} — {report.officeName}
@@ -432,8 +438,14 @@ function WfpReportPageInner() {
   // Which types this reader has, and which one they land on. ⚠️ A hand-typed `?type=` they are not
   // allowed falls back to their first allowed type rather than erroring — the URL is a convenience,
   // not a grant, and the server refuses the read either way.
+  // ↩️ WFP is offered by `canOpenWfpReportForYear` against the first entered year (PPDO-225): a guest
+  // office has the initial WFP for entered years even though it has no entered WFP. PPMP stays
+  // host-only; the year list below narrows WFP to the years the reader may actually open.
   const allowedTypes = REPORT_TYPES.filter((t) =>
-    me == null ? false : t.value === "AIP" ? canOpenAipReport(me) : canOpenWfpReport(me));
+    me == null ? false
+      : t.value === "AIP" ? canOpenAipReport(me)
+      : t.value === "WFP" ? canOpenWfpReportForYear(me, FIRST_ENTERED_FISCAL_YEAR)
+      : canOpenWfpReport(me));
   const urlType = (searchParams.get("type") ?? "").toUpperCase();
 
   const [reportType, setReportType] = useState<string>("WFP");
@@ -481,6 +493,25 @@ function WfpReportPageInner() {
    */
   const aipOfficeId = crossOffice ? officeId : (me?.officeId ?? null);
   const aipFiscalYear = fiscalYear ?? FIRST_ENTERED_FISCAL_YEAR;
+
+  // ── Fiscal-year options per type (PPDO-225) ──────────────────────────────
+  // AIP: the entered years. WFP: the years PPDO has records for, plus the entered years (the initial
+  // WFP) when the reader may open them; a guest office sees the entered years only. PPMP: as before.
+  const isInitialYear = fiscalYear != null && isEnteredFiscalYear(fiscalYear);
+  const yearOptions: number[] = isAip
+    ? AIP_YEARS
+    : reportType === "WFP"
+      ? [
+          ...(me != null && canOpenWfpReport(me) ? availableFiscalYears : []),
+          ...(me != null && canOpenWfpReportForYear(me, FIRST_ENTERED_FISCAL_YEAR) ? AIP_YEARS : []),
+        ].filter((fy, i, all) => all.indexOf(fy) === i).sort((x, y) => x - y)
+      : availableFiscalYears;
+  /** True when the WFP on screen is read off the AIP — office list, empty states and title key off it. */
+  const isInitialWfp = reportType === "WFP" && isInitialYear;
+  const readsOwnOfficeOnly = me != null && !me.isHostOffice;
+  const divisionLocked = me != null && fiscalYear != null
+    ? wfpDivisionLocked(me, fiscalYear, officeId, canBypassDivision)
+    : !canBypassDivision;
 
   // The office list for the AIP picker — every configured office, not "offices with a WFP". An office
   // with no AIP yet is a real choice that lands on the not-submitted state, which says so.
@@ -537,6 +568,14 @@ function WfpReportPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A year the current type cannot offer (a guest office landing on FY2027, which its WFP type does not
+  // list) moves to the first one it can, rather than leaving the select showing a blank value.
+  useEffect(() => {
+    if (isAip || me == null || fiscalYear == null || yearOptions.length === 0) return;
+    if (!yearOptions.includes(fiscalYear)) setFiscalYear(yearOptions[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, fiscalYear, reportType, availableFiscalYears]);
+
   // ── Offices scoped to the selected fiscal year ──────────────────────────────
 
   useEffect(() => {
@@ -544,10 +583,11 @@ function WfpReportPageInner() {
     setOfficeId(null);
     setReport(null);
     setPpmpReport(null);
-    // ⚠️ WFP-shaped, and a guest-office reader has no WFP (PPDO-20). Since PPDO-92 opened this page to
-    // guest-office department heads, fetching this for them would 403 and raise a "Load failed" toast
-    // on every visit to a page they are allowed on.
-    if (!me || !canOpenWfpReport(me)) return;
+    // ⚠️ WFP-shaped, and a guest-office reader has no entered WFP (PPDO-20). Since PPDO-92 opened this
+    // page to guest-office department heads, fetching this for them would 403 and raise a "Load
+    // failed" toast on every visit to a page they are allowed on. ↩️ PPDO-225: for an entered year
+    // they may read it (their own office only, once its AIP is Consolidated), so the gate is per year.
+    if (!me || !canOpenWfpReportForYear(me, fiscalYear)) { setOffices([]); return; }
     setOfficesLoading(true);
     getWfpReportOffices(fiscalYear)
       .then((offices) => {
@@ -627,9 +667,9 @@ function WfpReportPageInner() {
       .then((divisions) => {
         setDivisionList(divisions);
         let resolvedDivisionId: number | null;
-        if (!canBypassDivision) {
+        if (me != null && fiscalYear != null && wfpDivisionLocked(me, fiscalYear, officeId, canBypassDivision)) {
           // Locked to the caller's own division — never a manual pick.
-          resolvedDivisionId = me?.divisionId ?? null;
+          resolvedDivisionId = me.divisionId ?? null;
         } else {
           const preferredId = urlDivisionId ? Number(urlDivisionId) : null;
           resolvedDivisionId =
@@ -713,10 +753,10 @@ function WfpReportPageInner() {
               AIP_YEARS.map((fy) => <option key={fy} value={fy}>FY {fy}</option>)
             ) : (
               <>
-                {availableFiscalYears.length === 0 && fiscalYear != null && (
+                {yearOptions.length === 0 && fiscalYear != null && (
                   <option value={fiscalYear}>FY {fiscalYear}</option>
                 )}
-                {availableFiscalYears.map((fy) => (
+                {yearOptions.map((fy) => (
                   <option key={fy} value={fy}>FY {fy}</option>
                 ))}
               </>
@@ -752,11 +792,15 @@ function WfpReportPageInner() {
             <select
               value={officeId ?? ""}
               onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
-              disabled={officesLoading || offices.length === 0 || !canBypassDivision}
+              disabled={officesLoading || offices.length === 0 || !canBypassDivision || readsOwnOfficeOnly}
               className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
             >
               <option value="">
-                {officesLoading ? "Loading offices…" : offices.length === 0 ? "No offices with a WFP yet" : "— select office —"}
+                {officesLoading
+                  ? "Loading offices…"
+                  : offices.length === 0
+                    ? (isInitialWfp ? "No office ready yet" : "No offices with a WFP yet")
+                    : "— select office —"}
               </option>
               {offices.map((o) => (
                 <option key={o.officeId} value={o.officeId}>
@@ -776,10 +820,10 @@ function WfpReportPageInner() {
           <select
             value={divisionId ?? ""}
             onChange={(e) => setDivisionId(e.target.value ? Number(e.target.value) : null)}
-            disabled={officeId == null || !divisionsLoaded || !canBypassDivision}
+            disabled={officeId == null || !divisionsLoaded || divisionLocked}
             className="w-56 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
           >
-            {canBypassDivision && <option value="">— all divisions (consolidated) —</option>}
+            {!divisionLocked && <option value="">— all divisions (consolidated) —</option>}
             {divisionList.map((d) => (
               <option key={d.id} value={d.id}>{d.code ? `${d.code} — ${d.name}` : d.name}</option>
             ))}
@@ -856,7 +900,13 @@ function WfpReportPageInner() {
         <p className="text-slate-600 text-sm py-10 text-center print:hidden">
           {isAip
             ? "Select a fiscal year and office, then click “Generate Preview” to view the report."
-            : "Select an office and click “Generate Preview” to view the report."}
+            : isInitialWfp && !officesLoading && offices.length === 0
+              // PPDO-225 spec §6 — the picker is empty because nothing is Consolidated yet, not because
+              // the list failed to load. An office reads only its own, so its wording says "Your".
+              ? (readsOwnOfficeOnly
+                  ? `Your FY ${fiscalYear} AIP is not marked as done yet.`
+                  : `No office's FY ${fiscalYear} AIP is marked as done yet.`)
+              : "Select an office and click “Generate Preview” to view the report."}
         </p>
       )}
       {reportLoading && (
@@ -877,22 +927,35 @@ function WfpReportPageInner() {
           table per fund, e.g. General Fund then 5% GAD Fund). Every block but the last starts
           the next one on a fresh printed page. */}
       {reportType === "WFP" && report && !reportLoading && (
-        report.fundSourceReports.length === 0 ? (
-          <div className="bg-white border border-slate-200 p-6">
-            <p className="text-slate-600 text-sm text-center">
-              No WFP expenditures entered yet for this office under FY {report.fiscalYear}.
-            </p>
-          </div>
-        ) : (
-          report.fundSourceReports.map((fundReport, i) => (
-            <FundSourceBlock
-              key={fundReport.fundSourceName}
-              report={report}
-              fundReport={fundReport}
-              printPageBreakAfter={i < report.fundSourceReports.length - 1}
-            />
-          ))
-        )
+        <>
+          {report.source === "Aip" && (
+            <div className="mb-4 print:hidden">
+              <h2 className="text-base font-semibold text-slate-800">{INITIAL_WFP_TITLE}</h2>
+              <p className="text-sm text-slate-600">
+                Read from {report.officeName}’s consolidated AIP. Q1–Q4 for lines without items are
+                spread over the activity’s months.
+              </p>
+            </div>
+          )}
+          {report.fundSourceReports.length === 0 ? (
+            <div className="bg-white border border-slate-200 p-6">
+              <p className="text-slate-600 text-sm text-center">
+                {report.source === "Aip"
+                  ? `Nothing in ${report.officeName}’s FY ${report.fiscalYear} AIP falls under this selection.`
+                  : `No WFP expenditures entered yet for this office under FY ${report.fiscalYear}.`}
+              </p>
+            </div>
+          ) : (
+            report.fundSourceReports.map((fundReport, i) => (
+              <FundSourceBlock
+                key={fundReport.fundSourceName}
+                report={report}
+                fundReport={fundReport}
+                printPageBreakAfter={i < report.fundSourceReports.length - 1}
+              />
+            ))
+          )}
+        </>
       )}
 
       {/* PPMP — item-grained, one table per fund source (RAL-183). Preview only; export is RAL-184. */}
