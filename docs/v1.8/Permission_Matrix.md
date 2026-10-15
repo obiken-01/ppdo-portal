@@ -315,6 +315,43 @@ activity, so a mismatch is refused rather than trusted.
 Pinned by `WfpDivisionScopeTests` and the `Division scope (PPDO-198)` blocks in `WfpServiceTests`
 and `WfpExpenditureServiceTests`.
 
+### 3.4 The initial WFP report — who reads which office (PPDO-224)
+
+For an **entered year** (`AipFiscalYears.IsEntered`, FY2028+) the WFP report endpoints serve the
+**initial WFP**, read off the consolidated AIP ([Initial_WFP_Report_Spec.md](../v1.9/Initial_WFP_Report_Spec.md)
+decision 6). There are no WFP records for those years, so the report is opened to the office whose AIP it
+is. ↩️ This widens PPDO-20 ("the WFP report is PPDO-only") **for entered years only**; FY ≤ 2027 is
+§2.2a's `CanAccessWfp`, unchanged.
+
+The endpoint gate is `CanAccessBudgetPlanning`; the office rule is `InitialWfpReadRule`:
+
+| Caller | Target office | Reads? |
+|---|---|---|
+| SuperAdmin, any office or none | any | ✅ (`CanAccessWfp`) |
+| Host Admin, or host Staff holding `CanAccessWfp` | any | ✅ PPDO reads every office |
+| Host Staff without Budget Planning | any | ❌ 403 at the gate |
+| Guest Admin / Staff with Budget Planning | **their own** | ✅ |
+| Guest Admin / Staff | another office | ❌ **404**, the same answer as a missing office |
+| Guest Staff with the Budget Planning override `false` | their own | ❌ |
+| Guest-office `CanReviewAllOffices` holder | another office | ❌ 404: review scope (`ResolveForReview`) is not the WFP report's |
+| No office | any | ❌ (unless SuperAdmin) |
+
+Then, in this order: **(1) the gate** — the office is offered, and a report is served, only once **every**
+one of its AIP groups is `Consolidated`; otherwise **409** "{Office}'s FY {fy} AIP is not marked as done
+yet." (to the office's own users, "Your FY {fy} AIP…"). Scope is checked first, so a 409 never confirms
+another office. **(2) the division**, by the activity's division tag (PPDO-148):
+
+| Caller | Division |
+|---|---|
+| Own office, host (PPDO's own initial WFP) | §3.3 `WfpDivisionScope`, unchanged: finance and Admin choose; Staff forced to their division; Staff with none see nothing (404) |
+| Own office, guest: Admin, or Staff with no division | Whole office, or the division they ask for |
+| Own office, guest: Staff with a division | Forced to their division, whatever they ask |
+| Another office (a PPDO reader on a guest office) | Whole office, or the division asked for — never narrowed by the reader's own division |
+
+Pinned by `PermissionMatrixTests.InitialWfp_WhoReadsWhichOffice` (the office rows),
+`WfpInitialReportTests` (gate, scope and division through the service) and `WfpReportFunctionsTests`
+(the FY ≤ 2027 gate is still `CanAccessWfp`).
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)
@@ -553,6 +590,7 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 | Division scope | `PPDO.Application/Common/DivisionScope.cs` |
 | Combined budget-planning scope | `PPDO.Application/Common/BudgetPlanningScope.cs` |
 | WFP division scope | `PPDO.Application/Common/WfpDivisionScope.cs` |
+| Initial WFP report office rule (PPDO-224) | `PPDO.Application/Common/InitialWfpReadRule.cs` |
 | Reviewer write denial | `PPDO.Application/Common/ReviewerWriteGuard.cs` |
 | Endpoint wiring | `PPDO.Functions/Functions/ConfigHttp.cs` |
 | **This matrix, as tests** | `PPDO.Tests/Application/PermissionMatrixTests.cs` |
@@ -562,4 +600,4 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224)*

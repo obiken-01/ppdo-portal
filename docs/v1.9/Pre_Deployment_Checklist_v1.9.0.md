@@ -1,7 +1,7 @@
 ---
 status: draft
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-224
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
@@ -144,6 +144,12 @@ lost, and so is **every Investment Proposal comment** (PPDO-219) and **every not
   **Finalize**, and only the side that started it (PPDO or the office) can resolve it, so an open PPDO
   thread holds the office's Finalize until a PPDO reviewer resolves it.
 
+- [ ] **PPDO finance and office department heads (PPDO-224):** from FY 2028 the WFP report shows an
+  **initial WFP read off the AIP**, for an office only once PPDO has marked **every** one of its AIP groups
+  as done (Consolidated). Offices can now open their own (never another office's). Lines without items are
+  spread over the activity's months; the 10% reserve is on MOOE and CO only. No migration; it needs the
+  PPDO-225 frontend to show it.
+
 ## 3. After the deploy (UAT, then production)
 
 - [ ] As a PPDO reviewer, open an office in `SubmittedToPpdo`, use **Edit amounts** on an activity,
@@ -169,6 +175,12 @@ lost, and so is **every Investment Proposal comment** (PPDO-219) and **every not
   SELECT u.Username, n.type, n.created_at FROM notifications n JOIN Users u ON u.Id = n.user_id
   ORDER BY n.id DESC;
   ```
+
+- [ ] **Initial WFP (PPDO-224).** FY 2027's WFP report is unchanged for PPDO. For FY 2028, an office
+  with a group not yet Consolidated is not in the office list, and its preview answers 409 "… is not marked
+  as done yet." Once it is Consolidated: each fund block's net equals the office's AIP total for that fund
+  (base figures), PS lines carry no reserve, and the export's title row reads "INITIAL WFP (FROM AIP)". As a
+  user of that office the report opens for their own office; another office's id answers 404.
 
 ## Rollback summary
 
