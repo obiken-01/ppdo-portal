@@ -118,6 +118,7 @@ public sealed class AppDbContext : DbContext
     public DbSet<InvestmentProposalTeamMember> InvestmentProposalTeamMembers { get; set; } = null!;
     public DbSet<InvestmentProposalMonitoring> InvestmentProposalMonitoring { get; set; } = null!;
     public DbSet<InvestmentProposalRisk> InvestmentProposalRisks { get; set; } = null!;
+    public DbSet<InvestmentProposalComment> InvestmentProposalComments { get; set; } = null!;
 
     // ── v1.8.0 Phase 5 — Partner API keys (PPDO-15) ──────────────────────────
 

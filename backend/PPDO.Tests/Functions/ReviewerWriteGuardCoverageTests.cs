@@ -165,6 +165,13 @@ public sealed class ReviewerWriteGuardCoverageTests
         // AIP. The service refuses every caller outside that office, a reviewer included
         // (AipReviewerEditNoticeTests).
         $"{nameof(AipReviewCommentFunctions)}.{nameof(AipReviewCommentFunctions.AcknowledgeEdits)}",
+
+        // v1.9.0 — PPDO-219. Comments on an Investment Proposal. READ-scope (OfficeScope.ResolveForReview):
+        // a PPDO reviewer comments although they cannot edit the proposal, so these must not go through
+        // ReviewerWriteGuard. They touch no proposal content. Side, scope and the 404s are the service's
+        // (InvestmentProposalCommentTests). Positive assertion: ProposalCommentEndpoints_LetACrossOfficeReviewerThrough.
+        $"{nameof(InvestmentProposalFunctions)}.{nameof(InvestmentProposalFunctions.CreateComment)}",
+        $"{nameof(InvestmentProposalFunctions)}.{nameof(InvestmentProposalFunctions.ResolveComment)}",
     ];
 
     /// <summary>
@@ -271,6 +278,23 @@ public sealed class ReviewerWriteGuardCoverageTests
     {
         string outcome = await OutcomeAsync(
             typeof(AipReviewCommentFunctions).FullName!, methodName,
+            crossOfficeReviewer: true, departmentHeadReviewer: false);
+
+        Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", outcome);
+    }
+
+    /// <summary>
+    /// The positive assertion for the proposal comment entries above (PPDO-219): a cross-office
+    /// reviewer reaches the service rather than being refused at the door. If either route were moved
+    /// onto <c>AuthorizeWriteAsync</c> this would be a 403.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(InvestmentProposalFunctions.CreateComment))]
+    [InlineData(nameof(InvestmentProposalFunctions.ResolveComment))]
+    public async Task ProposalCommentEndpoints_LetACrossOfficeReviewerThrough(string methodName)
+    {
+        string outcome = await OutcomeAsync(
+            typeof(InvestmentProposalFunctions).FullName!, methodName,
             crossOfficeReviewer: true, departmentHeadReviewer: false);
 
         Assert.NotEqual($"status:{HttpStatusCode.Forbidden}", outcome);

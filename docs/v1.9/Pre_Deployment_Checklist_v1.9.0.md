@@ -1,7 +1,7 @@
 ---
 status: draft
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
@@ -16,7 +16,7 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215
 
 - [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
   `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-216 there are two. Re-check rather than trust this page:
+- [ ] **Migration count.** As of PPDO-219 there are three. Re-check rather than trust this page:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -46,10 +46,24 @@ Additive only: no existing value changes, so no baseline sums are needed.
 Additive. Every other fund stays unenforced until finance turns it on, so no office's checks change
 at deploy time.
 
+`20261015004606_AddInvestmentProposalComments` (PPDO-219): a **new table**, `investment_proposal_comments`
+(`id`, `proposal_id`, `body nvarchar(2000)`, `author_side`, `author_id`, `created_at`, `resolved_at`,
+`resolved_by_id`).
+
+| Change | Detail |
+|---|---|
+| FK `proposal_id` → `investment_proposals.id` | `ON DELETE CASCADE`: deleting a Draft proposal deletes its comments |
+| FKs `author_id`, `resolved_by_id` → `Users.Id` | `ON DELETE RESTRICT` |
+| Index | `IX_investment_proposal_comments_proposal_resolved` on `(proposal_id, resolved_at)`, plus the two user-FK indexes |
+
+Additive only and empty at creation: no existing row changes, so no baseline sums are needed.
+
 ### Steps (UAT first, then production)
 
 - [ ] ⚠️ **Run it BEFORE the code deploys.** The new code reads `is_reviewer_edit` on every portal page
-  (the notifications read), so code without the column fails every page load. **CI does not run
+  (the notifications read), so code without the column fails every page load. PPDO-219 is the same
+  kind of dependency: the proposals list and Finalize read `investment_proposal_comments`, so code
+  without the table fails both. **CI does not run
   migrations.**
 - [ ] **Apply.** From `backend/`, with `SqlConnectionString` pointing at the target database:
 
@@ -64,6 +78,15 @@ at deploy time.
   -- expect exactly one row: GF, NULL, 1
   ```
 
+- [ ] **Verify (PPDO-219).** The table exists, is empty, and the proposal FK cascades:
+
+  ```sql
+  SELECT COUNT(*) AS comments FROM investment_proposal_comments;   -- expect 0
+  SELECT name, delete_referential_action_desc FROM sys.foreign_keys
+  WHERE parent_object_id = OBJECT_ID('investment_proposal_comments');
+  -- expect proposal_id -> CASCADE; author_id and resolved_by_id -> NO_ACTION
+  ```
+
 - [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
 
   ```sql
@@ -76,10 +99,10 @@ at deploy time.
 
 ### Rollback
 
-`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops both migrations' columns
-and indexes. Run it only **after** rolling the code back, because the code needs the columns.
-Acknowledgements and reviewer-edit flags recorded since the deploy are lost. The comments themselves
-remain.
+`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all three migrations' columns,
+indexes and the `investment_proposal_comments` table. Run it only **after** rolling the code back,
+because the code needs them. Acknowledgements and reviewer-edit flags recorded since the deploy are
+lost, and so is **every Investment Proposal comment** (PPDO-219). The AIP comments themselves remain.
 
 ## 2. Tell people first
 
@@ -94,6 +117,11 @@ remain.
   first), every office with lines on that fund and **no ceiling set** is blocked from sending to PPDO.
   Set those offices' ceilings on Office Ceilings straight after turning the flag on.
 
+- [ ] **Office encoders, department heads and PPDO reviewers (PPDO-219):** a proposal now has a
+  comments thread. An **open** comment blocks **Finalize**, and only the side that wrote a comment
+  (PPDO or the office) can resolve it, so an open PPDO comment holds the office's Finalize until a PPDO
+  reviewer resolves it.
+
 ## 3. After the deploy (UAT, then production)
 
 - [ ] As a PPDO reviewer, open an office in `SubmittedToPpdo`, use **Edit amounts** on an activity,
@@ -103,6 +131,11 @@ remain.
   the AIP Entry banner and the "PPDO edited" sidebar pill show; **Mark as seen** clears both.
 - [ ] The office's open-comment count and re-submit warning did **not** go up because of the edit.
 - [ ] A user of another office sees none of it.
+- [ ] **Proposal comments (PPDO-219).** As an office encoder, `POST` a comment on a Draft proposal: it
+  is side `Office`, open. As `ppdo.finance`, comment on another office's proposal: side `Ppdo`.
+  Finalize as the office is refused with "Resolve the 1 open comment before finalizing." (409, nothing
+  changes). The office cannot resolve the PPDO comment (403); PPDO resolves it, the office resolves its
+  own, and Finalize then succeeds. A user of another office gets 404 on the thread.
 
 ## Rollback summary
 

@@ -16,7 +16,7 @@ namespace PPDO.Tests.Application;
 /// the row version on every save and enforces the expected one, so the stale-save path is real.
 /// The permission rules are the real <see cref="PermissionService"/>.
 /// </summary>
-public sealed class InvestmentProposalServiceTests
+public sealed partial class InvestmentProposalServiceTests
 {
     private const int HostOffice  = 1;    // PPDO
     private const int GuestOffice = 7;    // the project's office
@@ -28,6 +28,7 @@ public sealed class InvestmentProposalServiceTests
     private const int ActValidation = 401, ActProcurement = 402;
 
     private readonly FakeProposalRepository _store = new();
+    private readonly FakeCommentRepository _commentStore = new();
     private readonly Mock<IAipRepository> _aip = new();
     private readonly Mock<IAipExpenditureRepository> _exp = new();
     private readonly Mock<IAipDivisionLock> _lock = new();
@@ -113,7 +114,7 @@ public sealed class InvestmentProposalServiceTests
                 (IReadOnlyDictionary<Guid, string>)everyone.Where(u => ids.Contains(u.Id)).ToDictionary(u => u.Id, u => u.FullName));
 
         _sut = new InvestmentProposalService(
-            _store, _aip.Object, _exp.Object, allocation.Object, _lock.Object, new PermissionService(),
+            _store, _commentStore, _aip.Object, _exp.Object, allocation.Object, _lock.Object, new PermissionService(),
             _settings.Object, _users.Object, new Mock<IAuditService>().Object,
             NullLogger<InvestmentProposalService>.Instance);
     }
@@ -602,10 +603,13 @@ public sealed class InvestmentProposalServiceTests
         private int _nextId = 1;
         private long _version = 1;
 
+        /// <summary>PPDO-219 — the rows the next list answers (empty by default).</summary>
+        public List<ProposalProjectRow> ListRows { get; } = [];
+
         public Task<ProposalProjectPage> ListProjectsAsync(ProposalProjectQuery query, CancellationToken ct = default)
         {
             LastQuery = query;
-            return Task.FromResult(new ProposalProjectPage([], 0));
+            return Task.FromResult(new ProposalProjectPage(ListRows.ToList(), ListRows.Count));
         }
 
         /// <summary>PPDO-180 — what the next count answers; the query is captured like the list's.</summary>
