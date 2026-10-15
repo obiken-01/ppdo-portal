@@ -65,6 +65,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/resource-links":        "Resource Links",
   "/profile":               "My Account",  // transient — /profile redirects to /account (RAL-252)
   "/account":               "My Account",
+  "/notifications":         "Notifications",
   "/inventory/create-pr":       "Create Purchase Request",
   "/inventory/receive-delivery": "Receive Delivery",
   "/inventory/items-master": "Items Master",

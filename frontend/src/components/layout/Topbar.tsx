@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MeResponse } from "@/types";
 import { allocationLabels } from "@/lib/budget-planning-labels";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 interface TopbarProps {
   me: MeResponse | null;
@@ -177,11 +178,16 @@ export default function Topbar({ me, title, onMenuClick }: TopbarProps) {
         )}
       </div>
 
+      {/* The bell sits left of the name (PPDO-222). `me` comes from the portal layout's single
+          /auth/me read, so the bell adds no request of its own for the user. */}
       {me && (
-        <span className="text-sm text-slate-600 hidden sm:block">
-          {me.fullName}
-          <span className="ml-1.5 text-xs text-slate-600">({me.role})</span>
-        </span>
+        <div className="flex items-center gap-1 sm:gap-3">
+          <NotificationBell />
+          <span className="text-sm text-slate-600 hidden sm:block">
+            {me.fullName}
+            <span className="ml-1.5 text-xs text-slate-600">({me.role})</span>
+          </span>
+        </div>
       )}
     </header>
   );

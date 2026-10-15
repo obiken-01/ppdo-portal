@@ -59,14 +59,21 @@ public static class NotificationText
 
     /// <summary>"PPDO edited Seed distribution: 5-02-03-010 Office Supplies CO ₱40,000.00 → ₱50,000.00"</summary>
     public static string AipReviewerEdited(string activity, string change)
-        => Fit($"PPDO edited {activity}: {change}");
+        => Fit($"PPDO edited {Name(activity)}: {change}");
 
     /// <summary>"PPDO added 5-02-01-010 Traveling Expenses - Local to Seed distribution"</summary>
     public static string AipReviewerAdded(string account, string activity)
-        => Fit($"PPDO added {account} to {activity}");
+        => Fit($"PPDO added {account} to {Name(activity)}");
 
     private static string Target(string refCode, string project)
-        => string.IsNullOrWhiteSpace(refCode) ? project : $"{refCode} — {project}";
+        => string.IsNullOrWhiteSpace(refCode) ? Name(project) : $"{refCode} — {Name(project)}";
+
+    /// <summary>
+    /// A name on one line, cut like a quote. ⚠️ An AIP activity name is free text and can be a whole
+    /// multi-line paragraph; left whole it filled the 400-character column and <see cref="Fit"/> cut
+    /// the sentence before the change it exists to report ("PPDO edited Manpower augmentation…").
+    /// </summary>
+    public static string Name(string name) => Quote(name);
 
     /// <summary>The first <see cref="QuoteLength"/> characters on one line, with an ellipsis when cut.</summary>
     public static string Quote(string body)

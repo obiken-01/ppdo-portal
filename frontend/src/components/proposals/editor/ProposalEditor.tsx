@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -124,6 +124,15 @@ export default function ProposalEditor({
   // PPDO-220: open comment threads (from the panel) and a bump that makes the panel re-read.
   const [openThreads, setOpenThreads] = useState(0);
   const [commentsReload, setCommentsReload] = useState(0);
+  // A notification links here with ?comments=open (PPDO-222): bring the comments panel into view once.
+  const searchParams = useSearchParams();
+  const wantsComments = searchParams.get("comments") === "open";
+  useEffect(() => {
+    if (!wantsComments) return;
+    const t = window.setTimeout(
+      () => document.getElementById(COMMENTS_PANEL_ID)?.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+    return () => window.clearTimeout(t);
+  }, [wantsComments, initial.id]);
   // The section the reader last worked in — what Ctrl+S saves in the all-cards view.
   const lastTouched = useRef<SectionKey>("A");
 
