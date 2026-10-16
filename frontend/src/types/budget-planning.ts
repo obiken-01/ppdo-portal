@@ -1984,3 +1984,30 @@ export interface AipConflict<T = unknown> {
   /** The row as it now stands, for the side-by-side compare. */
   current: T;
 }
+
+// ---------------------------------------------------------------------------
+// Bulk initial WFP export (PPDO-230) — Bulk_Initial_WFP_Export_Spec.md §4
+// ---------------------------------------------------------------------------
+
+export type InitialWfpExportStatus =
+  | "Queued" | "Running" | "Done" | "DoneWithProblems" | "Failed" | "Expired";
+
+/** One office the worker left out of the ZIP, and why. */
+export interface InitialWfpExportProblemDto {
+  officeCode: string;
+  reason: string;
+}
+
+export interface InitialWfpExportJobDto {
+  id: number;
+  fiscalYear: number;
+  status: InitialWfpExportStatus;
+  done: number;
+  total: number;
+  problems: InitialWfpExportProblemDto[];
+  message?: string | null;
+  requestedByName: string;
+  createdAt: string;
+  finishedAt?: string | null;
+  expiresAt?: string | null;
+}

@@ -69,6 +69,9 @@ import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
 import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
 import PpmpReportView from "./PpmpReportView";
+import BulkExportStatus from "./BulkExportStatus";
+import { useBulkExport } from "./useBulkExport";
+import { isActiveExport } from "@/lib/wfp-bulk-export";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -509,6 +512,12 @@ function WfpReportPageInner() {
   /** True when the WFP on screen is read off the AIP — office list, empty states and title key off it. */
   const isInitialWfp = reportType === "WFP" && isInitialYear;
   const readsOwnOfficeOnly = me != null && !me.isHostOffice;
+
+  // ── Bulk initial WFP export (PPDO-230) ───────────────────────────────────
+  // PPDO report readers only, and only for an entered year — an office user never sees the button, and
+  // the API refuses them (403) either way.
+  const canBulkExport = isInitialWfp && me != null && canOpenWfpReport(me);
+  const bulkExport = useBulkExport(fiscalYear, canBulkExport);
   const divisionLocked = me != null && fiscalYear != null
     ? wfpDivisionLocked(me, fiscalYear, officeId, canBypassDivision)
     : !canBypassDivision;
@@ -830,6 +839,18 @@ function WfpReportPageInner() {
           </select>
         </div>
 
+        {canBulkExport && (
+          <button
+            type="button"
+            onClick={() => void bulkExport.request()}
+            disabled={bulkExport.loading || bulkExport.requesting || isActiveExport(bulkExport.job)}
+            title="Builds one Excel file per office marked as done and bundles them into a ZIP."
+            className="px-4 py-1.5 text-sm font-medium border border-slate-300 text-slate-800 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {bulkExport.requesting ? "Starting…" : "Download all"}
+          </button>
+        )}
+
         <button
           /* ⚠️ For the AIP a null office is a real choice — the consolidated scope — so the office is
              not required here the way it is for a WFP. */
@@ -869,6 +890,10 @@ function WfpReportPageInner() {
           </button>
         )}
       </div>
+
+      {canBulkExport && fiscalYear != null && (
+        <BulkExportStatus state={bulkExport} fiscalYear={fiscalYear} />
+      )}
 
       {aipExportError && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
