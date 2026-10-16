@@ -190,6 +190,46 @@ public sealed class BackgroundJobRepositoryTests : IDisposable
         Assert.Equal(0, (await ReadAsync(2)).DoneCount);
     }
 
+    // ── Finishing (PPDO-229) ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task FailAsync_EndsARunningJob_WithTheMessageCutToTheColumn_AndLeavesOthersAlone()
+    {
+        await InsertAsync(new InitialWfpExportJob { Id = 1, Status = BackgroundJobStatus.Running });
+        await InsertAsync(new InitialWfpExportJob { Id = 2, Status = BackgroundJobStatus.Queued });
+
+        Assert.True(await Repo().FailAsync<InitialWfpExportJob>(1, new string('x', 500), Now));
+        Assert.False(await Repo().FailAsync<InitialWfpExportJob>(2, "Nope", Now));
+
+        InitialWfpExportJob failed = await ReadAsync(1);
+        Assert.Equal((BackgroundJobStatus.Failed, Now), (failed.Status, failed.FinishedAt));
+        Assert.Equal(BackgroundJob.MessageMaxLength, failed.Message!.Length);
+        Assert.Equal((BackgroundJobStatus.Queued, null), ((await ReadAsync(2)).Status, (await ReadAsync(2)).Message));
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WritesTheOutcome_OnARunningJobOnly()
+    {
+        await InsertAsync(new InitialWfpExportJob { Id = 1, Status = BackgroundJobStatus.Running });
+        await InsertAsync(new InitialWfpExportJob { Id = 2, Status = BackgroundJobStatus.Queued });
+        InitialWfpExportCompletion completion = new(
+            BackgroundJobStatus.DoneWithProblems, DoneCount: 12, TotalCount: 12,
+            ProblemsJson: "[{\"officeCode\":\"PHO\",\"reason\":\"x\"}]",
+            FileKey: "initial-wfp-exports/1/a.zip", ExpiresAt: Now.AddDays(7));
+
+        await using AppDbContext context = new(_options);
+        InitialWfpExportJobRepository repo = new(context);
+        Assert.True(await repo.CompleteAsync(1, completion, Now));
+        Assert.False(await repo.CompleteAsync(2, completion, Now));
+
+        InitialWfpExportJob row = await ReadAsync(1);
+        Assert.Equal(
+            (BackgroundJobStatus.DoneWithProblems, 12, 12, completion.ProblemsJson, completion.FileKey, Now.AddDays(7), Now),
+            (row.Status, row.DoneCount, row.TotalCount, row.ProblemsJson, row.FileKey, row.ExpiresAt, row.FinishedAt));
+        InitialWfpExportJob untouched = await ReadAsync(2);
+        Assert.Equal((BackgroundJobStatus.Queued, null, null), (untouched.Status, untouched.FileKey, untouched.FinishedAt));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
     private BackgroundJobRepository Repo() => new(new AppDbContext(_options));

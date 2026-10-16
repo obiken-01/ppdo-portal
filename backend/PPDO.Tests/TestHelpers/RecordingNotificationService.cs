@@ -37,6 +37,17 @@ public sealed class RecordingNotificationService : INotificationService
         return ForwardTo?.StageAsync(type, actor, build, ct) ?? Task.CompletedTask;
     }
 
+    /// <summary>What <see cref="NotifyAsync"/> was asked to write (PPDO-229, an event with no actor).</summary>
+    public sealed record Notified(string Type, User Recipient, string Text, string Link);
+
+    public List<Notified> NotifyCalls { get; } = [];
+
+    public Task NotifyAsync(string type, User recipient, string text, string link, CancellationToken ct = default)
+    {
+        NotifyCalls.Add(new Notified(type, recipient, text, link));
+        return ForwardTo?.NotifyAsync(type, recipient, text, link, ct) ?? Task.CompletedTask;
+    }
+
     public Task<ServiceResult<NotificationCountDto>> GetUnreadCountAsync(User caller, CancellationToken ct = default)
         => throw new NotSupportedException();
 

@@ -30,6 +30,9 @@ public abstract class BackgroundJob
     /// <summary>The message a job gets when it runs out of attempts.</summary>
     public const string StoppedUnexpectedlyMessage = "The export stopped unexpectedly. Run it again.";
 
+    /// <summary>The width of <c>message</c> (nvarchar(400)).</summary>
+    public const int MessageMaxLength = 400;
+
     /// <summary>Primary key, from the shared <c>background_job_ids</c> sequence.</summary>
     public int Id { get; set; }
 
@@ -50,7 +53,7 @@ public abstract class BackgroundJob
     /// <summary>How many times it has been claimed. The claim increments it.</summary>
     public int Attempts { get; set; }
 
-    /// <summary>Why it failed, shown to the user. At most 400 characters.</summary>
+    /// <summary>Why it failed, shown to the user. At most <see cref="MessageMaxLength"/> characters.</summary>
     public string? Message { get; set; }
 
     /// <summary>When it reached Done, DoneWithProblems or Failed (UTC).</summary>

@@ -167,7 +167,7 @@ public sealed class WfpReportFunctions
         response.Headers.Add("Content-Type",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.Headers.Add("Content-Disposition",
-            $"attachment; filename=\"WFP_{result.Value!.OfficeCode}_{fiscalYear}.xlsx\"");
+            $"attachment; filename=\"{InitialWfpExportFiles.OfficeFileName(result.Value!.OfficeCode, fiscalYear)}\"");
         await response.WriteBytesAsync(bytes);
         return response;
     }

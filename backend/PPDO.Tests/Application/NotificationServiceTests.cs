@@ -142,6 +142,45 @@ public sealed class NotificationServiceTests
             NotificationTypes.ProposalComment, _actor, (_, _) => throw new OperationCanceledException()));
     }
 
+    // ── An event nobody performed (PPDO-229) ──────────────────────────────────
+
+    [Fact]
+    public async Task Notify_WritesAndSavesOneRow_ForTheRecipient_WithTheTextCut()
+    {
+        Notification? saved = null;
+        _repo.Setup(r => r.AddAndSaveAsync(It.IsAny<Notification>(), It.IsAny<CancellationToken>()))
+            .Callback((Notification row, CancellationToken _) => saved = row)
+            .Returns(Task.CompletedTask);
+
+        await _sut.NotifyAsync(NotificationTypes.InitialWfpExportReady, _alice, new string('x', 900), "/l");
+
+        Assert.NotNull(saved);
+        Assert.Equal((_alice.Id, NotificationTypes.InitialWfpExportReady, "/l", Now.UtcDateTime),
+            (saved!.UserId, saved.Type, saved.Link, saved.CreatedAt));
+        Assert.Equal(NotificationText.MaxLength, saved.Text.Length);
+    }
+
+    [Fact]
+    public async Task Notify_WhenSavingThrows_DoesNotThrow_AndLogsAtError()
+    {
+        _repo.Setup(r => r.AddAndSaveAsync(It.IsAny<Notification>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("db down"));
+
+        Assert.Null(await Record.ExceptionAsync(() =>
+            _sut.NotifyAsync(NotificationTypes.InitialWfpExportReady, _alice, "t", "/l")));
+        _logger.Verify(l => l.Log(
+            LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+            It.Is<Exception?>(e => e is InvalidOperationException),
+            It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(12, 12, "Your FY 2028 initial WFP export is ready (12 offices)")]
+    [InlineData(11, 12, "Your FY 2028 initial WFP export is ready (11 of 12 offices)")]
+    [InlineData(1, 1, "Your FY 2028 initial WFP export is ready (1 office)")]
+    public void InitialWfpExportReady_SaysHowManyOfficesAreInIt(int built, int total, string expected)
+        => Assert.Equal(expected, NotificationText.InitialWfpExportReady(2028, built, total));
+
     // ── Reads ─────────────────────────────────────────────────────────────────
 
     [Fact]

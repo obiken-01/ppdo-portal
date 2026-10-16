@@ -60,6 +60,21 @@ public sealed class InitialWfpExportJobRepository : IInitialWfpExportJobReposito
                 .SetProperty(j => j.TotalCount, totalCount)
                 .SetProperty(j => j.HeartbeatAt, now), ct) > 0;
 
+    /// <inheritdoc />
+    public async Task<bool> CompleteAsync(
+        int id, InitialWfpExportCompletion completion, DateTime now, CancellationToken ct = default)
+        => await _context.InitialWfpExportJobs
+            .Where(j => j.Id == id && j.Status == BackgroundJobStatus.Running)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(j => j.Status, completion.Status)
+                .SetProperty(j => j.DoneCount, completion.DoneCount)
+                .SetProperty(j => j.TotalCount, completion.TotalCount)
+                .SetProperty(j => j.ProblemsJson, completion.ProblemsJson)
+                .SetProperty(j => j.FileKey, completion.FileKey)
+                .SetProperty(j => j.ExpiresAt, completion.ExpiresAt)
+                .SetProperty(j => j.FinishedAt, now)
+                .SetProperty(j => j.HeartbeatAt, now), ct) > 0;
+
     /// <summary>Untracked, with the requester's row for the job's "requested by" name.</summary>
     private IQueryable<InitialWfpExportJob> WithRequester()
         => _context.InitialWfpExportJobs.AsNoTracking().Include(j => j.RequestedBy);

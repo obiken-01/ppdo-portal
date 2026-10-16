@@ -20,6 +20,13 @@ public sealed class NotificationRepository : INotificationRepository
     }
 
     /// <inheritdoc />
+    public async Task AddAndSaveAsync(Notification row, CancellationToken ct = default)
+    {
+        _context.Notifications.Add(row);
+        await _context.SaveChangesAsync(ct);
+    }
+
+    /// <inheritdoc />
     public Task<int> CountUnreadAsync(Guid userId, DateTime since, CancellationToken ct = default)
         => _context.Notifications
             .CountAsync(n => n.UserId == userId && n.ReadAt == null && n.CreatedAt >= since, ct);
