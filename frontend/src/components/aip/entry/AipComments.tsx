@@ -15,6 +15,12 @@
  * ⚠️ **The unresolved tally is two numbers, never one.** The reader can resolve neither set
  * themselves, so a merged total would imply an action that does not exist for them — and
  * "3 unresolved from PPDO" is the sentence that actually changes whether someone re-submits.
+ *
+ * ↩️ **Threads (v1.9.0 — PPDO-223).** A comment is a head or a reply one level under it; replies are
+ * indented beneath their head with a Reply box where the server says `canReply`. Encoders reply but
+ * never start a thread (`canComment` stays false for them). ⚠️ Every count here is of open HEADS
+ * (`isOpenHead`): a reply is never resolved, so `!c.resolvedAt` would count it as outstanding forever.
+ * Modelled on the proposal Comments panel (PPDO-220).
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -26,12 +32,16 @@ import type {
   AipUnresolvedCounts,
 } from "@/types";
 import { getAipComments, addAipComment, resolveAipComment } from "@/lib/aip-comments";
+import {
+  groupAipThreads, isCollapsedThread, isOpenHead, openThreadCount, type AipCommentThread,
+} from "@/lib/aip-comment-threads";
 import { aipErrorMessage } from "@/lib/aip";
 import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
 
 const SIDE_LABEL: Record<AipCommentSide, string> = {
   DepartmentHead: "department head",
   Ppdo: "PPDO",
+  Encoder: "encoder",
 };
 
 /** `Activity-980` — node ids are unique per table, so the type is part of the key. */
@@ -50,7 +60,8 @@ interface CommentsState {
   filter: AipCommentSide | null;
   setFilter: (side: AipCommentSide | null) => void;
   reload: () => Promise<void>;
-  add: (nodeType: AipCommentNodeType, nodeId: number, body: string) => Promise<void>;
+  /** Starts a thread, or with `parentCommentId` replies under that head (PPDO-223). */
+  add: (nodeType: AipCommentNodeType, nodeId: number, body: string, parentCommentId?: number) => Promise<void>;
   resolve: (commentId: number) => Promise<void>;
 }
 
@@ -102,9 +113,9 @@ export function AipCommentsProvider({
   }, [data]);
 
   const add = useCallback(
-    async (nodeType: AipCommentNodeType, nodeId: number, body: string) => {
+    async (nodeType: AipCommentNodeType, nodeId: number, body: string, parentCommentId?: number) => {
       if (aipRecordId == null || officeId == null) return;
-      await addAipComment(aipRecordId, officeId, { nodeType, nodeId, body });
+      await addAipComment(aipRecordId, officeId, { nodeType, nodeId, body, parentCommentId });
       await reload();
     },
     [aipRecordId, officeId, reload]
@@ -170,7 +181,7 @@ export function useAipUnresolvedCount(): (nodeType: AipCommentNodeType, nodeId: 
   const ctx = useComments();
   return useCallback(
     (nodeType: AipCommentNodeType, nodeId: number) =>
-      (ctx?.byNode.get(keyOf(nodeType, nodeId)) ?? []).filter((c) => !c.resolvedAt).length,
+      openThreadCount(ctx?.byNode.get(keyOf(nodeType, nodeId)) ?? []),
     [ctx]
   );
 }
@@ -202,7 +213,7 @@ export function AipCommentFilterBar({
   if (fromDepartmentHead + fromPpdo === 0) return null;
 
   const unresolved = ctx.data.comments.filter(
-    (c) => !c.resolvedAt && (ctx.filter == null || c.authorSide === ctx.filter)
+    (c) => isOpenHead(c) && (ctx.filter == null || c.authorSide === ctx.filter)
   );
 
   return (
@@ -326,7 +337,7 @@ export function AipCommentAnchor({
   const [open, setOpen] = useState(false);
 
   const comments = ctx?.byNode.get(keyOf(nodeType, nodeId)) ?? [];
-  const unresolved = comments.filter((c) => !c.resolvedAt);
+  const unresolved = comments.filter(isOpenHead);
 
   // A filter selection opens the threads it matches, so the reader is taken to the rows rather
   // than left to hunt for a marker.
@@ -381,8 +392,7 @@ export function AipCommentAnchor({
  */
 export function AipCommentPanel({ activityId }: { activityId: number }) {
   const ctx = useComments();
-  const unresolved = (ctx?.byNode.get(keyOf("Activity", activityId)) ?? [])
-    .filter((c) => !c.resolvedAt).length;
+  const unresolved = openThreadCount(ctx?.byNode.get(keyOf("Activity", activityId)) ?? []);
 
   return (
     <section className="border border-slate-200 bg-slate-50 px-4 py-3">
@@ -414,10 +424,14 @@ export function AipCommentPanel({ activityId }: { activityId: number }) {
 }
 
 /**
- * A row's comments and, where the reader may start one, the composer.
+ * A row's threads and, where the reader may start one, the composer.
  *
  * ⚠️ Shared by the gutter and the modal's rail, so the two cannot drift in what they offer — the
- * resolve control, the 2000-character counter, and the activities-only rule all live here once.
+ * resolve and reply controls, the 2000-character counter, and the activities-only rule all live here
+ * once.
+ *
+ * Open threads and reviewer-edit notes render in place, oldest first; resolved request threads collapse
+ * behind "N resolved" and take no reply (PPDO-223).
  */
 function CommentThread({
   nodeType,
@@ -432,10 +446,15 @@ function CommentThread({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [showResolved, setShowResolved] = useState(false);
 
   if (!ctx?.data) return null;
 
   const comments = ctx.byNode.get(keyOf(nodeType, nodeId)) ?? [];
+  const threads = groupAipThreads(comments);
+  const inView = threads.filter((t) => !isCollapsedThread(t));
+  const collapsed = threads.filter(isCollapsedThread);
   const canAdd = canStartThread(ctx, nodeType);
 
   async function submit() {
@@ -453,6 +472,24 @@ function CommentThread({
     }
   }
 
+  async function reply(headId: number, body: string): Promise<boolean> {
+    if (!ctx) return false;
+    setBusy(true);
+    setError(null);
+    try {
+      await ctx.add(nodeType, nodeId, body, headId);
+      setReplyingTo(null);
+      return true;
+    } catch (e) {
+      setError(aipErrorMessage(e, "Could not send this reply."));
+      // A refused reply usually means the thread changed under us (resolved meanwhile): show it as it is.
+      void ctx.reload();
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function markResolved(id: number) {
     if (!ctx) return;
     setError(null);
@@ -463,15 +500,40 @@ function CommentThread({
     }
   }
 
+  const renderThread = (t: AipCommentThread) => (
+    <ThreadView
+      key={t.head.id}
+      thread={t}
+      replying={replyingTo === t.head.id}
+      busy={busy}
+      onResolve={() => markResolved(t.head.id)}
+      onStartReply={() => { setError(null); setReplyingTo(t.head.id); }}
+      onCancelReply={() => setReplyingTo(null)}
+      onReply={(body) => reply(t.head.id, body)}
+    />
+  );
+
   return (
     <div className="space-y-2">
-      {comments.length === 0 && emptyText && (
+      {threads.length === 0 && emptyText && (
         <p className="text-xs text-slate-600">{emptyText}</p>
       )}
 
-      {comments.map((c) => (
-        <CommentRow key={c.id} comment={c} onResolve={() => markResolved(c.id)} />
-      ))}
+      {inView.map(renderThread)}
+
+      {collapsed.length > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowResolved((v) => !v)}
+            aria-expanded={showResolved}
+            className="text-[11px] font-medium text-slate-600 hover:text-slate-800"
+          >
+            {showResolved ? "▾" : "▸"} {collapsed.length} resolved
+          </button>
+          {showResolved && <div className="mt-2 space-y-2">{collapsed.map(renderThread)}</div>}
+        </div>
+      )}
 
       {canAdd && (
         <div className="pt-1">
@@ -497,22 +559,130 @@ function CommentThread({
         </div>
       )}
 
-      {error && <p className="text-[11px] text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-[11px] text-red-600">{error}</p>}
     </div>
   );
 }
 
 /**
  * The closed-thread label. ⚠️ PPDO-214 — a reviewer edit is created resolved but is not a resolved
- * request, so it is counted as an edit: "2 resolved · 1 PPDO edit", never "3 resolved".
+ * request, so it is counted as an edit: "2 resolved · 1 PPDO edit", never "3 resolved". ⚠️ Threads,
+ * not comments (PPDO-223): a resolved thread with two replies is "1 resolved".
  */
 function closedLabel(comments: AipReviewComment[]): string {
-  const edits = comments.filter((c) => c.isReviewerEdit).length;
-  const resolved = comments.length - edits;
+  const heads = comments.filter((c) => c.parentCommentId == null);
+  const edits = heads.filter((c) => c.isReviewerEdit).length;
+  const resolved = heads.length - edits;
   const parts: string[] = [];
   if (resolved > 0) parts.push(`${resolved} resolved`);
   if (edits > 0) parts.push(`${edits} PPDO edit${edits === 1 ? "" : "s"}`);
   return parts.join(" · ");
+}
+
+/** One thread: the head, its replies indented beneath, then Reply / Mark as resolved where allowed. */
+function ThreadView({
+  thread,
+  replying,
+  busy,
+  onResolve,
+  onStartReply,
+  onCancelReply,
+  onReply,
+}: {
+  thread: AipCommentThread;
+  replying: boolean;
+  busy: boolean;
+  onResolve: () => void;
+  onStartReply: () => void;
+  onCancelReply: () => void;
+  onReply: (body: string) => Promise<boolean>;
+}) {
+  const { head, replies } = thread;
+
+  return (
+    <div data-thread={head.id}>
+      <CommentRow comment={head} onResolve={onResolve} />
+
+      {replies.length > 0 && (
+        <div className={`mt-1.5 space-y-1.5 border-l-2 border-slate-200 pl-3 ${head.resolvedAt != null && !head.isReviewerEdit ? "opacity-60" : ""}`}>
+          {replies.map((r) => <CommentRow key={r.id} comment={r} />)}
+        </div>
+      )}
+
+      {/* ⚠️ Shown only when the server says this reader may reply: never on a resolved thread, a
+          reviewer-edit note or a reply, and for an encoder only inside their own scope. */}
+      {head.canReply && !replying && (
+        <button
+          type="button"
+          onClick={onStartReply}
+          className="mt-1 text-[11px] text-green-800 underline hover:text-green-900"
+        >
+          Reply
+        </button>
+      )}
+      {head.canReply && replying && (
+        <ReplyBox headId={head.id} authorName={head.authorName} busy={busy} onSubmit={onReply} onCancel={onCancelReply} />
+      )}
+    </div>
+  );
+}
+
+function ReplyBox({
+  headId,
+  authorName,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  headId: number;
+  authorName: string;
+  busy: boolean;
+  onSubmit: (body: string) => Promise<boolean>;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState("");
+
+  async function send() {
+    const body = text.trim();
+    if (!body || busy) return;
+    if (await onSubmit(body)) setText("");
+  }
+
+  return (
+    <div className="mt-1.5 border-l-2 border-slate-200 pl-3">
+      <label className="sr-only" htmlFor={`aip-reply-${headId}`}>{`Reply to ${authorName}`}</label>
+      <textarea
+        id={`aip-reply-${headId}`}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        maxLength={2000}
+        rows={2}
+        autoFocus
+        disabled={busy}
+        placeholder="Write a reply…"
+        className="w-full border border-slate-300 px-2 py-1 text-xs text-slate-800 disabled:bg-slate-50"
+      />
+      <div className="mt-1 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={busy || text.trim().length === 0}
+          className="bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {busy ? "Sending…" : "Reply"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="text-[11px] text-slate-600 underline hover:text-slate-800"
+        >
+          Cancel
+        </button>
+        <span className="text-[11px] text-slate-600">{text.length}/2000</span>
+      </div>
+    </div>
+  );
 }
 
 function CommentRow({
@@ -520,7 +690,8 @@ function CommentRow({
   onResolve,
 }: {
   comment: AipReviewComment;
-  onResolve: () => void;
+  /** Omitted for a reply: a reply is never resolved on its own. */
+  onResolve?: () => void;
 }) {
   // ⚠️ PPDO-214 — a reviewer edit is created resolved, but it is a record of a change, not a closed
   // request: it is never dimmed and never labelled "resolved". It says whether the office has seen it.
@@ -532,7 +703,7 @@ function CommentRow({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-slate-800">{comment.authorName}</span>
         <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-          {SIDE_LABEL[comment.authorSide]}
+          {SIDE_LABEL[comment.authorSide] ?? comment.authorSide}
         </span>
         {edit && <AipReviewerEditTag />}
         {edit && (
@@ -546,7 +717,7 @@ function CommentRow({
           </span>
         )}
         {/* ⚠️ Shown only when the server says this reader may resolve it. Never inferred here. */}
-        {comment.canResolve && (
+        {comment.canResolve && onResolve && (
           <button
             type="button"
             onClick={onResolve}
@@ -561,8 +732,9 @@ function CommentRow({
           same comment bodies render on a second page. */}
       <p className="mt-0.5 whitespace-pre-wrap text-slate-600">{comment.body}</p>
       {/* ⚠️ An orphaned comment is kept and labelled, never dropped: it is part of the record of
-          why the work changed, and the row it questioned being deleted is often the answer. */}
-      {comment.isOrphaned && (
+          why the work changed, and the row it questioned being deleted is often the answer. Said
+          once, on the head. */}
+      {comment.isOrphaned && comment.parentCommentId == null && (
         <p className="mt-0.5 text-[10px] italic text-slate-600">
           The row this referred to has since been removed.
         </p>

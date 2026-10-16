@@ -1797,7 +1797,11 @@ export type AipCommentNodeType = "Program" | "Project" | "Activity";
  * ⚠️ Exactly two — **the encoder never comments**. They read comments, act on them and re-submit.
  * That is why the unresolved tally splits two ways and not three.
  */
-export type AipCommentSide = "DepartmentHead" | "Ppdo";
+/**
+ * Who wrote a comment. ⚠️ `Encoder` is only ever on a REPLY (PPDO-223): encoders answer inside a
+ * reviewer's thread, never start or resolve one, and are never counted.
+ */
+export type AipCommentSide = "DepartmentHead" | "Ppdo" | "Encoder";
 
 export interface AipReviewComment {
   id: number;
@@ -1828,6 +1832,13 @@ export interface AipReviewComment {
   isReviewerEdit: boolean;
   acknowledgedAt: string | null;
   acknowledgedByName: string | null;
+  /**
+   * PPDO-223 — the thread's first comment for a reply; null on a head (every comment written before
+   * threads is a head). ⚠️ Only heads are counted or resolved: see `lib/aip-comment-threads`.
+   */
+  parentCommentId: number | null;
+  /** Whether **this** reader may reply on this head (open, and in their scope). Never true on a reply. */
+  canReply: boolean;
 }
 
 /** ⚠️ Two numbers, never merged — the reader can resolve neither set themselves. */
@@ -1842,7 +1853,10 @@ export interface AipReviewComments {
   officeId: number;
   comments: AipReviewComment[];
   unresolved: AipUnresolvedCounts;
-  /** False for an encoder — the composer is not offered. */
+  /**
+   * Whether this reader may START a thread — false for an encoder, who only replies (`canReply` on each
+   * head, PPDO-223). The new-thread composer is not offered on false.
+   */
   canComment: boolean;
 }
 
@@ -1850,6 +1864,8 @@ export interface CreateAipReviewCommentRequest {
   nodeType: AipCommentNodeType;
   nodeId: number;
   body: string;
+  /** PPDO-223 — the head to reply under. The server takes the reply's anchor from the head. */
+  parentCommentId?: number;
 }
 
 // ── Consolidated AIP (v1.8.0 Phase 4 — V18-55 / PPDO-73) ─────────────────────

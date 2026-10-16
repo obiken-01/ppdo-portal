@@ -126,6 +126,11 @@ public sealed partial class AipReviewCommentServiceTests
         AipReviewCommentService sut = Build();
         int head = await PpdoThreadAsync(sut);
 
+        // The head as returned to its author offers them Reply straight away, like the read does.
+        Assert.True(_store.Count == 1 && (await sut.GetForOfficeAsync(RecordId, OfficeId, PpdoReviewer())).Value!.Comments[0].CanReply);
+        AipReviewCommentDto created = (await sut.CreateAsync(RecordId, OfficeId, OnActivity("Second"), PpdoReviewer())).Value!;
+        Assert.True(created.CanReply);
+
         AipReviewCommentDto byHead = (await sut.CreateAsync(RecordId, OfficeId, ReplyTo(head), DeptHead())).Value!;
         AipReviewCommentDto byPpdo = (await sut.CreateAsync(RecordId, OfficeId, ReplyTo(head), PpdoReviewer())).Value!;
 
@@ -353,7 +358,7 @@ public sealed partial class AipReviewCommentServiceTests
     /// The encoder's reply alone would not move this tally even without the head filter, because its
     /// side is <c>Encoder</c> and the tally splits by the two reviewer sides. A reviewer's reply would,
     /// which is why both are here. (The side-blind per-row counts on the frontend are where an encoder
-    /// reply alone would show: <c>aip-comments.test.ts</c>.)
+    /// reply alone would show: <c>aip-comment-threads.test.ts</c>.)
     /// </para>
     /// </summary>
     [Fact]

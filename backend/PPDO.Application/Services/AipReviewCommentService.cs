@@ -264,7 +264,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
         return ServiceResult<AipReviewCommentDto>.Ok(
             Map(comment, side, new Dictionary<int, string> { [dto.NodeId] = refCode },
-                authorNameOverride: caller.FullName));
+                // A reviewer wrote this open head, so they may reply on it (PPDO-223).
+                authorNameOverride: caller.FullName, canReply: true));
     }
 
     // ── Resolve ───────────────────────────────────────────────────────────────
