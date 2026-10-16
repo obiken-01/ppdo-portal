@@ -17,6 +17,9 @@ public static class NotificationTypes
     public const string AipDivisionSubmitted        = "AipDivisionSubmitted";
     public const string AipReviewerEdit             = "AipReviewerEdit";
     public const string InitialWfpExportReady       = "InitialWfpExportReady";
+    public const string AipComment                  = "AipComment";
+    public const string AipReply                    = "AipReply";
+    public const string AipResolved                 = "AipResolved";
 }
 
 /// <summary>
@@ -65,6 +68,18 @@ public static class NotificationText
     /// <summary>"PPDO added 5-02-01-010 Traveling Expenses - Local to Seed distribution"</summary>
     public static string AipReviewerAdded(string account, string activity)
         => Fit($"PPDO added {account} to {Name(activity)}");
+
+    /// <summary>"PPDO commented on Seed distribution: "Check the unit cost"" (PPDO-223).</summary>
+    public static string AipThreadStarted(string side, string activity, string body)
+        => Fit($"{side} commented on {Name(activity)}: \"{Quote(body)}\"");
+
+    /// <summary>"Ana Reyes replied on Seed distribution: "Fixed"" (PPDO-223).</summary>
+    public static string AipReply(string name, string activity, string body)
+        => Fit($"{name} replied on {Name(activity)}: \"{Quote(body)}\"");
+
+    /// <summary>"Juan Cruz resolved your comment on Seed distribution" (PPDO-223).</summary>
+    public static string AipResolved(string name, string activity)
+        => Fit($"{name} resolved your comment on {Name(activity)}");
 
     /// <summary>
     /// "Your FY 2028 initial WFP export is ready (12 offices)", or "(11 of 12 offices)" when some were
@@ -119,4 +134,8 @@ public static class NotificationLinks
 
     public static string AipActivity(int fiscalYear, int programId, int projectId, int activityId)
         => $"/budget-planning/aip/entry?fiscalYear={fiscalYear}&programId={programId}&projectId={projectId}&activityId={activityId}";
+
+    /// <summary>The review drill-down on one activity — where a PPDO reviewer reads a thread (PPDO-223).</summary>
+    public static string AipReviewActivity(int officeId, int fiscalYear, int programId, int projectId, int activityId)
+        => $"/budget-planning/aip/review?officeId={officeId}&fiscalYear={fiscalYear}&programId={programId}&projectId={projectId}&activityId={activityId}";
 }

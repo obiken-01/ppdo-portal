@@ -25,8 +25,9 @@ namespace PPDO.Application.Services;
 /// </para>
 ///
 /// <para>
-/// <b>⚠️ Resolve is the only action.</b> No replies, no threading, no editing, no deletion
-/// (decision 9). A resolved comment is marked and kept, because PPDO-77's history reads it back.
+/// <b>⚠️ Threads one level deep, resolved at the head</b> (↩️ v1.9.0 — PPDO-223). Reviewers start
+/// threads; reviewers and in-scope encoders reply; only the starting side resolves, and only the head.
+/// Still no editing, no deletion. A resolved thread is marked and kept, because PPDO-77's history reads it back.
 /// </para>
 /// </summary>
 public interface IAipReviewCommentService
@@ -44,7 +45,9 @@ public interface IAipReviewCommentService
     /// <summary>
     /// Leaves a comment on one row.
     ///
-    /// ⚠️ Refused for a caller holding neither reviewer flag — the encoder never comments. The
+    /// ⚠️ A thread (no <c>ParentCommentId</c>) is refused for a caller holding neither reviewer flag.
+    /// ↩️ PPDO-223: a reply is open to reviewers and to encoders whose AIP Entry scope covers the
+    /// activity; 400 for a reply to a reply, to a resolved thread or to another office's head. The
     /// side recorded on the comment is decided here, once, and never re-derived: see the
     /// implementation's <c>ResolveSideAsync</c>.
     /// </summary>

@@ -1779,7 +1779,9 @@ public sealed class AipService : IAipService
             }).ToList(),
             Comments = comments.Select(c => new
             {
-                c.Id, NodeType = c.NodeType.ToString(), c.NodeId, c.AuthorId,
+                // ParentCommentId (PPDO-223): a reply shares its head's node, so it is deleted with it
+                // here and the snapshot keeps which thread it was in.
+                c.Id, c.ParentCommentId, NodeType = c.NodeType.ToString(), c.NodeId, c.AuthorId,
                 AuthorSide = c.AuthorSide.ToString(), c.Body, c.CreatedAt, c.ResolvedAt,
             }).ToList(),
         };

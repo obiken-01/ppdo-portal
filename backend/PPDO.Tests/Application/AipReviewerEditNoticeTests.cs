@@ -64,7 +64,21 @@ public sealed class AipReviewerEditNoticeTests
 
     private AipReviewCommentService Comments() => new(
         _comments.Object, _aipRepo.Object, _auditRepo.Object, _permissions.Object,
+        NoDivisions(), new PPDO.Tests.TestHelpers.RecordingNotificationService(),
         NullLogger<AipReviewCommentService>.Instance);
+
+    /// <summary>PPDO-223's reply rule reads the division lock; this office has no divisions.</summary>
+    private static IAipDivisionLock NoDivisions()
+    {
+        Mock<IAipDivisionLock> lockMock = new();
+        lockMock.Setup(d => d.LoadAsync(It.IsAny<AipOffice>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AipDivisionContext.None);
+        lockMock.Setup(d => d.LoadForOfficesAsync(
+                It.IsAny<AipRecord>(), It.IsAny<IReadOnlyList<AipOffice>>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((AipRecord _, IReadOnlyList<AipOffice> offices, User _, CancellationToken _) =>
+                offices.ToDictionary(o => o.Id, _ => AipDivisionContext.None));
+        return lockMock.Object;
+    }
 
     private User MakeUser(int officeId, bool crossOffice = false, bool hostOffice = false)
     {

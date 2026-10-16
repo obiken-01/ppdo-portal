@@ -1,7 +1,7 @@
 ---
 status: draft
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-224, PPDO-228
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-223, PPDO-224, PPDO-228
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
@@ -16,7 +16,7 @@ tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, P
 
 - [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
   `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-228 there are five. Re-check rather than trust this page:
+- [ ] **Migration count.** As of PPDO-223 there are six. Re-check rather than trust this page:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -86,6 +86,18 @@ Additive and empty at creation.
 ⚠️ The filtered index needs `QUOTED_IDENTIFIER ON` for any write to the table. EF and the app always
 connect that way; a hand-run `sqlcmd` does not unless given `-I`.
 
+`20261016134525_AddAipCommentThreads` (PPDO-223, [AIP_Comment_Threads_Spec.md](AIP_Comment_Threads_Spec.md)),
+on `aip_review_comments`:
+
+| Change | Detail |
+|---|---|
+| `parent_comment_id` | `int NULL`. Null is a thread's first comment (a head); every existing comment becomes a head with no replies |
+| FK `parent_comment_id` → the same table | `NO ACTION`. A reply carries its head's office row and node, so deleting an activity, a program or an office group still removes a head and its replies in one statement |
+| Index | `IX_aip_review_comments_parent_comment_id` |
+
+Additive only: no existing value changes. `author_side` may now also read `Encoder` (an encoder's
+reply); it is a string column, so no schema change.
+
 ### Steps (UAT first, then production)
 
 - [ ] ⚠️ **Run it BEFORE the code deploys.** The new code reads `is_reviewer_edit` on every portal page
@@ -94,7 +106,8 @@ connect that way; a hand-run `sqlcmd` does not unless given `-I`.
   without the table fails both. So does PPDO-221: commenting on a proposal, every AIP hand-off and every
   PPDO reviewer edit write `notifications` in the same save, so code without the table fails all of
   them. PPDO-228's endpoints read `initial_wfp_export_jobs`, and its 30-second timer starts with the
-  code. **CI does not run migrations.**
+  code. PPDO-223's comments read selects `parent_comment_id`, so code without the column fails every
+  AIP comment list, on AIP Entry and the review screen. **CI does not run migrations.**
 - [ ] **Apply.** From `backend/`, with `SqlConnectionString` pointing at the target database:
 
   ```bash
@@ -134,6 +147,15 @@ connect that way; a hand-run `sqlcmd` does not unless given `-I`.
   -- expect IX_..._fiscal_year_active: is_unique 1, filter ([status]=N'Queued' OR [status]=N'Running')
   ```
 
+- [ ] **Verify (PPDO-223).** The column exists, every comment is a head, the FK is NO ACTION:
+
+  ```sql
+  SELECT COUNT(*) AS total, SUM(CASE WHEN parent_comment_id IS NULL THEN 1 ELSE 0 END) AS heads
+  FROM aip_review_comments;   -- expect total = heads = the pre-deploy count
+  SELECT name, delete_referential_action_desc FROM sys.foreign_keys
+  WHERE name = 'FK_aip_review_comments_aip_review_comments_parent_comment_id';   -- expect NO_ACTION
+  ```
+
 - [ ] **Verify (PPDO-213).** The columns exist and nothing is flagged yet:
 
   ```sql
@@ -146,11 +168,13 @@ connect that way; a hand-run `sqlcmd` does not unless given `-I`.
 
 ### Rollback
 
-`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all five migrations' columns,
+`dotnet ef database update 20261005235915_AddAipConcurrencyTokens` drops all six migrations' columns,
 indexes, the `investment_proposal_comments`, `notifications` and `initial_wfp_export_jobs` tables and the
 `background_job_ids` sequence. Run it only **after** rolling the code back,
 because the code needs them. Acknowledgements and reviewer-edit flags recorded since the deploy are
-lost, and so is **every Investment Proposal comment** (PPDO-219), **every notification** (PPDO-221) and the
+lost, and so is **every AIP comment reply** (PPDO-223: dropping the column would leave replies as
+loose heads, so delete them first with `DELETE FROM aip_review_comments WHERE parent_comment_id IS NOT NULL`),
+**every Investment Proposal comment** (PPDO-219), **every notification** (PPDO-221) and the
 **export job history** (PPDO-228; finished ZIPs left in Blob storage then belong to no job: delete the
 `initial-wfp-exports/` folder in the container). The AIP comments themselves remain.
 
@@ -196,6 +220,12 @@ is written to the container. Ship PPDO-228 and PPDO-229 together, or expect that
   spread over the activity's months; the 10% reserve is on MOOE and CO only. No migration; it needs the
   PPDO-225 frontend to show it.
 
+- [ ] **Office encoders, department heads and PPDO reviewers (PPDO-223):** AIP activity comments are now
+  threads, like the proposal comments. Encoders can **reply** inside a PPDO or department-head thread on
+  an activity they can edit (their own division's), but still cannot start one. Replies do not count as
+  open comments; only the side that started a thread resolves it. The bell rings for a new thread, a
+  reply and a resolve.
+
 ## 3. After the deploy (UAT, then production)
 
 - [ ] As a PPDO reviewer, open an office in `SubmittedToPpdo`, use **Edit amounts** on an activity,
@@ -233,6 +263,13 @@ is written to the container. Ship PPDO-228 and PPDO-229 together, or expect that
   for a year with one it is 202 and a Queued job, and a second POST is 200 with the **same** id. As an office
   user, every bulk-exports call is 403. `GET …/bulk-exports?fiscalYear=` for a year with no job is 204. In
   Application Insights, `Functions.ExportJobTimer` runs every 30 s and succeeds.
+
+- [ ] **AIP comment threads (PPDO-223).** As a PPDO reviewer, comment on an activity of an office in
+  `SubmittedToPpdo`. As that office's encoder, reply: 201, side `Encoder`, the thread stays open; the
+  dashboard's open count and the re-submit warning are unchanged by the reply. Starting a thread as the
+  encoder is a 403; a reply to a reply, to a resolved thread or to a reviewer-edit note is a 400. After
+  PPDO resolves the thread, the department head's send to PPDO shows no unresolved-comment warning. The
+  thread's starter got a reply bell entry and the encoder got the resolve one, never the actor.
 
 ## Rollback summary
 
