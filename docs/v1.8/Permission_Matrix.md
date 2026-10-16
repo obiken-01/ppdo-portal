@@ -553,6 +553,17 @@ impose a restriction. Pinned by `DeniesWriteAsync_SuperAdmin_IsNeverDenied`.
 **Submit, return, and comment are the reviewer's own actions.** When Phase 4 adds them they must not
 be routed through this guard — a comment-only reviewer who cannot comment is not a reviewer.
 
+**AIP comment threads (v1.9.0 — PPDO-223, [AIP_Comment_Threads_Spec.md](../v1.9/AIP_Comment_Threads_Spec.md)).**
+No new flag. Who may do what on an activity's comments, all decided in `AipReviewCommentService`:
+
+| Action | Who |
+|---|---|
+| Start a thread | PPDO (`CanReviewAllOffices`) or the office's department head (`CanReviewBudgetPlanning`, own office) — as before |
+| Reply on an open thread | Either reviewer, **or** an encoder of the office whose AIP Entry scope covers the activity: in a divisioned office only their own division's (`AipDivisionContext.RefuseActivityReply`, the write rule without the submitted lock). Any workflow state |
+| Resolve | The head only, by the side that started it — as before |
+
+An encoder starting a thread, or replying outside their division, is a **403**.
+
 **The office ceiling save (`PUT /allocation/ceiling`) is exempt too** (PPDO-87, 2026-09-15). Ceiling
 authority moved from PBO to PPDO finance users, and those same users are the cross-office reviewer, so
 the guard would refuse the very people the grant is for. It is the one exempt write that changes a
