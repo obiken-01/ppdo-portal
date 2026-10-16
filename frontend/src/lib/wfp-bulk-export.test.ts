@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { FIRST_ENTERED_FISCAL_YEAR } from "./aip-fiscal-years";
 import { fileNameFromDisposition, isActiveExport, isExpiredDownloadError } from "./wfp-bulk-export";
 import type { InitialWfpExportJobDto, InitialWfpExportStatus } from "@/types";
 
 function job(status: InitialWfpExportStatus): InitialWfpExportJobDto {
   return {
-    id: 1, fiscalYear: 2028, status, done: 0, total: 3, problems: [], requestedByName: "x",
+    id: 1, fiscalYear: FIRST_ENTERED_FISCAL_YEAR, status, done: 0, total: 3, problems: [], requestedByName: "x",
     createdAt: "2026-10-16T00:00:00Z",
   };
 }
