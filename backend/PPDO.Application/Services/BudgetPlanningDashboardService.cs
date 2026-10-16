@@ -136,12 +136,10 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // enough. This replaced an N+1 that fired ~60 sequential DbCommands for a 5-division,
         // 3-fund office (RAL-166 follow-up — v1.4.5 Live Metrics showed the dashboard
         // dominated by repeated GetAllocationsAsync queries).
-        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11). Both panels below are
+        // ⚠️ SHARED funds, plus this office's own ENFORCED fund (PPDO-217) — see DashboardFunds. Both panels below are
         // per-fund CEILING and allocation views, and office funds have no ceiling. Unfiltered, this
         // dashboard would grow a column for every fund every office ever added.
-        IReadOnlyList<FundingSource> activeFunds = (await GetAllFundingSourcesAsync(ct))
-            .Where(f => f.IsActive && f.OfficeId is null)
-            .ToList();
+        IReadOnlyList<FundingSource> activeFunds = DashboardFunds(await GetAllFundingSourcesAsync(ct), host.Id);
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
             await GetAllocationsByFundAsync(host.Id, resolvedFY, activeFunds, ct);
 
@@ -431,6 +429,16 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             ? BuildNoDivisionRow(untaggedCounts, untaggedUsedByFund, activeFunds, officeWorkflow)
             : null);
     }
+
+    /// <summary>
+    /// The funds the per-fund ceiling and division views list for an office: every active SHARED
+    /// fund (PPDO-109 D11), plus the office's OWN fund when finance holds it to an AIP ceiling
+    /// (PPDO-217, Ralph 2026-10-14) — that fund now has a ceiling and a division split to show. An
+    /// un-enforced own fund, and any other office's fund, still has no row here.
+    /// </summary>
+    private static IReadOnlyList<FundingSource> DashboardFunds(IEnumerable<FundingSource> all, int officeId) =>
+        all.Where(f => f.IsActive && (f.OfficeId is null || (f.OfficeId == officeId && f.EnforceAipCeiling)))
+            .ToList();
 
     /// <summary>
     /// The FY2028+ untagged activities as one row (PPDO-150). ⚠️ No allocation, and
@@ -784,11 +792,9 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // division-scoped caller whose one division didn't match: nothing further to query.
         if (divisions.Count == 0) return ([], null);
 
-        // ⚠️ SHARED funds only — office_id null (v1.8.0 PPDO-109, D11), same rule GetDashboardAsync
+        // ⚠️ SHARED funds plus this office's own ENFORCED fund (DashboardFunds, PPDO-217), same rule GetDashboardAsync
         // applies for PPDO. An office's OWN funds have no ceiling to show a per-division share of.
-        IReadOnlyList<FundingSource> activeFunds = (await GetAllFundingSourcesAsync(ct))
-            .Where(f => f.IsActive && f.OfficeId is null)
-            .ToList();
+        IReadOnlyList<FundingSource> activeFunds = DashboardFunds(await GetAllFundingSourcesAsync(ct), officeId);
         Dictionary<int, IReadOnlyList<DivisionAllocationDto>> allocationsByFund =
             await GetAllocationsByFundAsync(officeId, fiscalYear, activeFunds, ct);
 

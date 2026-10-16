@@ -214,3 +214,7 @@ docs/.trash/
 # daily-notes plugin is off for this vault. A date-named note created here by accident is
 # ignored as a safety net, not as the plan: the same stance as the database patterns above.
 docs/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
+
+# v1.9.0 (PPDO-228) — LocalFileStore's folder when FileStore__LocalPath points into the repo
+# (local.settings.json.example: backend/.file-store). Holds generated export ZIPs on a dev machine.
+.file-store/

@@ -508,6 +508,13 @@ export interface AipReviewNotifications {
   departmentHeadFiscalYear: number | null;
   /** Years in which the user's own office is returned to them, earliest first. */
   returned: AipReturnedNotice[];
+  /**
+   * PPDO-213 — PPDO reviewer edits to the user's OWN office that nobody there has marked as seen,
+   * across open years. Own office only, for every reader (a PPDO reviewer included).
+   */
+  reviewerEditCount: number;
+  /** The earliest year with such an edit — where the notice links. Null at zero. */
+  reviewerEditFiscalYear: number | null;
 }
 
 /** "Ppdo": the office is ReturnedByPpdo. "DepartmentHead": Draft, last hand-off RETURN_DH (encoders only). */
@@ -930,7 +937,7 @@ export interface EnsureWfpActivityRequest {
 export interface WfpActivityRefDto {
   wfpRecordId: number;
   wfpActivityId: number;
-  wfpStatus: "Draft" | "Final";
+  wfpStatus: "Draft" | "Final" | "Consolidated";
 }
 
 // ── WFP Report preview (RAL-132) ───────────────────────────────────────────────
@@ -1019,6 +1026,11 @@ export interface WfpReportDto {
   officeName: string;
   reserveRate: number;
   fundSourceReports: WfpReportFundSourceDto[];
+  /**
+   * PPDO-225 — `"Aip"` on the initial WFP (an entered year, read off the consolidated AIP). ⚠️ The
+   * server leaves it OUT of the FY ≤ 2027 JSON, so a missing value means `"Wfp"`.
+   */
+  source?: "Wfp" | "Aip";
 }
 
 // ── PPMP Report preview (RAL-183) ──────────────────────────────────────────────
@@ -1408,6 +1420,12 @@ export interface SaveAipExpenditureRequest {
   procurementItems?: SaveAipProcurementItemRequest[];
 
   /**
+   * PPDO-212 — why a PPDO reviewer is making this change (1–500 characters). Required from a PPDO
+   * reviewer on a submitted or consolidated office; ignored for everyone else.
+   */
+  reviewerReason?: string;
+
+  /**
    * Base64 `rowversion` the row carried when it was loaded — the concurrent-edit guard
    * (V18-71 / PPDO-120). Send it on every write.
    *
@@ -1471,6 +1489,23 @@ export interface AddAipProgramsWithGroupRequest {
 export interface AipCeilingStatus {
   generalFundId: number | null;
   /** ⚠️ False is not "unlimited" — an unset ceiling is treated as ZERO. */
+  ceilingSet: boolean;
+  ceiling: number;
+  encodedBaseRounded: number;
+  remaining: number;
+  withinCeiling: boolean;
+  /**
+   * PPDO-216 — each fund other than the General Fund that finance flagged "Enforce AIP ceiling", with
+   * the same figures and rules (unset = zero, remaining never clamped). Listed only when the office
+   * has encoded on the fund or has a ceiling for it.
+   */
+  otherFunds: AipFundCeilingStatus[];
+}
+
+export interface AipFundCeilingStatus {
+  fundingSourceId: number;
+  code: string;
+  name: string;
   ceilingSet: boolean;
   ceiling: number;
   encodedBaseRounded: number;
@@ -1762,7 +1797,11 @@ export type AipCommentNodeType = "Program" | "Project" | "Activity";
  * ⚠️ Exactly two — **the encoder never comments**. They read comments, act on them and re-submit.
  * That is why the unresolved tally splits two ways and not three.
  */
-export type AipCommentSide = "DepartmentHead" | "Ppdo";
+/**
+ * Who wrote a comment. ⚠️ `Encoder` is only ever on a REPLY (PPDO-223): encoders answer inside a
+ * reviewer's thread, never start or resolve one, and are never counted.
+ */
+export type AipCommentSide = "DepartmentHead" | "Ppdo" | "Encoder";
 
 export interface AipReviewComment {
   id: number;
@@ -1786,6 +1825,20 @@ export interface AipReviewComment {
   canResolve: boolean;
   /** The anchored row is gone. Render as orphaned; never drop the comment. */
   isOrphaned: boolean;
+  /**
+   * PPDO-213 — written by the system when a PPDO reviewer edited an expenditure line. Created
+   * resolved; the office acknowledges it instead (`acknowledgedAt`). Rendered with "Edited by PPDO".
+   */
+  isReviewerEdit: boolean;
+  acknowledgedAt: string | null;
+  acknowledgedByName: string | null;
+  /**
+   * PPDO-223 — the thread's first comment for a reply; null on a head (every comment written before
+   * threads is a head). ⚠️ Only heads are counted or resolved: see `lib/aip-comment-threads`.
+   */
+  parentCommentId: number | null;
+  /** Whether **this** reader may reply on this head (open, and in their scope). Never true on a reply. */
+  canReply: boolean;
 }
 
 /** ⚠️ Two numbers, never merged — the reader can resolve neither set themselves. */
@@ -1800,7 +1853,10 @@ export interface AipReviewComments {
   officeId: number;
   comments: AipReviewComment[];
   unresolved: AipUnresolvedCounts;
-  /** False for an encoder — the composer is not offered. */
+  /**
+   * Whether this reader may START a thread — false for an encoder, who only replies (`canReply` on each
+   * head, PPDO-223). The new-thread composer is not offered on false.
+   */
   canComment: boolean;
 }
 
@@ -1808,6 +1864,8 @@ export interface CreateAipReviewCommentRequest {
   nodeType: AipCommentNodeType;
   nodeId: number;
   body: string;
+  /** PPDO-223 — the head to reply under. The server takes the reply's anchor from the head. */
+  parentCommentId?: number;
 }
 
 // ── Consolidated AIP (v1.8.0 Phase 4 — V18-55 / PPDO-73) ─────────────────────
@@ -1941,4 +1999,31 @@ export interface AipConflict<T = unknown> {
   currentRowVersion: string;
   /** The row as it now stands, for the side-by-side compare. */
   current: T;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk initial WFP export (PPDO-230) — Bulk_Initial_WFP_Export_Spec.md §4
+// ---------------------------------------------------------------------------
+
+export type InitialWfpExportStatus =
+  | "Queued" | "Running" | "Done" | "DoneWithProblems" | "Failed" | "Expired";
+
+/** One office the worker left out of the ZIP, and why. */
+export interface InitialWfpExportProblemDto {
+  officeCode: string;
+  reason: string;
+}
+
+export interface InitialWfpExportJobDto {
+  id: number;
+  fiscalYear: number;
+  status: InitialWfpExportStatus;
+  done: number;
+  total: number;
+  problems: InitialWfpExportProblemDto[];
+  message?: string | null;
+  requestedByName: string;
+  createdAt: string;
+  finishedAt?: string | null;
+  expiresAt?: string | null;
 }

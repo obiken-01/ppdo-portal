@@ -11,7 +11,7 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Application.Services;
 
 /// <inheritdoc />
-public sealed class InvestmentProposalService : IInvestmentProposalService
+public sealed partial class InvestmentProposalService : IInvestmentProposalService
 {
     public const string NotFoundMessage        = "Proposal not found.";
     public const string ProjectNotFoundMessage = "Project not found.";
@@ -44,6 +44,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     };
 
     private readonly IInvestmentProposalRepository         _proposals;
+    private readonly IInvestmentProposalCommentRepository  _comments;
     private readonly IAipRepository                        _aip;
     private readonly IAipExpenditureRepository             _expenditures;
     private readonly IAllocationRepository                 _allocation;
@@ -52,11 +53,14 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     private readonly IInvestmentPlanningSettingsRepository _settings;
     private readonly IUserRepository                       _users;
     private readonly IAuditService                         _audit;
+    // PPDO-221 — comment events go to the notification feed.
+    private readonly INotificationService                  _notifications;
     private readonly ILogger<InvestmentProposalService>    _logger;
     private readonly TimeProvider                          _clock;
 
     public InvestmentProposalService(
         IInvestmentProposalRepository         proposals,
+        IInvestmentProposalCommentRepository  comments,
         IAipRepository                        aip,
         IAipExpenditureRepository             expenditures,
         IAllocationRepository                 allocation,
@@ -65,10 +69,12 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
         IInvestmentPlanningSettingsRepository settings,
         IUserRepository                       users,
         IAuditService                         audit,
+        INotificationService                  notifications,
         ILogger<InvestmentProposalService>    logger,
         TimeProvider?                         clock = null)
     {
         _proposals    = proposals;
+        _comments     = comments;
         _aip          = aip;
         _expenditures = expenditures;
         _allocation   = allocation;
@@ -77,6 +83,7 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
         _settings     = settings;
         _users        = users;
         _audit        = audit;
+        _notifications = notifications;
         _logger       = logger;
         _clock        = clock ?? TimeProvider.System;
     }
@@ -103,10 +110,15 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             search, (page - 1) * pageSize, pageSize, ct);
         ProposalProjectPage result = await _proposals.ListProjectsAsync(query, ct);
 
+        // One grouped COUNT for the page (PPDO-219): the "N open" pill on each row.
+        IReadOnlyDictionary<int, int> openComments = await _comments.CountOpenByProposalIdsAsync(
+            result.Items.Where(r => r.ProposalId is not null).Select(r => r.ProposalId!.Value).ToList(), ct);
+
         List<ProposalListItemDto> items = result.Items
             .Select(r => new ProposalListItemDto(
                 r.AipProjectId, r.ProjectRefCode, r.ProjectName, r.ProgramName, r.OfficeName,
-                r.ProjectCost, r.ProposalId, r.ProposalStatus ?? "None", AsUtc(r.UpdatedAt), r.UpdatedByName))
+                r.ProjectCost, r.ProposalId, r.ProposalStatus ?? "None", AsUtc(r.UpdatedAt), r.UpdatedByName,
+                r.ProposalId is int pid ? openComments.GetValueOrDefault(pid) : 0))
             .ToList();
         return ServiceResult<ProposalListPageDto>.Ok(new ProposalListPageDto(items, result.TotalCount, page, pageSize));
     }
@@ -359,6 +371,10 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
             return ServiceResult<ProposalDto>.Forbidden(refusal);
         if (proposal.Status == InvestmentProposalStatus.Final)
             return ServiceResult<ProposalDto>.Conflict("This proposal is already final.");
+        // PPDO-219: an open comment blocks Finalize. Checked before the version so the user hears
+        // about the comments rather than a stale-save message.
+        if (await _comments.CountOpenAsync(proposal.Id, ct) is int open and > 0)
+            return ServiceResult<ProposalDto>.Conflict(OpenCommentsMessage(open));
         if (!proposal.RowVersion.AsSpan().SequenceEqual(version))
             return await StaleAsync<ProposalDto>(proposal.AipProjectId, ct);
 
@@ -489,13 +505,15 @@ public sealed class InvestmentProposalService : IInvestmentProposalService
     /// </summary>
     private async Task<bool> CanReadAsync(ProjectContext ctx, User caller, CancellationToken ct)
     {
-        if (!(await ReadOfficeScopeAsync(caller, ct)).Permits(ctx.Office.OfficeId)) return false;
+        bool crossOffice = await _permissions.CanReviewAllOfficesAsync(caller, ct);
+        if (!OfficeScope.ResolveForReview(caller, crossOffice).Permits(ctx.Office.OfficeId)) return false;
 
+        // PPDO-221: the rule itself is ProposalReadRule, which the notification audience also uses.
         AipReadScope read = AipReadScope.Resolve(caller);
         IReadOnlyList<ProgramDivision> own = read.OfficeIdForAssignments is int ownOfficeId
             ? await _allocation.GetProgramDivisionsByOfficeIdAsync(ownOfficeId, ct)
             : [];
-        return read.FilterPrograms([ctx.Program], [ctx.Office], own).Count == 1;
+        return ProposalReadRule.Permits(caller, crossOffice, ctx.Office, ctx.Program, own);
     }
 
     /// <summary>

@@ -17,8 +17,12 @@ namespace PPDO.Domain.Entities;
 /// </para>
 ///
 /// <para>
-/// <b>⚠️ There is no threading and no reply.</b> Resolve is the only action on a comment
-/// (spec decision 9). A conversation happens in the office, not in the document.
+/// <b>⚠️ Threads, one level deep</b> (↩️ v1.9.0 — PPDO-223, <c>AIP_Comment_Threads_Spec.md</c>). A
+/// comment is a <b>head</b> (<see cref="ParentCommentId"/> null — starts a thread, reviewers only) or a
+/// <b>reply</b> under an open head (reviewers, and encoders whose AIP Entry scope covers the
+/// activity). Only heads are resolved and only heads are counted: a reply is stored with
+/// <see cref="ResolvedAt"/> null forever, so any count that forgets <see cref="IsHead"/> lets one
+/// encoder reply hold the re-submit warning up for good.
 /// </para>
 ///
 /// <para>
@@ -40,6 +44,16 @@ public sealed class AipReviewComment
     /// keeps "the unresolved count for this office" answerable in one query.
     /// </summary>
     public int AipOfficeId { get; set; }
+
+    /// <summary>
+    /// The thread's head, or null when this comment IS a head (v1.9.0 — PPDO-223). Self FK, no action
+    /// on delete. ⚠️ A reply copies its head's <see cref="AipOfficeId"/>, <see cref="NodeType"/> and
+    /// <see cref="NodeId"/>, so every node-anchored read and delete (PPDO-88) takes the whole thread.
+    /// </summary>
+    public int? ParentCommentId { get; set; }
+
+    /// <summary>True for a thread's first comment — the only kind that is resolved or counted.</summary>
+    public bool IsHead => ParentCommentId is null;
 
     /// <summary>Which kind of node this comment is anchored to.</summary>
     public AipCommentNodeType NodeType { get; set; }
@@ -83,8 +97,28 @@ public sealed class AipReviewComment
     /// </summary>
     public Guid? ResolvedById { get; set; }
 
-    /// <summary>True while the comment still counts against the re-submit warning.</summary>
-    public bool IsUnresolved => ResolvedAt is null;
+    /// <summary>
+    /// True while the comment still counts against the re-submit warning. ⚠️ False for every reply
+    /// (PPDO-223): a reply is never resolved, so "unresolved" is only meaningful on a head.
+    /// </summary>
+    public bool IsUnresolved => IsHead && ResolvedAt is null;
+
+    /// <summary>
+    /// True for the comment the system writes when a PPDO reviewer edits an expenditure line
+    /// (v1.9.0 — PPDO-212/213). Such a comment is created resolved; the office acknowledges it
+    /// instead (<see cref="AcknowledgedAt"/>), and the dashboard notice counts the unacknowledged
+    /// ones.
+    /// </summary>
+    public bool IsReviewerEdit { get; set; }
+
+    /// <summary>
+    /// When the edited office marked this reviewer edit as seen, or null while it is pending.
+    /// ⚠️ Only ever set on <see cref="IsReviewerEdit"/> rows, and never the same thing as resolving.
+    /// </summary>
+    public DateTime? AcknowledgedAt { get; set; }
+
+    /// <summary>Who in the edited office marked it as seen.</summary>
+    public Guid? AcknowledgedById { get; set; }
 
     // ── Navigation ────────────────────────────────────────────────────────────
 
@@ -96,4 +130,7 @@ public sealed class AipReviewComment
 
     /// <summary>Who resolved it, if anyone.</summary>
     public User? ResolvedBy { get; set; }
+
+    /// <summary>Who marked a reviewer edit as seen, if anyone.</summary>
+    public User? AcknowledgedBy { get; set; }
 }

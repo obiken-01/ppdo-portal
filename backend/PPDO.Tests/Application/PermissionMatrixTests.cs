@@ -1,3 +1,4 @@
+using Moq;
 using PPDO.Application.Common;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
@@ -326,6 +327,86 @@ public sealed class PermissionMatrixTests
     [InlineData(1)]
     public void DivisionLock_OfficeWithoutDivisions_AllowsEveryone(int? activityDivision)
         => Assert.True(AipDivisionContext.None.CanWriteActivity(activityDivision));
+
+    // ── PPDO reviewer edits (v1.9.0 — PPDO-212) ──────────────────────────────
+    //
+    // The one place a cross-office reviewer may change an office's plan content: adding an
+    // expenditure line or changing a line's amounts (docs/v1.9/AIP_Reviewer_Edit_Spec.md). No flag
+    // changes; the grant is narrowed by the office's workflow state alone. The endpoint half (exactly
+    // Add and Update, never Delete) is pinned by ReviewerWriteGuardCoverageTests.
+
+    public static TheoryData<string, bool> ReviewerEditRows() => new()
+    {
+        // office workflow state,                 reviewer may add/edit lines
+        { AipWorkflowStatus.Draft,                false },
+        { AipWorkflowStatus.DepartmentReview,     false },
+        { AipWorkflowStatus.ReturnedByPpdo,       false },
+        { AipWorkflowStatus.SubmittedToPpdo,      true  },
+        { AipWorkflowStatus.Consolidated,         true  },
+    };
+
+    [Theory]
+    [MemberData(nameof(ReviewerEditRows))]
+    public async Task ReviewerEdit_AllowedOnlyOnceTheOfficeReachesPpdo(string state, bool expected)
+    {
+        Mock<IAipRepository> repo = new();
+        repo.Setup(r => r.GetByIntIdAsync(5, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipRecord { Id = 5, FiscalYear = 2028, Status = PlanningStatus.Draft });
+        AipOffice office = new() { Id = 11, OfficeId = GuestOfficeId, AipRecordId = 5, WorkflowStatus = state };
+
+        ServiceResult<object>? refused =
+            await AipWriteGuard.CheckReviewerEditAsync<object>(office, repo.Object, CancellationToken.None);
+
+        Assert.Equal(expected, refused is null);
+    }
+
+    // ── §3.4 Initial WFP report — which office (PPDO-224) ─────────────────────
+
+    /// <summary>
+    /// Permission_Matrix.md §3.4, row for row: caller × target office → may read the office's initial
+    /// WFP (an entered year). Flags come from the real <see cref="PermissionService"/>, so a change to
+    /// <c>CanAccessWfp</c> or <c>CanAccessBudgetPlanning</c> that moves a row fails here.
+    /// </summary>
+    public static TheoryData<string, UserRole, bool?, bool?, bool, bool?, bool, bool> InitialWfpRows => new()
+    {
+        // row,                        role,               office: host? null = none, budgetPlanningOverride, divisionFlag, reviewAll, ownOffice, expected
+        { "SuperAdmin, no office",     UserRole.SuperAdmin, null,  null,  false, null, false, true  },
+        { "Host Admin, other office",  UserRole.Admin,      true,  null,  false, null, false, true  },
+        { "Host Staff WFP reader",     UserRole.Staff,      true,  null,  true,  null, false, true  },
+        { "Host Staff, no BP",         UserRole.Staff,      true,  null,  false, null, false, false },
+        { "Guest Admin, own",          UserRole.Admin,      false, null,  false, null, true,  true  },
+        { "Guest Admin, other",        UserRole.Admin,      false, null,  false, null, false, false },
+        { "Guest Staff, own",          UserRole.Staff,      false, null,  false, null, true,  true  },
+        { "Guest Staff, other",        UserRole.Staff,      false, null,  false, null, false, false },
+        { "Guest Staff BP off, own",   UserRole.Staff,      false, false, false, null, true,  false },
+        { "Guest reviewer, other",     UserRole.Staff,      false, null,  false, true, false, false },
+        { "No office Staff",           UserRole.Staff,      null,  true,  true,  null, false, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(InitialWfpRows))]
+    public async Task InitialWfp_WhoReadsWhichOffice(
+        string row, UserRole role, bool? isHostOffice, bool? budgetPlanningOverride, bool divisionFlag,
+        bool? reviewAll, bool ownOffice, bool expected)
+    {
+        int? officeId = isHostOffice is bool host ? (host ? HostOfficeId : GuestOfficeId) : null;
+        User user = new()
+        {
+            Id = Guid.NewGuid(), Role = role, OfficeId = officeId,
+            Office = officeId is int id ? new Office { Id = id, OfficeCode = id == HostOfficeId ? "PPDO" : "GSO", IsHostOffice = id == HostOfficeId } : null,
+            DivisionId = 3,
+            Division = new Division { Id = 3, Name = "Test Division", CanAccessBudgetPlanning = divisionFlag },
+            OverrideCanAccessBudgetPlanning = budgetPlanningOverride,
+            OverrideCanReviewAllOffices = reviewAll,
+        };
+        // "own" is the caller's office; "other" is an office that is neither theirs nor the host.
+        int target = ownOffice ? officeId!.Value : 42;
+
+        bool permits = InitialWfpReadRule.Permits(user, target,
+            await _sut.CanAccessWfpAsync(user), await _sut.CanAccessBudgetPlanningAsync(user));
+
+        Assert.True(expected == permits, $"{row}: expected {expected}, got {permits}");
+    }
 
     // ── Fixture ───────────────────────────────────────────────────────────────
 

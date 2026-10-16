@@ -19,6 +19,8 @@ export interface ProposalListItem {
   status: ProposalStatus;
   updatedAt: string | null;
   updatedByName: string | null;
+  /** Open comment threads (heads), for the "N open" pill. Replies never count (PPDO-219). */
+  openCommentCount: number;
 }
 
 export interface ProposalListPage {
@@ -184,4 +186,26 @@ export interface ProposalConflict {
   currentRowVersion: string;
   updatedByName: string | null;
   updatedAt: string;
+}
+
+// ── Comments (v1.9.0 — PPDO-220) ───────────────────────────────────────────────
+
+/** Which side wrote a comment: the proposal's own office, or PPDO. */
+export type ProposalCommentSide = "Ppdo" | "Office";
+
+/**
+ * One comment of `GET /budget-planning/proposals/{id}/comments`. Threads come back flat:
+ * `parentCommentId` is null on a thread's head and names the head on a reply (one level only).
+ * `canResolve` is true only for an open head, for a reader on the side that started the thread.
+ */
+export interface ProposalComment {
+  id: number;
+  parentCommentId: number | null;
+  body: string;
+  side: ProposalCommentSide;
+  authorName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  canResolve: boolean;
 }

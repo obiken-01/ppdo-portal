@@ -67,17 +67,17 @@ public sealed class AipCeilingService : IAipCeilingService
     {
         int? gfId = await _allocation.GetGeneralFundIdAsync(ct);
         if (gfId is null)
-            return new AipCeilingStatusDto(null, false, 0m, 0m, 0m, WithinCeiling: false);
+            return new AipCeilingStatusDto(null, false, 0m, 0m, 0m, WithinCeiling: false, []);
 
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(aipOfficeId, ct);
         if (office?.OfficeId is not int configOfficeId)
-            return new AipCeilingStatusDto(gfId, false, 0m, 0m, 0m, WithinCeiling: false);
+            return new AipCeilingStatusDto(gfId, false, 0m, 0m, 0m, WithinCeiling: false, []);
 
         // ⚠️ GetOfficeByIdAsync does not Include the parent record, so the fiscal year is a second
         // fetch. Reading office.AipRecord.FiscalYear here compiles and throws at runtime.
         AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
         if (record is null)
-            return new AipCeilingStatusDto(gfId, false, 0m, 0m, 0m, WithinCeiling: false);
+            return new AipCeilingStatusDto(gfId, false, 0m, 0m, 0m, WithinCeiling: false, []);
 
         // ⚠️ Sequential awaits, not Task.WhenAll — DbContext is not thread-safe, and concurrent
         // queries on the shared context threw InvalidOperationException in prod once already
@@ -99,8 +99,11 @@ public sealed class AipCeilingService : IAipCeilingService
         // and it is exactly what must block submit (A5-b).
         decimal remaining = ceiling - encoded;
 
+        IReadOnlyList<AipFundCeilingStatusDto> otherFunds =
+            await GetOtherFundStatusesAsync(record, configOfficeId, ct);
+
         return new AipCeilingStatusDto(
-            gfId, ceilingSet, ceiling, encoded, remaining, WithinCeiling: remaining >= 0m);
+            gfId, ceilingSet, ceiling, encoded, remaining, WithinCeiling: remaining >= 0m, otherFunds);
     }
 
     /// <inheritdoc />
@@ -140,21 +143,73 @@ public sealed class AipCeilingService : IAipCeilingService
             return "No funding source is configured as the General Fund, so the ceiling cannot be "
                  + "checked. Ask an administrator to mark one in Configuration → Funding Sources.";
 
-        if (status.WithinCeiling)
-            return null;
+        // PPDO-216 decision 5 — every fund that fails, General Fund first, in one refusal, so an
+        // office over on two funds does not learn about the second only after fixing the first.
+        List<string> failures = [];
+        if (!status.WithinCeiling)
+            failures.Add(Refusal("General Fund", status.CeilingSet, status.Ceiling, status.EncodedBaseRounded));
+        foreach (AipFundCeilingStatusDto fund in status.OtherFunds.Where(f => !f.WithinCeiling))
+            failures.Add(Refusal(fund.Code, fund.CeilingSet, fund.Ceiling, fund.EncodedBaseRounded));
 
-        // ⚠️ An unset ceiling is ZERO, not unlimited — the same rule as a missing allocation row
-        // (GetDivisionAllocationAsync → 0m). But the message must say so rather than reporting an
-        // overage, or the encoder deletes work to fix a problem that is PPDO's to fix (PBO's until PPDO-87).
-        if (!status.CeilingSet)
-            return $"There is no General Fund ceiling set for this office for the fiscal year, so "
-                 + $"the encoded total of ₱{status.EncodedBaseRounded:N2} cannot be approved. "
+        return failures.Count == 0 ? null : string.Join(" ", failures);
+    }
+
+    /// <summary>
+    /// One fund's refusal, worded the way the General Fund's always was.
+    ///
+    /// ⚠️ An unset ceiling is ZERO, not unlimited — the same rule as a missing allocation row
+    /// (GetDivisionAllocationAsync → 0m). But the message must say so rather than reporting an
+    /// overage, or the encoder deletes work to fix a problem that is PPDO's to fix (PBO's until PPDO-87).
+    /// </summary>
+    private static string Refusal(string fundName, bool ceilingSet, decimal ceiling, decimal encoded)
+    {
+        if (!ceilingSet)
+            return $"There is no {fundName} ceiling set for this office for the fiscal year, so "
+                 + $"the encoded total of ₱{encoded:N2} cannot be approved. "
                  + $"Ask PPDO to set the ceiling.";
 
-        decimal overage = status.EncodedBaseRounded - status.Ceiling;
-        return $"General Fund MOOE + CO totals ₱{status.EncodedBaseRounded:N2}, which is "
-             + $"₱{overage:N2} over the ceiling of ₱{status.Ceiling:N2}. "
+        decimal overage = encoded - ceiling;
+        return $"{fundName} MOOE + CO totals ₱{encoded:N2}, which is "
+             + $"₱{overage:N2} over the ceiling of ₱{ceiling:N2}. "
              + $"Reduce the encoded amounts or ask PPDO to raise the ceiling.";
+    }
+
+    /// <summary>
+    /// v1.9.0 — PPDO-216. The other funds flagged "Enforce AIP ceiling", each checked on its own with
+    /// the General Fund's arithmetic (<see cref="SumEncodedBaseRoundedAsync"/>: MOOE + CO rounded per
+    /// activity, PS excluded, every group of the office).
+    ///
+    /// <para>
+    /// Only funds this office can hold lines on (shared, or its own) are looked at, and a fund is
+    /// listed only when the office has encoded on it or has a ceiling for it. An enforced fund the
+    /// office never uses must not block it or clutter its submit card.
+    /// </para>
+    ///
+    /// <para>⚠️ Sequential awaits — one shared DbContext. A handful of enforced funds at most.</para>
+    /// </summary>
+    private async Task<IReadOnlyList<AipFundCeilingStatusDto>> GetOtherFundStatusesAsync(
+        AipRecord record, int configOfficeId, CancellationToken ct)
+    {
+        IReadOnlyList<FundingSource> enforced = await _allocation.GetEnforcedAipCeilingFundsAsync(ct);
+
+        List<AipFundCeilingStatusDto> statuses = [];
+        foreach (FundingSource fund in enforced.Where(f => f.OfficeId is null || f.OfficeId == configOfficeId))
+        {
+            decimal encoded = await SumEncodedBaseRoundedAsync(record.Id, configOfficeId, fund.Id, ct);
+            ServiceResult<BudgetCeilingDto> ceilingResult =
+                await _allocation.GetCeilingAsync(configOfficeId, record.FiscalYear, fund.Id, ct);
+
+            bool    ceilingSet = ceilingResult.IsSuccess;
+            decimal ceiling    = ceilingSet ? ceilingResult.Value!.Amount : 0m;
+            if (encoded == 0m && !ceilingSet) continue;
+
+            decimal remaining = ceiling - encoded;   // never clamped (A5-b)
+            statuses.Add(new AipFundCeilingStatusDto(
+                fund.Id, fund.Code, fund.Name, ceilingSet, ceiling, encoded, remaining,
+                WithinCeiling: remaining >= 0m));
+        }
+
+        return statuses;
     }
 
     // ── Ledger upsert ─────────────────────────────────────────────────────────

@@ -106,7 +106,12 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
 
         int row = 2;
 
-        MergeH(ws, row, ColRef, ColNet, $"WORK AND FINANCIAL PLAN FY {report.FiscalYear}",
+        // PPDO-224 (decision 11): an initial WFP read off the AIP says so in its title row, so nobody
+        // takes it for an entered WFP. The entered WFP's title is untouched.
+        string title = report.Source == WfpReportSources.Aip
+            ? $"INITIAL WFP (FROM AIP) - WORK AND FINANCIAL PLAN FY {report.FiscalYear}"
+            : $"WORK AND FINANCIAL PLAN FY {report.FiscalYear}";
+        MergeH(ws, row, ColRef, ColNet, title,
             s => s.Font.SetBold(true).Font.SetFontSize(16)
                   .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center));
         row++;

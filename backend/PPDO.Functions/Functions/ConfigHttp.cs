@@ -320,6 +320,7 @@ internal static class ConfigHttp
             ServiceErrorCode.Conflict   => HttpStatusCode.Conflict,
             ServiceErrorCode.BadRequest => HttpStatusCode.BadRequest,
             ServiceErrorCode.Forbidden  => HttpStatusCode.Forbidden,
+            ServiceErrorCode.Gone       => HttpStatusCode.Gone,
             _                           => HttpStatusCode.InternalServerError,
         };
         string error = result.Error ?? "An unexpected error occurred.";

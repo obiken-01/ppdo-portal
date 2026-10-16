@@ -119,6 +119,21 @@ public sealed class AipDivisionContext
     public bool CanWriteActivity(int? activityDivisionId) => RefuseActivityWrite(activityDivisionId) is null;
 
     /// <summary>
+    /// Replying inside a reviewer's thread on one activity (v1.9.0 — PPDO-223, spec decisions 9–10):
+    /// <see cref="RefuseActivityWrite"/>'s division axis <b>without</b> the submitted lock. A reply is
+    /// not AIP content, so an encoder still answers after their division has submitted; but only on
+    /// their own division's activities, and not on an untagged one (it is nobody's division's yet).
+    /// </summary>
+    public string? RefuseActivityReply(int? activityDivisionId)
+    {
+        if (!HasDivisions || IsDepartmentHead) return null;
+        if (CallerDivisionId is not int own) return NotAssignedMessage;
+        if (activityDivisionId is not int tagged) return UntaggedActivityMessage;
+        if (tagged != own) return BelongsToMessage(tagged);
+        return null;
+    }
+
+    /// <summary>
     /// The division a NEW activity is saved with (decision 5), or the refusal.
     ///
     /// <list type="bullet">

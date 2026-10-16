@@ -8,6 +8,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -22,8 +24,11 @@ namespace PPDO.Tests.Application;
 /// <see cref="AipDivisionLockFixture"/>'s lists.
 /// </para>
 /// </summary>
-public sealed class AipDivisionSubmitServiceTests
+public sealed partial class AipDivisionSubmitServiceTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
     private const int RecordId = 300;
     private const int OfficeId = 7;
     private const int Group    = 400;
@@ -70,7 +75,7 @@ public sealed class AipDivisionSubmitServiceTests
                 (IReadOnlyList<AipActivityLineCountDto>)ids.Select(id => new AipActivityLineCountDto(id, 1, 0)).ToList());
 
         _ceiling.Setup(c => c.GetStatusAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 500_000m, 500_000m, true));
+            .ReturnsAsync(new AipCeilingStatusDto(1, true, 1_000_000m, 500_000m, 500_000m, true, []));
         _ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string?)null);
 
@@ -87,7 +92,7 @@ public sealed class AipDivisionSubmitServiceTests
     private AipSubmitService Sut() => new(
         _aipRepo.Object, _expRepo.Object, _ceiling.Object, _officeRepo.Object, _audit.Object,
         _divisions.Repo.Object, _divisions.Workflow(_audit.Object), new PermissionService(),
-        _userRepo.Object, NullLogger<AipSubmitService>.Instance);
+        _userRepo.Object, _notifications, NullLogger<AipSubmitService>.Instance);
 
     private static AipActivity Good(int id, int? division) => new()
     {

@@ -315,6 +315,51 @@ activity, so a mismatch is refused rather than trusted.
 Pinned by `WfpDivisionScopeTests` and the `Division scope (PPDO-198)` blocks in `WfpServiceTests`
 and `WfpExpenditureServiceTests`.
 
+### 3.4 The initial WFP report — who reads which office (PPDO-224)
+
+For an **entered year** (`AipFiscalYears.IsEntered`, FY2028+) the WFP report endpoints serve the
+**initial WFP**, read off the consolidated AIP ([Initial_WFP_Report_Spec.md](../v1.9/Initial_WFP_Report_Spec.md)
+decision 6). There are no WFP records for those years, so the report is opened to the office whose AIP it
+is. ↩️ This widens PPDO-20 ("the WFP report is PPDO-only") **for entered years only**; FY ≤ 2027 is
+§2.2a's `CanAccessWfp`, unchanged.
+
+The endpoint gate is `CanAccessBudgetPlanning`; the office rule is `InitialWfpReadRule`:
+
+| Caller | Target office | Reads? |
+|---|---|---|
+| SuperAdmin, any office or none | any | ✅ (`CanAccessWfp`) |
+| Host Admin, or host Staff holding `CanAccessWfp` | any | ✅ PPDO reads every office |
+| Host Staff without Budget Planning | any | ❌ 403 at the gate |
+| Guest Admin / Staff with Budget Planning | **their own** | ✅ |
+| Guest Admin / Staff | another office | ❌ **404**, the same answer as a missing office |
+| Guest Staff with the Budget Planning override `false` | their own | ❌ |
+| Guest-office `CanReviewAllOffices` holder | another office | ❌ 404: review scope (`ResolveForReview`) is not the WFP report's |
+| No office | any | ❌ (unless SuperAdmin) |
+
+Then, in this order: **(1) the gate** — the office is offered, and a report is served, only once **every**
+one of its AIP groups is `Consolidated`; otherwise **409** "{Office}'s FY {fy} AIP is not marked as done
+yet." (to the office's own users, "Your FY {fy} AIP…"). Scope is checked first, so a 409 never confirms
+another office. **(2) the division**, by the activity's division tag (PPDO-148):
+
+| Caller | Division |
+|---|---|
+| Own office, host (PPDO's own initial WFP) | §3.3 `WfpDivisionScope`, unchanged: finance and Admin choose; Staff forced to their division; Staff with none see nothing (404) |
+| Own office, guest: Admin, or Staff with no division | Whole office, or the division they ask for |
+| Own office, guest: Staff with a division | Forced to their division, whatever they ask |
+| Another office (a PPDO reader on a guest office) | Whole office, or the division asked for — never narrowed by the reader's own division |
+
+Pinned by `PermissionMatrixTests.InitialWfp_WhoReadsWhichOffice` (the office rows),
+`WfpInitialReportTests` (gate, scope and division through the service) and `WfpReportFunctionsTests`
+(the FY ≤ 2027 gate is still `CanAccessWfp`).
+
+**Bulk export of every office's initial WFP (v1.9.0 — PPDO-228).** `…/wfp/report/bulk-exports` (request,
+latest, by id, download) is the **PPDO** half of the rule above only: `CanAccessWfp`, the readers who reach
+every office ([Bulk_Initial_WFP_Export_Spec.md](../v1.9/Bulk_Initial_WFP_Export_Spec.md) decision 4).
+Office users keep their per-office export and get 403 on all four. Checked in the handler and again in
+`InitialWfpExportService`. Jobs are per fiscal year, so any `CanAccessWfp` holder reads any job. Not
+subject to `ReviewerWriteGuard`: queuing a download changes no plan content. Pinned by
+`InitialWfpExportServiceTests` and `WfpBulkExportFunctionsTests`.
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)
@@ -508,6 +553,17 @@ impose a restriction. Pinned by `DeniesWriteAsync_SuperAdmin_IsNeverDenied`.
 **Submit, return, and comment are the reviewer's own actions.** When Phase 4 adds them they must not
 be routed through this guard — a comment-only reviewer who cannot comment is not a reviewer.
 
+**AIP comment threads (v1.9.0 — PPDO-223, [AIP_Comment_Threads_Spec.md](../v1.9/AIP_Comment_Threads_Spec.md)).**
+No new flag. Who may do what on an activity's comments, all decided in `AipReviewCommentService`:
+
+| Action | Who |
+|---|---|
+| Start a thread | PPDO (`CanReviewAllOffices`) or the office's department head (`CanReviewBudgetPlanning`, own office) — as before |
+| Reply on an open thread | Either reviewer, **or** an encoder of the office whose AIP Entry scope covers the activity: in a divisioned office only their own division's (`AipDivisionContext.RefuseActivityReply`, the write rule without the submitted lock). Any workflow state |
+| Resolve | The head only, by the side that started it — as before |
+
+An encoder starting a thread, or replying outside their division, is a **403**.
+
 **The office ceiling save (`PUT /allocation/ceiling`) is exempt too** (PPDO-87, 2026-09-15). Ceiling
 authority moved from PBO to PPDO finance users, and those same users are the cross-office reviewer, so
 the guard would refuse the very people the grant is for. It is the one exempt write that changes a
@@ -515,6 +571,26 @@ figure — it qualifies because a ceiling is PPDO's own top-down number, not an 
 which is all the guard protects. It stays gated on `CanManageOfficeCeilings`; the reviewer flag alone
 never reaches it. Pinned by `ReviewerWriteGuardCoverageTests.UpsertCeiling_LetsACrossOfficeReviewerThrough`
 and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeilingGrant_ReturnsForbidden`.
+
+**PPDO reviewer edits — adding or editing an expenditure line (v1.9.0, PPDO-212).** The one place the
+cross-office reviewer may change an office's plan content, for the LFC adjustment that brings a part-year
+activity up to the full year ([AIP_Reviewer_Edit_Spec.md](../v1.9/AIP_Reviewer_Edit_Spec.md)). Unlike the
+exemptions above, this **is** a content write, so the guard opens for exactly two endpoints and the
+service narrows the rest:
+
+| Endpoint | Reviewer | Rule |
+|---|---|---|
+| `POST …/aip/activities/{id}/expenditures` | ✅ reaches the service | Office in `SubmittedToPpdo` or `Consolidated`, FY2028+, reason 1–500 chars |
+| `PUT …/aip/expenditures/{id}` | ✅ reaches the service | Same, and amounts only: the line's account and fund may not change |
+| `DELETE …/aip/expenditures/{id}` | ❌ 403 | A reviewer never removes a line |
+| every other budget-planning write | ❌ 403 | Unchanged |
+
+In `Draft`, `DepartmentReview` and `ReturnedByPpdo` the AIP is the office's, and the reviewer gets a 400.
+Each edit posts a PPDO comment on the activity that is **created already resolved**, so it never reaches
+the re-submit gate. No new flag, and SuperAdmin is unaffected (it is never routed through this path).
+Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAndUpdateExpenditure`,
+`PermissionMatrixTests.ReviewerEdit_AllowedOnlyOnceTheOfficeReachesPpdo` and
+`AipExpenditureReviewerEditTests`.
 
 > Finance users who also encode for their own division use a **separate encoder account** — the guard
 > is not narrowed to "own office" (recommended 2026-09-15, to confirm with finance).
@@ -533,6 +609,7 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 | Division scope | `PPDO.Application/Common/DivisionScope.cs` |
 | Combined budget-planning scope | `PPDO.Application/Common/BudgetPlanningScope.cs` |
 | WFP division scope | `PPDO.Application/Common/WfpDivisionScope.cs` |
+| Initial WFP report office rule (PPDO-224) | `PPDO.Application/Common/InitialWfpReadRule.cs` |
 | Reviewer write denial | `PPDO.Application/Common/ReviewerWriteGuard.cs` |
 | Endpoint wiring | `PPDO.Functions/Functions/ConfigHttp.cs` |
 | **This matrix, as tests** | `PPDO.Tests/Application/PermissionMatrixTests.cs` |
@@ -542,4 +619,4 @@ and `AllocationFunctionsTests.UpsertCeiling_AsCrossOfficeReviewerWithoutTheCeili
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224)*

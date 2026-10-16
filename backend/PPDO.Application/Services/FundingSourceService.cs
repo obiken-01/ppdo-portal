@@ -115,7 +115,7 @@ public sealed class FundingSourceService : IFundingSourceService
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult<FundingSourceDto>> CreateAsync(UpsertFundingSourceDto dto, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult<FundingSourceDto>> CreateAsync(UpsertFundingSourceDto dto, CancellationToken cancellationToken = default, bool canSetCeilingEnforcement = false)
     {
         if (string.IsNullOrWhiteSpace(dto.Code))
             return ServiceResult<FundingSourceDto>.BadRequest("Code is required.");
@@ -133,6 +133,10 @@ public sealed class FundingSourceService : IFundingSourceService
             && await _officeRepo.GetByIdAsync(newOfficeId, cancellationToken) is null)
             return ServiceResult<FundingSourceDto>.BadRequest($"Office {newOfficeId} not found.");
 
+        // PPDO-216 — a new fund starts unenforced unless finance asks otherwise.
+        if (dto.EnforceAipCeiling == true && !canSetCeilingEnforcement)
+            return ServiceResult<FundingSourceDto>.Forbidden(CeilingFlagForbidden);
+
         DateTime now = DateTime.UtcNow;
         FundingSource entity = new()
         {
@@ -143,6 +147,7 @@ public sealed class FundingSourceService : IFundingSourceService
             Aliases     = Blank(dto.Aliases),
             OfficeId    = dto.OfficeId,   // null = province-wide (PPDO-109, D5)
             IsActive    = dto.IsActive,
+            EnforceAipCeiling = dto.EnforceAipCeiling ?? false,
             CreatedAt   = now,
             UpdatedAt   = now,
         };
@@ -160,7 +165,7 @@ public sealed class FundingSourceService : IFundingSourceService
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult<FundingSourceDto>> UpdateAsync(int id, UpsertFundingSourceDto dto, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult<FundingSourceDto>> UpdateAsync(int id, UpsertFundingSourceDto dto, CancellationToken cancellationToken = default, bool canSetCeilingEnforcement = false)
     {
         if (string.IsNullOrWhiteSpace(dto.Code))
             return ServiceResult<FundingSourceDto>.BadRequest("Code is required.");
@@ -175,6 +180,12 @@ public sealed class FundingSourceService : IFundingSourceService
         string code = dto.Code.Trim();
         if (all.Any(f => f.Id != id && f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
+
+        // PPDO-216 — decided here, BEFORE any field of the tracked entity is assigned, so a refusal
+        // leaves nothing dirty. Judged against the fund as stored (its current code and owner).
+        bool oldEnforce = entity.EnforceAipCeiling;
+        if (CeilingFlagRefusal(entity, dto.EnforceAipCeiling, canSetCeilingEnforcement) is { } flagRefused)
+            return flagRefused;
 
         // ── Ownership (PPDO-128) ──────────────────────────────────────────────
         // ↩️ OfficeId IS read from the body now. PPDO-109 fixed ownership at creation; Demo 2 asked
@@ -232,7 +243,7 @@ public sealed class FundingSourceService : IFundingSourceService
             }
         }
 
-        var oldSnapshot = new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive };
+        var oldSnapshot = new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive, EnforceAipCeiling = oldEnforce };
 
         entity.Code        = code;
         entity.Name        = dto.Name.Trim();
@@ -242,6 +253,8 @@ public sealed class FundingSourceService : IFundingSourceService
         entity.IsActive    = dto.IsActive;
         entity.UpdatedAt   = DateTime.UtcNow;
         entity.OfficeId    = newOfficeId;   // null = shared (PPDO-109, D5)
+        if (dto.EnforceAipCeiling is bool enforce && !AllocationService.IsGeneralFund(entity))
+            entity.EnforceAipCeiling = enforce;
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
@@ -251,9 +264,14 @@ public sealed class FundingSourceService : IFundingSourceService
                 "Funding source ownership changed. Code: {Code}, OldOfficeId: {OldOfficeId}, NewOfficeId: {NewOfficeId}",
                 entity.Code, oldOfficeId, newOfficeId);
 
+        if (entity.EnforceAipCeiling != oldEnforce)
+            _logger.LogInformation(
+                "Funding source AIP ceiling enforcement changed. Code: {Code}, Enforced: {Enforced}",
+                entity.Code, entity.EnforceAipCeiling);
+
         await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
-            newValues: new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive },
+            newValues: new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive, entity.EnforceAipCeiling },
             cancellationToken);
         return ServiceResult<FundingSourceDto>.Ok(await MapWithOfficeAsync(entity, cancellationToken));
     }
@@ -458,7 +476,37 @@ public sealed class FundingSourceService : IFundingSourceService
     {
         Office? office = f.OfficeId is int oid && offices.TryGetValue(oid, out Office? o) ? o : null;
         return new(f.Id, f.Code, f.Name, f.Description, f.Color, f.IsActive, f.Aliases,
-                   f.OfficeId, office?.OfficeCode, office?.OfficeName);
+                   f.OfficeId, office?.OfficeCode, office?.OfficeName,
+                   // The General Fund always reads as enforced, whatever its stored flag (PPDO-216).
+                   EnforceAipCeiling: f.EnforceAipCeiling || AllocationService.IsGeneralFund(f));
+    }
+
+    private const string CeilingFlagForbidden =
+        "Only PPDO finance (the office-ceiling grant) can change whether a fund's AIP ceiling is enforced.";
+
+    /// <summary>
+    /// PPDO-216 — the rules for changing "Enforce AIP ceiling", or null when the request may proceed.
+    ///
+    /// <para>
+    /// ⚠️ <b>Omitted, or sent unchanged, is never refused.</b> A department head editing their own
+    /// fund (PPDO-109) sends no flag at all, and the client may echo the current value; neither is a
+    /// change, so neither needs the grant. Only an actual change does.
+    /// </para>
+    /// </summary>
+    private static ServiceResult<FundingSourceDto>? CeilingFlagRefusal(
+        FundingSource stored, bool? requested, bool canSet)
+    {
+        if (requested is not bool want) return null;
+
+        bool isGeneralFund = AllocationService.IsGeneralFund(stored);
+        bool current = isGeneralFund || stored.EnforceAipCeiling;
+        if (want == current) return null;
+
+        if (isGeneralFund)
+            return ServiceResult<FundingSourceDto>.BadRequest("The General Fund ceiling is always enforced.");
+        if (!canSet)
+            return ServiceResult<FundingSourceDto>.Forbidden(CeilingFlagForbidden);
+        return null;
     }
 
     private static string? Blank(string? value)

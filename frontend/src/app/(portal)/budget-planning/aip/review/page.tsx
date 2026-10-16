@@ -14,11 +14,15 @@
  * the whole office, so today's tree survives as **Full office**, one click away via the segmented
  * control in the sticky header. Neither view replaces the other (spec §2).
  *
- * ⚠️ **This is the reviewer who may NOT edit.** There are two reviewers in this phase and they
- * differ on exactly that point: the *department-head* reviewer edits their own office's values
- * during review; the *PPDO* reviewer never edits anyone's. Every panel gets `canEdit={false}` and
- * `lockedReason={null}` — null, not a holder name, because there is no holder to name here (spec
- * decision 5). `ReviewerWriteGuard` refuses the write server-side even if this page ever forgot.
+ * ⚠️ **This is the reviewer who may NOT edit — with one exception.** There are two reviewers in
+ * this phase and they differ on exactly that point: the *department-head* reviewer edits their own
+ * office's values during review; the *PPDO* reviewer does not. Every panel gets `canEdit={false}`
+ * and `lockedReason={null}` — null, not a holder name, because there is no holder to name here
+ * (spec decision 5). `ReviewerWriteGuard` refuses the write server-side even if this page ever forgot.
+ *
+ * ↩️ **The exception (v1.9.0 — PPDO-214):** once the office is at PPDO or consolidated, the PPDO
+ * reviewer may change an activity's expenditure amounts or add a line, with a reason, through the
+ * separate Edit amounts panel (`AipReviewerEditModal`). The panels here stay read-only.
  *
  * ⚠️ **Not built on `aip/detail/page.tsx`.** PPDO-64 extracted that page into components precisely
  * so this screen could reuse the pieces rather than fork two thousand lines of them.
@@ -44,6 +48,8 @@ import { AIP_WORKFLOW, describeAipHolderForReviewer } from "@/lib/aip-workflow";
 import { refreshAipNotifications } from "@/lib/aip-notifications";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
+import AipReviewerEditModal from "@/components/aip/review/AipReviewerEditModal";
+import { canPpdoEditAmounts } from "@/lib/aip-reviewer-edit";
 import AipReviewFullTree from "@/components/aip/review/AipReviewFullTree";
 import AipReviewViewSwitch, { type AipReviewView } from "@/components/aip/review/AipReviewViewSwitch";
 import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
@@ -56,7 +62,7 @@ import {
   type AipSelectionIds,
 } from "@/components/aip/entry/AipEntrySelection";
 import type {
-  AipOfficeReview, AccountResponse, FundingSourceResponse, AipCommentNodeType,
+  AipOfficeReview, AccountResponse, FundingSourceResponse, AipCommentNodeType, AipActivityDetail,
 } from "@/types";
 
 /** FY2028 onward. There is no workflow, and so nothing to review, below the break year. */
@@ -76,7 +82,7 @@ export default function AipReviewPage() {
   // ⚠️ Reads the SHARED rule (PPDO-79) so the sidebar and this page cannot disagree, and falls back
   // to the Budget Planning hub rather than `/dashboard` — a guest-office user has no dashboard, so
   // that would be a redirect to another redirect.
-  useMe(canOpenAipOfficeReview, budgetPlanningFallback);
+  const me = useMe(canOpenAipOfficeReview, budgetPlanningFallback);
 
   // ⚠️ **No office named means "help me find one", and that page now exists** — PPDO-76's search.
   // Until it shipped this rendered an interim empty state saying office selection would arrive with
@@ -120,6 +126,11 @@ export default function AipReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
   const [dialog, setDialog] = useState<ConfirmDialogProps | null>(null);
+  // PPDO-214 — the activity open in the reviewer's Edit amounts panel.
+  const [editingActivity, setEditingActivity] = useState<AipActivityDetail | null>(null);
+  // Bumped after a reviewer edit so the selected panel remounts and re-reads its lines: it fetches
+  // them itself, keyed on the activity id, which a reviewer edit does not change. Found live-testing.
+  const [panelVersion, setPanelVersion] = useState(0);
 
   const load = useCallback(async () => {
     if (officeId == null) { setLoading(false); return; }
@@ -142,6 +153,21 @@ export default function AipReviewPage() {
   }, [fiscalYear, officeId]);
 
   useEffect(() => { if (yearSettled) void load(); }, [load, yearSettled]);
+
+  /**
+   * PPDO-214 — re-read the office after a reviewer edit, WITHOUT the skeleton. `load()` blanks the
+   * whole page; after closing the Edit amounts panel the reviewer should land back on the activity
+   * they were on, with its new figures, not on a flash of grey.
+   */
+  const refreshReview = useCallback(async () => {
+    if (!review) return;
+    try {
+      setReview(await getAipOfficeReview(review.aipRecordId, review.officeId));
+      setPanelVersion((v) => v + 1);
+    } catch (e) {
+      setError(aipErrorMessage(e, "Saved, but could not re-read this office. Reload to see the new figures."));
+    }
+  }, [review]);
 
   // Reference data for the read-only expenditure rows — account and fund names. Fetched once, off
   // the critical path; the tree renders without it.
@@ -413,8 +439,10 @@ export default function AipReviewPage() {
               <p className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 This office&rsquo;s AIP is with{" "}
                 <strong className="text-slate-800">{describeAipHolderForReviewer(review.workflowStatus)}</strong>.
+                {/* ↩️ PPDO-214 — no longer "its figures are final": the PPDO reviewer can still adjust
+                    an activity's amounts here during the LFC adjustment. */}
                 {review.workflowStatus === AIP_WORKFLOW.consolidated
-                  ? " Its figures are final. You can still read it and comment on it, or re-open it and send it back to the office."
+                  ? " It is in the consolidated AIP. You can still read it and comment on it, adjust an activity's amounts, or re-open it and send it back to the office."
                   : " You can read it and comment on it; sending it back or accepting it becomes available once the office submits to PPDO."}
               </p>
             )}
@@ -448,7 +476,27 @@ export default function AipReviewPage() {
                   onChange={select}
                 />
 
+                {/* PPDO-214 — the one write the PPDO reviewer has here: an activity's amounts, once
+                    the office has reached PPDO. Above the panel rather than inside it, because the
+                    panel is the office's own entry component, reused unchanged and read-only. */}
+                {selection?.activity && canPpdoEditAmounts(me, review.workflowStatus) && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border border-slate-200 bg-info-100 px-4 py-2.5">
+                    <p className="text-sm text-slate-800">
+                      Part-year activity? You can bring its amounts up to the full year. The office
+                      sees each change and your reason.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setEditingActivity(selection.activity)}
+                      className="border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
+                    >
+                      Edit amounts
+                    </button>
+                  </div>
+                )}
+
                 <AipSelectedPanel
+                  key={panelVersion}
                   selection={selection}
                   canEdit={false}
                   // ⚠️ Null, not a holder name (spec decision 5) — the PPDO reviewer was never going
@@ -478,6 +526,18 @@ export default function AipReviewPage() {
               </>
             )}
           </div>
+
+          {/* Inside the provider, so each save's comment lands in the panel's thread. */}
+          {editingActivity && (
+            <AipReviewerEditModal
+              activity={editingActivity}
+              officeName={review.officeName}
+              accounts={accounts}
+              funds={funds}
+              onClose={() => setEditingActivity(null)}
+              onChanged={() => void refreshReview()}
+            />
+          )}
         </AipCommentsProvider>
       ) : (
         // ⚠️ The 404 case, worded so it cannot be used to tell "no such office" from "not yours" —

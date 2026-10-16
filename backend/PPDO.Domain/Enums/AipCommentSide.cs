@@ -4,9 +4,10 @@ namespace PPDO.Domain.Enums;
 /// Which side of the review authored a comment (v1.8.0 Phase 4 — V18-53 / PPDO-71).
 ///
 /// <para>
-/// <b>⚠️ There are exactly two, and the encoder is not one of them.</b> The encoder reads comments,
-/// acts on them and re-submits; they never write one (<c>AIP_Review_Spec.md</c> §3.1). That is why
-/// the unresolved counter splits two ways rather than three.
+/// <b>⚠️ Two sides resolve, and the encoder is not one of them.</b> The encoder reads comments, acts on
+/// them and re-submits. ↩️ Since v1.9.0 (PPDO-223) they may <i>reply</i> inside a reviewer's thread,
+/// stored as <see cref="Encoder"/>, but they never start one, never resolve, and a reply is never
+/// counted. That is why the unresolved counter still splits two ways rather than three.
 /// </para>
 ///
 /// <para>
@@ -36,4 +37,10 @@ public enum AipCommentSide
     /// PPDO — ⚠️ <b>not</b> by the office they are addressed to.
     /// </summary>
     Ppdo = 1,
+
+    /// <summary>
+    /// An encoder's reply inside a reviewer's thread (v1.9.0 — PPDO-223). ⚠️ Only ever on a reply:
+    /// never a head, never resolves anything, never counted.
+    /// </summary>
+    Encoder = 2,
 }

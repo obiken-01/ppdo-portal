@@ -817,4 +817,122 @@ public sealed class FundingSourceServiceTests
 
         Assert.Null(seed.Single().OfficeId);
     }
+
+    // ── v1.9.0 (PPDO-216): "Enforce AIP ceiling" ─────────────────────────────────
+
+    private static FundingSource Enforceable(int id, string code, bool enforced = false, int? officeId = null)
+    {
+        FundingSource f = Fs(id, code, code + " fund", officeId: officeId);
+        f.EnforceAipCeiling = enforced;
+        return f;
+    }
+
+    private static UpsertFundingSourceDto Upsert(FundingSource f, bool? enforce)
+        => new(f.Code, f.Name, null, null, true, null, f.OfficeId, false, enforce);
+
+    [Fact]
+    public async Task UpdateAsync_FinanceTurnsTheFlagOn_Saves()
+    {
+        FundingSource ph = Enforceable(9, "TF-PH");
+        var (sut, _) = Build([ph]);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(9, Upsert(ph, true), canSetCeilingEnforcement: true);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(ph.EnforceAipCeiling);
+        Assert.True(result.Value!.EnforceAipCeiling);
+    }
+
+    /// <summary>Decision 7: the flag decides what an office is held to, so it is finance's alone.</summary>
+    [Fact]
+    public async Task UpdateAsync_ChangingTheFlagWithoutTheCeilingGrant_IsForbiddenAndNothingChanges()
+    {
+        FundingSource ph = Enforceable(9, "TF-PH");
+        var (sut, repo) = Build([ph]);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(9, Upsert(ph, true), canSetCeilingEnforcement: false);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        Assert.False(ph.EnforceAipCeiling);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// ⚠️ A department head editing their own fund never sends the flag. Omitted must mean
+    /// "unchanged", or every such edit would 403 — and must not quietly clear an enforced fund.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync_FlagOmitted_LeavesItAsItWasForAnyCaller()
+    {
+        FundingSource ph = Enforceable(9, "TF-PH", enforced: true);
+        var (sut, _) = Build([ph]);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(9, Upsert(ph, null), canSetCeilingEnforcement: false);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(ph.EnforceAipCeiling);
+    }
+
+    /// <summary>Sending the value it already has is not a change, so it needs no grant.</summary>
+    [Fact]
+    public async Task UpdateAsync_FlagSentUnchanged_NeedsNoGrant()
+    {
+        FundingSource ph = Enforceable(9, "TF-PH", enforced: true);
+        var (sut, _) = Build([ph]);
+
+        Assert.True((await sut.UpdateAsync(9, Upsert(ph, true), canSetCeilingEnforcement: false)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_TurningTheGeneralFundOff_IsRefused()
+    {
+        FundingSource gf = Enforceable(1, "GF", enforced: true);
+        var (sut, _) = Build([gf]);
+
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(1, Upsert(gf, false), canSetCeilingEnforcement: true);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("The General Fund ceiling is always enforced.", result.Error);
+        Assert.True(gf.EnforceAipCeiling);
+    }
+
+    /// <summary>The General Fund always reads as enforced, whatever its stored flag says.</summary>
+    [Fact]
+    public async Task GetByIdAsync_GeneralFund_ReadsAsEnforced()
+    {
+        var (sut, _) = Build([Enforceable(1, "GF", enforced: false)]);
+
+        Assert.True((await sut.GetByIdAsync(1)).Value!.EnforceAipCeiling);
+    }
+
+    [Fact]
+    public async Task CreateAsync_EnforcedWithoutTheCeilingGrant_IsForbidden()
+    {
+        var (sut, repo) = Build([]);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("TF-PH", "PhilHealth", null, EnforceAipCeiling: true),
+            canSetCeilingEnforcement: false);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        repo.Verify(r => r.AddAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_EnforcedByFinance_IsSaved()
+    {
+        List<FundingSource> seed = [];
+        var (sut, _) = Build(seed);
+
+        ServiceResult<FundingSourceDto> result = await sut.CreateAsync(
+            new UpsertFundingSourceDto("TF-PH", "PhilHealth", null, EnforceAipCeiling: true),
+            canSetCeilingEnforcement: true);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.True(seed.Single().EnforceAipCeiling);
+    }
 }

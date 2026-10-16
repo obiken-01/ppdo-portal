@@ -27,7 +27,7 @@ namespace PPDO.Tests.Application;
 /// the one below.
 /// </para>
 /// </summary>
-public sealed class AipReviewCommentServiceTests
+public sealed partial class AipReviewCommentServiceTests
 {
     private const int RecordId = 900;
     private const int OfficeId = 7;      // the office being commented on
@@ -41,6 +41,8 @@ public sealed class AipReviewCommentServiceTests
     private readonly Mock<IAipRepository> _aipRepo = new();
     private readonly Mock<IPermissionService> _permissions = new();
     private readonly Mock<IAuditRepository> _auditRepo = new();
+    private readonly Mock<IAipDivisionLock> _divisionLock = new();
+    private readonly PPDO.Tests.TestHelpers.RecordingNotificationService _notifications = new();
 
     /// <summary>The audit rows the mocked repository filters, the way the real query does.</summary>
     private readonly List<AuditLog> _auditRows = [];
@@ -106,8 +108,11 @@ public sealed class AipReviewCommentServiceTests
                     .OrderByDescending(a => a.ChangedAt)
                     .ToList());
 
+        SetUpThreads();
+
         return new AipReviewCommentService(
             _repo.Object, _aipRepo.Object, _auditRepo.Object, _permissions.Object,
+            _divisionLock.Object, _notifications,
             NullLogger<AipReviewCommentService>.Instance);
     }
 

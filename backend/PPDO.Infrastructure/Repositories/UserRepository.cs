@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 using PPDO.Infrastructure.Data;
 
@@ -116,4 +117,18 @@ public sealed class UserRepository : Repository<User>, IUserRepository
 
         return rows.ToDictionary(r => r.Key, r => r.Value);
     }
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<User>> GetNotificationCandidatesAsync(
+        int? officeId, bool includeCrossOffice, CancellationToken cancellationToken = default)
+        => await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Division)
+            .Include(u => u.Office)
+            .Where(u => u.IsActive
+                     && ((officeId != null && u.OfficeId == officeId)
+                         || (includeCrossOffice
+                             && ((u.Office != null && u.Office.IsHostOffice)
+                                 || u.Role == UserRole.SuperAdmin
+                                 || u.OverrideCanReviewAllOffices == true))))
+            .ToListAsync(cancellationToken);
 }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
+using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -17,6 +18,9 @@ public sealed class AipReviewService : IAipReviewService
     private readonly IAuditService             _audit;
     // PPDO-149 — a PPDO return reopens every division of the office (decision 11).
     private readonly IAipDivisionWorkflow      _divisions;
+    // PPDO-221 — a PPDO return goes to the notification feed, with its open-comment count.
+    private readonly INotificationService        _notifications;
+    private readonly IAipReviewCommentRepository _comments;
     private readonly ILogger<AipReviewService> _logger;
 
     public AipReviewService(
@@ -27,8 +31,12 @@ public sealed class AipReviewService : IAipReviewService
         IPermissionService        permissions,
         IAuditService             audit,
         IAipDivisionWorkflow      divisions,
+        INotificationService      notifications,
+        IAipReviewCommentRepository comments,
         ILogger<AipReviewService> logger)
     {
+        _notifications    = notifications;
+        _comments         = comments;
         _divisions        = divisions;
         _aipRepo          = aipRepo;
         _officeRepo       = officeRepo;
@@ -137,6 +145,18 @@ public sealed class AipReviewService : IAipReviewService
             group.WorkflowStatus = target;
             await _officeRepo.UpdateAsync(group, ct);
         }
+        // PPDO-221 — a return or a re-open sends the work back: every user of the office who can
+        // open its AIP is told, with PPDO's open comments counted. Accept tells nobody (§3.1).
+        if (target == AipWorkflowStatus.ReturnedByPpdo)
+            await _notifications.StageAsync(NotificationTypes.AipReturnedByPpdo, caller, async (audience, token) =>
+            {
+                IReadOnlyDictionary<AipCommentSide, int> open = await _comments.CountUnresolvedBySideAsync(
+                    ctx.Groups.Select(g => g.Id).ToList(), token);
+                return new NotificationBatch(
+                    NotificationText.AipReturnedByPpdo(ctx.Record.FiscalYear, open.GetValueOrDefault(AipCommentSide.Ppdo)),
+                    NotificationLinks.AipEntry(ctx.Record.FiscalYear),
+                    await audience.OfficeAipReadersAsync(officeId, token));
+            }, ct);
         await _officeRepo.SaveChangesAsync(ct);
 
         // ⚠️ ONE row for the transition, keyed on the first group and carrying the rest in its

@@ -40,6 +40,8 @@ public sealed class AipSubmitService : IAipSubmitService
     private readonly IAipDivisionWorkflow             _divisions;
     private readonly IPermissionService               _permissions;
     private readonly IUserRepository                  _userRepo;
+    // PPDO-221 — hand-offs go to the notification feed.
+    private readonly INotificationService             _notifications;
     private readonly ILogger<AipSubmitService>        _logger;
 
     public AipSubmitService(
@@ -52,6 +54,7 @@ public sealed class AipSubmitService : IAipSubmitService
         IAipDivisionWorkflow             divisions,
         IPermissionService               permissions,
         IUserRepository                  userRepo,
+        INotificationService             notifications,
         ILogger<AipSubmitService>        logger)
     {
         _aipRepo     = aipRepo;
@@ -63,6 +66,7 @@ public sealed class AipSubmitService : IAipSubmitService
         _divisions   = divisions;
         _permissions = permissions;
         _userRepo    = userRepo;
+        _notifications = notifications;
         _logger      = logger;
     }
 
@@ -219,6 +223,12 @@ public sealed class AipSubmitService : IAipSubmitService
             group.WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo;
             await _officeRepo.UpdateAsync(group, ct);
         }
+        // PPDO-221 — "{Office} sent its FY AIP to PPDO", to PPDO's cross-office reviewers. Before the save.
+        await _notifications.StageAsync(NotificationTypes.AipSentToPpdo, caller, async (audience, c) =>
+            new NotificationBatch(
+                NotificationText.AipSentToPpdo(OfficeLabel(caller), ctx.Record.FiscalYear),
+                NotificationLinks.AipReview(ctx.OfficeId, ctx.Record.FiscalYear),
+                await audience.CrossOfficeReviewersAsync(c)), ct);
         await _officeRepo.SaveChangesAsync(ct);
 
         await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.SubmitToPpdo,
@@ -283,6 +293,9 @@ public sealed class AipSubmitService : IAipSubmitService
             group.WorkflowStatus = AipWorkflowStatus.Draft;
             await _officeRepo.UpdateAsync(group, ct);
         }
+        // PPDO-221 — to the users of the returned divisions, or the whole office when it has none.
+        await StageDepartmentHeadReturnAsync(
+            ctx.Record, ctx.OfficeId, divisions is null ? null : returned.Select(r => r.DivisionId).ToList(), caller, ct);
         // One save for the office rows and the division rows: they share the DbContext, so the
         // two cannot land apart.
         await _officeRepo.SaveChangesAsync(ct);
@@ -446,6 +459,13 @@ public sealed class AipSubmitService : IAipSubmitService
                 await _officeRepo.UpdateAsync(group, ct);
             }
 
+        // PPDO-221 — "{Division} submitted its FY AIP work", to the office's department heads.
+        await _notifications.StageAsync(NotificationTypes.AipDivisionSubmitted, caller, async (audience, token) =>
+            new NotificationBatch(
+                NotificationText.AipDivisionSubmitted(name, c.Record.FiscalYear),
+                NotificationLinks.AipEntry(c.Record.FiscalYear),
+                await audience.DepartmentHeadsAsync(c.OfficeId, token)), ct);
+
         try
         {
             // One save: the division row and the office rows share the DbContext.
@@ -530,6 +550,8 @@ public sealed class AipSubmitService : IAipSubmitService
                 await _officeRepo.UpdateAsync(group, ct);
             }
 
+        // PPDO-221 — to that division's users.
+        await StageDepartmentHeadReturnAsync(c.Record, c.OfficeId, [divisionId], caller, ct);
         await _divRepo.SaveChangesAsync(ct);
 
         await _divisions.AuditReturnsAsync([row], "department-head", ct);
@@ -588,6 +610,27 @@ public sealed class AipSubmitService : IAipSubmitService
         return (new DivisionContext(record, division, division.OfficeId, groups, state,
             await IsDepartmentHeadAsync(caller, ct)), null);
     }
+
+    /// <summary>
+    /// "{Name} returned your FY AIP work" (PPDO-221). <paramref name="divisionIds"/> null means the
+    /// office does not use the division flow, so the whole office hears it; an office that does, with
+    /// no division actually handed back (a legacy pre-division submit), falls back to the whole office
+    /// too rather than telling nobody.
+    /// </summary>
+    private Task StageDepartmentHeadReturnAsync(
+        AipRecord record, int officeId, IReadOnlyCollection<int>? divisionIds, User caller, CancellationToken ct)
+        => _notifications.StageAsync(NotificationTypes.AipReturnedByDepartmentHead, caller, async (audience, c) =>
+            new NotificationBatch(
+                NotificationText.AipReturnedByDepartmentHead(caller.FullName, record.FiscalYear),
+                NotificationLinks.AipEntry(record.FiscalYear),
+                divisionIds is { Count: > 0 }
+                    ? await audience.DivisionMembersAsync(officeId, divisionIds, c)
+                    : await audience.OfficeAipReadersAsync(officeId, c)), ct);
+
+    /// <summary>The acting office's code ("PTO") for a sentence, or its name when it has no code.</summary>
+    private static string OfficeLabel(User caller)
+        => caller.Office?.OfficeCode is { Length: > 0 } code ? code
+         : caller.Office?.OfficeName is { Length: > 0 } nameOnly ? nameOnly : "An office";
 
     /// <summary>
     /// The department head for the caller's own office: Admin/SuperAdmin, or the

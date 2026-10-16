@@ -13,10 +13,16 @@ namespace PPDO.Application.DTOs.BudgetPlanning;
 /// <param name="NodeType">Which kind of row — <c>Program</c>, <c>Project</c> or <c>Activity</c>.</param>
 /// <param name="NodeId">That row's id.</param>
 /// <param name="Body">The remark. 1–2,000 characters.</param>
+/// <param name="ParentCommentId">
+/// v1.9.0 — PPDO-223. The thread's first comment when this is a reply, or null to start a thread
+/// (reviewers only). ⚠️ A reply takes its anchor from the head: <see cref="NodeType"/> and
+/// <see cref="NodeId"/> are ignored on a reply.
+/// </param>
 public sealed record CreateAipReviewCommentDto(
     string NodeType,
     int    NodeId,
-    string Body);
+    string Body,
+    int?   ParentCommentId = null);
 
 /// <summary>
 /// One comment as rendered (V18-53 / PPDO-71).
@@ -50,14 +56,25 @@ public sealed record AipReviewCommentDto(
     DateTime? ResolvedAt,
     string?   ResolvedByName,
     bool      CanResolve,
-    bool      IsOrphaned);
+    bool      IsOrphaned,
+    bool      IsReviewerEdit = false,
+    DateTime? AcknowledgedAt = null,
+    string?   AcknowledgedByName = null,
+    int?      ParentCommentId = null,
+    bool      CanReply = false);
+
+/// <summary>
+/// What Mark as seen returns (v1.9.0 — PPDO-213): how many reviewer-edit comments it stamped.
+/// 0 is a success — there was nothing pending, which is what a double click looks like.
+/// </summary>
+public sealed record AipReviewerEditsAcknowledgedDto(int Acknowledged);
 
 /// <summary>
 /// The unresolved tally, split by who wrote them (V18-53 / PPDO-71).
 ///
 /// <para>
-/// <b>⚠️ Two numbers, never one.</b> There are exactly two authoring sides — the encoder never
-/// comments — and merging them would imply an action the reader does not have: they cannot resolve
+/// <b>⚠️ Two numbers, never one, and heads only.</b> Two sides start threads — an encoder only
+/// replies (PPDO-223), and replies are never counted — and merging them would imply an action the reader does not have: they cannot resolve
 /// either set themselves. "3 unresolved from PPDO" is also the sentence that actually changes
 /// whether someone re-submits, which a single total is not.
 /// </para>

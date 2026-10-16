@@ -8,9 +8,11 @@ namespace PPDO.Application.Services;
 /// <c>AipCeilingServiceTests</c>.
 ///
 /// <list type="number">
-/// <item><b>General Fund ONLY.</b> ↩️ DECISION H (ceilings on every fund) was withdrawn
-/// 2026-08-26, one day after being adopted. This has flipped twice — read
-/// <c>Phase_Plan.md</c> §12.3 before re-deriving it from meeting notes.</item>
+/// <item><b>General Fund, plus the funds finance opted in.</b> ↩️ DECISION H (ceilings on every fund)
+/// was withdrawn 2026-08-26, one day after being adopted, and it stays withdrawn. ↩️ v1.9.0 (PPDO-216,
+/// <c>docs/v1.9/Fund_Source_Ceiling_Spec.md</c>): a fund flagged "Enforce AIP ceiling" is checked too,
+/// each on its own with the same arithmetic, and reported in <c>AipCeilingStatusDto.OtherFunds</c>. A
+/// fund nobody flagged is never even queried.</item>
 /// <item><b>PS is exempt</b>, as an expense <i>class</i>, on top of the fund restriction. The
 /// check sums <c>mooe + co</c>.</item>
 /// <item><b>Non-GF funds are excluded by an EXPLICIT rule</b>, never by absent configuration.

@@ -50,6 +50,8 @@ import { AIP_WORKFLOW, isOfficeEditable, describeAipHolder } from "@/lib/aip-wor
 import AipAddProgramsPanel from "@/components/aip/entry/AipAddProgramsPanel";
 import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/AipSubmitChecklist";
 import { refreshAipNotifications, useAipNotifications } from "@/lib/aip-notifications";
+import { reviewerEditNotice } from "@/lib/aip-reviewer-edit";
+import AipReviewerEditNotice from "@/components/aip/entry/AipReviewerEditNotice";
 import { AipCommentsProvider, AipCommentFilterBar } from "@/components/aip/entry/AipComments";
 import { applyAipDeleteToTree } from "@/components/aip/entry/AipDeleteNodeButton";
 import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
@@ -697,6 +699,9 @@ function AipEntryPageInner() {
    * "sent to PPDO" would contradict itself for that moment.
    */
   const returnedNotice = notifications?.returned.find((r) => r.fiscalYear === fiscalYear) ?? null;
+
+  /** PPDO-214 — PPDO's edits to this year's AIP that nobody in the office has marked as seen yet. */
+  const editNotice = reviewerEditNotice(notifications, fiscalYear);
   const returnedBanner =
     returnedNotice?.returnedBy === "Ppdo" && workflowStatus === AIP_WORKFLOW.returnedByPpdo
       ? "PPDO sent this back for changes — see the comments on the activities, then re-submit."
@@ -847,6 +852,10 @@ function AipEntryPageInner() {
           would be an N+1 that only shows up on a big office. Mounted around the skeleton too
           (PPDO-184), so that fetch runs in parallel with the tree instead of after it. */}
       <AipCommentsProvider aipRecordId={openAipId} officeId={officeId}>
+      {/* PPDO-214 — inside the provider, so Mark as seen can refresh the comments' "seen by" line. */}
+      {!loading && editNotice && record && officeId != null && (
+        <AipReviewerEditNotice count={editNotice.count} aipRecordId={record.id} officeId={officeId} />
+      )}
       {loading ? (
         <EntrySkeleton />
       ) : notOpened ? (
