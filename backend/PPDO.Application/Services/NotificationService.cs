@@ -71,6 +71,26 @@ public sealed class NotificationService : INotificationService
         }
     }
 
+    public async Task NotifyAsync(string type, User recipient, string text, string link, CancellationToken ct = default)
+    {
+        try
+        {
+            await _repo.AddAndSaveAsync(new Notification
+            {
+                UserId = recipient.Id, Type = type, Text = NotificationText.Fit(text), Link = link, CreatedAt = Now(),
+            }, ct);
+            _logger.LogInformation(
+                "Notification written. Type: {Type}, UserId: {UserId}", type, recipient.Id);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // ⚠️ Swallowed on purpose, as in StageAsync: whatever finished stays finished without its entry.
+            _logger.LogError(ex,
+                "Notification could not be written; the event stands without it. Type: {Type}, UserId: {UserId}",
+                type, recipient.Id);
+        }
+    }
+
     public async Task<ServiceResult<NotificationCountDto>> GetUnreadCountAsync(User caller, CancellationToken ct = default)
         => ServiceResult<NotificationCountDto>.Ok(
             new NotificationCountDto(await _repo.CountUnreadAsync(caller.Id, Now() - Window, ct)));

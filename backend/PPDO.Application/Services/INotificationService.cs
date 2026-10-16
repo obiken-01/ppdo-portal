@@ -37,6 +37,16 @@ public interface INotificationService
         Func<INotificationAudience, CancellationToken, Task<NotificationBatch?>> build,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Writes one entry for an event <b>nobody performed</b>, and saves it at once (v1.9.0 — PPDO-229):
+    /// a background job finishing, whose recipient is the user who asked for it. <see cref="StageAsync"/>
+    /// does not fit such an event: it leaves out the actor, who here is the one person to tell, and it
+    /// rides on the event's own save, which a job's set-based updates do not make.
+    ///
+    /// <para>⚠️ <b>Never throws</b>, like <see cref="StageAsync"/>: a failure is logged at Error.</para>
+    /// </summary>
+    Task NotifyAsync(string type, User recipient, string text, string link, CancellationToken ct = default);
+
     /// <summary>The caller's unread entries of the last 90 days.</summary>
     Task<ServiceResult<NotificationCountDto>> GetUnreadCountAsync(User caller, CancellationToken ct = default);
 

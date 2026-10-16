@@ -53,6 +53,14 @@ public interface IBackgroundJobRepository
     /// </summary>
     Task<bool> HeartbeatAsync<TJob>(int id, DateTime now, CancellationToken ct = default)
         where TJob : BackgroundJob;
+
+    /// <summary>
+    /// Ends a Running job as Failed with <paramref name="message"/> (cut to 400 characters) and
+    /// <c>finished_at</c> = <paramref name="now"/> (v1.9.0 — PPDO-229). Returns false, changing nothing,
+    /// when the job is no longer Running.
+    /// </summary>
+    Task<bool> FailAsync<TJob>(int id, string message, DateTime now, CancellationToken ct = default)
+        where TJob : BackgroundJob;
 }
 
 /// <summary>What <see cref="IBackgroundJobRepository.RecoverStuckAsync{TJob}"/> did to one stuck job.</summary>

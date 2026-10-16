@@ -16,6 +16,7 @@ public static class NotificationTypes
     public const string AipSentToPpdo               = "AipSentToPpdo";
     public const string AipDivisionSubmitted        = "AipDivisionSubmitted";
     public const string AipReviewerEdit             = "AipReviewerEdit";
+    public const string InitialWfpExportReady       = "InitialWfpExportReady";
 }
 
 /// <summary>
@@ -65,6 +66,18 @@ public static class NotificationText
     public static string AipReviewerAdded(string account, string activity)
         => Fit($"PPDO added {account} to {Name(activity)}");
 
+    /// <summary>
+    /// "Your FY 2028 initial WFP export is ready (12 offices)", or "(11 of 12 offices)" when some were
+    /// skipped (Bulk_Initial_WFP_Export_Spec.md §3 cases 4 and 5).
+    /// </summary>
+    public static string InitialWfpExportReady(int fiscalYear, int built, int total)
+    {
+        string offices = built == total
+            ? $"{total} {(total == 1 ? "office" : "offices")}"
+            : $"{built} of {total} {(total == 1 ? "office" : "offices")}";
+        return Fit($"Your FY {fiscalYear} initial WFP export is ready ({offices})");
+    }
+
     private static string Target(string refCode, string project)
         => string.IsNullOrWhiteSpace(refCode) ? Name(project) : $"{refCode} — {Name(project)}";
 
@@ -99,6 +112,10 @@ public static class NotificationLinks
 
     public static string AipReview(int officeId, int fiscalYear)
         => $"/budget-planning/aip/review?officeId={officeId}&fiscalYear={fiscalYear}";
+
+    /// <summary>The report page on that year, where the initial WFP and its <b>Download all</b> live.</summary>
+    public static string WfpReport(int fiscalYear)
+        => $"/budget-planning/report?fiscalYear={fiscalYear}";
 
     public static string AipActivity(int fiscalYear, int programId, int projectId, int activityId)
         => $"/budget-planning/aip/entry?fiscalYear={fiscalYear}&programId={programId}&projectId={projectId}&activityId={activityId}";

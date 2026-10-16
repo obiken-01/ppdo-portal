@@ -20,6 +20,13 @@ public interface INotificationRepository
     /// </summary>
     Task AddRangeAsync(IReadOnlyList<Notification> rows, CancellationToken ct = default);
 
+    /// <summary>
+    /// Inserts one row and saves it at once. For an event that has no save of its own to ride on, such
+    /// as a background job finishing (v1.9.0 — PPDO-229); every user-triggered event uses
+    /// <see cref="AddRangeAsync"/> instead.
+    /// </summary>
+    Task AddAndSaveAsync(Notification row, CancellationToken ct = default);
+
     /// <summary>The user's unread rows created at or after <paramref name="since"/>: one <c>COUNT</c>.</summary>
     Task<int> CountUnreadAsync(Guid userId, DateTime since, CancellationToken ct = default);
 

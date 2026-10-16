@@ -274,8 +274,8 @@ var host = new HostBuilder()
         services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
         services.AddScoped<IInitialWfpExportJobRepository, InitialWfpExportJobRepository>();
         services.AddScoped<IInitialWfpExportService, InitialWfpExportService>();
-        // ⚠️ A stub that does nothing until PPDO-229 replaces it: jobs stay Queued.
-        services.AddScoped<IExportJobWorker, StubExportJobWorker>();
+        // The worker the 30-second timer calls (PPDO-229). Scoped: each timer pass gets its own DbContext.
+        services.AddScoped<IExportJobWorker, ExportJobWorker>();
 
         // The file store: where finished ZIPs are kept. Chosen once, here, by FileStore__Provider;
         // nothing else knows which one is in use. Local is the default, so a dev machine needs no

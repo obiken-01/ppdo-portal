@@ -139,6 +139,22 @@ public sealed class BackgroundJobRepository : IBackgroundJobRepository
             .Where(j => j.Id == id && j.Status == BackgroundJobStatus.Running)
             .ExecuteUpdateAsync(u => u.SetProperty(j => j.HeartbeatAt, now), ct) > 0;
 
+    /// <inheritdoc />
+    public async Task<bool> FailAsync<TJob>(int id, string message, DateTime now, CancellationToken ct = default)
+        where TJob : BackgroundJob
+    {
+        string fitted = message.Length <= BackgroundJob.MessageMaxLength
+            ? message
+            : message[..BackgroundJob.MessageMaxLength];
+
+        return await _context.Set<TJob>()
+            .Where(j => j.Id == id && j.Status == BackgroundJobStatus.Running)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(j => j.Status, BackgroundJobStatus.Failed)
+                .SetProperty(j => j.Message, fitted)
+                .SetProperty(j => j.FinishedAt, now), ct) > 0;
+    }
+
     /// <summary>The job kind's table, from the EF model (e.g. <c>initial_wfp_export_jobs</c>).</summary>
     private string TableOf<TJob>() where TJob : BackgroundJob
         => _context.Model.FindEntityType(typeof(TJob))?.GetTableName()

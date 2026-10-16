@@ -84,6 +84,19 @@ request, and can leave the page while it builds.
     nothing half-written). Seven-day expiry keeps Blob use small; revisit if it grows (Ralph:
     "as long as we don't fill the Azure storage").
 
+↩️ **Changed in PPDO-229 (2026-10-16):**
+- **Log scope is a dictionary**, `BeginScope(new Dictionary<string, object> { ["JobId"] = …, ["JobKind"] = … })`,
+  not `new { JobId, JobKind }`. Application Insights and Seq turn key/value pairs into named properties;
+  an anonymous object arrives as one `Scope` string, so `customDimensions.JobId` would not exist.
+- **The bell uses a new `INotificationService.NotifyAsync`** (writes and saves one row). `StageAsync` leaves
+  out the actor, who here is the requester, and rides on the event's own save, which the job's set-based
+  updates do not make.
+- **Two writes added for finishing**: `IBackgroundJobRepository.FailAsync<TJob>` and
+  `IInitialWfpExportJobRepository.CompleteAsync`. Both change a job only while it is still Running.
+- **Every office failing** still ends **Done with problems**, with a ZIP holding only the README
+  (decision 7 taken literally: only a failure of the job itself is Failed).
+- **No bell for a Failed job** (spec §3 only names the ready bell). Open: Ralph to decide.
+
 ## 3. Behaviour
 
 | # | Given | When | Then |
