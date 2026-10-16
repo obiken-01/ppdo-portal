@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
 import { getAipHistory } from "@/lib/aip-comments";
+import { openThreadCount } from "@/lib/aip-comment-threads";
 import { aipErrorMessage } from "@/lib/aip";
 import { AIP_WORKFLOW } from "@/lib/aip-workflow";
 import type {
@@ -228,7 +229,9 @@ function HandOffItem({
  */
 function CommentGroup({ comments, period }: { comments: AipReviewComment[]; period: string }) {
   const [open, setOpen] = useState(false);
-  const unresolved = comments.filter((c) => c.resolvedAt == null).length;
+  // ⚠️ Open heads only (PPDO-223): a reply is never resolved, so counting it would say "still
+  // unresolved" about a thread PPDO closed.
+  const unresolved = openThreadCount(comments);
 
   return (
     <div className="mt-2">
@@ -257,15 +260,17 @@ function CommentGroup({ comments, period }: { comments: AipReviewComment[]; peri
 function HistoryComment({ comment }: { comment: AipReviewComment }) {
   // PPDO-214 — a reviewer edit is born resolved; it reports whether the office saw it instead.
   const edit = comment.isReviewerEdit;
+  const isReply = comment.parentCommentId != null;
   const resolved = comment.resolvedAt != null && !edit;
 
   return (
-    <li className="text-xs">
+    <li className={`text-xs ${isReply ? "ml-3 border-l-2 border-slate-200 pl-2" : ""}`}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="font-medium text-slate-800">{comment.authorName}</span>
         <SidePill label={COMMENT_SIDE_LABEL[comment.authorSide]} />
         {edit && <AipReviewerEditTag />}
-        {!resolved && !edit && (
+        {isReply && <span className="text-[11px] text-slate-600">reply</span>}
+        {!resolved && !edit && !isReply && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
             Unresolved
           </span>
@@ -398,6 +403,7 @@ const ACTOR_SIDE_LABEL: Record<AipHistoryActorSide, string> = {
 const COMMENT_SIDE_LABEL: Record<AipCommentSide, string> = {
   DepartmentHead: "Department head",
   Ppdo: "PPDO",
+  Encoder: "Encoder",
 };
 
 /**

@@ -7,7 +7,8 @@
 export type NotificationType =
   | "ProposalComment" | "ProposalReply" | "ProposalResolved"
   | "AipReturnedByPpdo" | "AipReturnedByDepartmentHead" | "AipSentToPpdo"
-  | "AipDivisionSubmitted" | "AipReviewerEdit";
+  | "AipDivisionSubmitted" | "AipReviewerEdit"
+  | "AipComment" | "AipReply" | "AipResolved";
 
 /** One entry. `text` is frozen at write time; `link` is a portal-relative path and stays live. */
 export interface AppNotification {

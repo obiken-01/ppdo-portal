@@ -795,6 +795,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("nvarchar(16)")
                         .HasColumnName("node_type");
 
+                    b.Property<int?>("ParentCommentId")
+                        .HasColumnType("int")
+                        .HasColumnName("parent_comment_id");
+
                     b.Property<DateTime?>("ResolvedAt")
                         .HasColumnType("datetime2")
                         .HasColumnName("resolved_at");
@@ -808,6 +812,8 @@ namespace PPDO.Infrastructure.Data.Migrations
                     b.HasIndex("AcknowledgedById");
 
                     b.HasIndex("AuthorId");
+
+                    b.HasIndex("ParentCommentId");
 
                     b.HasIndex("ResolvedById");
 
@@ -4543,6 +4549,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_aip_review_comments_Users_author_id");
+
+                    b.HasOne("PPDO.Domain.Entities.AipReviewComment", null)
+                        .WithMany()
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_aip_review_comments_aip_review_comments_parent_comment_id");
 
                     b.HasOne("PPDO.Domain.Entities.User", "ResolvedBy")
                         .WithMany()

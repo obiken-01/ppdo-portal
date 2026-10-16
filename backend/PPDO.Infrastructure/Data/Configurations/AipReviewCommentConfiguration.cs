@@ -72,8 +72,13 @@ public sealed class AipReviewCommentConfiguration : IEntityTypeConfiguration<Aip
         builder.Property(e => e.AcknowledgedById)
             .HasColumnName("acknowledged_by_id");
 
-        // IsUnresolved is computed from ResolvedAt in C#; it is not a column.
+        // v1.9.0 — PPDO-223. The thread's head, null on a head.
+        builder.Property(e => e.ParentCommentId)
+            .HasColumnName("parent_comment_id");
+
+        // IsUnresolved and IsHead are computed in C#; they are not columns.
         builder.Ignore(e => e.IsUnresolved);
+        builder.Ignore(e => e.IsHead);
 
         // The unresolved count runs on every review page load and every re-submit, and it filters
         // on exactly this pair.
@@ -113,6 +118,17 @@ public sealed class AipReviewCommentConfiguration : IEntityTypeConfiguration<Aip
             .HasForeignKey(e => e.AcknowledgedById)
             .HasConstraintName("FK_aip_review_comments_Users_acknowledged_by_id")
             .OnDelete(DeleteBehavior.Restrict);
+
+        // PPDO-223 — a reply's head. ⚠️ NoAction, not Cascade: SQL Server refuses a cascading self
+        // reference (multiple cascade paths), and nothing deletes a head on its own anyway. A reply
+        // carries its head's node anchor and office row, so every delete that takes the head — the
+        // node delete (PPDO-88, one DELETE by id) and the office-row cascade — takes the replies in
+        // the same statement (AipCommentThreadDeleteSqlServerTests).
+        builder.HasOne<AipReviewComment>()
+            .WithMany()
+            .HasForeignKey(e => e.ParentCommentId)
+            .HasConstraintName("FK_aip_review_comments_aip_review_comments_parent_comment_id")
+            .OnDelete(DeleteBehavior.NoAction);
 
         // ⚠️ No FK on (node_type, node_id) — a polymorphic anchor across three tables cannot have
         // one. See AipReviewComment.NodeId: a deleted node leaves the comment orphaned on purpose,

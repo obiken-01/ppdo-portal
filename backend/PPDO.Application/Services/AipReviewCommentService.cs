@@ -13,10 +13,22 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 {
     private const int MaxBodyLength = 2000;
 
+    // v1.9.0 — PPDO-223 (AIP_Comment_Threads_Spec.md §3). Same sentences as the proposal threads
+    // (InvestmentProposalService.Comments) where the rule is the same.
+    public const string EncoderStartsThreadMessage = "Encoders reply inside a reviewer's thread; they can't start one.";
+    public const string ParentNotFoundMessage      = "The comment to reply to was not found on this office's AIP.";
+    public const string ReplyToReplyMessage        = "Reply to the thread's first comment.";
+    public const string ThreadResolvedMessage      = "This thread is resolved. Start a new one.";
+    public const string HeadOnlyResolveMessage     = "Only a thread's first comment can be resolved.";
+    public const string RemovedRowReplyMessage     = "The activity this thread is on has been removed, so encoders can no longer reply to it.";
+    public const string NotThisOfficeReplyMessage  = "Only a reviewer or this office's encoders can reply here.";
+
     private readonly IAipReviewCommentRepository       _comments;
     private readonly IAipRepository                    _aipRepo;
     private readonly IAuditRepository                  _auditRepo;
     private readonly IPermissionService                _permissions;
+    private readonly IAipDivisionLock                  _divisionLock;
+    private readonly INotificationService              _notifications;
     private readonly ILogger<AipReviewCommentService>  _logger;
 
     public AipReviewCommentService(
@@ -24,13 +36,17 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         IAipRepository                   aipRepo,
         IAuditRepository                 auditRepo,
         IPermissionService               permissions,
+        IAipDivisionLock                 divisionLock,
+        INotificationService             notifications,
         ILogger<AipReviewCommentService> logger)
     {
-        _comments    = comments;
-        _aipRepo     = aipRepo;
-        _auditRepo   = auditRepo;
-        _permissions = permissions;
-        _logger      = logger;
+        _comments      = comments;
+        _aipRepo       = aipRepo;
+        _auditRepo     = auditRepo;
+        _permissions   = permissions;
+        _divisionLock  = divisionLock;
+        _notifications = notifications;
+        _logger        = logger;
     }
 
     // ── Read ──────────────────────────────────────────────────────────────────
@@ -48,9 +64,10 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         IReadOnlyDictionary<int, string> refCodes = await ResolveRefCodesAsync(ctx, rows, ct);
 
         AipCommentSide? callerSide = await ResolveSideAsync(caller, ctx, ct);
+        Func<AipReviewComment, bool> canReply = await ReplyRuleAsync(caller, ctx, callerSide, rows, ct);
 
         List<AipReviewCommentDto> dtos = rows
-            .Select(c => Map(c, callerSide, refCodes))
+            .Select(c => Map(c, callerSide, refCodes, canReply: canReply(c)))
             .ToList();
 
         return ServiceResult<AipReviewCommentsDto>.Ok(new AipReviewCommentsDto(
@@ -179,12 +196,21 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
             return ServiceResult<AipReviewCommentDto>.BadRequest(
                 $"A comment cannot be longer than {MaxBodyLength} characters.");
 
-        // ⚠️ The encoder never comments. Refused as Forbidden rather than NotFound: this caller can
-        // legitimately see the office — they just have nothing to say here in this system's model.
         AipCommentSide? side = await ResolveSideAsync(caller, ctx, ct);
+
+        // ↩️ PPDO-223 — a reply goes under an open head of this office, from a reviewer or an in-scope
+        // encoder. Everything about where it sits comes from the head.
+        if (dto.ParentCommentId is int parentId)
+            return await ReplyAsync(aipRecordId, officeId, ctx, parentId, body, side, caller, ct);
+
+        // ⚠️ A thread is started by a reviewer only. Refused as Forbidden rather than NotFound: this
+        // caller can legitimately see the office. ↩️ PPDO-223: an encoder now replies, but still never
+        // starts a thread.
         if (side is null)
             return ServiceResult<AipReviewCommentDto>.Forbidden(
-                "Only a reviewer can leave a comment. Encoders act on comments and re-submit.");
+                caller.OfficeId == ctx.OfficeId
+                    ? EncoderStartsThreadMessage
+                    : "Only a reviewer can leave a comment. Encoders act on comments and re-submit.");
 
         // ⚠️ Parsed, not cast. The wire carries the enum NAME (see the DTO's remarks), so an
         // unknown value is a client error rather than a silent fall-through to Program = 0.
@@ -227,6 +253,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         };
 
         await _comments.AddAsync(comment, ct);
+        // PPDO-223 — a new thread tells the office's users who can open the activity, in the same save.
+        await StageThreadStartedAsync(ctx, comment, side.Value, caller, ct);
         await _comments.SaveChangesAsync(ct);
 
         _logger.LogInformation(
@@ -236,7 +264,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
         return ServiceResult<AipReviewCommentDto>.Ok(
             Map(comment, side, new Dictionary<int, string> { [dto.NodeId] = refCode },
-                authorNameOverride: caller.FullName));
+                // A reviewer wrote this open head, so they may reply on it (PPDO-223).
+                authorNameOverride: caller.FullName, canReply: true));
     }
 
     // ── Resolve ───────────────────────────────────────────────────────────────
@@ -256,6 +285,11 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         if (ctx is null)
             return ServiceResult<AipReviewCommentDto>.NotFound($"Comment {commentId} not found.");
 
+        // PPDO-223 — resolving closes a THREAD, so it is the head's act. A reply is never resolved on
+        // its own (and is stored unresolved for good, which is why every count skips replies).
+        if (!comment.IsHead)
+            return ServiceResult<AipReviewCommentDto>.BadRequest(HeadOnlyResolveMessage);
+
         // ⚠️ THE RULE. Only the side that wrote it may clear it — never the side it is addressed
         // to, however senior they are. Reversing this makes the re-submit gate self-marking, and
         // the failure is silent: everything simply looks resolved.
@@ -274,6 +308,9 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         comment.ResolvedAt   = DateTime.UtcNow;
         comment.ResolvedById = caller.Id;
         await _comments.UpdateAsync(comment, ct);
+        // PPDO-223 — the thread's starter and repliers are told, before the save.
+        await StageParticipantsAsync(NotificationTypes.AipResolved, ctx, comment, caller,
+            activity => NotificationText.AipResolved(caller.FullName, activity), ct);
         await _comments.SaveChangesAsync(ct);
 
         _logger.LogInformation(
@@ -315,6 +352,210 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
         return ServiceResult<AipReviewerEditsAcknowledgedDto>.Ok(new AipReviewerEditsAcknowledgedDto(stamped));
     }
+
+    // ── Replies (v1.9.0 — PPDO-223) ───────────────────────────────────────────
+
+    private async Task<ServiceResult<AipReviewCommentDto>> ReplyAsync(
+        int aipRecordId, int officeId, CommentContext ctx, int parentId, string body,
+        AipCommentSide? reviewerSide, User caller, CancellationToken ct)
+    {
+        // ⚠️ 400, not 404, for a head of another office (spec §4): the caller can see THIS office, so
+        // the request is malformed rather than prying. A missing id reads the same.
+        AipReviewComment? head = await _comments.GetByIntIdAsync(parentId, ct);
+        if (head is null || !ctx.GroupIds.Contains(head.AipOfficeId))
+            return ServiceResult<AipReviewCommentDto>.BadRequest(ParentNotFoundMessage);
+        if (!head.IsHead)
+            return ServiceResult<AipReviewCommentDto>.BadRequest(ReplyToReplyMessage);
+        // ⚠️ Includes every reviewer-edit note: those are created resolved (PPDO-213), so they take
+        // no replies by this same rule rather than by a special case.
+        if (head.ResolvedAt is not null)
+            return ServiceResult<AipReviewCommentDto>.BadRequest(ThreadResolvedMessage);
+
+        AipCommentSide side;
+        if (reviewerSide is AipCommentSide reviewer)
+        {
+            side = reviewer;
+        }
+        else
+        {
+            // ⚠️ An encoder replies only where their AIP Entry scope reaches (spec decision 9): their
+            // own office, and in a divisioned office only their own division's activity. The
+            // workflow state is NOT checked — a reply is not AIP content (decision 10).
+            string? refusal = await RefuseEncoderReplyAsync(caller, ctx, head, ct);
+            if (refusal is not null) return ServiceResult<AipReviewCommentDto>.Forbidden(refusal);
+            side = AipCommentSide.Encoder;
+        }
+
+        AipReviewComment reply = new()
+        {
+            // The head's anchor and group row, so the node delete (PPDO-88) and the office-row
+            // cascade take the whole thread with the head.
+            AipOfficeId     = head.AipOfficeId,
+            NodeType        = head.NodeType,
+            NodeId          = head.NodeId,
+            ParentCommentId = head.Id,
+            AuthorId        = caller.Id,
+            AuthorSide      = side,
+            Body            = body,
+            CreatedAt       = DateTime.UtcNow,
+        };
+
+        // Participants are read before the reply is added, so the replier (the actor, dropped anyway)
+        // is not counted twice.
+        await StageParticipantsAsync(NotificationTypes.AipReply, ctx, head, caller,
+            activity => NotificationText.AipReply(caller.FullName, activity, body), ct);
+        await _comments.AddAsync(reply, ct);
+        await _comments.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "AIP review comment reply added. AipRecordId: {AipRecordId}, OfficeId: {OfficeId}, "
+            + "ParentCommentId: {ParentCommentId}, Side: {Side}, UserId: {UserId}",
+            aipRecordId, officeId, head.Id, side, caller.Id);
+
+        IReadOnlyDictionary<int, string> refCodes = await NodeRefCodesAsync(ctx, head.NodeType, ct);
+        return ServiceResult<AipReviewCommentDto>.Ok(
+            Map(reply, side, refCodes, authorNameOverride: caller.FullName));
+    }
+
+    /// <summary>
+    /// Why this non-reviewer may not reply on <paramref name="head"/>'s thread, or null when they may.
+    /// ⚠️ The same answer <see cref="ReplyRuleAsync"/> gives the read's <c>CanReply</c>; both go
+    /// through <see cref="AipDivisionContext.RefuseActivityReply"/>.
+    /// </summary>
+    private async Task<string?> RefuseEncoderReplyAsync(
+        User caller, CommentContext ctx, AipReviewComment head, CancellationToken ct)
+    {
+        // Another office's user can only have reached here through a review scope without a reviewer
+        // flag (a host-office reader): they are not this office's encoder.
+        if (caller.OfficeId != ctx.OfficeId) return NotThisOfficeReplyMessage;
+
+        AipOffice group = ctx.Groups.FirstOrDefault(g => g.Id == head.AipOfficeId) ?? ctx.Groups[0];
+        AipDivisionContext div = await _divisionLock.LoadAsync(group, caller, ct);
+
+        // A legacy program/project head (before PPDO-79) carries no division of its own.
+        if (head.NodeType != AipCommentNodeType.Activity) return div.RefuseContainerWrite();
+
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(head.NodeId, ct);
+        if (activity is null) return RemovedRowReplyMessage;
+        return div.RefuseActivityReply(activity.DivisionId);
+    }
+
+    /// <summary>
+    /// Whether this caller may reply on each comment, for the read's <c>CanReply</c>: open heads only,
+    /// and then any reviewer, or an encoder whose scope covers the activity.
+    ///
+    /// ⚠️ At most one division-lock load and three node queries, whatever the comment count — never
+    /// one per comment. A caller with nothing open pays nothing.
+    /// </summary>
+    private async Task<Func<AipReviewComment, bool>> ReplyRuleAsync(
+        User caller, CommentContext ctx, AipCommentSide? callerSide,
+        IReadOnlyList<AipReviewComment> rows, CancellationToken ct)
+    {
+        static bool Open(AipReviewComment c) => c.IsHead && c.ResolvedAt is null;
+
+        if (!rows.Any(Open)) return _ => false;
+        if (callerSide is not null) return Open;
+        if (caller.OfficeId != ctx.OfficeId) return _ => false;
+
+        IReadOnlyDictionary<int, AipDivisionContext> divByGroup =
+            await _divisionLock.LoadForOfficesAsync(ctx.Record, ctx.Groups, caller, ct);
+
+        Dictionary<int, int?> activityDivisions = (await ActivitiesAsync(ctx, ct))
+            .ToDictionary(a => a.Id, a => a.DivisionId);
+
+        return c =>
+        {
+            if (!Open(c)) return false;
+            AipDivisionContext div = divByGroup.GetValueOrDefault(c.AipOfficeId, AipDivisionContext.None);
+            if (c.NodeType != AipCommentNodeType.Activity) return div.RefuseContainerWrite() is null;
+            return activityDivisions.TryGetValue(c.NodeId, out int? division)
+                && div.RefuseActivityReply(division) is null;
+        };
+    }
+
+    // ── Notifications (v1.9.0 — PPDO-221 feed, PPDO-223 events) ───────────────
+
+    /// <summary>
+    /// A new thread: the office's users who can open the activity (AIP Entry's read, division axis
+    /// included), with a link to it. The author is removed by <see cref="INotificationService.StageAsync"/>.
+    /// </summary>
+    private Task StageThreadStartedAsync(
+        CommentContext ctx, AipReviewComment head, AipCommentSide side, User caller, CancellationToken ct)
+        => _notifications.StageAsync(NotificationTypes.AipComment, caller, async (audience, c) =>
+        {
+            ActivityPath? path = await PathOfAsync(head, c);
+            if (path is null) return null;
+            string sideLabel = side == AipCommentSide.Ppdo ? "PPDO" : caller.FullName;
+            return new NotificationBatch(
+                NotificationText.AipThreadStarted(sideLabel, path.Activity.Name, head.Body),
+                NotificationLinks.AipActivity(ctx.Record.FiscalYear, path.Program.Id, path.Project.Id, path.Activity.Id),
+                await audience.ActivityReadersAsync(path.Office, path.Program, c));
+        }, ct);
+
+    /// <summary>
+    /// A reply or a resolve: the thread's starter and everyone who has replied, kept only while they
+    /// can still open it. Two batches because the link differs: the office's own users go to AIP
+    /// Entry, PPDO's cross-office reviewers to the review drill-down. The actor is removed by StageAsync.
+    /// </summary>
+    private async Task StageParticipantsAsync(
+        string type, CommentContext ctx, AipReviewComment head, User caller,
+        Func<string, string> text, CancellationToken ct)
+    {
+        // Read once, here rather than inside a build: both batches need it.
+        HashSet<Guid> participants = (await _comments.GetByOfficeIdsAsync([head.AipOfficeId], ct))
+            .Where(c => c.Id == head.Id || c.ParentCommentId == head.Id)
+            .Select(c => c.AuthorId)
+            .ToHashSet();
+
+        HashSet<Guid> toldInOffice = [];
+
+        await _notifications.StageAsync(type, caller, async (audience, c) =>
+        {
+            ActivityPath? path = await PathOfAsync(head, c);
+            if (path is null) return null;
+            List<User> readers = (await audience.ActivityReadersAsync(path.Office, path.Program, c))
+                .Where(u => participants.Contains(u.Id))
+                .ToList();
+            toldInOffice.UnionWith(readers.Select(u => u.Id));
+            return new NotificationBatch(
+                text(path.Activity.Name),
+                NotificationLinks.AipActivity(ctx.Record.FiscalYear, path.Program.Id, path.Project.Id, path.Activity.Id),
+                readers);
+        }, ct);
+
+        await _notifications.StageAsync(type, caller, async (audience, c) =>
+        {
+            ActivityPath? path = await PathOfAsync(head, c);
+            if (path is null) return null;
+            // ⚠️ Not someone already told above: a PPDO user reviewing PPDO's own AIP is in both.
+            List<User> reviewers = (await audience.CrossOfficeReviewersAsync(c))
+                .Where(u => participants.Contains(u.Id) && !toldInOffice.Contains(u.Id))
+                .ToList();
+            return new NotificationBatch(
+                text(path.Activity.Name),
+                NotificationLinks.AipReviewActivity(ctx.OfficeId, ctx.Record.FiscalYear, path.Program.Id, path.Project.Id, path.Activity.Id),
+                reviewers);
+        }, ct);
+    }
+
+    /// <summary>
+    /// The activity a thread is on, with its project, program and group row; null when the thread is
+    /// not on an activity (a legacy head) or the activity is gone, since an entry needs a row to open.
+    /// </summary>
+    private async Task<ActivityPath?> PathOfAsync(AipReviewComment head, CancellationToken ct)
+    {
+        if (head.NodeType != AipCommentNodeType.Activity) return null;
+        AipActivity? activity = await _aipRepo.GetActivityByIdAsync(head.NodeId, ct);
+        if (activity is null) return null;
+        AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
+        if (project is null) return null;
+        AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
+        if (program is null) return null;
+        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        return office is null ? null : new ActivityPath(office, program, project, activity);
+    }
+
+    private sealed record ActivityPath(AipOffice Office, AipProgram Program, AipProject Project, AipActivity Activity);
 
     // ── Internals ─────────────────────────────────────────────────────────────
 
@@ -419,6 +660,16 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         return activities.ToDictionary(a => a.Id, a => a.RefCode);
     }
 
+    /// <summary>Every activity of the office (three queries), for the encoder reply rule.</summary>
+    private async Task<IReadOnlyList<AipActivity>> ActivitiesAsync(CommentContext ctx, CancellationToken ct)
+    {
+        IReadOnlyList<AipProgram> programs =
+            await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(ctx.GroupIds, ct);
+        IReadOnlyList<AipProject> projects =
+            await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(programs.Select(p => p.Id).ToList(), ct);
+        return await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(projects.Select(p => p.Id).ToList(), ct);
+    }
+
     /// <summary>
     /// Which of the office's group rows actually owns this node. Single-group offices — most of
     /// them — take the cheap path.
@@ -461,7 +712,8 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         AipCommentSide? callerSide,
         IReadOnlyDictionary<int, string> refCodes,
         string? authorNameOverride = null,
-        string? resolvedNameOverride = null)
+        string? resolvedNameOverride = null,
+        bool canReply = false)
     {
         refCodes.TryGetValue(c.NodeId, out string? refCode);
 
@@ -473,13 +725,16 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
             c.CreatedAt,
             c.ResolvedAt,
             resolvedNameOverride ?? c.ResolvedBy?.FullName,
-            // ⚠️ Unresolved AND the caller is on the authoring side. Both halves matter: an already
-            // resolved comment offers no control, and neither does one addressed to this reader.
+            // ⚠️ An open HEAD and the caller is on the authoring side. Every part matters: a resolved
+            // comment offers no control, neither does one addressed to this reader, and a reply is
+            // never resolved on its own (PPDO-223 — IsUnresolved is false on every reply).
             CanResolve: c.IsUnresolved && callerSide == c.AuthorSide,
             IsOrphaned: refCode is null,
             IsReviewerEdit: c.IsReviewerEdit,
             AcknowledgedAt: c.AcknowledgedAt,
-            AcknowledgedByName: c.AcknowledgedBy?.FullName);
+            AcknowledgedByName: c.AcknowledgedBy?.FullName,
+            ParentCommentId: c.ParentCommentId,
+            CanReply: canReply);
     }
 
     private sealed record CommentContext(AipRecord Record, int OfficeId, List<AipOffice> Groups)

@@ -50,7 +50,8 @@ public sealed class AipReviewerEditAcknowledgeRepositoryTests : IDisposable
                 resolved_by_id TEXT NULL,
                 is_reviewer_edit INTEGER NOT NULL DEFAULT 0,
                 acknowledged_at TEXT NULL,
-                acknowledged_by_id TEXT NULL
+                acknowledged_by_id TEXT NULL,
+                parent_comment_id INTEGER NULL
             );
 
             INSERT INTO aip_review_comments

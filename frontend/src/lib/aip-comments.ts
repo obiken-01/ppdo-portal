@@ -51,7 +51,10 @@ export async function getAipHistory(
   return unwrap(data);
 }
 
-/** Leaves a comment on one row. Refused for an encoder — they act on comments, never write them. */
+/**
+ * Starts a thread on one row (reviewers only), or with `parentCommentId` replies under that head —
+ * reviewers, and encoders whose scope covers the activity (PPDO-223).
+ */
 export async function addAipComment(
   aipId: number,
   officeId: number,

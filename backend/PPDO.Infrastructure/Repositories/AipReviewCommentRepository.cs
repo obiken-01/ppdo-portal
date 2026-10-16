@@ -76,7 +76,10 @@ public sealed class AipReviewCommentRepository
         if (aipOfficeIds.Count == 0) return new Dictionary<AipCommentSide, int>();
 
         List<KeyValuePair<AipCommentSide, int>> rows = await _context.Set<AipReviewComment>()
-            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.ResolvedAt == null)
+            // ⚠️ Heads only (PPDO-223). A reply is never resolved, so without ParentCommentId == null
+            // one encoder reply would count as an open comment for good: the dashboard's "N open"
+            // and the "returned with N comments" bell would never reach zero.
+            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.ParentCommentId == null && c.ResolvedAt == null)
             .GroupBy(c => c.AuthorSide)
             .Select(g => new KeyValuePair<AipCommentSide, int>(g.Key, g.Count()))
             .ToListAsync(ct);

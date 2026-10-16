@@ -31,7 +31,8 @@ public interface IAipReviewCommentRepository : IRepository<AipReviewComment>
         IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default);
 
     /// <summary>
-    /// The unresolved count per authoring side, computed in SQL.
+    /// The unresolved count per authoring side, computed in SQL. ⚠️ Thread heads only — replies are
+    /// never resolved and never counted (v1.9.0 — PPDO-223).
     ///
     /// ⚠️ A <c>GROUP BY</c>, not a list fetched and counted in memory: this runs on every review
     /// page load and again on every re-submit, and it is the number the soft gate warns with
