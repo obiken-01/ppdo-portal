@@ -1,22 +1,22 @@
 ---
-status: draft
+status: final — 2026-10-16 (v1.9.0 frozen)
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-219, PPDO-221, PPDO-223, PPDO-224, PPDO-228
+tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-216, PPDO-219, PPDO-221, PPDO-223, PPDO-224, PPDO-228, PPDO-229
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
 
-> **Started 2026-10-14 with PPDO-213; still growing.** Every v1.9.0 ticket that adds a migration, a
-> one-time step, or something users must be told adds its lines here, in the same PR. Re-check the
-> migration count in §0 before using this page: it lists what was known when it was last edited.
+> **Final as of 2026-10-16:** v1.9.0 is complete (last merge #508, PPDO-223) and frozen. A UAT fix that
+> adds a migration or a step still adds its lines here, in the same PR.
 >
 > Layout follows [Pre_Deployment_Checklist_v1.8.2.md](../v1.8/Pre_Deployment_Checklist_v1.8.2.md).
 
 ## 0. Before you start
 
-- [ ] **v1.8.0 → v1.8.4 are in production first**, with their own checklists done. v1.9.0 is cut from
-  `release/1.8.4` and assumes every 1.8.x migration has run.
-- [ ] **Migration count.** As of PPDO-223 there are six. Re-check rather than trust this page:
+- [ ] **Every 1.8.x migration has run on the target first.** v1.9.0 is cut from `release/1.8.4`.
+  **UAT:** already true (v1.8.4 reached `uat` via #486, last 1.8.x migration `AddAipConcurrencyTokens`).
+  **Production:** v1.8.0 → v1.8.4 go first, with their own checklists.
+- [ ] **Migration count: six**, all additive (none rewrites a value). Re-check:
 
   ```bash
   git diff --name-only origin/release/1.8.4...origin/release/1.9.0 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -193,8 +193,8 @@ at startup instead.
   `FileStore__LocalPath` unset in Azure.
 - [ ] **No other new setting.** The Blob store uses the existing `AzureWebJobsStorage` connection.
 
-⚠️ Until PPDO-229 ships the worker, the timer runs a stub: a requested export stays **Queued** and nothing
-is written to the container. Ship PPDO-228 and PPDO-229 together, or expect that.
+PPDO-229 (the worker) and PPDO-230 (the Download all UI) are in v1.9.0, so a requested export runs
+end to end on deploy and writes its ZIP to the container.
 
 ## 2. Tell people first
 

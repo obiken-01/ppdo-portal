@@ -617,7 +617,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-14 — v1.8.4 complete and on `uat`; `release/1.9.0` cut from it. Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
+> **Updated: 2026-10-16 — v1.9.0 complete and frozen on `release/1.9.0`, going to `uat` (six migrations first). Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -635,9 +635,12 @@ merged 2026-10-07. Deploy steps: `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` 
 v1.8.3 up to #477 (via #478) but not yet #479.
 **Complete:** v1.8.4 on `release/1.8.4` (minor Demo 3 fixes PPDO-208/209/210, plus PPDO-121 which makes `rowVersion`
 required on AIP writes); merged to `uat` via #486 on 2026-10-14.
-**In development:** v1.9.0 on `release/1.9.0`, cut 2026-10-14 from the complete `release/1.8.4`. Branches are
-`feature/v1.9.0-…`, PRs into `release/1.9.0`. First item: PPDO reviewer edits to a submitted AIP
-(`docs/v1.9/AIP_Reviewer_Edit_Spec.md`), **required for the user training in the first week of November 2026**.
+**Complete, frozen for UAT:** v1.9.0 on `release/1.9.0`, cut 2026-10-14 from the complete `release/1.8.4`; last merge
+#508 (PPDO-223) on 2026-10-16. PPDO reviewer edits, enforced fund ceilings, proposal and AIP comment threads, the
+notification bell, the initial WFP report and its bulk export. ⚠️ **Six migrations and a Blob container + two app
+settings before the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md`. Needed for the user training in the
+first week of November 2026. ⚠️ **Frozen:** only fixes found in UAT go in (`fix/v1.9.0-…`); new work waits for the
+next release branch. PPDO-226 (HGDG) moved to Backlog — Unscheduled, waiting on requirements.
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.
@@ -773,7 +776,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | ✅ **Complete on `release/1.8.2`** (2026-10-07), going to UAT |
 | **v1.8.3 — Concurrent-edit guard: turn it on** (+ next AIP work) | ✅ **Complete on `release/1.8.3`** (2026-10-13). PPDO-121 and PPDO-199's last item moved on to v1.8.4 |
 | **v1.8.4 — Minor fixes** | ✅ **Complete on `release/1.8.4`**, on `uat` (#486, 2026-10-14) |
-| **v1.9.0 — Larger requests** | 🚧 **In development on `release/1.9.0`** (cut 2026-10-14 from `release/1.8.4`) |
+| **v1.9.0 — Larger requests** | 🧊 **Complete and frozen on `release/1.9.0`** (2026-10-16), going to UAT |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -904,11 +907,11 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 | `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
 | `docs/AI_DLC_Evaluation.md` | Considering an external AI development-workflow framework (AI-DLC assessed 2026-09-08 — cherry-pick, do not install) |
 | `docs/v1.8/Pre_Deployment_Checklist.md` | Merging `release/1.8.0` → `main` — v1.8.0 ships a migration that **rewrites existing AIP amounts**, so the baseline sums and restore path are captured before it runs |
-| `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md` | Taking `release/1.9.0` to `uat` or `main` — one additive migration so far (PPDO-213), run **before** the code; grows as v1.9.0 tickets land |
+| `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md` | Taking `release/1.9.0` to `uat` or `main` — six additive migrations and the export Blob container, all **before** the code |
 | `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` | Taking `release/1.8.2` to `uat` or `main` — one additive migration that must run **before** the code, a one-time sign-out of every user (PPDO-141), and the start of PPDO-121's App Insights window |
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.0 (in development; v1.8.0–v1.8.4 unreleased, awaiting PDC/finance sign-off) — 2026-10-14 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.0 (complete, going to UAT; v1.8.0–v1.9.0 unreleased, awaiting PDC/finance sign-off) — 2026-10-16 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*
