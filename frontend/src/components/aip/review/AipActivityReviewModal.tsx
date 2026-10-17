@@ -187,9 +187,9 @@ export default function AipActivityReviewModal({
             {ppdoView ? (
               <>
                 You are reading {review.officeName}&rsquo;s AIP, which is with{" "}
-                {describeAipHolderForReviewer(review.workflowStatus)}. Ask for changes in the comments
-                &mdash; only the office can edit it. Return and Accept are on the office&rsquo;s review
-                screen.
+                {describeAipHolderForReviewer(review.workflowStatus)}. Ask for changes in the comments.
+                Return, Accept and, once the office has submitted, Edit amounts are on the
+                office&rsquo;s review screen.
               </>
             ) : (
               <>
@@ -265,6 +265,7 @@ export default function AipActivityReviewModal({
                     offices={offices}
                     // The office being reviewed, never the reviewer’s own.
                     proponentOfficeCode={review.officeCode || null}
+                    fundingSources={funds}
                   />
                 </div>
               </section>

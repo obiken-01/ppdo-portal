@@ -75,6 +75,50 @@ public static class AipWriteGuard
         return null;
     }
 
+    /// <summary>The refusal a PPDO reviewer gets on an office that has not reached PPDO yet.</summary>
+    public const string ReviewerEditStateMessage =
+        "PPDO can edit this office's AIP only after it is submitted to PPDO.";
+
+    /// <summary>
+    /// The checks for a <b>PPDO reviewer's</b> edit to an expenditure line (v1.9.0 — PPDO-212,
+    /// <c>docs/v1.9/AIP_Reviewer_Edit_Spec.md</c>). Used <b>instead of</b>
+    /// <see cref="CheckAsync{T}"/>, never as well, and only for a caller
+    /// <see cref="ReviewerWriteGuard.DeniesWriteAsync"/> would otherwise refuse.
+    ///
+    /// <para>
+    /// No office-scope check: a cross-office reviewer's scope is every office
+    /// (<see cref="OfficeScope.ResolveForReview"/>), so there is nothing to refuse. What narrows the
+    /// grant is the <b>state</b>: only <c>SubmittedToPpdo</c> and <c>Consolidated</c>, the states in
+    /// which no one in the office can edit. Before that the AIP is the office's to change, and PPDO's
+    /// tool is a comment or a return. FY2028+ only, since an older record has no expenditure lines.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ <b>No division lock either</b> — that rule decides which of an office's own people may
+    /// touch an activity, and the reviewer is none of them.
+    /// </para>
+    /// </summary>
+    public static async Task<ServiceResult<T>?> CheckReviewerEditAsync<T>(
+        AipOffice office, IAipRepository aipRepo, CancellationToken ct)
+    {
+        AipRecord? rec = await aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
+        if (rec is null)
+            return ServiceResult<T>.NotFound($"AIP record {office.AipRecordId} not found.");
+
+        if (!AipFiscalYears.IsEntered(rec.FiscalYear))
+            return ServiceResult<T>.BadRequest(
+                $"PPDO edits apply only to AIPs from FY{AipFiscalYears.FirstEnteredFiscalYear} on.");
+
+        if (rec.Status != PlanningStatus.Draft)
+            return ServiceResult<T>.BadRequest(
+                $"Cannot edit a '{rec.Status}' record. Unlock it back to Draft first.");
+
+        if (office.WorkflowStatus is not (AipWorkflowStatus.SubmittedToPpdo or AipWorkflowStatus.Consolidated))
+            return ServiceResult<T>.BadRequest(ReviewerEditStateMessage);
+
+        return null;
+    }
+
     /// <summary>
     /// The fourth check, for a write to one activity or its expenditure lines: the division lock
     /// (v1.8.0 — PPDO-148, <c>Division_Submit_Spec.md</c> §3.3). Returns null when the write may

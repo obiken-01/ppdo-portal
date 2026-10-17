@@ -1129,6 +1129,54 @@ public sealed class BudgetPlanningDashboardServiceTests
     }
 
     [Fact]
+    public async Task GetDashboardAsync_DivisionFunds_IncludeTheOfficesOwnEnforcedFund_NotAnotherOfficesOrAnUnenforcedOne()
+    {
+        // PPDO-217 (Ralph, 2026-10-14): an office's own fund that finance holds to a ceiling now has
+        // a ceiling and a division split, so its row belongs in the band. D11's "office funds have no
+        // ceiling" still holds for the rest.
+        List<Office> offices = [Off(PpdoOfficeId, "PPDO")];
+        List<Division> divisions = [Div(1, PpdoOfficeId, "Administrative")];
+        FundingSource own = Fund(70, "OWN", "Own enforced");
+        own.OfficeId = PpdoOfficeId;
+        own.EnforceAipCeiling = true;
+        FundingSource ownLoose = Fund(71, "LOOSE", "Own, not enforced");
+        ownLoose.OfficeId = PpdoOfficeId;
+        FundingSource other = Fund(72, "OTHER", "Another office's enforced");
+        other.OfficeId = 99;
+        other.EnforceAipCeiling = true;
+        List<FundingSource> funds = [Fund(GfFundId, "GF", "General Fund"), own, ownLoose, other];
+
+        Mock<IAllocationService> allocation = new();
+        allocation.Setup(a => a.GetCeilingsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<BudgetCeilingDto>)[]);
+        allocation.Setup(a => a.GetAllocationsForAllFundsAsync(PpdoOfficeId, 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionAllocationDto>)
+            [
+                new DivisionAllocationDto(1, 1, "Administrative", 2027, GfFundId, "GF", "General Fund", 100_000m),
+                new DivisionAllocationDto(2, 1, "Administrative", 2027, 70, "OWN", "Own enforced", 40_000m),
+                new DivisionAllocationDto(3, 1, "Administrative", 2027, 71, "LOOSE", "Own, not enforced", 5_000m),
+                new DivisionAllocationDto(4, 1, "Administrative", 2027, 72, "OTHER", "Another office's enforced", 7_000m),
+            ]);
+        allocation.Setup(a => a.GetGeneralFundIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(GfFundId);
+        allocation.Setup(a => a.GetProgramAssignmentsAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ProgramAssignmentDto>)[]);
+        allocation.Setup(a => a.GetCeilingAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<BudgetCeilingDto>.NotFound("n/a"));
+
+        Mock<IWfpAllocationLedgerRepository> ledger = new();
+        ledger.Setup(l => l.SumUsedAmountsByDivisionsAsync(
+                It.IsAny<IReadOnlyList<int>>(), 2027, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DivisionFundUsedAmountDto>)[]);
+
+        (BudgetPlanningDashboardService sut, _) = Build(
+            [], [], [], offices, [], divisions, funds, allocationMock: allocation, ledgerRepoMock: ledger);
+
+        PpdoDashboardDto result = await sut.GetDashboardAsync(fiscalYear: 2027, divisionId: null);
+
+        Assert.Equal(["GF", "OWN"], result.ByDivision[0].AllocationByFund.Select(f => f.FundCode));
+    }
+
+    [Fact]
     public async Task GetDashboardAsync_MultipleDivisionsAndFunds_CallsSumUsedAmountsByDivisionsOnce_NeverPerDivisionFundLoop()
     {
         // N+1 guard: the naive fix would call SumUsedAmountAsync once per division per fund

@@ -1,5 +1,6 @@
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Services;
 
@@ -30,4 +31,29 @@ public interface IWfpReportService
     /// </summary>
     Task<ServiceResult<WfpReportDto>> GetReportAsync(
         int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default);
+
+    // ── Initial WFP from the consolidated AIP (v1.9.0 — PPDO-224, Initial_WFP_Report_Spec.md) ──
+    //
+    // For an entered year (AipFiscalYears.IsEntered) there are no WFP records: the report is read
+    // off the AIP on every request. The two methods above serve FY <= 2027 only and are unchanged.
+
+    /// <summary>
+    /// The offices whose AIP groups for <paramref name="fiscalYear"/> are <b>all</b> Consolidated
+    /// (decision 5), status "Consolidated". A PPDO reader (<c>CanAccessWfp</c>) gets every such office;
+    /// anyone else at most their own (decision 6).
+    /// </summary>
+    Task<IReadOnlyList<WfpReportOfficeDto>> GetInitialEligibleOfficesAsync(
+        int fiscalYear, User caller, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The initial WFP for one office, built from its consolidated AIP, with
+    /// <see cref="WfpReportDto.Source"/> = <c>"Aip"</c>.
+    /// <list type="bullet">
+    ///   <item><description><b>404</b> for an office the caller may not read, the same answer as a missing one.</description></item>
+    ///   <item><description><b>409</b> while any of the office's AIP groups is not Consolidated.</description></item>
+    ///   <item><description>Division: the caller's own office follows the WFP report's rule (RAL-136); another office honours <paramref name="requestedDivisionId"/>.</description></item>
+    /// </list>
+    /// </summary>
+    Task<ServiceResult<WfpReportDto>> GetInitialReportAsync(
+        int officeId, int fiscalYear, int? requestedDivisionId, User caller, CancellationToken cancellationToken = default);
 }

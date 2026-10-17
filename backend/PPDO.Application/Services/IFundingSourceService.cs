@@ -34,8 +34,10 @@ public interface IFundingSourceService
         CancellationToken cancellationToken = default);
 
     Task<ServiceResult<FundingSourceDto>> GetByIdAsync(int id, CancellationToken cancellationToken = default);
-    Task<ServiceResult<FundingSourceDto>> CreateAsync(UpsertFundingSourceDto dto, CancellationToken cancellationToken = default);
-    Task<ServiceResult<FundingSourceDto>> UpdateAsync(int id, UpsertFundingSourceDto dto, CancellationToken cancellationToken = default);
+    /// <param name="canSetCeilingEnforcement">PPDO-216: whether the caller holds CanManageOfficeCeilings, resolved by the handler. Needed only to CHANGE EnforceAipCeiling.</param>
+    Task<ServiceResult<FundingSourceDto>> CreateAsync(UpsertFundingSourceDto dto, CancellationToken cancellationToken = default, bool canSetCeilingEnforcement = false);
+    /// <param name="canSetCeilingEnforcement">PPDO-216: see CreateAsync.</param>
+    Task<ServiceResult<FundingSourceDto>> UpdateAsync(int id, UpsertFundingSourceDto dto, CancellationToken cancellationToken = default, bool canSetCeilingEnforcement = false);
 
     /// <summary>
     /// What limiting fund <paramref name="id"/> to office <paramref name="targetOfficeId"/> would

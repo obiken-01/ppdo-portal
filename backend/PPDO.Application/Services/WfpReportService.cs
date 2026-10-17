@@ -22,7 +22,7 @@ namespace PPDO.Application.Services;
 /// hierarchy-building pass runs once per distinct fund source name present, filtering each
 /// activity's expenditures to that fund.
 /// </summary>
-public sealed class WfpReportService : IWfpReportService
+public sealed partial class WfpReportService : IWfpReportService
 {
     private const string UnassignedFunctionBand = "UNASSIGNED";
     private const string DefaultFundSourceName = "GENERAL FUND";
@@ -58,14 +58,21 @@ public sealed class WfpReportService : IWfpReportService
     private readonly IWfpExpenditureService  _expenditures;
     private readonly IOfficeRepository     _officeRepo;
     private readonly IRepository<Account>    _accountRepo;
+    // PPDO-224 — the initial WFP reads the AIP's lines, and its read rule needs the caller's flags.
+    private readonly IAipExpenditureRepository _aipExpenditures;
+    private readonly IPermissionService        _permissions;
 
     public WfpReportService(
         IAipRepository          aipRepo,
         IWfpRepository          wfpRepo,
         IWfpExpenditureService  expenditures,
         IOfficeRepository     officeRepo,
-        IRepository<Account>    accountRepo)
+        IRepository<Account>    accountRepo,
+        IAipExpenditureRepository aipExpenditures,
+        IPermissionService        permissions)
     {
+        _aipExpenditures = aipExpenditures;
+        _permissions     = permissions;
         _aipRepo      = aipRepo;
         _wfpRepo      = wfpRepo;
         _expenditures = expenditures;
@@ -173,28 +180,54 @@ public sealed class WfpReportService : IWfpReportService
                 expendituresByAipActivityId[activity.Id] = expenditures;
         }
 
-        List<string> fundSourceNames = expendituresByAipActivityId.Values
+        // PPDO-224: each entered expenditure becomes a neutral ReportLine, the same shape the initial
+        // WFP builds from the AIP, so both reports share one hierarchy builder below.
+        Dictionary<int, List<ReportLine>> linesByAipActivityId = expendituresByAipActivityId.ToDictionary(
+            kv => kv.Key,
+            kv => kv.Value.Select(e => ToLine(e, accountsById)).ToList());
+
+        return ServiceResult<WfpReportDto>.Ok(new WfpReportDto(
+            fiscalYear, office.OfficeCode, office.OfficeName, WfpReserveRule.Rate,
+            BuildFundSourceReports(programs, projects, activities, linesByAipActivityId, sectorLabelByAipOfficeId)));
+    }
+
+    // ── Shared by the entered WFP and the initial WFP (PPDO-224) ──────────────
+
+    /// <summary>
+    /// One report row before it is placed in the hierarchy: its fund block, its expense-class
+    /// subsection, and the row itself less the sector (which comes from the program's AIP office).
+    /// </summary>
+    private sealed record ReportLine(
+        string FundSourceName, string ExpenseClass, string Nature,
+        string? AccountNumber, string? AccountTitle, WfpReportAmountsDto Amounts);
+
+    /// <summary>One block per fund source, GENERAL FUND first then by name, each with its breakdown.</summary>
+    private static List<WfpReportFundSourceDto> BuildFundSourceReports(
+        IReadOnlyList<AipProgram> programs,
+        IReadOnlyList<AipProject> projects,
+        IReadOnlyList<AipActivity> activities,
+        IReadOnlyDictionary<int, List<ReportLine>> linesByAipActivityId,
+        IReadOnlyDictionary<int, string> sectorLabelByAipOfficeId)
+    {
+        List<string> fundSourceNames = linesByAipActivityId.Values
             .SelectMany(x => x)
-            .Select(FundSourceNameFor)
+            .Select(l => l.FundSourceName)
             .Distinct()
             .OrderBy(n => n.Equals(DefaultFundSourceName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        List<WfpReportFundSourceDto> fundSourceReports = fundSourceNames
+        return fundSourceNames
             .Select(fundSourceName =>
             {
                 List<WfpReportFunctionBandSectionDto> sections = BuildSections(fundSourceName, programs, projects,
-                    activities, expendituresByAipActivityId, accountsById, sectorLabelByAipOfficeId);
+                    activities, linesByAipActivityId, sectorLabelByAipOfficeId);
                 // Breakdown is per FUND SOURCE, not per section — it appears once, after every
                 // CORE/STRATEGIC/SUPPORT section has been listed (confirmed against the
                 // reference sheet), so it's built from ALL of this fund's sections combined.
                 return new WfpReportFundSourceDto(fundSourceName, sections, BuildBreakdown(sections));
             })
             .ToList();
-
-        return ServiceResult<WfpReportDto>.Ok(new WfpReportDto(
-            fiscalYear, office.OfficeCode, office.OfficeName, WfpReserveRule.Rate, fundSourceReports));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -225,8 +258,7 @@ public sealed class WfpReportService : IWfpReportService
         IReadOnlyList<AipProgram> programs,
         IReadOnlyList<AipProject> projects,
         IReadOnlyList<AipActivity> activities,
-        IReadOnlyDictionary<int, List<WfpExpenditureDto>> expendituresByAipActivityId,
-        IReadOnlyDictionary<int, Account> accountsById,
+        IReadOnlyDictionary<int, List<ReportLine>> linesByAipActivityId,
         IReadOnlyDictionary<int, string> sectorLabelByAipOfficeId)
     {
         Dictionary<int, List<WfpReportProjectDto>> projectDtosByProgramId = [];
@@ -241,17 +273,17 @@ public sealed class WfpReportService : IWfpReportService
             foreach (AipActivity activity in activities.Where(a => a.ProjectId == project.Id)
                          .OrderBy(a => RefCodeSequence(a.RefCode)).ThenBy(a => a.RefCode))
             {
-                if (!expendituresByAipActivityId.TryGetValue(activity.Id, out List<WfpExpenditureDto>? allExpenditures))
+                if (!linesByAipActivityId.TryGetValue(activity.Id, out List<ReportLine>? allLines))
                     continue;
 
-                List<WfpExpenditureDto> expenditures = allExpenditures
-                    .Where(e => FundSourceNameFor(e) == fundSourceName)
+                List<ReportLine> expenditures = allLines
+                    .Where(l => l.FundSourceName == fundSourceName)
                     .ToList();
                 // Skip activities with nothing entered under THIS fund — they simply don't
                 // appear in this fund source's block (they may still appear in another one).
                 if (expenditures.Count == 0) continue;
 
-                activityDtos.Add(BuildActivityDto(activity, expenditures, accountsById, sector));
+                activityDtos.Add(BuildActivityDto(activity, expenditures, sector));
             }
             if (activityDtos.Count == 0) continue;
 
@@ -289,15 +321,14 @@ public sealed class WfpReportService : IWfpReportService
 
     private static WfpReportActivityDto BuildActivityDto(
         AipActivity activity,
-        IReadOnlyList<WfpExpenditureDto> expenditures,
-        IReadOnlyDictionary<int, Account> accountsById,
+        IReadOnlyList<ReportLine> expenditures,
         string sector)
     {
         List<WfpReportExpenseClassGroupDto> groups = [];
         WfpReportAmountsDto grandTotal = WfpReportAmountsDto.Zero;
 
         List<string> classesPresent = expenditures
-            .Select(e => ExpenseClassFor(e, accountsById))
+            .Select(e => e.ExpenseClass)
             .Distinct()
             .OrderBy(c => Array.IndexOf(ExpenseClassOrder, c) is var i && i >= 0 ? i : int.MaxValue)
             .ThenBy(c => c)
@@ -306,8 +337,8 @@ public sealed class WfpReportService : IWfpReportService
         foreach (string expenseClass in classesPresent)
         {
             List<WfpReportRowDto> rows = expenditures
-                .Where(e => ExpenseClassFor(e, accountsById) == expenseClass)
-                .Select(e => ToRow(e, sector))
+                .Where(e => e.ExpenseClass == expenseClass)
+                .Select(e => new WfpReportRowDto(sector, e.Nature, e.AccountNumber, e.AccountTitle, e.Amounts))
                 .ToList();
             WfpReportAmountsDto subTotal = rows.Aggregate(WfpReportAmountsDto.Zero, (acc, r) => acc + r.Amounts);
             groups.Add(new WfpReportExpenseClassGroupDto(
@@ -389,8 +420,10 @@ public sealed class WfpReportService : IWfpReportService
         (string.IsNullOrWhiteSpace(e.FundingSourceNameSnapshot) ? DefaultFundSourceName : e.FundingSourceNameSnapshot)
             .ToUpperInvariant();
 
-    private static WfpReportRowDto ToRow(WfpExpenditureDto e, string sector) => new(
-        sector,
+    /// <summary>An entered WFP expenditure as a <see cref="ReportLine"/>: its totals as saved, never recomputed.</summary>
+    private static ReportLine ToLine(WfpExpenditureDto e, IReadOnlyDictionary<int, Account> accountsById) => new(
+        FundSourceNameFor(e),
+        ExpenseClassFor(e, accountsById),
         e.Nature,
         e.AccountNumberSnapshot,
         e.AccountTitleSnapshot,

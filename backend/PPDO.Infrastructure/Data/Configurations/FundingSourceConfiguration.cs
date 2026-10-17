@@ -42,6 +42,12 @@ public sealed class FundingSourceConfiguration : IEntityTypeConfiguration<Fundin
             .IsRequired()
             .HasDefaultValue(true);
 
+        // v1.9.0 — PPDO-216. Off by default: a fund nobody turned on is never ceiling-checked.
+        builder.Property(f => f.EnforceAipCeiling)
+            .HasColumnName("enforce_aip_ceiling")
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(f => f.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("GETUTCDATE()");

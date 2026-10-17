@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PPDO.Application.DTOs.BudgetPlanning;
 
 /// <summary>
@@ -124,9 +126,23 @@ public record WfpReportFundSourceDto(
     WfpReportBreakdownDto Breakdown);
 
 /// <summary>The full WFP report preview for one office + fiscal year (RAL-132).</summary>
+/// <param name="Source">
+/// Where the figures come from (PPDO-224): <see cref="WfpReportSources.Aip"/> for an entered year's
+/// initial WFP, read off the consolidated AIP. ⚠️ <b>Left null, and so absent from the JSON, for the
+/// entered WFP</b> (FY ≤ 2027): that response stays byte-for-byte what it was before PPDO-224, and a
+/// reader treats a missing <c>source</c> as <c>"Wfp"</c>.
+/// </param>
 public record WfpReportDto(
     int      FiscalYear,
     string   OfficeCode,
     string   OfficeName,
     decimal  ReserveRate,
-    IReadOnlyList<WfpReportFundSourceDto> FundSourceReports);
+    IReadOnlyList<WfpReportFundSourceDto> FundSourceReports,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Source = null);
+
+/// <summary>The values of <see cref="WfpReportDto.Source"/> (PPDO-224).</summary>
+public static class WfpReportSources
+{
+    public const string Wfp = "Wfp";
+    public const string Aip = "Aip";
+}

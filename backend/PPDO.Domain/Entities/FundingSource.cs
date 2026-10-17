@@ -52,6 +52,15 @@ public sealed class FundingSource
     /// <summary>Soft-delete flag. Inactive sources are hidden from pickers but kept for history.</summary>
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// v1.9.0 — PPDO-216. Whether an office's AIP lines on this fund are held to a ceiling when the
+    /// office is sent to PPDO, the way the General Fund always is. Off by default: a fund nobody
+    /// turned on is never checked (DECISION H, "ceilings on every fund", stays withdrawn). The
+    /// General Fund is enforced regardless of this value; the migration stores true on it anyway.
+    /// Only a holder of <c>CanManageOfficeCeilings</c> may change it.
+    /// </summary>
+    public bool EnforceAipCeiling { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

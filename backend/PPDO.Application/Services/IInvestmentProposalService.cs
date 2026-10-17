@@ -51,4 +51,22 @@ public interface IInvestmentProposalService
     Task<ServiceResult<ProposalDto>> ReopenAsync(int id, string? rowVersion, User caller, CancellationToken ct = default);
 
     Task<ServiceResult<bool>> DeleteAsync(int id, string? rowVersion, User caller, CancellationToken ct = default);
+
+    // ── Comments (v1.9.0 — PPDO-219, Investment_Proposal_Comments_Spec.md) ───────
+    //
+    // Read-scope actions, not content writes: a cross-office reviewer comments although they cannot
+    // edit, so the endpoints must not go through ReviewerWriteGuard. Out of scope or missing is a
+    // 404 "Proposal not found.", as for the proposal itself.
+
+    /// <summary>The proposal's single thread, oldest first.</summary>
+    Task<ServiceResult<IReadOnlyList<ProposalCommentDto>>> ListCommentsAsync(
+        int proposalId, User caller, CancellationToken ct = default);
+
+    /// <summary>Adds a head comment, or a reply when <paramref name="parentCommentId"/> names an open head of this proposal (400 otherwise). On the caller's side (Office when their office owns the proposal, else PPDO). Allowed on a Final proposal.</summary>
+    Task<ServiceResult<ProposalCommentDto>> AddCommentAsync(
+        int proposalId, string? body, int? parentCommentId, User caller, CancellationToken ct = default);
+
+    /// <summary>Resolves an open thread by its head comment (400 for a reply). ⚠️ Only the side that started the thread may (403 otherwise).</summary>
+    Task<ServiceResult<ProposalCommentDto>> ResolveCommentAsync(
+        int proposalId, int commentId, User caller, CancellationToken ct = default);
 }

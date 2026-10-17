@@ -200,7 +200,7 @@ Phase 1 and **resolve independently** (`PermissionService`), so one person may h
 |---|---|---|
 | **Flag** | `CanReviewBudgetPlanning` (RAL-244) | `CanReviewAllOffices` (RAL-257) |
 | **Scope** | their **own** office | **every** office — the first flag in the system that bypasses `OfficeScope` |
-| **Edit values** | ✅ **Yes** — "to update any minor details they found during review" (B11) | ❌ **Never** — "they won't be able to apply any update, just comment" (B11) |
+| **Edit values** | ✅ **Yes** — "to update any minor details they found during review" (B11) | ❌ **Never** — "they won't be able to apply any update, just comment" (B11). ↩️ **Superseded in part by v1.9.0:** they may add or edit expenditure lines once an office reaches `SubmittedToPpdo`/`Consolidated` ([AIP_Reviewer_Edit_Spec.md](../v1.9/AIP_Reviewer_Edit_Spec.md)) |
 | **Comment** | ✅ | ✅ |
 | **Submit onward** | ✅ — the **sole** authority for `DepartmentReview → SubmittedToPpdo` | — |
 | **Return an office** | ✅ ↩️ *down to its encoders*, from department review only (2026-09-14) | ✅ |
@@ -222,9 +222,9 @@ shortcut PPDO straight to `SubmittedToPpdo`.
 |---|---|---|---|
 | `Draft` | Encoder(s) — two or more per office (tracker D5) | The office | Encoder submits for department review **(shipped, Phase 3)** |
 | `DepartmentReview` | **Encoder and department head both** (decision 4) | The office | Department head submits to PPDO — ↩️ or **returns it to the encoders** (→ `Draft`, 2026-09-14) |
-| `SubmittedToPpdo` | **Nobody** (decision 5) | The office (read-only) + PPDO reviewers | PPDO reviewer **returns** or **accepts** |
+| `SubmittedToPpdo` | **Nobody** (decision 5). ↩️ v1.9.0: the PPDO reviewer may add or edit expenditure lines, with a reason ([AIP_Reviewer_Edit_Spec.md](../v1.9/AIP_Reviewer_Edit_Spec.md)) | The office (read-only) + PPDO reviewers | PPDO reviewer **returns** or **accepts** |
 | `ReturnedByPpdo` | Encoder and department head again | The office | Department head **re-submits** |
-| `Consolidated` | Nobody | **PPDO reviewers only** — PPDO's *division* users cannot see the consolidated document (tracker B4) | ↩️ PPDO reviewer **re-opens** it (→ `ReturnedByPpdo`, 2026-09-14) |
+| `Consolidated` | Nobody. ↩️ v1.9.0: the PPDO reviewer may add or edit expenditure lines, with a reason ([AIP_Reviewer_Edit_Spec.md](../v1.9/AIP_Reviewer_Edit_Spec.md)) | **PPDO reviewers only** — PPDO's *division* users cannot see the consolidated document (tracker B4) | ↩️ PPDO reviewer **re-opens** it (→ `ReturnedByPpdo`, 2026-09-14) |
 
 ### 3.3 Core
 

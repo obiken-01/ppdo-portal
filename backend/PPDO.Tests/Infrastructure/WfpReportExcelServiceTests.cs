@@ -74,6 +74,26 @@ public sealed class WfpReportExcelServiceTests
     }
 
     [Fact]
+    public void Export_TheEnteredWfp_KeepsItsTitle()
+    {
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(SampleReport())));
+        string text = string.Join(" ", wb.Worksheets.First().CellsUsed().Select(c => c.GetString()));
+
+        Assert.Contains("WORK AND FINANCIAL PLAN FY", text);
+        Assert.DoesNotContain("INITIAL WFP", text);
+    }
+
+    [Fact]
+    public void Export_TheInitialWfp_SaysSoInItsTitleRow_OnEverySheet()   // PPDO-224, decision 11
+    {
+        WfpReportDto report = SampleReport() with { Source = WfpReportSources.Aip };
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(report)));
+
+        Assert.All(wb.Worksheets, ws => Assert.Contains(ws.CellsUsed(),
+            c => c.GetString() == $"INITIAL WFP (FROM AIP) - WORK AND FINANCIAL PLAN FY {report.FiscalYear}"));
+    }
+
+    [Fact]
     public void Export_WritesHierarchyLabelsAndComputedValues_NoFormulas()
     {
         byte[] result = _sut.Export(SampleReport());

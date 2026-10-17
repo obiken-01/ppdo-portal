@@ -17,6 +17,37 @@ public sealed class AipReviewCommentRepository
     public AipReviewCommentRepository(AppDbContext context) : base(context) { }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<int, int>> CountUnacknowledgedReviewerEditsAsync(
+        IReadOnlyList<int> aipOfficeIds, CancellationToken ct = default)
+    {
+        if (aipOfficeIds.Count == 0) return new Dictionary<int, int>();
+
+        List<KeyValuePair<int, int>> rows = await _context.Set<AipReviewComment>()
+            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.IsReviewerEdit && c.AcknowledgedAt == null)
+            .GroupBy(c => c.AipOfficeId)
+            .Select(g => new KeyValuePair<int, int>(g.Key, g.Count()))
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.Key, r => r.Value);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> AcknowledgeReviewerEditsAsync(
+        IReadOnlyList<int> aipOfficeIds, Guid userId, DateTime at, CancellationToken ct = default)
+    {
+        if (aipOfficeIds.Count == 0) return 0;
+
+        // One set-based UPDATE, not load-and-save: the WHERE is the whole rule (reviewer edits only,
+        // pending only, these groups only), and it stays in SQL where a test against a real
+        // database can see it.
+        return await _context.Set<AipReviewComment>()
+            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.IsReviewerEdit && c.AcknowledgedAt == null)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(c => c.AcknowledgedAt, at)
+                .SetProperty(c => c.AcknowledgedById, userId), ct);
+    }
+
+    /// <inheritdoc />
     public async Task<AipReviewComment?> GetByIntIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<AipReviewComment>().FirstOrDefaultAsync(c => c.Id == id, ct);
 
@@ -32,6 +63,7 @@ public sealed class AipReviewCommentRepository
             // every comment, and fetching it per comment is the N+1 this avoids.
             .Include(c => c.Author)
             .Include(c => c.ResolvedBy)
+            .Include(c => c.AcknowledgedBy)
             .Where(c => aipOfficeIds.Contains(c.AipOfficeId))
             .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
             .ToListAsync(ct);
@@ -44,7 +76,10 @@ public sealed class AipReviewCommentRepository
         if (aipOfficeIds.Count == 0) return new Dictionary<AipCommentSide, int>();
 
         List<KeyValuePair<AipCommentSide, int>> rows = await _context.Set<AipReviewComment>()
-            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.ResolvedAt == null)
+            // ⚠️ Heads only (PPDO-223). A reply is never resolved, so without ParentCommentId == null
+            // one encoder reply would count as an open comment for good: the dashboard's "N open"
+            // and the "returned with N comments" bell would never reach zero.
+            .Where(c => aipOfficeIds.Contains(c.AipOfficeId) && c.ParentCommentId == null && c.ResolvedAt == null)
             .GroupBy(c => c.AuthorSide)
             .Select(g => new KeyValuePair<AipCommentSide, int>(g.Key, g.Count()))
             .ToListAsync(ct);

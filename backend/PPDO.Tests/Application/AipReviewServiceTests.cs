@@ -7,6 +7,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -25,8 +27,13 @@ namespace PPDO.Tests.Application;
 /// <c>AipSubmitService</c> (whose resolver narrows to the caller's own office by design).
 /// </para>
 /// </summary>
-public sealed class AipReviewServiceTests
+public sealed partial class AipReviewServiceTests
 {
+    // PPDO-221 — records what each event stages; see RecordingNotificationService.
+    private readonly RecordingNotificationService _notifications = new();
+
+    private readonly Mock<IAipReviewCommentRepository> _reviewComments = new();
+
     private const int RecordId    = 900;
     private const int OfficeId    = 7;   // the office being returned
     private const int OtherOffice = 8;   // where the PPDO reviewer sits
@@ -105,7 +112,7 @@ public sealed class AipReviewServiceTests
         return new AipReviewService(
             _aipRepo.Object, _officeRepo.Object, _officeConfigRepo.Object, _expRepo.Object,
             _permissions.Object, _audit.Object, Divisions.Workflow(_audit.Object),
-            NullLogger<AipReviewService>.Instance);
+            _notifications, _reviewComments.Object, NullLogger<AipReviewService>.Instance);
     }
 
     /// <summary>

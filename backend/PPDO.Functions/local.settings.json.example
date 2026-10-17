@@ -10,7 +10,9 @@
     "Jwt__AccessTokenExpiryMinutes": "15",
     "Jwt__RefreshTokenExpiryDays": "7",
     "Cors__AllowedOrigins": "http://localhost:3000,http://localhost:4280",
-    "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+    "FileStore__Provider": "Local",
+    "FileStore__LocalPath": "../../../.file-store"
   },
   "Host": {
     "CORS": "http://localhost:3000,http://localhost:4280",

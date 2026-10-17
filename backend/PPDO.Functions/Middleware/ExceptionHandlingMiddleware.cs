@@ -74,9 +74,8 @@ internal sealed class ExceptionHandlingMiddleware : IFunctionsWorkerMiddleware
 
             HttpContext? http = context.GetHttpContext();
 
-            // Every trigger in this app is an HttpTrigger, so this is belt-and-braces: a
-            // non-HTTP trigger has no response to write, and swallowing there would hide the
-            // failure from the host's own retry/poison handling.
+            // A non-HTTP trigger (the export timer, PPDO-228) has no response to write, and
+            // swallowing there would hide the failure from the host's own retry/poison handling.
             if (http is null) throw;
 
             await WriteErrorAsync(http, context.InvocationId, context.CancellationToken);

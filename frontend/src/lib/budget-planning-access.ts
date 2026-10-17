@@ -13,6 +13,7 @@
  */
 
 import type { MeResponse } from "@/types";
+import { FIRST_ENTERED_FISCAL_YEAR, isEnteredFiscalYear } from "@/lib/aip-fiscal-years";
 
 /** Admin or SuperAdmin. The two roles that own province-wide setup. */
 function isAdminRole(me: MeResponse): boolean {
@@ -131,24 +132,58 @@ export function canOpenOfficeCeilings(me: MeResponse): boolean {
 }
 
 /**
- * The **WFP and PPMP report types** — host office (PPDO) only.
+ * The **PPMP report type, and the WFP report for FY ≤ 2027** — host office (PPDO) only.
  *
- * ⚠️ Both read the WFP, which is permanently PPDO-scoped (PPDO-20): a guest office has no WFP to
- * report on, so offering them the type would produce an empty office picker and a dead end.
+ * ⚠️ Both read the entered WFP, which is permanently PPDO-scoped (PPDO-20): a guest office has no WFP
+ * to report on for those years, so offering them the type would produce an empty office picker and a
+ * dead end. ↩️ An entered year (FY2028+) is different — see {@link canOpenWfpReportForYear}.
  */
 export function canOpenWfpReport(me: MeResponse): boolean {
   return me.canAccessBudgetPlanning && me.isHostOffice;
 }
 
 /**
+ * The **WFP report type for one fiscal year** (PPDO-225). For an entered year this is the *initial
+ * WFP*, read off the consolidated AIP, and every Budget Planning reader gets it — PPDO for any
+ * office, an office for its own (`Initial_WFP_Report_Spec.md` decision 6). FY ≤ 2027 stays host-office
+ * only, exactly as before.
+ *
+ * ⚠️ The Report page's WFP year list, the type dropdown and the sidebar all read this, so they cannot
+ * disagree. The server enforces the same split (`WfpReportFunctions.AuthorizeReportAsync`).
+ */
+export function canOpenWfpReportForYear(me: MeResponse, fiscalYear: number): boolean {
+  return isEnteredFiscalYear(fiscalYear) ? me.canAccessBudgetPlanning : canOpenWfpReport(me);
+}
+
+/**
  * The **Report page** itself — anyone with at least one report type.
  *
- * ⚠️ Derived from the two rules above rather than stated again, so the page and the sidebar cannot
- * come to disagree about who has something to read there. A reader with no allowed type would land
- * on a page whose every selector was empty.
+ * ⚠️ Derived from the rules above rather than stated again, so the page and the sidebar cannot come
+ * to disagree about who has something to read there. A reader with no allowed type would land on a
+ * page whose every selector was empty. Since PPDO-225 the initial WFP means every Budget Planning
+ * reader has one, but it is still derived rather than assumed.
  */
 export function canOpenBudgetPlanningReport(me: MeResponse): boolean {
-  return canOpenWfpReport(me) || canOpenAipReport(me);
+  return canOpenWfpReport(me) || canOpenAipReport(me)
+    || canOpenWfpReportForYear(me, FIRST_ENTERED_FISCAL_YEAR);
+}
+
+/**
+ * Whether the Division filter is locked to the caller's own division on the WFP report (PPDO-225).
+ *
+ * FY ≤ 2027 and PPDO's own report keep the rule the page always had (`canBypassDivision`). For an
+ * entered year the server follows spec decision 12:
+ * - a PPDO reader on another office is never narrowed by their own division;
+ * - a guest office's Staff with a division are forced to it; a guest Admin, or Staff with no
+ *   division, read the whole office or the division they pick.
+ */
+export function wfpDivisionLocked(
+  me: MeResponse, fiscalYear: number, officeId: number | null, canBypassDivision: boolean,
+): boolean {
+  if (!isEnteredFiscalYear(fiscalYear)) return !canBypassDivision;
+  if (officeId != null && officeId !== me.officeId) return false;
+  if (me.isHostOffice) return !canBypassDivision;
+  return !(isAdminRole(me) || me.divisionId == null);
 }
 
 /**

@@ -30,6 +30,7 @@ import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/e
 import Lookup from "@/components/ui/Lookup";
 import { shouldDefaultToProcurement } from "@/lib/aip-default-nature";
 import { fmtThousands, fmtPesos } from "@/lib/aip-units";
+import { reviewerReasonProblem } from "@/lib/aip-reviewer-edit";
 import {
   addAipExpenditure, updateAipExpenditure, deleteAipExpenditure, aipConflict, aipErrorMessage,
 } from "@/lib/aip";
@@ -247,7 +248,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
 
 export default function AipExpenditureTable({
   activityId, lines, accounts, fundingSources, canEdit, generalFundId,
-  priceIndex, priceIndexLoading, onChanged, onReload, draftUserId = null,
+  priceIndex, priceIndexLoading, onChanged, onReload, draftUserId = null, reviewerReason,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -271,7 +272,19 @@ export default function AipExpenditureTable({
    * passes it (`AipActivityPanel`); the review modal does not, so it reads and writes no drafts.
    */
   draftUserId?: string | null;
+  /**
+   * v1.9.0 — PPDO-214. Set (even to "") only by the PPDO reviewer's Edit amounts panel, which turns
+   * on **reviewer mode**: every save carries this reason, and Save stays disabled until it is valid;
+   * no line can be deleted; an existing line's account and fund are fixed (amounts only, PPDO-212
+   * decision 3); and the activity's fund cannot be switched once it has lines. Left undefined, the
+   * table behaves exactly as it always has.
+   */
+  reviewerReason?: string;
 }) {
+  const reviewerMode = reviewerReason !== undefined;
+  /** Why a reviewer's Save is still blocked, beyond what the line itself is missing. */
+  const reviewerBlocked = reviewerMode ? reviewerReasonProblem(reviewerReason ?? "") : null;
+
   const [adding, setAdding]       = useState(false);
   const [draft, setDraft]         = useState<Draft>(EMPTY);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -431,6 +444,9 @@ export default function AipExpenditureTable({
         // Always sent — an empty array is an explicit "this line has no items", which is what
         // returns an itemised line to a typed amount.
         procurementItems: draft.procurementItems,
+        // PPDO-212 — only in reviewer mode. The server ignores it from anyone else, so it is not
+        // sent at all outside that mode rather than sent and ignored.
+        ...(reviewerMode ? { reviewerReason: (reviewerReason ?? "").trim() } : {}),
       };
       // A new line has no version: a row that does not exist yet cannot conflict (spec §4).
       const result = existingId === null
@@ -760,7 +776,9 @@ export default function AipExpenditureTable({
       </div>
 
       {/* ── Fund mode ────────────────────────────────────────────────────── */}
-      {canEdit && (
+      {/* ⚠️ PPDO-214 — not offered to a PPDO reviewer once the activity has lines: switching the fund
+          rewrites every line's fund, and the reviewer may change amounts only. */}
+      {canEdit && !(reviewerMode && lines.length > 0) && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           {/* ⚠️ Radios, not the old checkbox: an unticked checkbox cannot say "not answered", which
               is exactly the state a new activity is in.
@@ -962,7 +980,9 @@ export default function AipExpenditureTable({
                 <EditRow key={line.id} draft={draft} setDraft={setDraft} accounts={accounts}
                   fundingSources={fundingSources} generalFundId={generalFundId}
                   showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
-                  lockedFundCode={legacyMulti ? (line.fundingSourceCode ?? "—") : null}
+                  lockedFundCode={legacyMulti || reviewerMode ? (line.fundingSourceCode ?? "—") : null}
+                  lockAccount={reviewerMode}
+                  extraBlockedReason={reviewerBlocked}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={cancelEditor} />
@@ -999,8 +1019,11 @@ export default function AipExpenditureTable({
                       <>
                         <button type="button" onClick={() => beginEdit(line)}
                           className="text-slate-600 hover:underline">Edit</button>
-                        <button type="button" onClick={() => remove(line.id)} disabled={busy}
-                          className="ml-2 text-red-600 hover:underline disabled:opacity-50">Delete</button>
+                        {/* PPDO-214 — a PPDO reviewer never removes a line (the server refuses it too). */}
+                        {!reviewerMode && (
+                          <button type="button" onClick={() => remove(line.id)} disabled={busy}
+                            className="ml-2 text-red-600 hover:underline disabled:opacity-50">Delete</button>
+                        )}
                       </>
                     )}
                   </td>
@@ -1017,6 +1040,7 @@ export default function AipExpenditureTable({
               <EditRow isNew draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
+                extraBlockedReason={reviewerBlocked}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                 siblingItems={siblingItemsOf(null)}
                 onSave={() => save(null)} onCancel={cancelEditor} />
@@ -1030,7 +1054,8 @@ export default function AipExpenditureTable({
 
 function EditRow({
   isNew = false, draft, setDraft, accounts, fundingSources, generalFundId, showFund, activityFundMissing, busy,
-  lockedFundCode = null, priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
+  lockedFundCode = null, lockAccount = false, extraBlockedReason = null,
+  priceIndex, priceIndexLoading, siblingItems, onSave, onCancel,
 }: {
   /** A line being added, not one being edited — only a new line takes the account's default nature (PPDO-209). */
   isNew?: boolean;
@@ -1048,6 +1073,10 @@ function EditRow({
    * as text. A picker here would let one edit add yet another fund to an activity now limited to one.
    */
   lockedFundCode?: string | null;
+  /** PPDO-214 — a PPDO reviewer editing a saved line: the account stays as saved (amounts only). */
+  lockAccount?: boolean;
+  /** PPDO-214 — blocks Save for a reason that lives outside the row (the reviewer's reason). */
+  extraBlockedReason?: string | null;
   busy: boolean;
   priceIndex: PriceIndexPickerItem[];
   priceIndexLoading: boolean;
@@ -1079,7 +1108,8 @@ function EditRow({
     : ((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) <= 0 ? "Enter an amount." : null);
   // The activity's own fund lives above the table and reports itself there; here it only blocks.
   const blockedReason = missingAccount ?? missingFund ?? missingAmount
-    ?? (activityFundMissing ? "Pick the activity's funding source first." : null);
+    ?? (activityFundMissing ? "Pick the activity's funding source first." : null)
+    ?? extraBlockedReason;
 
   // ⚠️ Only consulted while itemised. An un-itemised line keeps the typed values untouched — the
   // whole pre-PPDO-54 path is unchanged.
@@ -1134,7 +1164,7 @@ function EditRow({
             getSearchText={accountSearch}
             allOptionLabel="— Account —"
             placeholder="Search accounts…"
-            disabled={busy}
+            disabled={busy || lockAccount}
           />
           {/* Directly under the picker that determines it, so the answer is where the question
               was asked — not in a legend elsewhere on the row. */}
