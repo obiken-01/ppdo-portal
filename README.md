@@ -24,7 +24,7 @@
 | v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
 | **v1.9.0** | **Larger requests from Demo 3** (see below) | 🧊 **Complete, frozen for UAT** |
-| **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not specced or scheduled** |
+| **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
 
 > **Production** is at v1.7.4. v1.8.0 → v1.9.0 are **not deployed to production** until the PPDC and
 > finance users sign off. They ship as one deploy, with the migrations run by hand first.
