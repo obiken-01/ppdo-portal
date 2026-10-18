@@ -622,7 +622,14 @@ illustrate.
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
 > `Footer.tsx` and `login/page.tsx`. Bump it on the first commit of a `release/X.Y.Z` branch and
-> update this section and the footer date stamp in that same commit. This section previously drifted
+> update this section and the footer date stamp in that same commit.
+>
+> **README.md is part of the same ritual (Ralph, 2026-10-18).** Every `release/X.Y.Z` branch (minor or
+> patch) updates `README.md` before it freezes: the current-version line, the Status table row, a
+> "What's in vX.Y.Z" summary, and the pre-deployment checklist link if there is one. Hotfixes
+> (`fix/…` / emergency patches) are **exempt**. The README lives on `main`'s front page only after
+> the release merges, so write it for the release branch, not for what production runs today.
+> This section previously drifted
 > eleven weeks and six minor versions behind the code, which is why the rule is written down here.
 
 **Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
