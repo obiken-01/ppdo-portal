@@ -1,7 +1,10 @@
 # PPDO Portal & Inventory System
 
 > Web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines.
-> Covers inventory monitoring, budget planning (LDIP / AIP / WFP), and office operations.
+> Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
+> and office operations.
+
+**Current version: v1.9.0** (complete, frozen on `release/1.9.0`, going to UAT) · **Next: v1.10.0** (placeholder — SAIP)
 
 ---
 
@@ -9,23 +12,63 @@
 
 | Version | Milestone | Status |
 |---|---|---|
-| v0.1 | Project Setup & Foundation | ✅ Done |
-| v1.0 | Core Portal & Inventory Monitoring | ✅ Done |
-| v1.0.1 | Security Hardening | ✅ Done |
-| v1.1 | Inventory UI Refinements + Distribution | ✅ Done |
-| v1.1.1 | Calendar Approval, Announcements, User Profile | ✅ Done |
-| v1.2 | Divisions & Permission Model Rework | ✅ Done |
-| v1.3 | LDIP Upload + Dashboard Readiness Hub | ✅ Done |
-| v1.4 | Budget Planning — WFP Rework (epic) | ✅ Done |
-| v1.4.1 – v1.4.3 | WFP Rework follow-ups — fund-scoped ceiling & allocation | ✅ Done |
-| v1.4.4 | WFP Report → Excel export (matches PBO form) | ✅ Done |
-| v1.4.5 | Budget Planning Dashboard — PPDO-scoped, per-division view | ✅ Done |
-| v1.4.6 – v1.4.9 | Budget Planning perf fixes + Audit Log page | ✅ Done |
-| v1.5 | PPMP Report — preview + Excel export | ✅ Done |
-| v1.6 | AIP Manual Entry, In-Place Editing, Carry-Forward & LDIP Inline Edit | ✅ Done |
-| v1.7 | Inventory Optimization — perf rework, Stock Balances, server-side Distribution, GSO PR import, audit logging | ✅ Done |
+| v0.1 – v1.1 | Foundation, Core Portal & Inventory, Distribution | ✅ Shipped |
+| v1.2 | Calendar approval, Announcements, configurable Divisions, allocation | ✅ Shipped |
+| v1.3 | LDIP upload + Budget Planning readiness hub | ✅ Shipped |
+| v1.4.x | WFP rework, multi-fund ceilings, WFP Excel export | ✅ Shipped |
+| v1.5 | PPMP Report — preview + Excel export | ✅ Shipped |
+| v1.6 | AIP editing, carry-forward, responsive shell | ✅ Shipped |
+| v1.7.x | Inventory — stock balances, server-side Distribution, GSO PR import, audit trail | ✅ Shipped |
+| v1.8.0 | Office users, AIP redesign (FY2028+), reviewer flow, external AIP API | ✅ Built — in UAT, not in production |
+| v1.8.1 | Optimization & dashboard fixes | ✅ Built — ships with v1.8.0 |
+| v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
+| v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
+| **v1.9.0** | **Larger requests from Demo 3** (see below) | 🧊 **Complete, frozen for UAT** |
+| **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
 
-See [`CLAUDE.md`](CLAUDE.md) for the full delivery history and current architecture rules.
+> **Production** is at v1.7.4. v1.8.0 → v1.9.0 are **not deployed to production** until the PPDC and
+> finance users sign off. They ship as one deploy, with the migrations run by hand first.
+
+See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and architecture rules.
+
+---
+
+## What's in v1.9.0
+
+Built on `release/1.9.0`; only fixes found in UAT are accepted until it ships.
+
+- ✏️ **PPDO reviewer edits** — PPDO reviewers can correct amounts and fields on an office's submitted
+  AIP directly, with the change recorded in history. Adding, removing or renaming programs, projects
+  or activities is deliberately *not* included (that is SAIP).
+- 💰 **Enforced fund-source ceilings** — the AIP ceiling check now covers every fund source, not just
+  the General Fund, and ceilings are configurable on the Funding Sources config page.
+- 💬 **Comment threads** — replies, a Reply box and collapsed resolved threads on both Investment
+  Proposals and AIP review.
+- 🔔 **Notification bell** — a top-right inbox beside the user name, shared across features.
+- 📄 **Initial WFP report** — generated from the consolidated AIP once offices are marked done.
+- 📦 **Bulk export** — the initial WFP report for many offices as a background job, delivered through
+  an Azure Blob container.
+
+⚠️ **Deploying v1.9.0:** six additive migrations, a Blob container and two app settings must be in place
+**before** the code. Follow
+[`docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md`](docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md).
+
+Specs: [`docs/v1.9/`](docs/v1.9/) — `AIP_Reviewer_Edit_Spec.md`, `Fund_Source_Ceiling_Spec.md`,
+`AIP_Comment_Threads_Spec.md`, `Investment_Proposal_Comments_Spec.md`, `Notification_Centre_Spec.md`,
+`Initial_WFP_Report_Spec.md`, `Bulk_Initial_WFP_Export_Spec.md`.
+
+## v1.10.0 — SAIP (placeholder)
+
+**SAIP — Supplemental Annual Investment Program** — is reserved as the headline of v1.10.0. It is the
+mid-year companion to the AIP: changes that PPDO reviewer edits in v1.9.0 intentionally cannot make,
+chiefly adding, removing or renaming programs, projects and activities after the AIP is approved.
+
+- **Status:** placeholder only. No spec, tickets or branch exist yet; scope below is provisional.
+- **Likely reuses:** the AIP entry/review flow, comment threads, the notification bell and the
+  background-job plumbing from v1.9.0 (the bulk-export spec already anticipates a SAIP job kind).
+- **Before any build:** a spec per [`docs/SPEC_STANDARD.md`](docs/SPEC_STANDARD.md) — goal, per-role
+  behaviour, failure cases, UI states, non-goals and acceptance checklist.
+- `release/1.10.0` is cut from the completed `release/1.9.0` once v1.9.0 is signed off in UAT.
 
 ---
 
@@ -33,14 +76,15 @@ See [`CLAUDE.md`](CLAUDE.md) for the full delivery history and current architect
 
 | Layer | Technology |
 |---|---|
-| Backend API | .NET 9 — Azure Functions (Consumption plan) |
-| Frontend | Next.js 14 — TypeScript, Tailwind CSS, shadcn/ui |
-| Database | Azure SQL Database (SQL Server 2022) — Free tier |
+| Backend API | .NET 9 — Azure Functions (isolated worker, Consumption plan) |
+| Frontend | Next.js 14 — TypeScript, Tailwind CSS |
+| Database | Azure SQL Database (Basic tier, Southeast Asia) |
 | ORM | Entity Framework Core 9 |
-| Auth | ASP.NET Core Identity + JWT |
+| Auth | JWT access token + httpOnly refresh cookie; permissions resolved by `PermissionService` |
 | Excel | ClosedXML (.xlsx export) |
-| Hosting | Azure Static Web Apps + Azure Functions + Azure SQL — **free forever** |
-| CI/CD | GitHub Actions |
+| Storage | Azure Storage (Functions host; Blob container for v1.9.0 bulk exports) |
+| Hosting | Azure Static Web Apps + Azure Functions + Azure SQL — all in **Southeast Asia** |
+| CI/CD | GitHub Actions (does **not** run EF migrations) |
 
 ---
 
@@ -58,10 +102,10 @@ ppdo-portal/
 │   └── src/
 │       ├── app/              # Next.js App Router pages
 │       ├── components/       # React components
-│       ├── lib/              # Axios client, auth helpers
+│       ├── lib/              # Axios client, auth helpers, version.ts
 │       └── types/            # TypeScript interfaces
-├── docs/                     # Standards and conventions
-├── CLAUDE.md                 # Claude Code instructions
+├── docs/                     # Specs, standards and release checklists (Obsidian vault)
+├── CLAUDE.md                 # Claude Code instructions + implementation status
 └── PROJECT_DOCUMENTATION_NET_AZURE.md  # Full technical spec
 ```
 
@@ -84,7 +128,7 @@ ppdo-portal/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/[username]/ppdo-portal.git
+git clone https://github.com/obiken-01/ppdo-portal.git
 cd ppdo-portal
 ```
 
@@ -130,11 +174,18 @@ swa start http://localhost:3000 --api-location http://localhost:7071
 # → http://localhost:4280
 ```
 
+### Tests
+
+```bash
+cd backend
+dotnet test
+```
+
 ---
 
 ## Architecture
 
-**Serverless Clean Architecture** — four layers, deployed as Azure Functions + Azure Static Web Apps.
+**Serverless Clean Architecture** — layers deployed as Azure Functions + Azure Static Web Apps.
 
 ```
 Domain → Infrastructure → Application → Functions → Frontend
@@ -150,69 +201,57 @@ Domain → Infrastructure → Application → Functions → Frontend
 
 ---
 
-## User Roles
+## Users, Roles & Offices
 
-Roles: **SuperAdmin**, **Admin**, **Staff**. (The `Observer` role and the old `PermissionGroup`
-table were both retired in v1.2 — see below.)
+Roles: **SuperAdmin**, **Admin**, **Staff**. (The `Observer` role and the `PermissionGroup` table
+were retired in v1.2.)
 
 | Role | Who | Access |
 |---|---|---|
 | SuperAdmin | Developer / MIS | Full access — bypasses all permission checks |
 | Admin | Division heads | All features by default |
-| Staff | Any PPDO employee | Access via their Division's feature flags + individual overrides |
+| Staff | Any PPDO employee | Their division's feature flags plus individual overrides |
 
-**Divisions are configurable** (v1.2, RAL-97) — a `divisions` table (FK `users.division_id`)
-replaces the old fixed `Division` enum and the `PermissionGroup` table. Each division carries
-both a **data-scoping** dimension (which office's/division's budget-planning and inventory data a
-Staff user may see) and **feature-permission flags** (`CanAccessInventory`, `CanAccessBudgetPlanning`,
-`CanManageUsers`, etc.) — a Staff user's effective access resolves from their division's flags plus
-any per-user overrides.
+- **Divisions are configurable** (v1.2) — a `divisions` table carries both data scope and feature
+  flags; a Staff user's effective access resolves from those plus per-user overrides.
+- **Office users** (v1.8.0) — users belonging to other provincial offices sign in as guests and see
+  only their own office's AIP and Investment Proposal data. A user with no office assigned sees nothing.
+- **Permission reference** — [`docs/v1.8/Permission_Matrix.md`](docs/v1.8/Permission_Matrix.md) lists
+  every flag × role × scope and is pinned by tests.
 
 ---
 
-## Key Features (v1.0)
+## Features
 
-- 🏠 **Public landing page** — announcements visible without login
-- 🔐 **Login + RBAC** — JWT auth, role-based + permission-flag access control
-- 📅 **Main Dashboard** — calendar with office events and PH holidays
-- 📦 **Inventory Dashboard** — PR status cards, stock alerts, quick actions
-- 📋 **Create Purchase Request** — 18-field form with Items Master autocomplete + Excel import
-- 🚚 **Receive Delivery** — delivery logging with split-by-division support
-- 🗃️ **Items Master** — supply catalog management
-- 📊 **PR Report** — 3-section report with Excel export (ClosedXML)
-- 📒 **Stock Overview** — running stock totals per item
-- 🔍 **PR List** — full PR list with status filters
-- 👤 **User Management** — add users, reset passwords, manage permissions
+### Portal
+- 🏠 Public landing page with announcements
+- 🔐 Login + RBAC (role, division flags, per-user overrides, office scope)
+- 📅 Dashboard — calendar with approval workflow and PH holidays
+- 🔔 Notification bell (v1.9.0)
+- 👤 User management, self-service profile and change password
+- 📜 Audit log (SuperAdmin)
 
-## What's New in v1.1 — Budget Planning (LDIP / AIP / WFP)
+### Investment & Budget Planning
+- 📈 **LDIP** — `.xlsm` upload, re-upload and inline editing
+- 🧾 **AIP** — redesigned for FY2028+ (entry wizard, expenditures, ceilings, DBM reference codes);
+  FY2027 stays on the legacy format
+- 🔁 **Review flow** — submit → review → return → re-submit with row-anchored comment threads,
+  PPDO reviewer edits (v1.9.0), consolidated view and Annex B report/Excel export
+- 💰 **Ceilings & allocation** — per-fund-source ceilings (enforced on every fund source from v1.9.0)
+  and per-division allocation
+- 🗂️ **WFP** — entry wizard, procurement line items, frequency grids, report preview and Excel export;
+  initial WFP report from the consolidated AIP and bulk export (v1.9.0)
+- 📋 **PPMP** — item-grained report preview and Excel export
+- 🔌 **External AIP API** — partner access by API key; see [`docs/external-api/README.md`](docs/external-api/README.md)
 
-v1.1 adds the **Budget Planning** module — a web-based replacement for the Province's existing Excel-based LDIP, AIP, and WFP files (currently managed via `.xlsm` files with VBA macros).
-
-### Module Overview
-
-| Document | Full Name | Scope |
-|---|---|---|
-| **LDIP** | Local/Provincial Development Investment Program | Multi-year (3–6 yrs), all offices |
-| **AIP** | Annual Investment Program | Single fiscal year, annual slice of LDIP |
-| **WFP** | Work and Financial Plan | Per-department, quarterly expenditure breakdown |
-
-**Hierarchy:** LDIP → AIP (annual slice) → WFP (department execution plan)  
-**Legal basis:** RA 7160, DBM LBC 152 (2023), DILG-NEDA-DBM-DOF JMC No. 1 (2016)
-
-### Key Features
-
-- 📂 **Configuration section** — Accounts (Chart of Accounts), Offices, and Funding Sources; each config page supports CSV upload/download, add/edit via modal, and searchable/sortable table
-- 📥 **AIP file upload** — import existing `.xlsm` files (4 sector sheets); post-upload summary page before confirming import
-- ✏️ **AIP manual entry** — create AIP records directly through the web UI (Office → Program → Project → Activity hierarchy)
-- 📊 **WFP entry** — per-office WFP linked to an AIP record; expenditure lines entered via popup (PS / MOOE / CO sections with quarterly amounts, 10% reserve toggle, and funding source)
-- 🌳 **Hierarchical PPA tree** — accordion/tree UI for the 4-level AIP reference code structure (Office → Program → Project → Activity)
-- 🔢 **Auto-computed totals** — PS + MOOE + CO = Total; Q1+Q2+Q3+Q4 = quarterly total; rollups at every parent level
-- 📜 **Audit log** — change history on all LDIP, AIP, and WFP records (who changed what, when)
-- 🔒 **Draft / Final / Archived workflow** — records are editable as Draft; locked when Finalized; amendments create a new Draft copy
+### Inventory
+- 📦 Dashboard, Create PR (form, Excel import, GSO PR import), Receive Delivery, Distribution (server-side FIFO)
+- 🗃️ Items Master, Stock Overview, Stock Balances (physical-count ledger), PR List, PR Report with Excel export
+- 📜 Full audit trail across PRs, deliveries, distributions, items and stock balances
 
 ### AIP Reference Code Format
 
-`SSSS-000-L-CC-OOO[-PPP[-AAAA[-XXXX]]]`
+`SSSS-000-L-CC-OOO[-PPP[-AAAA[-XXXX]]]` — follows the DBM BOM segment layout.
 
 | Segments | Level | Example |
 |---|---|---|
@@ -220,109 +259,6 @@ v1.1 adds the **Budget Planning** module — a web-based replacement for the Pro
 | 6 | Program | `1000-000-1-01-005-001` |
 | 7 | Project / Sub-program | `1000-000-1-01-005-001-001` |
 | 8 | Activity (leaf) | `1000-000-1-01-005-001-001-001` |
-
-### New Database Tables
-
-Config: `offices`, `funding_sources`, `accounts`  
-LDIP: `ldip_records`  
-AIP: `aip_records`, `aip_offices`, `aip_programs`, `aip_projects`, `aip_activities`  
-WFP: `wfp_records`, `wfp_activities`, `wfp_expenditure_lines`  
-Audit: `audit_log`
-
-See [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md) for the full schema.
-
-### v1.0.x — Inventory UI Refinements + Security (shipped)
-
-- 📦 **Distribution page** — standalone distribution flow with FIFO batch allocation; Stock Sources read-only view
-- 📋 **PR List** — full filter panel (division, quarter, status, requested by, fund, AIP code, account)
-- 📒 **Stock Overview** — Received in Quarter filter; renamed from Item Ledger
-- 📊 **PR Report** — delivery summary bar; Quarter column replaces Date Created
-- 🎨 **UI refinements** — flat design system across all inventory pages
-- 🔐 **Security hardening (v1.0.1)** — login rate limiting, httpOnly refresh token cookie, CORS origin whitelist
-
-## What's New in v1.2 – v1.4.5 — Divisions, WFP Rework & PPDO-Scoped Dashboard
-
-- 📅 **v1.1.1 — Calendar approval workflow + Announcements** — calendar events gain an approval
-  workflow; public/admin Announcements (CRUD, public landing page); user profile page.
-- 🏢 **v1.2 — Configurable Divisions** — replaced the fixed `Division` enum and `PermissionGroup`
-  table with a `divisions` table carrying both data-scope and feature-permission flags per
-  division; roles simplified to SuperAdmin / Admin / Staff (Observer retired).
-- 📈 **v1.3 — LDIP upload + Dashboard readiness hub** — LDIP `.xlsm` upload/re-upload creates one
-  record spanning all offices; new 2×2 Allocation/LDIP/AIP/WFP readiness hub on the Budget
-  Planning Dashboard.
-- 🔁 **v1.4 — WFP Rework (epic)** — Chart of Accounts rework, Price Index config, function-band +
-  activity-creation flags on AIP programs/activities, procurement line-item entry with quantity ×
-  unit price × days, quarterly frequency grids, a dedicated WFP Report preview page mirroring the
-  province's official "WFP FINAL" reference sheet.
-- 💰 **v1.4.3 — Multi-fund ceiling & allocation** — budget ceilings and division allocations
-  extended from General-Fund-only to every active funding source (GAD, LDRRM, 20% Development
-  Fund, etc.), with fund-source aliasing so AIP's inconsistent free-text fund labels resolve to
-  the right canonical fund.
-- 📤 **v1.4.4 — WFP Report → Excel export** — one-click `.xlsx` export of the WFP Report matching
-  the PBO's official "WFP FINAL" form layout (one worksheet per fund source, full function-band →
-  program → project → activity → expense-class hierarchy with sub-totals/grand-totals), built with
-  ClosedXML.
-- 📊 **v1.4.5 — PPDO-scoped Budget Planning Dashboard** — the Dashboard is now permanently scoped
-  to PPDO (Budget Planning is effectively PPDO-only in practice) with a per-division WFP status
-  view and per-fund ceiling/allocation pie charts; the underlying queries were also reworked from
-  several unfiltered full-table scans down to properly scoped SQL queries.
-- 🛠️ **v1.4.6 – v1.4.9 — Budget Planning fixes + Audit Log page** — further N+1 query cleanup,
-  Manila-timezone and calendar-row-height fixes on the Dashboard, and a new SuperAdmin-only Audit
-  Log config page (auto-refreshing) surfacing the `audit_log` table added back in v1.1.
-
-See [`docs/v1.4.4/WFP_Excel_Export_Assessment.md`](docs/v1.4.4/WFP_Excel_Export_Assessment.md) for
-the design decisions behind v1.4.4's Excel export.
-
-## What's New in v1.5 — PPMP Report
-
-- 📊 **PPMP Report** — a second report type on Budget Planning › Report, alongside WFP (WFP stays
-  the default). Item-grained, matching the Province's own filed PPMP working form rather than the
-  national GPPB form — one row per procurement item, nested under the AIP program/project/activity
-  hierarchy, with quarterly qty/amount schedules and a Stock Card No. column.
-- 📤 **PPMP Excel export** — one-click `.xlsx` export matching the province's official layout,
-  built with the same programmatic ClosedXML approach as the v1.4.4 WFP export.
-- 🏷️ **Stock Card No. on the Price Index** — items in the Chart-of-Accounts price index now carry
-  the GSO Item Code, joined live via `WfpProcurementItem.PriceIndexItemId` (never snapshotted, so
-  a GSO correction retroactively fixes every report).
-
-See [`docs/v1.5/PPMP_Report_Findings.md`](docs/v1.5/PPMP_Report_Findings.md) for the full design
-spec, and [`docs/v1.5/STOCK_CARD_NO_RUNBOOK.md`](docs/v1.5/STOCK_CARD_NO_RUNBOOK.md) for the
-Stock Card No. backfill process.
-
-## What's New in v1.6 — AIP Manual Entry, In-Place Editing & LDIP
-
-- ✏️ **AIP Manual Entry** — build an AIP record directly in the web UI, one node at a time
-  (Office → Program → Project → Activity), each addition persisted immediately.
-- 🔧 **AIP in-place editing** — edit/save/cancel per activity row on an uploaded or manually-built
-  Draft AIP record, no re-upload required.
-- 📋 **Carry-forward & seed from LDIP** — copy an office's programs (with full project/activity
-  subtrees) from a prior fiscal year's AIP into the current one, or seed a fresh AIP office's
-  programs directly from its matching LDIP record.
-- 📝 **LDIP inline editing** — edit a single LDIP program's fields without a full file re-upload.
-- 📱 **Mobile-responsive portal shell** — off-canvas sidebar drawer and responsive dashboard
-  stacking below the `lg` breakpoint.
-
-## What's New in v1.7 — Inventory Optimization
-
-- ⚡ **Performance rework** — PR number generation moved from a full-table scan to a SQL
-  aggregate; Inventory's catalog/PR/Delivery/Items-Master queries scoped and server-side paginated
-  instead of filtering in memory; layout-preserving loading skeletons replace full-page spinners.
-- 🧮 **Stock Balances** — a recurring, PPDO-wide physical-count ledger
-  (`/inventory/stock-balances`) that reconciles counted quantities against system on-hand via a
-  variance formula, with bulk CSV upsert.
-- 📥 **GSO PR import** — prefill Create PR directly from a GSO-system PR export (Excel or signed
-  PDF), including account-code matching across punctuation styles.
-- 🚚 **Distribution FIFO moved server-side** — batch allocation across delivery batches is now
-  computed on the backend instead of the frontend (and fixed a real LIFO-not-FIFO bug in the
-  process).
-- 📄 **Create PR Excel template redesign** — matches the look of the GSO export.
-- 📜 **Full audit trail on Inventory** — PRs, deliveries, distributions, Items Master, and Stock
-  Balances are all now logged to the audit trail.
-- 🔍 **SEO** — sitemap, robots.txt, and metadata for the public landing page.
-
-See [`docs/v1.7/Mobile_And_Inventory_Findings.md`](docs/v1.7/Mobile_And_Inventory_Findings.md) and
-[`docs/v1.7/GSO_PR_Import_Findings.md`](docs/v1.7/GSO_PR_Import_Findings.md) for the audit and
-design decisions behind this milestone.
 
 ---
 
@@ -334,45 +270,57 @@ design decisions behind this milestone.
 | Testing conventions | `docs/TEST_CONVENTIONS.md` |
 | Git conventions | `docs/GIT_CONVENTIONS.md` |
 | Bug reporting | `docs/BUG_REPORT_STANDARD.md` |
+| Spec standard | `docs/SPEC_STANDARD.md` |
 | Ticket prompt standard | `docs/TICKET_PROMPT_STANDARD.md` |
 | Performance & scalability guidelines | `docs/PERFORMANCE_GUIDELINES.md` |
+| Design system | `docs/DESIGN_SYSTEM.md` |
 | Claude Code instructions | `CLAUDE.md` |
 | Full technical spec | `PROJECT_DOCUMENTATION_NET_AZURE.md` |
+| Design / business-logic context | `PPDO_PROJECT_CONTEXT.md` |
 
-Full-application performance audit (2026-07-16, findings + prioritization, not yet all actioned):
-[`docs/Performance_Audit_2026-07-16.md`](docs/Performance_Audit_2026-07-16.md)
+### Release docs
 
-### v1.1 Budget Planning Docs
-
-| Doc | File |
+| Release | Doc |
 |---|---|
-| Requirements & field analysis (LDIP / AIP / WFP) | `docs/v1.1/LDIP_AIP_WFP_Web_Requirements.md` |
-| Database model | `docs/v1.1/DB_Model.md` |
-| AIP import findings & design decisions | `docs/v1.1/AIP_WFP_Import_Findings.md` |
-| Shared UI component standards | `docs/v1.1/UI_Component_Standards.md` |
-| User roles, permissions & access model | `docs/v1.1/User_Roles_Permissions.md` |
+| v1.8.0 (rewrites existing AIP amounts) | `docs/v1.8/Pre_Deployment_Checklist.md` |
+| v1.8.2 | `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` |
+| v1.9.0 | `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md` |
+
+Historical design notes: [`docs/v1.1/DB_Model.md`](docs/v1.1/DB_Model.md),
+[`docs/v1.4.4/WFP_Excel_Export_Assessment.md`](docs/v1.4.4/WFP_Excel_Export_Assessment.md),
+[`docs/v1.5/PPMP_Report_Findings.md`](docs/v1.5/PPMP_Report_Findings.md),
+[`docs/v1.7/GSO_PR_Import_Findings.md`](docs/v1.7/GSO_PR_Import_Findings.md).
 
 ---
 
-## Deployment
+## Branching & Deployment
 
-Deployed on Azure free tier — **₱0/month**.
+```
+main                  ← production; push auto-deploys via GitHub Actions
+release/X.Y.Z         ← one working branch per version
+feature/vX.Y.Z-…      ← new work, PR into the release branch
+fix/vX.Y.Z-…          ← UAT fixes
+uat                   ← deploy target for UAT (never branch off it)
+```
 
 | Service | Platform |
 |---|---|
-| Frontend | Azure Static Web Apps (Free) |
-| Backend API | Azure Functions — Consumption plan |
-| Database | Azure SQL Database — Free offer (32 GB) |
+| Frontend | Azure Static Web Apps |
+| Backend API | Azure Functions — Consumption plan, Southeast Asia |
+| Database | Azure SQL Database — Basic tier, Southeast Asia |
 
-Push to `main` → GitHub Actions builds and deploys automatically.
+⚠️ **CI does not run EF migrations.** A release with a migration needs a manual
+`dotnet ef database update` against Azure SQL, run **before** the code deploys. Any new Azure resource
+goes in Southeast Asia, next to the database.
 
-See `PROJECT_DOCUMENTATION_NET_AZURE.md` → Section 12 for the full first-deployment guide.
+See `PROJECT_DOCUMENTATION_NET_AZURE.md` → Section 12 for the first-deployment guide.
 
 ---
 
 ## Project Tracking
 
 Linear: https://linear.app/ralphoksiprojects/project/ppdo-portal-bdecba26e877
+New tickets use the `PPDO-` prefix; older ones keep `RAL-`.
 
 ---
 
