@@ -365,6 +365,10 @@ screenshots of the live check are his record of what a ticket looked like when i
   the local database: account names, office ceilings, allocations. List the states checked live in
   the PR body instead.
 
+**PR descriptions (Ralph, 2026-10-19):** follow `docs/PR_DESCRIPTION_STANDARD.md`: issue, purpose, fix
+and alternatives, before → after, an ordered code walkthrough, each test by name, live checks, risk &
+rollback, deploy notes, how to review it, confidence %. A short form covers docs/config-only PRs.
+
 **Confidence in every code change (Ralph, 2026-10-05):** every PR description, and the report at the
 end of a ticket, states a **confidence %** that the change is correct, then in a line or two what it
 rests on (tests, red-tested guards, live checks) and what was not verified that would raise it. Be
@@ -908,6 +912,7 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 |---|---|
 | `docs/SPEC_STANDARD.md` | Writing or accepting a feature spec |
 | `docs/TICKET_PROMPT_STANDARD.md` | Writing a Linear ticket implementation prompt |
+| `docs/PR_DESCRIPTION_STANDARD.md` | Writing any PR description (template: `.github/pull_request_template.md`) |
 | `docs/PERFORMANCE_GUIDELINES.md` | Adding a query, endpoint, or list view |
 | `docs/DESIGN_SYSTEM.md` | Creating or restyling any page |
 | `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
