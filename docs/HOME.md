@@ -12,8 +12,8 @@ This folder is an Obsidian vault and also ordinary markdown on GitHub. Every lin
 ## Start here
 
 - **Standards** (what to read before touching a query, a page, a table or a spec): [Standards and reference](STANDARDS.md)
-- **Current release:** [v1.9 hub](v1.9/README.md), and its [pre-deployment checklist](v1.9/Pre_Deployment_Checklist_v1.9.0.md)
-- **The biggest design record:** [v1.8 hub](v1.8/README.md) and the [Phase Plan](v1.8/Phase_Plan.md)
+- **Current release:** [v1.9 hub](v1.9/README.md) (its pre-deployment checklist is listed there)
+- **The biggest design record:** [v1.8 hub](v1.8/README.md) (start with the Phase Plan listed there)
 - **Release timeline:** [Releases canvas](Releases.canvas)
 - **Tables over the docs and tickets:** [Docs.base](Docs.base) (specs by version, current standards, superseded, checklists and runbooks, docs to verify) and [Tickets.base](Tickets.base) (the Linear export by milestone, status, label)
 - **Linear ticket archive:** [linear-export](linear-export/README.md)

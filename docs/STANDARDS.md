@@ -23,7 +23,7 @@ The documents that apply across versions, plus the generated database docs, the 
 | [Test Conventions](TEST_CONVENTIONS.md) | Writing tests or a PR test plan |
 | [Git Conventions](GIT_CONVENTIONS.md) | Branching, committing, releasing |
 | [Bug Report Standard](BUG_REPORT_STANDARD.md) | Filing a bug |
-| [Permission Matrix](v1.8/Permission_Matrix.md) | Changing who can do what (every rule is pinned by a test) |
+| Permission Matrix (`v1.8/Permission_Matrix.md`, listed in the [v1.8 hub](v1.8/README.md)) | Changing who can do what (every rule is pinned by a test) |
 
 `CLAUDE.md` at the repo root carries the short version of these rules and takes precedence if they conflict.
 
@@ -46,7 +46,7 @@ The documents that apply across versions, plus the generated database docs, the 
 
 - [External AIP API — response schema & samples (1.1.1)](external-api/README.md) — External AIP API response schema, samples and open questions
 - [External AIP API — Contract (v0.6, historical)](External_AIP_API_Contract.md) — External AIP API contract draft v0.6, kept for history
-- [External AIP API + partner API keys — build spec](v1.8/External_AIP_API_Spec.md) — External AIP API and partner API keys
+- The build spec (endpoints, partner keys, scope) belongs to v1.8 and is listed in the [v1.8 hub](v1.8/README.md).
 
 ## Database
 
