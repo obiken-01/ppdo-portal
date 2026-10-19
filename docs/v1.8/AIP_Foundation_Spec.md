@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.8.0
+status: shipped
+tickets: []
+updated: 2026-09-07
+---
+
 # v1.8.0 Phase 2 — AIP Foundation
+
+Up: [v1.8 hub](README.md)
 
 > **Authoritative spec.** Governed by `docs/SPEC_STANDARD.md`. Written 2026-09-02.
 >
@@ -573,3 +583,10 @@ is the class where a wrong choice compiles cleanly and leaks data.
 TDD is mandatory for V18-39 (scope resolution — `CLAUDE.md`) and for V18-36, whose whole purpose is
 the test. V18-32's backfill is testable only against real data: run it against a restored copy of
 production and check the unmatched count before running it for real.
+
+## Related
+
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current
+- [AIP Redesign — Working Notes](AIP_Redesign_Notes.md) — findings, superseded
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped

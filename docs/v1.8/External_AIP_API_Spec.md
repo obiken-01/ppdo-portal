@@ -1,11 +1,19 @@
 ---
-status: draft
+type: spec
 version: v1.8.0
-tickets: PPDO-16 (epic), PPDO-15, PPDO-13, PPDO-14, PPDO-12, API Access page ticket
-supersedes: External_AIP_API_Contract.md §4.2, §5, §6.1 (with docs/external-api/)
+status: shipped
+tickets: [PPDO-16, PPDO-15, PPDO-13, PPDO-14, PPDO-12]
+supersedes: [../External_AIP_API_Contract.md]
+supersedes_scope: "External_AIP_API_Contract.md: in part: sections 4.2, 5 and 6.1"
+updated: 2026-09-15
+status_note: "draft"
+tickets_note: "PPDO-16 (epic), PPDO-15, PPDO-13, PPDO-14, PPDO-12, API Access page ticket"
+supersedes_note: "External_AIP_API_Contract.md §4.2, §5, §6.1 (with docs/external-api/)"
 ---
 
 # External AIP API + partner API keys — build spec
+
+Up: [v1.8 hub](README.md)
 
 > **Phase 5, step 2** of the v1.8.0 plan (epic **PPDO-83**, sub-epic **PPDO-16**). Prepared
 > 2026-09-14 so implementation can start the next day. Nothing here is built yet.
@@ -361,3 +369,8 @@ One new toggle in the per-user grants block: **Manage API keys**, `adminOnly` li
 | `ExternalAipFunctionsTests` | Health public; `401`/`403`/`400`/`429` envelopes; request row written for `200`/`400`/`403` and not for `401`/`429` |
 | Schema contract test | A real response from the read service validates against `aip-response.schema.json` (same as the README §7 check) |
 | `ConfigApiKeyFunctionsTests` | Gate on `CanManageApiKeys`; `201` create shape; `404`/`409` revoke; list never contains a hash |
+
+## Related
+
+- [External AIP API — Contract (v0.6, historical)](../External_AIP_API_Contract.md) — spec, superseded
+- [External AIP API — response schema & samples (1.1.1)](../external-api/README.md) — spec, shipped

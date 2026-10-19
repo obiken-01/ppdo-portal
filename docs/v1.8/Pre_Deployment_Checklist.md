@@ -1,4 +1,14 @@
+---
+type: checklist
+version: v1.8.0
+status: reference
+tickets: [PPDO-137, PPDO-143, PPDO-147, PPDO-139, PPDO-154, PPDO-173, PPDO-33]
+updated: 2026-10-05
+---
+
 # v1.8.0 — Pre-Deployment to Production Checklist
+
+Up: [v1.8 hub](README.md)
 
 > Work through this **before** merging `release/1.8.0` → `main`. Pushing to `main` auto-deploys
 > both frontend and backend; **CI does not run EF migrations**, so the database steps below are
@@ -273,3 +283,9 @@ data rather than add to it.
 ---
 
 *Created 2026-09-03 alongside PPDO-34 (V18-35), the release's only data-rewriting migration.*
+
+## Related
+
+- [PPDO-34 / V18-35 — AIP Units Migration Runbook](Units_Migration_Runbook.md) — runbook, current
+- [v1.8.2 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.8.2.md) — checklist, current
+- [v1.9.0 — Pre-Deployment Checklist](../v1.9/Pre_Deployment_Checklist_v1.9.0.md) — checklist, current

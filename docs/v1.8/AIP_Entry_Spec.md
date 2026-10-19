@@ -1,4 +1,16 @@
+---
+type: spec
+version: v1.8.0
+status: shipped
+tickets: []
+superseded_by: [AIP_Entry_Layout_Spec.md]
+superseded_scope: "AIP_Entry_Layout_Spec.md: in part: the section 6.1 tree layout"
+updated: 2026-09-28
+---
+
 # v1.8.0 Phase 3 — AIP Entry
+
+Up: [v1.8 hub](README.md)
 
 > **Authoritative spec.** Governed by `docs/SPEC_STANDARD.md`. Written 2026-09-03.
 >
@@ -704,3 +716,13 @@ confirm exactly the intended tests go red.
 ---
 
 *`docs/v1.8/AIP_Entry_Spec.md` — v1.8.0 Phase 3 — written 2026-09-03 — Ralph Armand Alcaide*
+
+## Related
+
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current
+- [AIP Redesign — Working Notes](AIP_Redesign_Notes.md) — findings, superseded
+- [v1.8.0 Phase 2 — AIP Foundation](AIP_Foundation_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Entry: drill-down layout + delete Project/Activity](AIP_Entry_Layout_Spec.md) — spec, shipped
+- [AIP Entry — Draft Mirror for Expenditure Lines](AIP_Expenditure_Draft_Spec.md) — spec, shipped
+- [AIP Concurrent Edit — Requirements](AIP_Concurrent_Edit_Spec.md) — spec, current

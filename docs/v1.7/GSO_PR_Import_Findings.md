@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.7.0
+status: shipped
+tickets: []
+updated: 2026-07-31
+---
+
 # GSO PR export → Create PR import — findings
+
+Up: [v1.7 hub](README.md)
 
 Answers the open question left in `Mobile_And_Inventory_Findings.md` §6 ("what is failing for
 users in practice"). Ralph supplied two real files exported from the external GSO system for the
@@ -129,3 +139,8 @@ spaces) is the Account No. AIP Code = the leading code segment of the Activity l
    (`5-02-03-990`). Match by stripping everything but digits on both sides; when found, store the
    config table's own canonical `AccountNumber` rather than a guessed reformat of the source text.
    Falls back to the raw parsed value when nothing matches.
+
+## Related
+
+- [v1.7 — Mobile UI & Inventory Rework: Findings](Mobile_And_Inventory_Findings.md) — findings, shipped
+- [v1.7 — Draft Ticket Implementation Prompts](Ticket_Prompts.md) — plan, shipped

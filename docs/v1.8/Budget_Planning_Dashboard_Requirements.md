@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.8.0
+status: shipped
+tickets: [PPDO-20, RAL-230]
+updated: 2026-09-14
+---
+
 # PPDO-20 (V18-30) — Budget Planning Dashboard
+
+Up: [v1.8 hub](README.md)
 
 > **Authoritative spec.** Governed by `docs/SPEC_STANDARD.md`. Written 2026-09-02.
 >
@@ -438,3 +448,8 @@ choice compiles cleanly and leaks data.
 
 TDD is mandatory for the scope resolution in ticket B (`CLAUDE.md` — auth flows and permission
 resolution). The presentational work in D and E is "tests after".
+
+## Related
+
+- [Investment Planning dashboard — design pass](Dashboard_Design_Pass.md) — findings, reference
+- [Investment Planning dashboard — wireframes](wireframes/dashboard/README.md) — wireframe, reference

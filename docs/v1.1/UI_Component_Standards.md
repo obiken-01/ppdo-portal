@@ -1,4 +1,15 @@
+---
+type: standard
+version: v1.1.0
+status: reference
+tickets: [RAL-72, RAL-73]
+updated: 2026-07-08
+---
+
 # PPDO Portal v1.1 — Shared UI Component Standards
+
+Up: [v1.1 hub](README.md)
+
 _Date: June 10, 2026 | Target: PPDO Portal v1.1 (Budget Planning)_
 
 ---
@@ -140,3 +151,8 @@ Add a new `Section` object to the `SECTIONS` array:
 - [ ] Can an existing component be extended with a prop? → extend it
 - [ ] Genuinely new pattern? → build in `components/ui/`, document the usage block at the top of the file (match `Toast.tsx` / `ConfirmDialog.tsx` style), and add a row to §2/§3 of this doc
 - [ ] New page with a breadcrumb? → register it in `Topbar.tsx` SECTIONS, do not add inline breadcrumb markup
+
+## Related
+
+- [Budget Planning Pages — Design Spec (extracted from Penpot)](Budget_Planning_Pages_Design_Spec.md) — spec, reference
+- [Configuration Pages — Design Spec (extracted from Penpot)](Config_Pages_Design_Spec.md) — spec, shipped

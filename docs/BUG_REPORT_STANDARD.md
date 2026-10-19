@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-05-26
+---
+
 # Bug Report Standard
+
+Up: [Standards and reference](STANDARDS.md)
 
 ## Ralph's Personal Development Standard (RPDS) — Phase 6: Maintenance
 

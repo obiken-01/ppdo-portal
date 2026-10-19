@@ -1,11 +1,17 @@
 ---
-status: built (merged into release/1.9.0, PR #490 + #491)
+type: spec
 version: v1.9.0
-tickets: PPDO-216 (T1 backend), PPDO-217 (T2 frontend)
-supersedes: IAipCeilingService remarks item 1 ("General Fund ONLY"), office-ceilings D4 (GF tab only)
+status: shipped
+tickets: [PPDO-216, PPDO-217]
+updated: 2026-10-14
+status_note: "built (merged into release/1.9.0, PR #490 + #491)"
+tickets_note: "PPDO-216 (T1 backend), PPDO-217 (T2 frontend)"
+supersedes_note: "IAipCeilingService remarks item 1 (\"General Fund ONLY\"), office-ceilings D4 (GF tab only)"
 ---
 
 # v1.9.0 — AIP Ceiling Check on Other Fund Sources
+
+Up: [v1.9 hub](README.md)
 
 > Source: Demo 3 / meeting, 2026-10-13 ("Other fund source ceiling check. TF for PhilHealth will need
 > to have ceiling … configurable in the fund source config page"). Drafted and settled 2026-10-14.
@@ -188,3 +194,7 @@ No new routes.
   zero, nothing encoded = unaffected, unflagged = ignored, GF + other fund failing together.
 - Fund config: flag change without the grant → 403, GF off → 400, omitted flag → unchanged.
 - Red-test: the fund filter, the flag filter, the PS exclusion, and the "nothing encoded" skip.
+
+## Related
+
+- [v1.9.0 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.0.md) — checklist, current

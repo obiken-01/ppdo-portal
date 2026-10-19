@@ -1,4 +1,14 @@
+---
+type: retro
+version: v1.8.0
+status: reference
+tickets: []
+updated: 2026-09-02
+---
+
 # PPDO Portal — Project Retrospective (Whole Project to Date)
+
+Up: [v1.8 hub](README.md)
 
 **Period covered:** 2026-05-26 (initial commit) → 2026-08-20 (v1.7.4 merged to `main`)
 **Elapsed:** 86 days

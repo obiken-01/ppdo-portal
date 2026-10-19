@@ -586,9 +586,10 @@ session needs to operate. Three rules keep the two ways of reading them compatib
   and the plugin, theme and snippet folders. `app.json` and `core-plugins.json` are, so the setup
   carries to a new machine.
 
-Optional, when a spec or standard is next touched anyway: a properties block at the top (`status`,
-`version`, `tickets`, `supersedes`), so which document is current is recorded on the document itself
-rather than only in this file. `.canvas` files are JSON and fine to keep beside the spec they
+`docs/HOME.md` is the index of the vault, and the `status` property at the top of each document
+(`current`, `shipped`, `superseded`, `reference`) says whether to rely on it — check it before reading a
+spec as current. Every document carries `type`, `status`, `tickets`, `supersedes` and `updated`; a new
+one gets the same block, an `Up:` line under its title, and an entry in its version hub. `.canvas` files are JSON and fine to keep beside the spec they
 illustrate.
 
 ## What NOT to Do

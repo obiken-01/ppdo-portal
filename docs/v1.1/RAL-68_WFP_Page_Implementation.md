@@ -1,4 +1,14 @@
+---
+type: guide
+version: v1.1.0
+status: shipped
+tickets: [RAL-68]
+updated: 2026-06-17
+---
+
 # RAL-68 — WFP Page Implementation Guide
+
+Up: [v1.1 hub](README.md)
 
 **Branch:** `feature/v1.1-ral-68-wfp-page` (off `release/1.1.0`)
 **Design source:** `docs/v1.1/Budget_Planning_Pages_Design_Spec.md` §6–7 (boards 18–19)
@@ -367,3 +377,8 @@ All use `{ data, error, message }` envelope — unwrap same pattern as `lib/aip.
    h. Restore → amounts still there; click Save → POST to server → toast "WFP saved"
    i. Click Finalize → status badge changes to Final, Edit buttons hidden, Save disabled
    j. Office user login → redirected to `/budget-planning/wfp`; only their office visible in selector
+
+## Related
+
+- [WFP Layout Specification — RAL-68 (Page) + RAL-79 (Report)](WFP_Report_Spec.md) — spec, reference
+- [Budget Planning Pages — Design Spec (extracted from Penpot)](Budget_Planning_Pages_Design_Spec.md) — spec, reference

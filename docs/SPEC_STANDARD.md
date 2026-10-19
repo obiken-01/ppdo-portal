@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-08-27
+---
+
 # Spec Standard
+
+Up: [Standards and reference](STANDARDS.md)
 
 `docs/TICKET_PROMPT_STANDARD.md` step 1 tells every ticket prompt to *"read the authoritative spec
 FULLY."* **This document defines what an authoritative spec has to contain to deserve that
@@ -264,3 +273,7 @@ permissions, division/office scope, or money, it needs one regardless of size.
 ---
 
 *Spec Standard — PPDO Portal — added 2026-08-27. Companion to `docs/TICKET_PROMPT_STANDARD.md`.*
+
+## Related
+
+- [Ticket Implementation Prompt Standard](TICKET_PROMPT_STANDARD.md) — standard, current

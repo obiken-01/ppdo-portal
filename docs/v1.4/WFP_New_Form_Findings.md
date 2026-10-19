@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.0
+status: reference
+tickets: []
+updated: 2026-07-07
+---
+
 # WFP Rework (v1.4) — New WFP Form: Findings & Open Questions
+
+Up: [v1.4 hub](README.md)
 
 > **Source file:** `D:\RalphFiles\PPDO\PPDO\WFP-NEW.xlsx` (received 2026-07-06, analyzed 2026-07-07).
 > **Status:** PRE-REQUIREMENTS analysis. PPDO's detailed requirements are expected 2026-07-07;
@@ -248,3 +258,7 @@ Rough shape only — to be turned into a real schema in the requirements doc:
 
 *Prepared by Claude Code, 2026-07-07 — from WFP-NEW.xlsx only; supersede with the PPDO
 requirements discussion outcomes.*
+
+## Related
+
+- [WFP Rework (v1.4) — Requirements Draft (reviewed & expanded)](WFP_Rework_Requirements_Draft.md) — spec, reference

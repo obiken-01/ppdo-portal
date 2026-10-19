@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.3.0
+status: shipped
+tickets: [RAL-61]
+updated: 2026-07-03
+---
+
 # RAL-XXX — LDIP File Upload + Activity-Level Fields (mirror AIP upload)
+
+Up: [v1.3 hub](README.md)
 
 _Findings + implementation prompt drafted 2026-07-03. **Linear is currently disconnected in this
 session — create the actual ticket from this doc once reconnected**, then delete/replace this file
@@ -210,3 +220,8 @@ for activity detail). Do NOT change AIP's own schema, parser, or endpoints — o
 When done, commit with:
 feat(budget-planning): LDIP file upload with activity-level detail (RAL-XXX)
 ```
+
+## Related
+
+- [RAL-61 — LDIP Entry Form: Implemented Design](RAL-61_LDIP_Entry_Form_Design.md) — spec, shipped
+- [RAL-61 — LDIP Entry Form: Penpot Findings](RAL-61_LDIP_Entry_Form_Penpot_Findings.md) — findings, reference

@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.5
+status: reference
+tickets: []
+updated: 2026-07-16
+---
+
 # Budget Planning: PPDO-only scoping + Dashboard optimization — findings
+
+Up: [v1.4.4 hub](README.md)
 
 > **Status: findings only — no implementation yet.** Written 2026-07-16 from an Explore-agent
 > survey of every office picker in Budget Planning and the Dashboard's data flow. Goal: (1) stop

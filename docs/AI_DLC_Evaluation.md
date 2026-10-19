@@ -1,4 +1,13 @@
+---
+type: findings
+status: reference
+tickets: []
+updated: 2026-09-08
+---
+
 # AI-DLC Workflows — Evaluation
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **Doc class: Findings** (`docs/SPEC_STANDARD.md` §1). This records what is true about an external
 > framework and what we would gain or lose by adopting it. It is **not** a spec, and nothing here is

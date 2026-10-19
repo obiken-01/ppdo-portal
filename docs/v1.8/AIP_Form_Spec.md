@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.8.0
+status: current
+tickets: []
+updated: 2026-10-14
+---
+
 # AIP Printable Form — Specification (V18-60)
+
+Up: [v1.8 hub](README.md)
 
 > The document this system must produce for the **PDC** and then the **Sangguniang Panlalawigan**,
 > under a **June 7** statutory deadline. Not an internal report — see `Phase_Plan.md` §12.6.
@@ -441,3 +451,8 @@ One ticket, **PPDO-84**, under **PPDO-83** — small enough to review whole: ser
 | `AipConsolidatedServiceTests` (export) | Four sheets always, in sector order; only `SubmittedToPpdo` / `Consolidated` groups; the counts for the completeness line; a non-reviewer 403; an unopened year 404; FY2027 400; the tree loaded once, not per sector |
 | `AipFormExcelServiceTests` (ClosedXML, read back) | Sheet names; preamble text incl. `As of` and the completeness line present/absent; header merges and labels (no DBM number on F); each row's text in the right description column (B/C/D/E) and its merges; amounts in thousands; **every formula's calculated value equals the builder's figure** — activity `O`, office subtotals, TOTAL; office `SUM` ranges do not overlap; the note below TOTAL and inside the print area; print titles, landscape, fit-to-width |
 | Functions integration | 200 with the xlsx content type and file name; 400 / 401 / 403 / 404 |
+
+## Related
+
+- [AIP amounts — what each screen, API and file shows](AIP_Amount_States.md) — guide, current
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped

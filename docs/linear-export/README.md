@@ -1,4 +1,13 @@
+---
+type: hub
+status: current
+tickets: [RAL-24, RAL-273]
+updated: 2026-10-19
+---
+
 # Linear Export
+
+Up: [Standards and reference](../STANDARDS.md)
 
 A local, greppable copy of the PPDO Portal tickets from Linear.
 

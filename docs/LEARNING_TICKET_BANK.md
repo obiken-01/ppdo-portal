@@ -1,4 +1,13 @@
+---
+type: plan
+status: current
+tickets: []
+updated: 2026-10-15
+---
+
 # Learning Ticket Bank
+
+Up: [Standards and reference](STANDARDS.md)
 
 Tickets scoped for **hand-coding rather than delegation** — small blast radius, an existing sibling
 in the repo to pattern-match against, testable, reversible.

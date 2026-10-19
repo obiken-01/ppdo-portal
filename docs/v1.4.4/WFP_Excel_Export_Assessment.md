@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.4
+status: shipped
+tickets: []
+updated: 2026-07-16
+---
+
 # v1.4.4 — WFP Report → Excel Export (PBO form): Initial Assessment
+
+Up: [v1.4.4 hub](README.md)
 
 > **Status: initial assessment — work continues.** Written 2026-07-15 from an inspection of the
 > PBO-provided form `WFP-NEW.xlsx` (kept outside the repo at `D:\RalphFiles\PPDO\WFP-NEW.xlsx` —

@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.1.0
+status: reference
+tickets: [RAL-75, RAL-64, RAL-68, RAL-80]
+updated: 2026-07-01
+---
+
 # Budget Planning Pages — Design Spec (extracted from Penpot)
+
+Up: [v1.1 hub](README.md)
 
 _Source: Penpot file "PPDO Portal v0.5", Page 4 — boards 13–21. Extracted 2026-06-14 by reading shape text directly (PNG export was unreliable). Companion to `Config_Pages_Design_Spec.md` (config boards 09–12)._
 
@@ -146,3 +156,10 @@ early with empty data as the office-user redirect target). Reuse the config-page
 `DataTable` for the LDIP/AIP lists and the WFP grid's status table; `Modal` (size `xl`) for the WFP
 expenditure popup; `MessageDialog` for the AIP import summary; the CSV/dropzone patterns; and the
 `{ data, error, message }` envelope helpers in `lib/config.ts`.
+
+## Related
+
+- [Configuration Pages — Design Spec (extracted from Penpot)](Config_Pages_Design_Spec.md) — spec, shipped
+- [PPDO Portal v1.1 — Shared UI Component Standards](UI_Component_Standards.md) — standard, reference
+- [RAL-68 — WFP Page Implementation Guide](RAL-68_WFP_Page_Implementation.md) — guide, shipped
+- [WFP Layout Specification — RAL-68 (Page) + RAL-79 (Report)](WFP_Report_Spec.md) — spec, reference

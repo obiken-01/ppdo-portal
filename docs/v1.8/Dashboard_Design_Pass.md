@@ -1,12 +1,19 @@
 ---
-status: findings
-version: v1.8.x
-date: 2026-10-04
-page: frontend/src/app/(portal)/budget-planning/page.tsx (Investment Planning dashboard)
-wireframes: wireframes/dashboard/
+type: findings
+version: v1.8.0
+status: reference
+tickets: []
+updated: 2026-10-04
+version_note: "v1.8.x"
+status_note: "findings"
+date: "2026-10-04"
+page: "frontend/src/app/(portal)/budget-planning/page.tsx (Investment Planning dashboard)"
+wireframes: "wireframes/dashboard/"
 ---
 
 # Investment Planning dashboard — design pass
+
+Up: [v1.8 hub](README.md)
 
 A review of the Investment Planning dashboard (`/budget-planning`) after v1.8.0 reached UAT. It covers how
 the page reads for each role and how fast it loads. **No code was changed.** The fixes are proposals, drawn
@@ -160,3 +167,8 @@ permission and review rules depend on.
    The finance view keeps them.
 3. Should "Waiting N days" on the board count calendar days or working days? Default: calendar days. It is simpler,
    and the deadline is a calendar date.
+
+## Related
+
+- [PPDO-20 (V18-30) — Budget Planning Dashboard](Budget_Planning_Dashboard_Requirements.md) — spec, shipped
+- [Investment Planning dashboard — wireframes](wireframes/dashboard/README.md) — wireframe, reference

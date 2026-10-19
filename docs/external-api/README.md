@@ -1,12 +1,21 @@
 ---
-status: built
-version: 1.1.1
-built: release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102; 1.1.1 — schema limits match the columns (PR #420)
-spec: ../v1.8/External_AIP_API_Spec.md
-supersedes: External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)
+type: spec
+version: v1.8.0
+status: shipped
+tickets: [PPDO-86, PPDO-15]
+supersedes: [../External_AIP_API_Contract.md]
+supersedes_scope: "External_AIP_API_Contract.md: in part: sections 3, 4.2, 5 and 6.1"
+updated: 2026-10-14
+version_note: "1.1.1"
+status_note: "built"
+supersedes_note: "External_AIP_API_Contract.md §3, §4.2, §5 and §6.1 (v0.6)"
+built: "release/1.8.0 — PPDO-15, PPDO-13, PPDO-14, PPDO-12 (PRs #328–#331); 1.1.0 — PPDO-102; 1.1.1 — schema limits match the columns (PR #420)"
+spec: "../v1.8/External_AIP_API_Spec.md"
 ---
 
 # External AIP API — response schema & samples (1.1.1)
+
+Up: [Standards and reference](../STANDARDS.md)
 
 > ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PRs #328–#331, #332, #352). ⚠️ **Not live yet:** it
 > reaches production when v1.8.0 merges to `main`. Partner keys are issued from Configuration → API
@@ -313,3 +322,8 @@ feeds column-width values through the real read service so this cannot drift bac
 **Decided (2026-10-02):** no per-quarter breakdown. Procurement items stay as they are and the
 per-account totals on each expenditure line are the figure GSO uses. Revisit only on an explicit
 request from GSO.
+
+## Related
+
+- [External AIP API — Contract (v0.6, historical)](../External_AIP_API_Contract.md) — spec, superseded
+- [External AIP API + partner API keys — build spec](../v1.8/External_AIP_API_Spec.md) — spec, shipped

@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.8.0
+status: shipped
+tickets: [PPDO-136, PPDO-122]
+updated: 2026-09-30
+---
+
 # v1.8.0 — Admin-configurable default fiscal year (PPDO-136)
+
+Up: [v1.8 hub](README.md)
 
 > **Status: accepted** — 2026-09-27. Parent: PPDO-122 (Demo 2 change requests), item 2.14.
 > Written to `docs/SPEC_STANDARD.md`. Decisions 1, 2 and 6 are Ralph's (Linear 2026-09-24; session
@@ -327,3 +337,7 @@ copy. T1 is **not** a candidate: it carries an EF migration and a permission gat
 - **Functions (integration)** — GET/PUT: 401 without JWT; 403 for guest-office Admin and for Staff
   without `CanManageConfig`; 200 for SuperAdmin and host-office Admin; 400 for malformed body.
 - **Frontend** — no unit harness for pages; covered by §10.
+
+## Related
+
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current

@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.5.0
+status: shipped
+tickets: []
+updated: 2026-07-27
+---
+
 # v1.5 — PPMP Report: Findings & Initial Draft
+
+Up: [v1.5 hub](README.md)
 
 > Research + gap analysis for adding a **Project Procurement Management Plan (PPMP)** report to
 > Budget Planning › Report, alongside the existing WFP report.
@@ -110,7 +120,7 @@ export. Whether it should be is Q13.
 
 1. **Report page** — add `{ value: "PPMP", label: "Project Procurement Management Plan (PPMP)" }`
    to `REPORT_TYPES` in
-   [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx). **WFP stays the
+   [report/page.tsx](../../frontend/src/app/(portal)/budget-planning/report/page.tsx). **WFP stays the
    default.** Same fiscal-year / office / division selectors, same RAL-136 division clamp, same
    `canAccessBudgetPlanning` gate.
 2. **One report per fund source**, mirroring the reference file's "Charged to: GENERAL FUND" header
@@ -301,7 +311,7 @@ the WFP report did: **preview first** (RAL-132 pattern), **`.xlsx` export second
 1. **Preview** — `PpmpReportService` + `GET /api/budget-planning/ppmp/report/preview`
    (`{ data, error, message }`; slim DTO; server-side aggregation; **no `GetAllAsync()`-then-filter**,
    per `docs/PERFORMANCE_GUIDELINES.md`). Frontend: add `PPMP` to `REPORT_TYPES` in
-   [report/page.tsx](frontend/src/app/(portal)/budget-planning/report/page.tsx) (WFP stays default);
+   [report/page.tsx](../../frontend/src/app/(portal)/budget-planning/report/page.tsx) (WFP stays default);
    render the item-grained grid with per-fund tables, reusing the WFP report's scoping controls.
 2. **`.xlsx` export** — `IPpmpReportExcelService` (named distinctly, as `IWfpReportExcelService` was) +
    `GET /api/budget-planning/ppmp/report/export`; programmatic ClosedXML build from a style catalog,
@@ -345,3 +355,7 @@ becomes relevant.
 - `docs/PERFORMANCE_GUIDELINES.md` — query rules for the new endpoint
 - `docs/v1.4.4/WFP_Excel_Export_Assessment.md` — the export approach to reuse
 - `docs/TICKET_PROMPT_STANDARD.md` — structure for the tickets once Q3–Q15 are answered
+
+## Related
+
+- [Stock Card No. — Production Runbook](STOCK_CARD_NO_RUNBOOK.md) — runbook, current

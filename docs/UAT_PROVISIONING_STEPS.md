@@ -1,11 +1,17 @@
 ---
-status: ready to execute
-version: v1.8.0 UAT (PPDO-21)
-tickets: PPDO-21
-supersedes: nothing — the ordered runbook for `UAT_ENVIRONMENT_SETUP.md`, which stays the reference
+type: runbook
+version: v1.8.0
+status: reference
+tickets: [PPDO-21]
+updated: 2026-09-21
+version_note: "v1.8.0 UAT (PPDO-21)"
+status_note: "ready to execute"
+supersedes_note: "nothing — the ordered runbook for `UAT_ENVIRONMENT_SETUP.md`, which stays the reference"
 ---
 
 # UAT — provisioning steps, in order
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **What this is.** `UAT_ENVIRONMENT_SETUP.md` is the reference: why, what it costs, every setting,
 > teardown. **This is the do-list** — the same information as an ordered sequence you work through
@@ -229,3 +235,7 @@ why an Azure charge appears the month *after* you tear down.
 
 *Written 2026-09-21 alongside PPDO-21's noindex change. The reference doc is
 `UAT_ENVIRONMENT_SETUP.md`; this is the sequence.*
+
+## Related
+
+- [UAT Environment — Setup Reference](UAT_ENVIRONMENT_SETUP.md) — guide, reference

@@ -1,11 +1,19 @@
 ---
-status: draft
+type: spec
 version: v1.8.0
-tickets: R1 = PPDO-90 (endpoint scope), R2 = PPDO-92 (Report page AIP type; blocked by 90)
-supersedes: AIP_Review_Spec.md §6.3a "Opened from" and the Consolidated AIP sidebar item (§6.4, PPDO-84) — grid, figures and export content are unchanged
+status: shipped
+tickets: [PPDO-90, PPDO-92]
+supersedes: [AIP_Review_Spec.md]
+supersedes_scope: "AIP_Review_Spec.md: in part: section 6.3a Opened from and the Consolidated AIP sidebar item"
+updated: 2026-09-16
+status_note: "draft"
+tickets_note: "R1 = PPDO-90 (endpoint scope), R2 = PPDO-92 (Report page AIP type; blocked by 90)"
+supersedes_note: "AIP_Review_Spec.md §6.3a \"Opened from\" and the Consolidated AIP sidebar item (§6.4, PPDO-84) — grid, figures and export content are unchanged"
 ---
 
 # v1.8.0 — Consolidated AIP moves into the Report page
+
+Up: [v1.8 hub](README.md)
 
 ## 1. Goal
 
@@ -186,3 +194,12 @@ sibling redirects exist). R1 is not — it is a permission gate.
 - `AipConsolidatedFunctionsTests` — gate admits either flag, 403 for neither, `officeId` parsed and passed.
 - `PermissionMatrixTests` — no new flag; add the row for the widened read in `Permission_Matrix.md` §4
   (department head: own office, any state, pinned) so the matrix stays complete.
+
+## Related
+
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Review: the same drill-down as AIP Entry, with a Full office view](AIP_Review_Layout_Spec.md) — spec, shipped
+- [v1.8.0 — Division heads submit to the department head (PPDO-130)](Division_Submit_Spec.md) — spec, current
+- [AIP Review — wireframes](wireframes/aip-review/README.md) — wireframe, shipped
+- [Consolidated AIP — wireframes (PPDO-73)](wireframes/consolidated-view/README.md) — wireframe, shipped
+- [Submission history — wireframes (PPDO-77)](wireframes/submission-history/README.md) — wireframe, shipped

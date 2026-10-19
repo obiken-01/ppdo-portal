@@ -1,11 +1,19 @@
 ---
-status: draft
+type: spec
 version: v1.9.0
-tickets: PPDO-211 (epic), PPDO-212 T1, PPDO-213 T2, PPDO-214 T3, PPDO-215 T4
-supersedes: AIP_Review_Spec.md decision 5 (in part), Permission_Matrix.md §5 (in part)
+status: shipped
+tickets: [PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215]
+supersedes: [../v1.8/AIP_Review_Spec.md, ../v1.8/Permission_Matrix.md]
+supersedes_scope: "AIP_Review_Spec.md: in part: decision 5; Permission_Matrix.md: in part: section 5"
+updated: 2026-10-14
+status_note: "draft"
+tickets_note: "PPDO-211 (epic), PPDO-212 T1, PPDO-213 T2, PPDO-214 T3, PPDO-215 T4"
+supersedes_note: "AIP_Review_Spec.md decision 5 (in part), Permission_Matrix.md §5 (in part)"
 ---
 
 # v1.9.0 — PPDO Reviewer Edits to a Submitted AIP
+
+Up: [v1.9 hub](README.md)
 
 > Source: Demo 3 / meeting, 2026-10-13 ("Half AIP edit by LFC"). Settled with Ralph 2026-10-14.
 > **Must be ready for the November 2026 user training.** Revised 2026-10-14: edit comments are
@@ -204,3 +212,11 @@ for PPDO (not their own office) gets 403: the acknowledgement belongs to the off
 - Notification count is office-scoped and counts only unacknowledged reviewer-edit comments.
 - Edit comments never appear in `Tally` / `CountUnresolvedBySideAsync` (created resolved), red-tested.
 - Acknowledge: own office only, idempotent, 403 for a PPDO reviewer on another office.
+
+## Related
+
+- [v1.9.0 — AIP activity comments as threads](AIP_Comment_Threads_Spec.md) — spec, shipped
+- [v1.9.0 — Comments on Investment Proposals](Investment_Proposal_Comments_Spec.md) — spec, shipped
+- [v1.9.0 — Notification bell](Notification_Centre_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](../v1.8/AIP_Review_Spec.md) — spec, shipped
+- [Permission Matrix](../v1.8/Permission_Matrix.md) — standard, current

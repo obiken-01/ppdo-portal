@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-09-17
+---
+
 # PPDO Portal — Design System
+
+Up: [Standards and reference](STANDARDS.md)
 
 The reference for building or updating any page. Read this before writing UI; it is the one place
 that answers "what should this look like?" so you don't have to reverse-engineer it from whichever
@@ -465,3 +474,8 @@ after.
 None of this changes the *design*, only its consistency. The look is reviewed and deliberate: flat
 by decision, contrast-audited in RAL-133, mobile-fixed in RAL-201. **This document describes the
 existing design; it does not propose a new one.**
+
+## Related
+
+- [Performance & Scalability Guidelines](PERFORMANCE_GUIDELINES.md) — standard, current
+- [Naming Conventions](NAMING_CONVENTIONS.md) — standard, current

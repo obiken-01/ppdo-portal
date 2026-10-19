@@ -1,4 +1,13 @@
+---
+type: hub
+status: current
+tickets: [RAL-24, RAL-024, RAL-25, RAL-025, RAL-26, RAL-026, RAL-27, RAL-027, RAL-28, RAL-028, RAL-29, RAL-029, RAL-30, RAL-030, RAL-31, RAL-031, RAL-32, RAL-032, RAL-33, RAL-033, RAL-34, RAL-034, RAL-35, RAL-035, RAL-36, RAL-036, RAL-37, RAL-037, RAL-38, RAL-038, RAL-39, RAL-039, RAL-40, RAL-040, RAL-41, RAL-041, RAL-42, RAL-042, RAL-43, RAL-043, RAL-44, RAL-044, RAL-45, RAL-045]
+updated: 2026-10-19
+---
+
 # Linear Export — Closed PPDO Portal Tickets
+
+Up: [Standards and reference](../STANDARDS.md)
 
 **407 tickets.** RAL-* exported 2026-08-27; PPDO-* exported 2026-10-19 — both before archiving.
 
