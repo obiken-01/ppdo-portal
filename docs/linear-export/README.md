@@ -11,7 +11,7 @@ Up: [Standards and reference](../STANDARDS.md)
 
 A local, greppable copy of the PPDO Portal tickets from Linear.
 
-- **[INDEX.md](INDEX.md)** — all 407 tickets in one table
+- **[INDEX.md](INDEX.md)** — the tickets grouped by version; each version hub in [versions/](versions/) lists its tickets with links
 - **[tickets/](tickets/)** — one Markdown file per ticket, `RAL-NNN.md` / `PPDO-NNN.md` (zero-padded so they sort)
 
 **Snapshots:**
@@ -56,7 +56,7 @@ fields in Linear's CSV export.
    ```
 
    It keeps closed tickets of one team (default `PPDO-Dev`), skips any milestone you exclude, keeps
-   existing files, and rebuilds `INDEX.md` from everything under `tickets/`.
+   existing files, and rebuilds `INDEX.md` and the `versions/` hubs from everything under `tickets/`.
 3. ⚠️ **Whatever lands in `tickets/` gets archived** by `scripts/linear_archive.py --all` — it reads the
    UUIDs from these files. Exclude any release that has not shipped yet.
 
