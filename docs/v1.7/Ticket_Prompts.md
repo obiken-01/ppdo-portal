@@ -1,4 +1,14 @@
+---
+type: plan
+version: v1.7.0
+status: shipped
+tickets: [RAL-81]
+updated: 2026-07-29
+---
+
 # v1.7 — Draft Ticket Implementation Prompts
+
+Up: [v1.7 hub](README.md)
 
 > Drafted 2026-07-29 against `release/1.6.0`. Follows `docs/TICKET_PROMPT_STANDARD.md`
 > (RAL-81 is the canonical shape). Authoritative spec for all of these is
@@ -390,3 +400,8 @@ perf(inventory): scope InventoryService queries and paginate inventory lists (RA
 | **RAL-G** — warehouse stock input (entity, API, per-item page, Excel bulk upload) | Findings §5.3 — especially Q1 (one-time opening balance vs. recurring physical count) and Q2 (division-scoped vs. PPDO-wide). The schema and migration depend on both. |
 | Distribution page improvements | Findings §4.2 — what is actually painful about the current flow, and whether FIFO allocation moves server-side. |
 | Create PR Excel template | Findings §6 — what is failing for users in the current template. |
+
+## Related
+
+- [v1.7 — Mobile UI & Inventory Rework: Findings](Mobile_And_Inventory_Findings.md) — findings, shipped
+- [GSO PR export → Create PR import — findings](GSO_PR_Import_Findings.md) — findings, shipped

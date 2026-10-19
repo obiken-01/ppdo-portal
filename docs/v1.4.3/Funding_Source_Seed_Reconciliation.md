@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.3
+status: shipped
+tickets: [RAL-157]
+updated: 2026-07-15
+---
+
 # Funding Source Seed Reconciliation (O2)
+
+Up: [v1.4.3 hub](README.md)
 
 > Resolves open item **O2** from `v1.4.3_Requirements.md`. Reconciles the existing `funding_sources`
 > config seed against (a) the seven ceiling-managed fund sources for v1.4.3 and (b) the fund-source
@@ -55,3 +65,10 @@ The CSV upsert keys on **`Code`** (`FundingSourceService.ImportCsvAsync`). `fund
 already uses the live Codes above verbatim (including `GAD Fund` and `SC/PWD`), so importing it after
 RAL-157 merges will update each existing row in place — no duplicates, no other field changes besides
 adding `aliases`.
+
+## Related
+
+- [v1.4.3 — Other Fund Source Ceiling & Allocation Setup](v1.4.3_Requirements.md) — spec, shipped
+- [v1.4.3 Tickets — Other Fund Source Ceiling & Allocation Setup](Tickets.md) — plan, shipped
+- [Fund Source, Ceiling & Allocation — Current State Findings](Fund_Source_Ceiling_Allocation_Findings.md) — findings, reference
+- [Funding Source Aliases — AIP naming analysis & seed data](Funding_Source_Aliases.md) — findings, shipped

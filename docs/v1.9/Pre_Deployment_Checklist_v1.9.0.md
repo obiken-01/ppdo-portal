@@ -1,10 +1,15 @@
 ---
-status: final — 2026-10-16 (v1.9.0 frozen)
+type: checklist
 version: v1.9.0
-tickets: PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-216, PPDO-219, PPDO-221, PPDO-223, PPDO-224, PPDO-228, PPDO-229
+status: current
+tickets: [PPDO-211, PPDO-212, PPDO-213, PPDO-214, PPDO-215, PPDO-216, PPDO-219, PPDO-221, PPDO-223, PPDO-224, PPDO-228, PPDO-229]
+updated: 2026-10-16
+status_note: "final — 2026-10-16 (v1.9.0 frozen)"
 ---
 
 # v1.9.0 — Pre-Deployment Checklist
+
+Up: [v1.9 hub](README.md)
 
 > **Final as of 2026-10-16:** v1.9.0 is complete (last merge #508, PPDO-223) and frozen. A UAT fix that
 > adds a migration or a step still adds its lines here, in the same PR.
@@ -277,3 +282,11 @@ end to end on deploy and writes its ZIP to the container.
 |---|---|
 | Code | Redeploy the previous `main` |
 | Database | `dotnet ef database update 20261005235915_AddAipConcurrencyTokens`, after the code |
+
+## Related
+
+- [v1.8.0 — Pre-Deployment to Production Checklist](../v1.8/Pre_Deployment_Checklist.md) — checklist, reference
+- [PPDO-34 / V18-35 — AIP Units Migration Runbook](../v1.8/Units_Migration_Runbook.md) — runbook, current
+- [v1.8.2 — Pre-Deployment Checklist](../v1.8/Pre_Deployment_Checklist_v1.8.2.md) — checklist, current
+- [v1.9.0 — AIP Ceiling Check on Other Fund Sources](Fund_Source_Ceiling_Spec.md) — spec, shipped
+- [v1.9.0 — Bulk export of initial WFPs (background job)](Bulk_Initial_WFP_Export_Spec.md) — spec, shipped

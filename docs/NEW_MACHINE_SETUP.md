@@ -1,4 +1,13 @@
+---
+type: guide
+status: current
+tickets: []
+updated: 2026-08-27
+---
+
 # New Machine Setup
+
+Up: [Standards and reference](STANDARDS.md)
 
 Everything needed to get the PPDO Portal building, running, and deployable on a fresh Windows
 machine — including the tooling Claude Code uses, not just what the app needs.

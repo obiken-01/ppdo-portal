@@ -1,4 +1,18 @@
+---
+type: plan
+version: v1.8.0
+status: current
+tickets: []
+supersedes: [AIP_Redesign_Notes.md]
+superseded_by: [AIP_Review_Spec.md]
+supersedes_scope: "AIP_Redesign_Notes.md: in part: the open questions in sections 4 and 4d"
+superseded_scope: "AIP_Review_Spec.md: in part: section 6 for Phase 4"
+updated: 2026-09-22
+---
+
 # v1.8.0 — Phase Plan & Work Items
+
+Up: [v1.8 hub](README.md)
 
 > ⚠️ **Two of the documents cited below do not exist in this repository and never have:**
 > **`AIP_Requirements_Review.md`** and **`Monday_Questions.md`**. They are referred to throughout
@@ -1374,3 +1388,12 @@ above but do not exist — see the note at the top of this file.*
 
 *No longer "plan only": §12 records decisions taken on 2026-08-25 and 2026-08-26, and Phase 1 is
 partly shipped (§3.6).*
+
+## Related
+
+- [AIP Redesign — Working Notes](AIP_Redesign_Notes.md) — findings, superseded
+- [v1.8.0 Phase 2 — AIP Foundation](AIP_Foundation_Spec.md) — spec, shipped
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped
+- [Permission Matrix](Permission_Matrix.md) — standard, current
+- [v1.8.0 — Admin-configurable default fiscal year (PPDO-136)](Default_Fiscal_Year_Spec.md) — spec, shipped

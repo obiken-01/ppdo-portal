@@ -1,13 +1,21 @@
 ---
-status: accepted — 2026-09-29
-version: v1.8.0 (Demo 2.15)
-tickets: PPDO-153 (parent), PPDO-154 … PPDO-161, PPDO-173
-revised: 2026-10-01 — per-section save, one-section-at-a-time editor, selector, AIP Entry strip (decisions 24, 28, 29; §4, §6.2, §6.4)
-revised: 2026-10-01 — aligned with the province template and nine FY2027 samples, PPDO-173 (decisions 3, 6, 14, 16, 17, 19, 30, 31; §4, §5, §6.2, §10)
-supersedes: —
+type: spec
+version: v1.8.0
+status: shipped
+tickets: [PPDO-153, PPDO-154, PPDO-161, PPDO-173]
+updated: 2026-10-03
+version_note: "v1.8.0 (Demo 2.15)"
+status_note: "accepted — 2026-09-29"
+tickets_note: "PPDO-153 (parent), PPDO-154 … PPDO-161, PPDO-173"
+supersedes_note: "—"
+revised:
+  - "2026-10-01 — per-section save, one-section-at-a-time editor, selector, AIP Entry strip (decisions 24, 28, 29; §4, §6.2, §6.4)"
+  - "2026-10-01 — aligned with the province template and nine FY2027 samples, PPDO-173 (decisions 3, 6, 14, 16, 17, 19, 30, 31; §4, §5, §6.2, §10)"
 ---
 
 # v1.8.0 — PGOM Investment Proposal (Demo 2.15)
+
+Up: [v1.8 hub](README.md)
 
 Governed by [SPEC_STANDARD.md](../SPEC_STANDARD.md). Built from
 [Investment_Proposal_Findings.md](Investment_Proposal_Findings.md), which records the template
@@ -854,3 +862,10 @@ TDD for the service, calculator, builder and permission rule (`CLAUDE.md`).
 ---
 
 *Investment Proposal Spec — v1.8.0 (Demo 2.15) — drafted 2026-09-27, accepted 2026-09-29.*
+
+## Related
+
+- [PGOM Investment Proposal — Template Findings](Investment_Proposal_Findings.md) — findings, reference
+- [Demo 2.15 — Investment Proposal: ticket prompts](Investment_Proposal_Ticket_Prompts.md) — plan, shipped
+- [Investment Proposal — wireframes](wireframes/investment-proposal/README.md) — wireframe, shipped
+- [v1.9.0 — Comments on Investment Proposals](../v1.9/Investment_Proposal_Comments_Spec.md) — spec, shipped

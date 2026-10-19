@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.4.0
+status: reference
+tickets: []
+updated: 2026-07-09
+---
+
 # WFP Rework (v1.4) — Requirements Draft (reviewed & expanded)
+
+Up: [v1.4 hub](README.md)
 
 > **Status:** DRAFT for the requirements discussion. Base text = Ralph's 2026-07-07 draft from
 > the demo/meeting; reviewed against `docs/v1.4/WFP_New_Form_Findings.md` (the WFP-NEW.xlsx
@@ -492,3 +502,7 @@ bands + Creation totals answered first), migration/retirement of existing WFP da
 *Reviewed/expanded by Claude Code 2026-07-07 from Ralph's demo-meeting draft + the WFP-NEW.xlsx
 findings; updated same day with Ralph's answers via `WFP_Rework_Open_Questions.xlsx` and the
 resulting Linear tickets (RAL-116–RAL-125).*
+
+## Related
+
+- [WFP Rework (v1.4) — New WFP Form: Findings & Open Questions](WFP_New_Form_Findings.md) — findings, reference

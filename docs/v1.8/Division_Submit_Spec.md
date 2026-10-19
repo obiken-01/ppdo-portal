@@ -1,4 +1,16 @@
+---
+type: spec
+version: v1.8.0
+status: current
+tickets: [PPDO-130, PPDO-122, PPDO-70]
+supersedes: [AIP_Review_Spec.md]
+supersedes_scope: "AIP_Review_Spec.md: in part: decision 4 for offices with divisions"
+updated: 2026-09-29
+---
+
 # v1.8.0 — Division heads submit to the department head (PPDO-130)
+
+Up: [v1.8 hub](README.md)
 
 > **Status: accepted** — 2026-09-28. Parent: PPDO-122 (Demo 2 change requests), item 2.8.
 > Written to `docs/SPEC_STANDARD.md`. All decisions are Ralph's (session 2026-09-28): 1–8 and 12
@@ -622,3 +634,12 @@ TDD — this is workflow state and permission resolution.
   department head of another office and a no-division Staff user.
 - **Migration backfill**: covered by a repository-level test on a seeded context. Program with one
   assignment → tagged; two assignments → null; FY2027 → untouched.
+
+## Related
+
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Review: the same drill-down as AIP Entry, with a Full office view](AIP_Review_Layout_Spec.md) — spec, shipped
+- [v1.8.0 — Consolidated AIP moves into the Report page](AIP_Report_Spec.md) — spec, shipped
+- [AIP Review — wireframes](wireframes/aip-review/README.md) — wireframe, shipped
+- [Consolidated AIP — wireframes (PPDO-73)](wireframes/consolidated-view/README.md) — wireframe, shipped
+- [Submission history — wireframes (PPDO-77)](wireframes/submission-history/README.md) — wireframe, shipped

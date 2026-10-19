@@ -1,4 +1,16 @@
+---
+type: findings
+version: v1.8.0
+status: superseded
+tickets: []
+superseded_by: [Phase_Plan.md]
+superseded_scope: "Phase_Plan.md: in part: the open questions in sections 4 and 4d"
+updated: 2026-08-26
+---
+
 # AIP Redesign — Working Notes
+
+Up: [v1.8 hub](README.md)
 
 > ⚠️ **Partly superseded.** This captures Ralph's initial description (2026-08-13) verbatim in
 > substance. The §4 and `Office_User_Path_Findings.md` §6.4 questions it warned about were largely
@@ -255,3 +267,10 @@ since `wfp_activities.aip_activity_id` still points at the same unchanged `AipAc
 ₱33,406,410,747, which is **₱30,668,000 below its own line items**, because a number of rows are
 missing their Total (column O) formula and so contribute zero to every subtotal that sums that
 column. Worth raising alongside the rounding/footing answers — it is the same class of problem.
+
+## Related
+
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current
+- [v1.8.0 Phase 2 — AIP Foundation](AIP_Foundation_Spec.md) — spec, shipped
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped

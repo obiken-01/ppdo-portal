@@ -1,0 +1,65 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.inFolder("linear-export/tickets")
+properties:
+  id:
+    displayName: Ticket
+  title:
+    displayName: Title
+  status:
+    displayName: Status
+  milestone:
+    displayName: Milestone
+  labels:
+    displayName: Labels
+  completed:
+    displayName: Completed
+views:
+  - type: table
+    name: By milestone
+    groupBy:
+      property: milestone
+      direction: ASC
+    order:
+      - id
+      - title
+      - status
+      - completed
+  - type: table
+    name: By status
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - id
+      - title
+      - milestone
+      - completed
+  - type: table
+    name: With labels
+    filters:
+      and:
+        - 'labels != ""'
+        - 'labels != "(none)"'
+    groupBy:
+      property: labels
+      direction: ASC
+    order:
+      - id
+      - title
+      - milestone
+      - completed
+  - type: table
+    name: Newest closed first
+    filters:
+      and:
+        - 'status == "Done"'
+    sort:
+      - property: completed
+        direction: DESC
+    order:
+      - id
+      - title
+      - milestone
+      - completed

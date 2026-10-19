@@ -1,10 +1,16 @@
 ---
-status: current
+type: checklist
 version: v1.8.2
-tickets: PPDO-111, PPDO-112, PPDO-113, PPDO-192, PPDO-117…120, PPDO-141, PPDO-142, PPDO-178…181, PPDO-187…191, PPDO-193
+status: current
+tickets: [PPDO-111, PPDO-112, PPDO-113, PPDO-192, PPDO-117, PPDO-141, PPDO-142, PPDO-178, PPDO-187, PPDO-193]
+updated: 2026-10-07
+status_note: "current"
+tickets_note: "PPDO-111, PPDO-112, PPDO-113, PPDO-192, PPDO-117…120, PPDO-141, PPDO-142, PPDO-178…181, PPDO-187…191, PPDO-193"
 ---
 
 # v1.8.2 — Pre-Deployment Checklist
+
+Up: [v1.8 hub](README.md)
 
 > Work through this **before** `release/1.8.2` goes to UAT, and again before it goes to `main`.
 > Pushing to `uat` or `main` auto-deploys both frontend and backend. **CI does not run EF
@@ -249,3 +255,9 @@ testers saving in UAT. `ppdo-portal-api-uat` has Application Insights connected 
 
 *Created 2026-10-07, when the last v1.8.2 ticket (PPDO-113, #458) merged. Companion to
 [Pre_Deployment_Checklist.md](Pre_Deployment_Checklist.md) (v1.8.0 + v1.8.1).*
+
+## Related
+
+- [v1.8.0 — Pre-Deployment to Production Checklist](Pre_Deployment_Checklist.md) — checklist, reference
+- [PPDO-34 / V18-35 — AIP Units Migration Runbook](Units_Migration_Runbook.md) — runbook, current
+- [v1.9.0 — Pre-Deployment Checklist](../v1.9/Pre_Deployment_Checklist_v1.9.0.md) — checklist, current

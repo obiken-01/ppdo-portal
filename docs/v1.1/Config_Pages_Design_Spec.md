@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.1.0
+status: shipped
+tickets: [RAL-72]
+updated: 2026-06-14
+---
+
 # Configuration Pages — Design Spec (extracted from Penpot)
+
+Up: [v1.1 hub](README.md)
 
 _Source: Penpot file "PPDO Portal v0.5", Page 3 — boards 09 Config Dashboard, 10 Account Config, 11 Office Config, 12 Funding Sources Config. Extracted 2026-06-14 by reading shape text directly (PNG export was unreliable)._
 
@@ -111,3 +121,8 @@ Offices and Funding from the RAL-72 Account page pattern using the shared compon
 (`DataTable`, `Modal`, `MessageDialog`, `ConfirmDialog`, `CsvUploadButton`,
 `CsvDownloadButton`, `Toast`) and the `lib/config.ts` helper module (extend with
 office/funding functions following `listAccounts`/`createAccount`/etc.).
+
+## Related
+
+- [Budget Planning Pages — Design Spec (extracted from Penpot)](Budget_Planning_Pages_Design_Spec.md) — spec, reference
+- [PPDO Portal v1.1 — Shared UI Component Standards](UI_Component_Standards.md) — standard, reference

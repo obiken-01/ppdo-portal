@@ -1,4 +1,14 @@
+---
+type: wireframe
+version: v1.8.0
+status: shipped
+tickets: [PPDO-153]
+updated: 2026-10-01
+---
+
 # Investment Proposal — wireframes
+
+Up: [v1.8 hub](../../README.md)
 
 The design canvas for Demo 2.15 (PPDO-153), drawn on 2026-09-30/10-01 before any screen was built:
 **https://claude.ai/artifact/MU8EjU5diyYuWXqMEMQDiw** (private: share it from the page's Share
@@ -51,3 +61,10 @@ produced spec decisions 3, 6, 14, 17, 19, 30 and 31:
 - Section I's capacity training is one cell per member, merged when neighbours are identical.
 - There are four signatory slots, and an empty slot is not printed.
 - Project Type prints blank for now.
+
+## Related
+
+- [PGOM Investment Proposal — Template Findings](../../Investment_Proposal_Findings.md) — findings, reference
+- [v1.8.0 — PGOM Investment Proposal (Demo 2.15)](../../Investment_Proposal_Spec.md) — spec, shipped
+- [Demo 2.15 — Investment Proposal: ticket prompts](../../Investment_Proposal_Ticket_Prompts.md) — plan, shipped
+- [v1.9.0 — Comments on Investment Proposals](../../../v1.9/Investment_Proposal_Comments_Spec.md) — spec, shipped

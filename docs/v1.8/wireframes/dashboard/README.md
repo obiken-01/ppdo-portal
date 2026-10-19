@@ -1,4 +1,14 @@
+---
+type: wireframe
+version: v1.8.0
+status: reference
+tickets: []
+updated: 2026-10-04
+---
+
 # Investment Planning dashboard — wireframes
+
+Up: [v1.8 hub](../../README.md)
 
 The design canvas for the dashboard design pass, drawn 2026-10-04:
 **https://claude.ai/artifact/H2UFMjGgMwGfwWzShHzjr1** (private: share it from the page's Share menu before
@@ -25,3 +35,8 @@ Sample data is fictional, shaped like the local test data. Colours and spacing a
 
 The `.dc.html` files are the source of truth. Edit them here and republish to the canvas above through the
 Design artifact type, the same way the other wireframe sets in this folder are kept.
+
+## Related
+
+- [PPDO-20 (V18-30) — Budget Planning Dashboard](../../Budget_Planning_Dashboard_Requirements.md) — spec, shipped
+- [Investment Planning dashboard — design pass](../../Dashboard_Design_Pass.md) — findings, reference

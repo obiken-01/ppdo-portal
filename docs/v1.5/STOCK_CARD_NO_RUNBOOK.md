@@ -1,4 +1,14 @@
+---
+type: runbook
+version: v1.5.0
+status: current
+tickets: [RAL-183]
+updated: 2026-07-28
+---
+
 # Stock Card No. — Production Runbook
+
+Up: [v1.5 hub](README.md)
 
 > **v1.5 — RAL-183/184.** How to get `price_index_items.stock_card_no` populated in an
 > environment that doesn't have it, and how to refresh it when GSO issues a new item export.
@@ -221,3 +231,7 @@ genuine refresh, and review `--report` before uploading.
 
 *Runbook added 2026-07-28 for the v1.5.0 release. Scripts: `scripts/stock_card_no_promote.py`,
 `scripts/stock_card_no_merge.py`.*
+
+## Related
+
+- [v1.5 — PPMP Report: Findings & Initial Draft](PPMP_Report_Findings.md) — findings, shipped

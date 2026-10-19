@@ -1,4 +1,14 @@
+---
+type: guide
+version: v1.8.0
+status: current
+tickets: [PPDO-84]
+updated: 2026-09-14
+---
+
 # AIP amounts — what each screen, API and file shows
+
+Up: [v1.8 hub](README.md)
 
 > **For the PDC demo and for anyone reconciling two figures that "should" match.** The portal keeps
 > one set of amounts — exactly what each office encoded — and shows them in five ways depending on
@@ -143,3 +153,8 @@ second rounding in the page is how two screens come to disagree.
 Related: [AIP_Form_Spec.md](AIP_Form_Spec.md) §6 and Part II ·
 [Phase_Plan.md](Phase_Plan.md) §12.2 (DECISION G) ·
 [../external-api/README.md](../external-api/README.md) §2
+
+## Related
+
+- [AIP Printable Form — Specification (V18-60)](AIP_Form_Spec.md) — spec, current
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped

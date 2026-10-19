@@ -1,4 +1,16 @@
+---
+type: standard
+version: v1.8.0
+status: current
+tickets: [PPDO-7]
+superseded_by: [../v1.9/AIP_Reviewer_Edit_Spec.md]
+superseded_scope: "AIP_Reviewer_Edit_Spec.md: in part: section 5"
+updated: 2026-10-16
+---
+
 # Permission Matrix
+
+Up: [v1.8 hub](README.md)
 
 > **V18-06 / PPDO-7.** The single reference for *who can do what* in the PPDO Portal.
 >
@@ -620,3 +632,12 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 ---
 
 *Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224)*
+
+## Related
+
+- [PPDO Portal — User Roles, Permissions & Access Model](../v1.1/User_Roles_Permissions.md) — spec, superseded
+- [PPDO Portal — v1.2.0: Budget Allocation, Configurable Divisions & Permission Model](../v1.2/Allocation_Requirements.md) — spec, shipped
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current
+- [v1.8.0 — Office setup: finance sets ceilings, department heads set up their own office](Office_Setup_Spec.md) — spec, shipped
+- [Office-User Path — Codebase Impact Assessment](Office_User_Path_Findings.md) — findings, reference
+- [v1.9.0 — PPDO Reviewer Edits to a Submitted AIP](../v1.9/AIP_Reviewer_Edit_Spec.md) — spec, shipped

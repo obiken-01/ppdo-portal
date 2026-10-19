@@ -1,4 +1,13 @@
+---
+type: findings
+status: reference
+tickets: []
+updated: 2026-06-30
+---
+
 # OneDrive Correspondence Logging — Findings & Options
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **Status:** Exploration / idea capture. Not yet scheduled to a release.
 > **Date:** 2026-06-30

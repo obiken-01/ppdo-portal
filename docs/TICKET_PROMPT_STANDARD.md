@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: [RAL-81]
+updated: 2026-08-27
+---
+
 # Ticket Implementation Prompt Standard
+
+Up: [Standards and reference](STANDARDS.md)
 
 How to write the **Claude Code implementation prompt** that gets pasted into a Linear ticket (as a
 comment, or the bottom of the description) to kick off that ticket. A good prompt is *self-contained*:
@@ -191,3 +200,7 @@ feat(auth): add budget planning permissions, nullable division, and office users
 *Ticket Prompt Standard — PPDO Portal. Revised 2026-08-27: added current→target behaviour,
 per-step verification, migration/dependency flags, and risks/rollback/sign-off triggers.
 Companion to `docs/SPEC_STANDARD.md`.*
+
+## Related
+
+- [Spec Standard](SPEC_STANDARD.md) — standard, current

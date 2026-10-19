@@ -1,4 +1,14 @@
+---
+type: wireframe
+version: v1.8.0
+status: shipped
+tickets: [PPDO-79]
+updated: 2026-09-12
+---
+
 # AIP Review — wireframes
+
+Up: [v1.8 hub](../../README.md)
 
 The design canvas behind the PPDO-79 review feedback:
 **https://claude.ai/code/artifact/e78ec10f-f86d-4550-b2c8-c9348c6b340b**
@@ -32,3 +42,12 @@ template. From a Claude Code session in this repo, `/design` is the entry point.
 
 Six of them, each a sticky note beside its artboard on the canvas and listed in full on
 **PPDO-79**. They are deliberately unanswered — do not build past them.
+
+## Related
+
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](../../AIP_Review_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Review: the same drill-down as AIP Entry, with a Full office view](../../AIP_Review_Layout_Spec.md) — spec, shipped
+- [v1.8.0 — Consolidated AIP moves into the Report page](../../AIP_Report_Spec.md) — spec, shipped
+- [v1.8.0 — Division heads submit to the department head (PPDO-130)](../../Division_Submit_Spec.md) — spec, current
+- [Consolidated AIP — wireframes (PPDO-73)](../consolidated-view/README.md) — wireframe, shipped
+- [Submission history — wireframes (PPDO-77)](../submission-history/README.md) — wireframe, shipped

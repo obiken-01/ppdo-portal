@@ -1,4 +1,13 @@
+---
+type: guide
+status: reference
+tickets: []
+updated: 2026-09-21
+---
+
 # UAT Environment — Setup Reference
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **Status: NOT BUILT. Reference only.**
 > Drafted 2026-08-10 after a cost review. Nothing in this document has been
@@ -507,3 +516,7 @@ invoice is the one covering December, which arrives in January.
 ---
 
 *Drafted 2026-08-10 — reference only, nothing provisioned.*
+
+## Related
+
+- [UAT — provisioning steps, in order](UAT_PROVISIONING_STEPS.md) — runbook, reference

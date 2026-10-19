@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.7.0
+status: shipped
+tickets: []
+updated: 2026-09-02
+---
+
 # v1.7 — Mobile UI & Inventory Rework: Findings
+
+Up: [v1.7 hub](README.md)
 
 > Audit date: **2026-07-29**. Branch: `release/1.6.0`.
 > Scope requested by Ralph: (a) make the portal mobile-friendly, focusing on the Main
@@ -384,3 +394,8 @@ Draft implementation prompts for RAL-A through RAL-F are in
 answered first, or the schema will be wrong.
 
 Linear IDs are placeholders (RAL-A…RAL-G) pending ticket creation.
+
+## Related
+
+- [v1.7 — Draft Ticket Implementation Prompts](Ticket_Prompts.md) — plan, shipped
+- [GSO PR export → Create PR import — findings](GSO_PR_Import_Findings.md) — findings, shipped

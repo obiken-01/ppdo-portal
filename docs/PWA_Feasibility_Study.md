@@ -1,4 +1,13 @@
+---
+type: findings
+status: reference
+tickets: [RAL-234]
+updated: 2026-08-14
+---
+
 # Progressive Web App — Feasibility Study
+
+Up: [Standards and reference](STANDARDS.md)
 
 > Study date: **2026-08-14**. Branch: `claude/progressive-web-apps-9kym78`. Baseline: `v1.7.2`.
 > Scope requested by Ralph: *"can we implement this and what needs to be done — study only, no code change."*
@@ -704,3 +713,7 @@ actually blocked is the AIP-specific half.
 
 *Study only — no implementation. Phase 1 is blocked on §9 Q1 (an icon), not on AIP — see §12.*
 *§11 (offline AIP) is parked pending the v1.8.0 AIP rework requirements.*
+
+## Related
+
+- [v1.8.0 Phase 6 (partial) — AIP Offline Caching Groundwork](v1.8/AIP_Offline_Caching_Spec.md) — spec, current
