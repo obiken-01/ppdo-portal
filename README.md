@@ -4,7 +4,7 @@
 > Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
 > and office operations.
 
-**Current version: v1.9.0** (complete, frozen on `release/1.9.0`, going to UAT) · **Next: v1.10.0** (placeholder — SAIP)
+**Current version: v1.9.1** (in development on `release/1.9.1`; v1.9.0 frozen on UAT) · **Next: v1.10.0** (placeholder — SAIP)
 
 ---
 
@@ -23,15 +23,32 @@
 | v1.8.1 | Optimization & dashboard fixes | ✅ Built — ships with v1.8.0 |
 | v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
-| **v1.9.0** | **Larger requests from Demo 3** (see below) | 🧊 **Complete, frozen for UAT** |
+| v1.9.0 | Larger requests from Demo 3 (see below) | 🧊 Complete, frozen for UAT |
+| **v1.9.1** | **.NET 10 runtime + AIP workflow UX fixes** (see below) | 🚧 **In development** |
 | **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
 
-> **Production** is at v1.7.4. v1.8.0 → v1.9.0 are **not deployed to production** until the PPDC and
+> **Production** is at v1.7.4. v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
 > finance users sign off. They ship as one deploy, with the migrations run by hand first.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and architecture rules.
 
 ---
+
+## What's in v1.9.1
+
+A patch on top of v1.9.0, built on `release/1.9.1` (cut 2026-10-19 from `release/1.9.0`) and due on
+UAT before the user training in the first week of November. No migrations expected.
+
+- ⚙️ **.NET 10** — the backend moves from .NET 9 (end of support 2026-11-10) to .NET 10. The Function
+  App runtime setting changes in the same deploy as the code.
+- ✅ **AIP workflow confirmations** — one combined confirmation per submit/send action listing every
+  warning, instead of up to three stacked dialogs.
+- 💬 **Comments survive a deleted activity** — unresolved comments on an activity that is deleted stay
+  in the thread, marked as on a deleted activity, so the reason for a return is not lost.
+- 💰 **Small fixes** — `−₱` format for over-ceiling remaining amounts, corrected Add Division help text
+  for department heads.
+- ⚡ **Config caching** — divisions, offices and funding sources are cached briefly and evicted on
+  every config write.
 
 ## What's in v1.9.0
 
@@ -68,7 +85,7 @@ chiefly adding, removing or renaming programs, projects and activities after the
   background-job plumbing from v1.9.0 (the bulk-export spec already anticipates a SAIP job kind).
 - **Before any build:** a spec per [`docs/SPEC_STANDARD.md`](docs/SPEC_STANDARD.md) — goal, per-role
   behaviour, failure cases, UI states, non-goals and acceptance checklist.
-- `release/1.10.0` is cut from the completed `release/1.9.0` once v1.9.0 is signed off in UAT.
+- `release/1.10.0` is cut from the completed `release/1.9.1` once it is signed off in UAT.
 
 ---
 
