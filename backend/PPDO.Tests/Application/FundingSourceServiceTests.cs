@@ -37,7 +37,8 @@ public sealed class FundingSourceServiceTests
         List<FundingSource> seed, IAuditService? audit = null,
         int wfpUsage = 0, int aipUsage = 0, List<Office>? offices = null,
         int wfpOutside = 0, int aipOutside = 0, Action<int>? onOutsideOffice = null,
-        IReadOnlyDictionary<int, int>? wfpByYear = null, IReadOnlyDictionary<int, int>? aipByYear = null)
+        IReadOnlyDictionary<int, int>? wfpByYear = null, IReadOnlyDictionary<int, int>? aipByYear = null,
+        IConfigLookupCache? cache = null)
     {
         Mock<IFundingSourceRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -72,7 +73,8 @@ public sealed class FundingSourceServiceTests
 
         return (new FundingSourceService(
             repo.Object, officeRepo.Object, wfpExp.Object, aipExp.Object,
-            NullLogger<FundingSourceService>.Instance, audit ?? Mock.Of<IAuditService>()), repo);
+            NullLogger<FundingSourceService>.Instance, audit ?? Mock.Of<IAuditService>(),
+            cache ?? Mock.Of<IConfigLookupCache>()), repo);
     }
 
     /// <summary>A count as the repository returns it: absent when zero, never a 0 entry.</summary>
@@ -934,5 +936,53 @@ public sealed class FundingSourceServiceTests
 
         Assert.True(result.IsSuccess, result.Error);
         Assert.True(seed.Single().EnforceAipCeiling);
+    }
+
+    // ── PPDO-44: config cache eviction ────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_Success_InvalidatesFundingSourceCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (FundingSourceService sut, _) = Build([], cache: cache.Object);
+        await sut.CreateAsync(new UpsertFundingSourceDto("GAD", "Gender and Development", null));
+        cache.Verify(c => c.InvalidateFundingSources(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Duplicate_DoesNotInvalidateFundingSourceCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund")], cache: cache.Object);
+        await sut.CreateAsync(new UpsertFundingSourceDto("GF", "Duplicate", null));
+        cache.Verify(c => c.InvalidateFundingSources(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Success_InvalidatesFundingSourceCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund")], cache: cache.Object);
+        await sut.UpdateAsync(1, new UpsertFundingSourceDto("GF", "New Name", null));
+        cache.Verify(c => c.InvalidateFundingSources(), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Success_InvalidatesFundingSourceCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund")], cache: cache.Object);
+        await sut.DeleteAsync(1);
+        cache.Verify(c => c.InvalidateFundingSources(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_Success_InvalidatesFundingSourceCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (FundingSourceService sut, _) = Build([], cache: cache.Object);
+        string csv = string.Join("\r\n", "code,name,description,color,is_active", "SEF,Special Education Fund,,,true");
+        await sut.ImportCsvAsync(csv);
+        cache.Verify(c => c.InvalidateFundingSources(), Times.AtLeastOnce);
     }
 }

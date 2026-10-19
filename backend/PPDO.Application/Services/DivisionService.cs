@@ -28,17 +28,20 @@ public sealed class DivisionService : IDivisionService
     private readonly IRepository<Office>     _offices;
     private readonly ILogger<DivisionService> _logger;
     private readonly IAuditService            _audit;
+    private readonly IConfigLookupCache _configCache;
 
     public DivisionService(
         IDivisionRepository   divisions,
         IRepository<Office>   offices,
         ILogger<DivisionService> logger,
-        IAuditService audit)
+        IAuditService audit,
+        IConfigLookupCache configCache)
     {
         _divisions = divisions;
         _offices   = offices;
         _logger    = logger;
         _audit     = audit;
+        _configCache = configCache;
     }
 
     /// <inheritdoc />
@@ -129,6 +132,7 @@ public sealed class DivisionService : IDivisionService
 
         await _divisions.AddAsync(entity, cancellationToken);
         await _divisions.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateDivisions();
 
         _logger.LogInformation("Division created. OfficeId: {OfficeId}, Name: {Name}", entity.OfficeId, entity.Name);
         await _audit.LogAsync("divisions", entity.Id, AuditAction.Create,
@@ -195,6 +199,7 @@ public sealed class DivisionService : IDivisionService
 
         await _divisions.UpdateAsync(entity, cancellationToken);
         await _divisions.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateDivisions();
 
         await _audit.LogAsync("divisions", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
@@ -219,6 +224,7 @@ public sealed class DivisionService : IDivisionService
 
         await _divisions.UpdateAsync(entity, cancellationToken);
         await _divisions.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateDivisions();
 
         _logger.LogInformation("Division deactivated. Id: {Id}, Name: {Name}", entity.Id, entity.Name);
         await _audit.LogAsync("divisions", entity.Id, AuditAction.Delete,
@@ -475,6 +481,7 @@ public sealed class DivisionService : IDivisionService
         }
 
         await _divisions.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateDivisions();
 
         // One audit row per division the import actually changed (RAL-246). A CSV re-upload can
         // grant Budget Planning, Inventory or Config to every division at once — the single

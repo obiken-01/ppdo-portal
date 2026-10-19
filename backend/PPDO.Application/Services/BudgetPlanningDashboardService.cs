@@ -46,8 +46,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private readonly IWfpAllocationLedgerRepository _ledgerRepo;
     private readonly IAipExpenditureRepository      _aipExpRepo;
     private readonly IOfficeRepository              _officeRepo;
-    private readonly IRepository<Division>          _divisionRepo;
-    private readonly IRepository<FundingSource>     _fundingSourceRepo;
+    private readonly IConfigLookupCache             _configCache;
     private readonly IAuditRepository               _auditRepo;
     private readonly IAllocationService             _allocationService;
     private readonly IBudgetCeilingRepository       _ceilingRepo;
@@ -67,8 +66,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         IWfpAllocationLedgerRepository ledgerRepo,
         IAipExpenditureRepository      aipExpRepo,
         IOfficeRepository              officeRepo,
-        IRepository<Division>          divisionRepo,
-        IRepository<FundingSource>     fundingSourceRepo,
+        IConfigLookupCache             configCache,
         IAuditRepository               auditRepo,
         IAllocationService             allocationService,
         IBudgetCeilingRepository       ceilingRepo,
@@ -87,8 +85,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         _ledgerRepo        = ledgerRepo;
         _aipExpRepo        = aipExpRepo;
         _officeRepo        = officeRepo;
-        _divisionRepo      = divisionRepo;
-        _fundingSourceRepo = fundingSourceRepo;
+        _configCache       = configCache;
         _auditRepo         = auditRepo;
         _allocationService = allocationService;
         _ceilingRepo       = ceilingRepo;
@@ -107,7 +104,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
     private IReadOnlyList<FundingSource>? _fundingSourcesCache;
 
     private async Task<IReadOnlyList<FundingSource>> GetAllFundingSourcesAsync(CancellationToken ct) =>
-        _fundingSourcesCache ??= await _fundingSourceRepo.GetAllAsync(ct);
+        _fundingSourcesCache ??= await _configCache.GetFundingSourcesAsync(ct);
 
     /// <inheritdoc />
     public async Task<PpdoDashboardDto> GetDashboardAsync(
@@ -124,7 +121,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
 
         // Divisions in scope: every active division of PPDO, narrowed to one when the caller
         // (the Functions layer) has already clamped divisionId for a non-finance caller.
-        List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
+        List<Division> divisions = (await _configCache.GetDivisionsAsync(ct))
             .Where(d => d.OfficeId == host.Id && d.IsActive
                      && (divisionId == null || d.Id == divisionId.Value))
             .OrderBy(d => d.Name)
@@ -549,7 +546,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
             return ServiceResult<IReadOnlyList<OfficeSummaryDto>>.Forbidden(
                 "You do not have access to Investment Planning.");
 
-        List<Office> offices = (await _officeRepo.GetAllAsync(ct))
+        List<Office> offices = (await _configCache.GetOfficesAsync(ct))
             .Where(o => o.IsActive && scope.Permits(o.Id))
             .OrderByDescending(o => o.IsHostOffice)
             .ThenBy(o => o.OfficeCode)
@@ -782,7 +779,7 @@ public sealed class BudgetPlanningDashboardService : IBudgetPlanningDashboardSer
         // the LINQ predicate below.
         if (!seeAllDivisions && divisionId is null) return ([], null);
 
-        List<Division> divisions = (await _divisionRepo.GetAllAsync(ct))
+        List<Division> divisions = (await _configCache.GetDivisionsAsync(ct))
             .Where(d => d.OfficeId == officeId && d.IsActive
                      && (seeAllDivisions || d.Id == divisionId!.Value))
             .OrderBy(d => d.Name)

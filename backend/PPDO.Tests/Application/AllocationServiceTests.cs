@@ -219,7 +219,7 @@ public sealed class AllocationServiceTests
 
         AllocationService sut = new(
             ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
-            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
+            new PassThroughConfigCache(divRepo.Object, officeRepo.Object, fundingSourceRepo.Object), aipRepo.Object,
             audit.Object, caller);
 
         return (sut, ceilingRepo, allocRepo, pdRepo, divRepo, officeRepo, aipRepo, audit);
@@ -1100,7 +1100,7 @@ public sealed class AllocationServiceTests
 
         AllocationService sut = new(
             ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
-            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
+            new PassThroughConfigCache(divRepo.Object, officeRepo.Object, fundingSourceRepo.Object), aipRepo.Object,
             audit.Object, caller);
 
         // Three different methods on the same instance, each of which independently used to
@@ -1138,7 +1138,7 @@ public sealed class AllocationServiceTests
 
         AllocationService sut = new(
             ceilingRepo.Object, allocRepo.Object, pdRepo.Object,
-            divRepo.Object, officeRepo.Object, fundingSourceRepo.Object, aipRepo.Object,
+            new PassThroughConfigCache(divRepo.Object, officeRepo.Object, fundingSourceRepo.Object), aipRepo.Object,
             audit.Object, caller);
 
         // GetProgramAssignmentsAsync and GetSetupStatusAsync each independently used to

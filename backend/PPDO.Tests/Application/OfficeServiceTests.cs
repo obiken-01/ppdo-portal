@@ -22,7 +22,7 @@ public sealed class OfficeServiceTests
     };
 
     private static (OfficeService sut, Mock<IOfficeRepository> repo) Build(
-        List<Office> seed, IAuditService? audit = null)
+        List<Office> seed, IAuditService? audit = null, IConfigLookupCache? cache = null)
     {
         Mock<IOfficeRepository> repo = new();
         repo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(seed);
@@ -34,7 +34,7 @@ public sealed class OfficeServiceTests
         repo.Setup(r => r.UpdateAsync(It.IsAny<Office>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         return (new OfficeService(repo.Object, NullLogger<OfficeService>.Instance,
-            audit ?? Mock.Of<IAuditService>()), repo);
+            audit ?? Mock.Of<IAuditService>(), cache ?? Mock.Of<IConfigLookupCache>()), repo);
     }
 
     private static (OfficeService sut, Mock<IOfficeRepository> repo, Mock<IAuditService> audit)
@@ -390,4 +390,51 @@ public sealed class OfficeServiceTests
     private static object? Prop(object snapshot, string name)
         => snapshot.GetType().GetProperty(name)?.GetValue(snapshot);
 
+    // ── PPDO-44: config cache eviction ────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateAsync_Success_InvalidatesOfficeCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (OfficeService sut, _) = Build([], cache: cache.Object);
+        await sut.CreateAsync(new UpsertOfficeDto("PPDO", "Planning Office"));
+        cache.Verify(c => c.InvalidateOffices(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Conflict_DoesNotInvalidateOfficeCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (OfficeService sut, _) = Build([Off(1, "PPDO", "Planning Office")], cache: cache.Object);
+        await sut.CreateAsync(new UpsertOfficeDto("PPDO", "Dup"));
+        cache.Verify(c => c.InvalidateOffices(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Success_InvalidatesOfficeCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (OfficeService sut, _) = Build([Off(1, "PPDO", "Planning Office")], cache: cache.Object);
+        await sut.UpdateAsync(1, new UpsertOfficeDto("PPDO", "New Name"));
+        cache.Verify(c => c.InvalidateOffices(), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Success_InvalidatesOfficeCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (OfficeService sut, _) = Build([Off(1, "PPDO", "Planning Office")], cache: cache.Object);
+        await sut.DeleteAsync(1);
+        cache.Verify(c => c.InvalidateOffices(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_Success_InvalidatesOfficeCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (OfficeService sut, _) = Build([], cache: cache.Object);
+        string csv = string.Join("\r\n", OfficeCsvHeader, "GSO,General Services Office,true,,Profile");
+        await sut.ImportCsvAsync(csv);
+        cache.Verify(c => c.InvalidateOffices(), Times.AtLeastOnce);
+    }
 }

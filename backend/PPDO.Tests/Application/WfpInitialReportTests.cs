@@ -96,7 +96,8 @@ public sealed class WfpInitialReportTests
         _sut = new WfpReportService(
             _aip.Object, new Mock<IWfpRepository>(MockBehavior.Strict).Object,
             new Mock<IWfpExpenditureService>(MockBehavior.Strict).Object,
-            _offices.Object, _accounts.Object, _lines.Object, new PermissionService());
+            _offices.Object, _accounts.Object, _lines.Object, new PermissionService(),
+            new PassThroughConfigCache(offices: _offices.Object));
     }
 
     private Task<ServiceResult<WfpReportDto>> Report(User caller, int officeId = Pto, int? divisionId = null)

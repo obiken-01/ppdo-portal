@@ -39,7 +39,7 @@ public sealed partial class WfpReportService
         bool canAccessWfp = await _permissions.CanAccessWfpAsync(caller, cancellationToken);
         bool canAccessBudgetPlanning = await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken);
 
-        return (await _officeRepo.GetAllAsync(cancellationToken))
+        return (await _configCache.GetOfficesAsync(cancellationToken))
             .Where(o => o.IsActive && consolidated.Contains(o.Id)
                      && InitialWfpReadRule.Permits(caller, o.Id, canAccessWfp, canAccessBudgetPlanning))
             .Select(o => new WfpReportOfficeDto(o.Id, o.OfficeCode, o.OfficeName, AipWorkflowStatus.Consolidated))
