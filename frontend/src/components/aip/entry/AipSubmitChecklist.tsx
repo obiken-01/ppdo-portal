@@ -26,6 +26,7 @@ import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import { fmtDivisionStamp } from "./AipDivisionParts";
 import { getProposalProjects } from "@/lib/investment-proposals";
 import type { ProposalProjectOption } from "@/types";
+import { buildAipSubmitConfirmation, type AipSubmitConfirmation } from "@/lib/aip-submit-confirm";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -234,80 +235,51 @@ export default function AipSubmitChecklist({
         : stage.kind === "awaitingDivisions" ? "Division submissions"
           : "Submit";
 
-  // ── The unresolved-comment warning on re-submit (PPDO-72) ──────────────────
+  // ── The one confirmation (PPDO-206) ──────────────────────────────────────
   //
-  // ⚠️ **Soft, and it must stay soft.** An office may legitimately re-submit with a comment
-  // outstanding — the reviewer's remark may have been answered on the phone, or overtaken by a
-  // change elsewhere. The gate exists to stop an *accidental* re-submit by someone who never
-  // expanded a collapsed comment, not to enforce that every remark was actioned. Do not turn this
-  // into a disabled button.
+  // ↩️ Every submit opens ONE dialog listing every warning that applies — no final investment
+  // proposal, over the ceiling (department-head hops only), unresolved comments — with a single
+  // confirm button. It used to be up to three dialogs in a row, two of them saying "Submit anyway".
+  // The rules live in `lib/aip-submit-confirm.ts`.
   //
-  // ⚠️ **Which hops warn is a decision, not an accident of the condition** (PPDO-133):
-  //   • Encoder → department head: WARNS. ↩️ Added 2026-09-24. After a department head returns the
-  //     work (the return-to-encoder action) or PPDO sends it back, the encoders re-submit past
-  //     comments they cannot resolve themselves — exactly the accidental send this exists for. On a
-  //     first submit nothing has been commented yet, so the zero-count check keeps it silent.
-  //   • Department head → PPDO, first time: SILENT. The only possible unresolved comments are the
-  //     department head's own, which they can resolve themselves (spec decision 10).
-  //   • Department head → PPDO, re-submit: WARNS (PPDO-72 decision 10).
-  //   • Division → department head: WARNS (PPDO-151, decided with the hop). Same reason as the
-  //     encoder's: after a per-division return, its encoders re-submit past the head's comments.
+  // ⚠️ **Every warning is soft, and must stay soft** (PPDO-72). An office may legitimately send with
+  // a comment outstanding or a proposal unfinished; the dialog stops an *accidental* send, it does
+  // not enforce that every remark was actioned. Do not turn any of these into a disabled button.
+  //
+  // ⚠️ **Proposals are read fresh at the click**, not from the page's strip data: a proposal
+  // finalized in another tab a minute ago must not be reported missing. The list is the caller's
+  // own scope. **A failed read never holds the submit** — the dialog simply omits that warning.
   const unresolved: AipUnresolvedCounts | null = useUnresolvedCounts();
-  const [confirming, setConfirming] = useState(false);
-  const [confirmingCeiling, setConfirmingCeiling] = useState(false);
+  const [confirmation, setConfirmation] = useState<AipSubmitConfirmation | null>(null);
   const [confirmingReturn, setConfirmingReturn] = useState(false);
-  const [confirmingDivision, setConfirmingDivision] = useState(false);
-
-  const warnsOnThisHop =
-    stage.kind === "encoder" || stage.kind === "division" || (stage.kind === "toPpdo" && stage.resubmit);
-  const needsUnresolvedWarning = warnsOnThisHop && (unresolved?.total ?? 0) > 0;
-
-  // ── The investment proposal warning (Ralph, 2026-10-03) ────────────────────
-  //
-  // ⚠️ **Soft, like the comment warning.** A proposal is not AIP content and is reviewed on paper
-  // (proposal spec decision 4), and it stays editable after any submit, so an office may send the AIP
-  // now and finish proposals later. This only stops a send by someone who forgot them.
-  //
-  // ⚠️ **Read fresh at the click**, not from the page's strip data: a proposal finalized in another
-  // tab a minute ago must not be reported missing. The list is the caller's own scope, so a
-  // division's encoder sees their division's projects, as AIP Entry shows them.
-  //
-  // ⚠️ **A failed read never holds the submit.** It skips the warning and carries on.
-  const [proposalGaps, setProposalGaps] = useState<ProposalProjectOption[] | null>(null);
   const [checkingProposals, setCheckingProposals] = useState(false);
 
   async function onActionClick() {
+    if (stage.kind !== "encoder" && stage.kind !== "toPpdo" && stage.kind !== "division") return;
+    let proposalGaps: ProposalProjectOption[] | null = null;
     if (proposalCheck) {
       setCheckingProposals(true);
       try {
         const projects = await getProposalProjects(proposalCheck.fiscalYear, proposalCheck.officeId);
-        const gaps = projects.filter((p) => p.status !== "Final");
-        if (gaps.length > 0) {
-          setProposalGaps(gaps);
-          return;
-        }
+        proposalGaps = projects.filter((p) => p.status !== "Final");
       } catch {
         // Skip the warning; see above.
       } finally {
         setCheckingProposals(false);
       }
     }
-    continueSubmit();
+    setConfirmation(buildAipSubmitConfirmation({
+      hop: stage.kind === "division" ? { kind: "division", divisionName: stage.division.name }
+        : stage.kind === "toPpdo" ? { kind: "toPpdo", resubmit: stage.resubmit }
+          : { kind: "encoder" },
+      ceilingWarning,
+      unresolved,
+      proposalGaps,
+    }));
   }
 
-  function continueSubmit() {
-    // A division submit ALWAYS confirms (spec §6.1): it locks the encoder out of their own rows,
-    // and the ceiling warning, when there is one, rides in the same dialog.
-    if (stage.kind === "division") setConfirmingDivision(true);
-    // The ceiling confirm comes first, and only on the encoder's hop. On the PPDO hop the button
-    // is disabled while over the ceiling, so there is nothing to confirm.
-    else if (stage.kind === "encoder" && ceilingWarning) setConfirmingCeiling(true);
-    else proceedPastCeiling();
-  }
-
-  function proceedPastCeiling() {
-    if (needsUnresolvedWarning) setConfirming(true);
-    else if (stage.kind === "encoder" || stage.kind === "toPpdo" || stage.kind === "division") stage.onSubmit();
+  function confirmSubmit() {
+    if (stage.kind === "encoder" || stage.kind === "toPpdo" || stage.kind === "division") stage.onSubmit();
   }
 
   return (
@@ -550,68 +522,29 @@ export default function AipSubmitChecklist({
         </div>
       )}
 
-      {proposalGaps && (
+      {confirmation && (
         <ConfirmDialog
-          title="Some projects have no final investment proposal"
-          message={proposalWarning(proposalGaps, stage.kind === "toPpdo" ? "PPDO" : "your department head")}
-          confirmLabel="Submit anyway"
-          cancelLabel="Go back"
-          variant="warning"
-          onConfirm={() => { setProposalGaps(null); continueSubmit(); }}
-          onClose={() => setProposalGaps(null)}
-        />
-      )}
-
-      {confirmingCeiling && stage.kind === "encoder" && ceilingWarning && (
-        <ConfirmDialog
-          title="Submit over the ceiling?"
-          message={`${ceilingWarning} Your department head cannot send it to PPDO until it is within the ceiling.`}
-          confirmLabel="Submit anyway"
-          cancelLabel="Go back"
-          variant="warning"
-          onConfirm={proceedPastCeiling}
-          onClose={() => setConfirmingCeiling(false)}
-        />
-      )}
-
-      {confirming && stage.kind === "toPpdo" && unresolved && (
-        <ConfirmDialog
-          title="Re-submit with unresolved comments?"
-          message={unresolvedWarning(unresolved, "PPDO")}
-          confirmLabel="Re-submit anyway"
-          cancelLabel="Go back"
-          variant="warning"
-          onConfirm={stage.onSubmit}
-          onClose={() => setConfirming(false)}
-        />
-      )}
-
-      {confirmingDivision && stage.kind === "division" && (
-        <ConfirmDialog
-          title={`Submit ${stage.division.name}?`}
+          title={confirmation.title}
           message={
-            "You won’t be able to edit these activities unless your department head returns them." +
-            (ceilingWarning
-              ? ` ⚠️ ${ceilingWarning} It still goes to your department head, but they cannot send it to PPDO until the office is within the ceiling.`
-              : "")
+            <>
+              <p>{confirmation.intro}</p>
+              {confirmation.warnings.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {confirmation.warnings.map((w) => (
+                    <li key={w} className="flex gap-2 text-amber-800">
+                      <span aria-hidden>⚠️</span>
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           }
-          confirmLabel={ceilingWarning ? "Submit anyway" : `Submit ${stage.division.name}`}
+          confirmLabel={confirmation.confirmLabel}
           cancelLabel="Go back"
-          variant={ceilingWarning ? "warning" : "primary"}
-          onConfirm={proceedPastCeiling}
-          onClose={() => setConfirmingDivision(false)}
-        />
-      )}
-
-      {confirming && (stage.kind === "encoder" || stage.kind === "division") && unresolved && (
-        <ConfirmDialog
-          title="Submit with unresolved comments?"
-          message={unresolvedWarning(unresolved, "your department head")}
-          confirmLabel="Submit anyway"
-          cancelLabel="Go back"
-          variant="warning"
-          onConfirm={stage.onSubmit}
-          onClose={() => setConfirming(false)}
+          variant={confirmation.variant}
+          onConfirm={confirmSubmit}
+          onClose={() => setConfirmation(null)}
         />
       )}
 
@@ -627,70 +560,6 @@ export default function AipSubmitChecklist({
         />
       )}
     </div>
-  );
-}
-
-/** How many proposals to name before "and N more"; the dialog is a sentence, not a list. */
-const PROPOSAL_NAMES_SHOWN = 5;
-
-/**
- * The proposal warning: how many projects, split into "no proposal" and "still a draft" because
- * the fix differs (create one, or finish and finalize it), then the first few by name.
- */
-function proposalWarning(gaps: ProposalProjectOption[], recipient: "PPDO" | "your department head"): string {
-  const none = gaps.filter((g) => g.status === "None").length;
-  const draft = gaps.length - none;
-  const counts: string[] = [];
-  if (none > 0) counts.push(`${none} ${none === 1 ? "has" : "have"} no proposal`);
-  if (draft > 0) counts.push(`${draft} ${draft === 1 ? "is" : "are"} still a draft`);
-
-  const names = gaps.slice(0, PROPOSAL_NAMES_SHOWN).map((g) => g.projectName).join("; ");
-  const more = gaps.length > PROPOSAL_NAMES_SHOWN ? `; and ${gaps.length - PROPOSAL_NAMES_SHOWN} more` : "";
-
-  return (
-    `Of your projects, ${counts.join(" and ")}: ${names}${more}. ` +
-    `You can still send the AIP to ${recipient}; proposals stay editable after it goes, ` +
-    "and you can finish them on the Investment Proposals page."
-  );
-}
-
-/**
- * The warning sentence, naming **both** counts separately.
- *
- * ⚠️ **Never one merged total.** There are exactly two authoring sides and the reader can resolve
- * neither of them — only the side that wrote a comment may clear it — so a single figure would
- * imply an action they do not have. The split also carries the information that actually changes
- * whether someone re-submits: "2 still open from PPDO" is a different situation from "2 still open
- * from your own department head", and one merged "4 unresolved" hides which.
- *
- * ⚠️ Says the comments **stay** open rather than that they will be lost — nothing is discarded on
- * re-submit, and telling an office otherwise would push them into resolving comments they have no
- * right to resolve.
- */
-function unresolvedWarning(
-  { fromPpdo, fromDepartmentHead }: AipUnresolvedCounts,
-  /** Who receives the work on this hop — named, because "it goes on anyway" means nothing alone. */
-  recipient: "PPDO" | "your department head",
-): string {
-  // ⚠️ The word "unresolved" sits with the FIRST count, not at the end of the list. Appending it
-  // ("2 from PPDO and 1 from your department head unresolved") strands the only word that says
-  // what the numbers are, and the sentence has to be re-read to parse.
-  const parts: string[] = [];
-  if (fromPpdo > 0) {
-    parts.push(`${fromPpdo} unresolved comment${fromPpdo === 1 ? "" : "s"} from PPDO`);
-  }
-  if (fromDepartmentHead > 0) {
-    parts.push(
-      fromPpdo > 0
-        ? `${fromDepartmentHead} from your department head`
-        : `${fromDepartmentHead} unresolved comment${fromDepartmentHead === 1 ? "" : "s"} from your department head`
-    );
-  }
-
-  return (
-    `This office still has ${parts.join(" and ")}. ` +
-    `They stay on the record, and ${recipient} will see them alongside the submitted work. ` +
-    "You can send it on anyway."
   );
 }
 

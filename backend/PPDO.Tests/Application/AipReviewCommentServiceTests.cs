@@ -674,6 +674,42 @@ public sealed partial class AipReviewCommentServiceTests
         Assert.Equal(1, read.Unresolved.FromPpdo);   // still counts against the gate
     }
 
+    /// <summary>
+    /// PPDO-206 — a node delete now keeps its comments, so an orphaned open comment must still be
+    /// resolvable, or it would hold the re-submit warning up with no way to clear it.
+    /// </summary>
+    [Fact]
+    public async Task Resolve_AnOrphanedComment_ClearsItFromTheCount()
+    {
+        AipReviewCommentService sut = Build();
+        int id = (await sut.CreateAsync(RecordId, OfficeId, OnActivity(), PpdoReviewer())).Value!.Id;
+        _activities = [];
+
+        ServiceResult<AipReviewCommentDto> resolved = await sut.ResolveAsync(id, PpdoReviewer());
+
+        Assert.True(resolved.IsSuccess, resolved.Error);
+        AipReviewCommentsDto read = (await sut.GetForOfficeAsync(RecordId, OfficeId, Encoder())).Value!;
+        Assert.True(read.Comments[0].IsOrphaned);
+        Assert.Equal(nameof(AipCommentNodeType.Activity), read.Comments[0].NodeType);
+        Assert.Equal(0, read.Unresolved.Total);
+    }
+
+    [Fact]
+    public async Task Reply_ByAReviewer_OnAnOrphanedThread_IsAllowed()
+    {
+        AipReviewCommentService sut = Build();
+        int head = (await sut.CreateAsync(RecordId, OfficeId, OnActivity(), PpdoReviewer())).Value!.Id;
+        _activities = [];
+
+        ServiceResult<AipReviewCommentDto> reply = await sut.CreateAsync(
+            RecordId, OfficeId, new CreateAipReviewCommentDto(nameof(AipCommentNodeType.Activity), ActivityId, "Noted.", head),
+            PpdoReviewer());
+
+        Assert.True(reply.IsSuccess, reply.Error);
+        AipReviewCommentsDto read = (await sut.GetForOfficeAsync(RecordId, OfficeId, PpdoReviewer())).Value!;
+        Assert.True(read.Comments.Single(c => c.Id == head).CanReply);
+    }
+
     [Fact]
     public async Task Get_TellsTheCallerWhetherTheyMayComment()
     {

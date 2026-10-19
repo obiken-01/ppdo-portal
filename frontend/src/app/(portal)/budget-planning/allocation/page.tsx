@@ -64,7 +64,7 @@ import {
 import MoneyInput from "@/components/ui/MoneyInput";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatPesosSigned } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import type {
   AipCeilingStatus,
@@ -347,10 +347,12 @@ function FundSection({
             }`}
           >
             Allocated ₱{formatMoney(allocationTotal)} of ₱
-            {formatMoney(ceilingInput ?? 0)} · Remaining ₱
-            {formatMoney(remaining)}
+            {formatMoney(ceilingInput ?? 0)} · Remaining{" "}
+            {/* PPDO-206 — "−₱100,000.00", never "₱-100,000.00". */}
+            {formatPesosSigned(remaining)}
+            {isOverCeiling && " "}
             {isOverCeiling && (
-              <span className="ml-2 text-xs font-normal text-red-500">
+              <span className="text-xs font-normal text-red-500">
                 (over by ₱{formatMoney(allocationTotal - (ceilingInput ?? 0))})
               </span>
             )}

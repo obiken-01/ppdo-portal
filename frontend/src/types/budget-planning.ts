@@ -327,7 +327,6 @@ export interface AipDeleteResult {
   deletedNodeType: "Program" | "Project" | "Activity";
   deletedId: number;
   removedActivityCount: number;
-  removedCommentCount: number;
   renumbered: AipRenumberedNode[];
 }
 
