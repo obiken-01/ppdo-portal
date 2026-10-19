@@ -26,7 +26,8 @@ public sealed class DivisionServiceTests
     };
 
     private static (DivisionService sut, Mock<IDivisionRepository> divRepo) Build(
-        List<Division> divSeed, List<Office> officeSeed, IAuditService? audit = null)
+        List<Division> divSeed, List<Office> officeSeed, IAuditService? audit = null,
+        IConfigLookupCache? cache = null)
     {
         Mock<IDivisionRepository> divRepo = new();
         divRepo.Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(divSeed);
@@ -45,7 +46,8 @@ public sealed class DivisionServiceTests
             divRepo.Object,
             officeRepo.Object,
             NullLogger<DivisionService>.Instance,
-            audit ?? Mock.Of<IAuditService>());
+            audit ?? Mock.Of<IAuditService>(),
+            cache ?? Mock.Of<IConfigLookupCache>());
         return (sut, divRepo);
     }
 
@@ -691,4 +693,57 @@ public sealed class DivisionServiceTests
     private static object? Prop(object snapshot, string name)
         => snapshot.GetType().GetProperty(name)?.GetValue(snapshot);
 
+    // ── PPDO-44: config cache eviction ────────────────────────────────────────
+
+    private static readonly UpsertDivisionDto CacheDivDto =
+        new(1, "NEW", "New Division", true, true, false, false, false, false, false, false);
+
+    [Fact]
+    public async Task CreateAsync_Success_InvalidatesDivisionCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (DivisionService sut, _) = Build([], [Office1], cache: cache.Object);
+        await sut.CreateAsync(CacheDivDto);
+        cache.Verify(c => c.InvalidateDivisions(), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Conflict_DoesNotInvalidateDivisionCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (DivisionService sut, _) = Build([Div(1, 1, "New Division")], [Office1], cache: cache.Object);
+        ServiceResult<DivisionDto> r = await sut.CreateAsync(CacheDivDto);
+        Assert.False(r.IsSuccess);
+        cache.Verify(c => c.InvalidateDivisions(), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_Success_InvalidatesDivisionCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (DivisionService sut, _) = Build([Div(1, 1, "Admin")], [Office1], cache: cache.Object);
+        await sut.UpdateAsync(1, CacheDivDto);
+        cache.Verify(c => c.InvalidateDivisions(), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_Success_InvalidatesDivisionCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (DivisionService sut, _) = Build([Div(1, 1, "Admin")], [Office1], cache: cache.Object);
+        await sut.DeleteAsync(1);
+        cache.Verify(c => c.InvalidateDivisions(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ImportCsvAsync_Success_InvalidatesDivisionCache()
+    {
+        Mock<IConfigLookupCache> cache = new();
+        (DivisionService sut, _) = Build([], [Office1], cache: cache.Object);
+        string csv = string.Join("\r\n",
+            "office_code,code,name,is_active,can_access_budget_planning,can_access_inventory,can_access_reports,can_manage_config,can_upload_aip,can_manage_users,can_manage_resource_links",
+            "PPDO,SEC,Sectoral Planning Division,true,true,false,false,false,false,false,false");
+        await sut.ImportCsvAsync(csv, [Office1]);
+        cache.Verify(c => c.InvalidateDivisions(), Times.AtLeastOnce);
+    }
 }

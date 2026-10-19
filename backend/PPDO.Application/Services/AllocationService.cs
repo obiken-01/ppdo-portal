@@ -32,9 +32,7 @@ public sealed class AllocationService : IAllocationService
     private readonly IBudgetCeilingRepository        _ceilingRepo;
     private readonly IDivisionAllocationRepository   _allocationRepo;
     private readonly IAllocationRepository           _pdRepo;
-    private readonly IRepository<Division>           _divisionRepo;
-    private readonly IRepository<Office>             _officeRepo;
-    private readonly IRepository<FundingSource>      _fundingSourceRepo;
+    private readonly IConfigLookupCache              _configCache;
     private readonly IAipRepository                  _aipRepo;
     private readonly IAuditService                   _audit;
     private readonly CallerContext                   _caller;
@@ -43,9 +41,7 @@ public sealed class AllocationService : IAllocationService
         IBudgetCeilingRepository        ceilingRepo,
         IDivisionAllocationRepository   allocationRepo,
         IAllocationRepository           pdRepo,
-        IRepository<Division>           divisionRepo,
-        IRepository<Office>             officeRepo,
-        IRepository<FundingSource>      fundingSourceRepo,
+        IConfigLookupCache              configCache,
         IAipRepository                  aipRepo,
         IAuditService                   audit,
         CallerContext                   caller)
@@ -53,9 +49,7 @@ public sealed class AllocationService : IAllocationService
         _ceilingRepo       = ceilingRepo;
         _allocationRepo    = allocationRepo;
         _pdRepo            = pdRepo;
-        _divisionRepo      = divisionRepo;
-        _officeRepo        = officeRepo;
-        _fundingSourceRepo = fundingSourceRepo;
+        _configCache       = configCache;
         _aipRepo           = aipRepo;
         _audit             = audit;
         _caller            = caller;
@@ -75,13 +69,13 @@ public sealed class AllocationService : IAllocationService
     private IReadOnlyList<AipRecord>?     _aipRecordsCache;
 
     private async Task<IReadOnlyList<Division>> GetAllDivisionsAsync(CancellationToken ct) =>
-        _divisionsCache ??= await _divisionRepo.GetAllAsync(ct);
+        _divisionsCache ??= await _configCache.GetDivisionsAsync(ct);
 
     private async Task<IReadOnlyList<FundingSource>> GetAllFundingSourcesAsync(CancellationToken ct) =>
-        _fundingSourcesCache ??= await _fundingSourceRepo.GetAllAsync(ct);
+        _fundingSourcesCache ??= await _configCache.GetFundingSourcesAsync(ct);
 
     private async Task<IReadOnlyList<Office>> GetAllOfficesAsync(CancellationToken ct) =>
-        _officesCache ??= await _officeRepo.GetAllAsync(ct);
+        _officesCache ??= await _configCache.GetOfficesAsync(ct);
 
     private async Task<IReadOnlyList<AipRecord>> GetAllAipRecordsAsync(CancellationToken ct) =>
         _aipRecordsCache ??= await _aipRepo.GetAllAsync(ct);

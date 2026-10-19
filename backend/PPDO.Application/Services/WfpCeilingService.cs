@@ -1,3 +1,4 @@
+using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -30,7 +31,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
     private readonly IAipRepository               _aipRepo;
     private readonly IAllocationService           _allocation;
     private readonly IDivisionRepository        _divisionRepo;
-    private readonly IRepository<FundingSource>   _fundingSourceRepo;
+    private readonly IConfigLookupCache           _configCache;
 
     public WfpCeilingService(
         IWfpExpenditureRepository      wfpExpRepo,
@@ -39,7 +40,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         IAipRepository                 aipRepo,
         IAllocationService             allocation,
         IDivisionRepository          divisionRepo,
-        IRepository<FundingSource>     fundingSourceRepo)
+        IConfigLookupCache             configCache)
     {
         _wfpExpRepo        = wfpExpRepo;
         _wfpRepo           = wfpRepo;
@@ -47,7 +48,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         _aipRepo           = aipRepo;
         _allocation        = allocation;
         _divisionRepo      = divisionRepo;
-        _fundingSourceRepo = fundingSourceRepo;
+        _configCache       = configCache;
     }
 
     // ── Read status ───────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ public sealed class WfpCeilingService : IWfpCeilingService
         // is a province-wide bound PPDO sets, which is not a thing an office can set for itself.
         // Including them would render a tab per office fund whose allocation is always 0 and whose
         // remaining is always negative the moment anything is encoded against it.
-        IReadOnlyList<FundingSource> activeFunds = (await _fundingSourceRepo.GetAllAsync(ct))
+        IReadOnlyList<FundingSource> activeFunds = (await _configCache.GetFundingSourcesAsync(ct))
             .Where(f => f.IsActive && f.OfficeId is null)
             .ToList();
 

@@ -61,6 +61,7 @@ public sealed partial class WfpReportService : IWfpReportService
     // PPDO-224 — the initial WFP reads the AIP's lines, and its read rule needs the caller's flags.
     private readonly IAipExpenditureRepository _aipExpenditures;
     private readonly IPermissionService        _permissions;
+    private readonly IConfigLookupCache        _configCache;
 
     public WfpReportService(
         IAipRepository          aipRepo,
@@ -69,8 +70,10 @@ public sealed partial class WfpReportService : IWfpReportService
         IOfficeRepository     officeRepo,
         IRepository<Account>    accountRepo,
         IAipExpenditureRepository aipExpenditures,
-        IPermissionService        permissions)
+        IPermissionService        permissions,
+        IConfigLookupCache        configCache)
     {
+        _configCache     = configCache;
         _aipExpenditures = aipExpenditures;
         _permissions     = permissions;
         _aipRepo      = aipRepo;
@@ -104,7 +107,7 @@ public sealed partial class WfpReportService : IWfpReportService
                       .ThenByDescending(w => w.UpdatedAt)
                       .First());
 
-        IReadOnlyList<Office> activeOffices = (await _officeRepo.GetAllAsync(cancellationToken))
+        IReadOnlyList<Office> activeOffices = (await _configCache.GetOfficesAsync(cancellationToken))
             .Where(o => o.IsActive)
             .ToList();
 
