@@ -2,10 +2,17 @@
 
 A local, greppable copy of the PPDO Portal tickets from Linear.
 
-- **[INDEX.md](INDEX.md)** — all 206 tickets in one table
-- **[tickets/](tickets/)** — one Markdown file per ticket, `RAL-NNN.md` (zero-padded so they sort)
+- **[INDEX.md](INDEX.md)** — all 407 tickets in one table
+- **[tickets/](tickets/)** — one Markdown file per ticket, `RAL-NNN.md` / `PPDO-NNN.md` (zero-padded so they sort)
 
-**Snapshot:** 206 completed tickets, RAL-24 – RAL-273, exported **2026-08-27, before archiving.**
+**Snapshots:**
+
+| Exported | Tickets | Scope |
+|---|---|---|
+| 2026-08-27 | 206 `RAL-*` | Completed RAL-24 – RAL-273 (v0.1 → v1.7.4) |
+| 2026-10-19 | 201 `PPDO-*` | Closed (Done/Canceled/Duplicate) PPDO-Dev tickets of v1.8.0 → v1.8.4, Demo 2, techdebt, Backlog — Unscheduled and no milestone. **v1.9.0's 19 closed tickets were left out on purpose** — they stay active in Linear until v1.9.0 ships. |
+
+Both were exported before archiving.
 
 ---
 
@@ -32,7 +39,17 @@ fields in Linear's CSV export.
 
 1. Linear → **Settings → Administration → Import/Export → Export data** (CSV; available to
    everyone on free plans). The emailed download link **expires after 12 hours**.
-2. Re-run the converter against the new CSV and overwrite `tickets/` and `INDEX.md`.
+2. Run the converter (committed 2026-10-19; the first export's was never committed):
+
+   ```bash
+   python scripts/linear_export_convert.py "<export.csv>" --exclude-milestone "vX.Y.Z" --dry-run
+   python scripts/linear_export_convert.py "<export.csv>" --exclude-milestone "vX.Y.Z"
+   ```
+
+   It keeps closed tickets of one team (default `PPDO-Dev`), skips any milestone you exclude, keeps
+   existing files, and rebuilds `INDEX.md` from everything under `tickets/`.
+3. ⚠️ **Whatever lands in `tickets/` gets archived** by `scripts/linear_archive.py --all` — it reads the
+   UUIDs from these files. Exclude any release that has not shipped yet.
 
 Two things the converter has to handle, both learned the hard way:
 
@@ -70,4 +87,7 @@ committed files.
 
 ---
 
-*Exported and converted 2026-08-27. Covers completed tickets only — active tickets stay in Linear.*
+The 2026-10-19 export was scanned the same way: **no matches** for connection strings, passwords, JWT
+secrets, storage keys, SAS tokens, API keys (`lin_api_`, GitHub), private keys or publish profiles.
+
+*Exported and converted 2026-08-27 and 2026-10-19. Covers closed tickets only — active tickets stay in Linear.*
