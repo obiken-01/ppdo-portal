@@ -10,8 +10,8 @@ using PPDO.Domain.Interfaces;
 namespace PPDO.Tests.Application;
 
 /// <summary>
-/// PPDO-88 — deleting a program, project or activity clears its allocation ledger rows and
-/// comments, keeps a full audit snapshot, and on an entered year renumbers the later siblings
+/// PPDO-88 — deleting a program, project or activity clears its allocation ledger rows, keeps
+/// its comments (PPDO-206), keeps a full audit snapshot, and on an entered year renumbers the later siblings
 /// (<c>docs/v1.8/AIP_Entry_Layout_Spec.md</c> §2 decisions 8–12a, §4).
 /// </summary>
 public sealed partial class AipServiceTests
@@ -285,14 +285,19 @@ public sealed partial class AipServiceTests
 
     // ── Comments ──────────────────────────────────────────────────────────────
 
+    // PPDO-206 — a comment is the record of why a row changed, so deleting the row keeps it. It
+    // stays on the office, renders as "on a deleted activity", and still counts until resolved.
+
     [Fact]
-    public async Task DeleteActivity_RemovesItsCommentsAndLeavesOthers()
+    public async Task DeleteActivity_KeepsItsCommentsOnTheOffice()
     {
         var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        AipReviewComment resolved = Comment(2, AipCommentNodeType.Activity, 51);
+        resolved.ResolvedAt = DateTime.UtcNow;
         List<AipReviewComment> comments =
         [
             Comment(1, AipCommentNodeType.Activity, 51),
-            Comment(2, AipCommentNodeType.Activity, 51),
+            resolved,
             Comment(3, AipCommentNodeType.Activity, 50),
         ];
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
@@ -301,12 +306,13 @@ public sealed partial class AipServiceTests
 
         ServiceResult<AipDeleteResultDto> result = await sut.DeleteActivityAsync(51, HostCaller(), expectedRowVersion: AipTestVersion.Any);
 
-        Assert.Equal(2, result.Value!.RemovedCommentCount);
-        Assert.Equal(3, Assert.Single(comments).Id);
+        Assert.True(result.IsSuccess);
+        Assert.Equal([1, 2, 3], comments.Select(c => c.Id).OrderBy(i => i));
+        Assert.All(comments, c => Assert.Equal(20, c.AipOfficeId));
     }
 
     [Fact]
-    public async Task DeleteProject_RemovesCommentsOnTheProjectAndItsActivities()
+    public async Task DeleteProject_KeepsCommentsOnTheProjectAndItsActivities()
     {
         var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
         List<AipReviewComment> comments =
@@ -321,8 +327,28 @@ public sealed partial class AipServiceTests
 
         ServiceResult<AipDeleteResultDto> result = await sut.DeleteProjectAsync(40, HostCaller());
 
-        Assert.Equal(2, result.Value!.RemovedCommentCount);
-        Assert.Equal(3, Assert.Single(comments).Id);
+        Assert.True(result.IsSuccess);
+        Assert.Equal([1, 2, 3], comments.Select(c => c.Id).OrderBy(i => i));
+    }
+
+    [Fact]
+    public async Task DeleteProgram_KeepsCommentsOnEveryNodeUnderIt()
+    {
+        var (rec, offices, programs, projects, activities) = SeedSiblingTree(EnteredFy);
+        List<AipReviewComment> comments =
+        [
+            Comment(1, AipCommentNodeType.Program, 30),
+            Comment(2, AipCommentNodeType.Project, 41),
+            Comment(3, AipCommentNodeType.Activity, 70),
+        ];
+        var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
+            Build([rec], [], officeSeed: offices, programSeed: programs, projectSeed: projects, actSeed: activities,
+                commentSeed: comments);
+
+        ServiceResult<AipDeleteResultDto> result = await sut.DeleteProgramAsync(30, HostCaller());
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([1, 2, 3], comments.Select(c => c.Id).OrderBy(i => i));
     }
 
     // ── Audit snapshot ────────────────────────────────────────────────────────

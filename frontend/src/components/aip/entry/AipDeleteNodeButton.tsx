@@ -3,8 +3,9 @@
 /**
  * Delete for a project or activity on AIP Entry (PPDO-88 backend, PPDO-91 controls).
  *
- * Hard delete: the server also removes the node's activities, their ledger rows and comments, and
- * renumbers the later siblings on an entered year (`aip/entry` is FY2028+ only, so that is always).
+ * Hard delete: the server also removes the node's activities and their ledger rows, and renumbers
+ * the later siblings on an entered year (`aip/entry` is FY2028+ only, so that is always). Comments
+ * are KEPT (PPDO-206) — they move to "Comments on deleted rows" and still count until resolved.
  */
 
 import { useState } from "react";
@@ -72,9 +73,9 @@ export default function AipDeleteNodeButton({
   const noun = isProject ? "project" : "activity";
   const activityCount = isProject ? target.project.activities.length : null;
 
-  // Decision 10 — everything the delete takes with it: the node's own comments plus, for a
-  // project, every activity's. Unresolved only — a resolved thread is not what the dialog warns
-  // about clearing.
+  // The node's own comments plus, for a project, every activity's. Unresolved only. ⚠️ Kept, not
+  // removed (PPDO-206): the dialog says so, because an encoder deleting the row a reviewer
+  // questioned should know the ask still stands until the reviewer resolves it.
   const unresolved = isProject
     ? unresolvedCount("Project", target.project.id)
       + target.project.activities.reduce((sum, a) => sum + unresolvedCount("Activity", a.id), 0)
@@ -86,10 +87,9 @@ export default function AipDeleteNodeButton({
   } else if (!isProject) {
     scopeParts.push("its own costing");
   }
-  if (unresolved > 0) {
-    scopeParts.push(`${unresolved} unresolved ${unresolved === 1 ? "comment" : "comments"}`);
-  }
-  const scopeText = scopeParts.length > 0 ? `, ${joinEnglish(scopeParts)}` : "";
+  // "removes the activity and its own costing" — with the comment clause gone (PPDO-206) there is
+  // at most one part, so a comma before it read as a list with an item missing.
+  const scopeText = scopeParts.length > 0 ? ` and ${joinEnglish(scopeParts)}` : "";
 
   // ⚠️ Omitted, not just falsy-rendered, when nothing follows the deleted node (spec §6 "Delete
   // confirm") — the last sibling leaves a gap today (allocator behaviour), not a renumber.
@@ -97,7 +97,12 @@ export default function AipDeleteNodeButton({
     ? ""
     : ` Later ${isProject ? "projects in this program" : "activities in this project"} will be renumbered.`;
 
-  const message = `This removes the ${noun}${scopeText}.${renumberSentence} This cannot be undone.`;
+  const keptSentence = unresolved > 0
+    ? ` ${unresolved === 1 ? "Its 1 unresolved comment is" : `Its ${unresolved} unresolved comments are`} kept, ` +
+      `labelled "on a deleted ${noun}", and ${unresolved === 1 ? "still counts until it is" : "still count until they are"} resolved.`
+    : "";
+
+  const message = `This removes the ${noun}${scopeText}.${renumberSentence}${keptSentence} This cannot be undone.`;
 
   /**
    * @param rowVersion for an activity: the version to delete against. Defaults to the one the tree
