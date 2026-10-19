@@ -17,6 +17,7 @@ The documents that apply across versions, plus the generated database docs, the 
 |---|---|
 | [Spec Standard](SPEC_STANDARD.md) | Writing or accepting a feature spec |
 | [Ticket Implementation Prompt Standard](TICKET_PROMPT_STANDARD.md) | Writing a Linear ticket implementation prompt |
+| [Pull Request Description Standard](PR_DESCRIPTION_STANDARD.md) | Writing or reviewing a PR description |
 | [Performance & Scalability Guidelines](PERFORMANCE_GUIDELINES.md) | Adding a query, endpoint, or list view |
 | [PPDO Portal — Design System](DESIGN_SYSTEM.md) | Creating or restyling any page |
 | [Naming Conventions](NAMING_CONVENTIONS.md) | Adding a table or column |

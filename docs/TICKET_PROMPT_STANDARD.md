@@ -106,7 +106,10 @@ a fresh Claude Code session with no prior context should be able to act on it co
   `AnyAsync`); no `Task.WhenAll` over one `DbContext`; slim DTOs for list/grid endpoints; fetch
   shared state (`/auth/me`) once via context; loading states must not cause layout shift. Call out
   the relevant rule when the ticket adds a query, endpoint, or list view.
-- **PR body:** the manual test plan checklist is **copied from the spec's Acceptance checklist**
+- **PR body:** follows [`PR_DESCRIPTION_STANDARD.md`](PR_DESCRIPTION_STANDARD.md): issue, purpose,
+  fix and alternatives, before → after, code walkthrough, tests by name, live checks, risk & rollback,
+  deploy notes, review guide, confidence %. End every prompt with "Write the PR description per
+  docs/PR_DESCRIPTION_STANDARD.md." The manual test plan checklist is **copied from the spec's Acceptance checklist**
   (`docs/SPEC_STANDARD.md` §2.10) — do not invent it at PR time. Note blocked-by / blocks
   relationships, and carry every `⚠️ MIGRATION` flag from the steps into the deploy note.
 
