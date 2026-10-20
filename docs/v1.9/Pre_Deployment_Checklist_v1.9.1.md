@@ -31,7 +31,7 @@ Up: [v1.9 hub](README.md)
   must read **Windows**. ⚠️ If it reads **Linux**, STOP: .NET 10 is not offered on the Linux Consumption
   plan (.NET 9 is the last), and moving needs a Flex Consumption migration first. Check both apps:
   `ppdo-portal-api-uat` and `ppdo-portal-api-sea`.
-- [ ] **.NET 10 Isolated is offered.** Configuration → **General settings** → *.NET version* lists
+- [ ] **.NET 10 Isolated is offered.** Configuration → **Stack settings** → *Version* lists
   **.NET 10 Isolated**. (Microsoft lists .NET 10 isolated as GA on Functions 4.x, supported until
   2028-11-14.)
 - [ ] **Runtime version is `~4`.** Configuration → *Function runtime settings*. Nothing else changes.
@@ -59,18 +59,23 @@ office hours on production.
   safe, nothing is deployed, but the deploy does not happen.
 - [ ] **Push to `uat`** and watch *Deploy UAT* → *Deploy Functions to Azure (UAT)*.
 - [ ] **As soon as the "Deploy to Azure Functions via ZIP deploy" step is green**, while the smoke
-  test is still polling (it waits up to 5 minutes): Configuration → General settings →
-  *.NET version* → **.NET 10 Isolated** → **Save** → **Continue**.
+  test is still polling (it waits up to 5 minutes): Configuration → **Stack settings** →
+  *Version* → **.NET 10 Isolated** → **Apply** → confirm.
 - [ ] **The smoke test step goes green.** If it ran out of time before the restart finished,
   re-run the job (*Re-run failed jobs*); it redeploys the same commit and polls again.
 - [ ] **Record what happened** in PPDO-231 (did the API serve between the ZIP deploy and the setting
   change? how long until health was 200?). PPDO-234 copies the order proven here.
 
+> ✅ **Proven on UAT 2026-10-20** (Deploy UAT run 39362828775): ZIP deploy green → Stack settings → .NET 10
+> Isolated → Apply → `/api/health` 200 on the **first** smoke-test attempt, about 30 s later, with no re-run.
+> ⚠️ The Azure portal has moved the setting: it is on the **Stack settings** tab, not General settings, and the
+> button is **Apply**.
+
 ### Production (`ppdo-portal-api-sea`), when v1.9.x merges to `main`
 
 - [ ] **Production is already on .NET 10.** PPDO-234 (the v1.7.5 hotfix on `main`) moves production
   before v1.9.x gets there, so this deploy should find it done. Check, don't repeat:
-  Configuration → General settings → *.NET version* reads **.NET 10 Isolated**, and
+  Configuration → **Stack settings** → *Version* reads **.NET 10 Isolated**, and
   `deploy.yml` on `main` already has `dotnet-version: '10.0.x'`.
 - [ ] ⚠️ **If it still reads .NET 9** (PPDO-234 not deployed yet), do the UAT steps above against
   `ppdo-portal-api-sea`, with `deploy.yml` (already `10.0.x` in this release), in a quiet window.
@@ -79,7 +84,7 @@ office hours on production.
 
 No migration is involved, so a code rollback is a real rollback.
 
-1. Configuration → General settings → *.NET version* → **.NET 9 Isolated** → Save.
+1. Configuration → **Stack settings** → *Version* → **.NET 9 Isolated** → **Apply**.
 2. Redeploy the previous build. **UAT:** open the last green *Deploy UAT* run from before the
    merge → **Re-run all jobs** (a re-run uses that run's commit, the .NET 9 build). **Production:**
    the same with the last green *Deploy* run on `main`.
