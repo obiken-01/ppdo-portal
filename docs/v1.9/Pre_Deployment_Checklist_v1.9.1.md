@@ -2,9 +2,9 @@
 type: checklist
 version: v1.9.1
 status: current
-tickets: [PPDO-231]
+tickets: [PPDO-231, PPDO-235, PPDO-206, PPDO-44, PPDO-236, PPDO-234]
 updated: 2026-10-20
-status_note: "in development — other v1.9.1 tickets add their lines here in their own PRs"
+status_note: "final — release/1.9.1 frozen 2026-10-20"
 ---
 
 # v1.9.1 — Pre-Deployment Checklist
@@ -16,7 +16,7 @@ Up: [v1.9 hub](README.md)
 >
 > v1.9.1 is cut from the frozen `release/1.9.0`, so **everything in the
 > [v1.9.0 checklist](Pre_Deployment_Checklist_v1.9.0.md) must already be done on the target.**
-> v1.9.1 itself has **no migration** so far. Re-check before each deploy:
+> v1.9.1 itself has **no migration** (checked at the freeze, 2026-10-20). Re-check before each deploy:
 >
 > ```bash
 > git diff --name-only origin/release/1.9.0...origin/release/1.9.1 -- backend/PPDO.Infrastructure/Data/Migrations | grep -v Designer | grep -v Snapshot
@@ -93,6 +93,17 @@ No migration is involved, so a code rollback is a real rollback.
   `.xlsx` export open without errors.
 - [ ] As `ppdo.finance`, request a bulk initial WFP export; it reaches **Done** and the ZIP downloads.
   In Application Insights, `Functions.ExportJobTimer` runs every 30 s and succeeds.
+- [ ] **PPDO-235 — rich text.** Open an Investment Proposal with formatted text (bold, lists) as its encoder
+  and as a PPDO reviewer: the formatting shows, and nothing renders blank. (Stored HTML is not rewritten; the
+  browser now also cleans it with DOMPurify.)
+- [ ] **PPDO-206 — AIP workflow.** As a **division** encoder, submit with a warning: ONE dialog lists every
+  warning. ⚠️ This path was unit-tested but **not run live** locally (no submittable division there), so UAT is
+  its first live check. As a department head, Send to PPDO always confirms. Delete an activity carrying an
+  unresolved comment: the comment stays, labelled "On a deleted activity".
+- [ ] **PPDO-44 — config caching.** Edit a division, office or funding source in Config, then open a screen
+  that shows it: the new value appears at once (no wait for the 10-min cache).
+- [ ] **PPDO-236 — PPMP hidden.** Budget Planning → Report: no PPMP option; the WFP and AIP reports still
+  work, and the WFP export downloads (this click was not made live during the ticket).
 - [ ] Application Insights → Failures: no new exception types since the deploy. ⚠️ Watch for SQL
   errors in particular: EF Core 10 translates some queries differently (for example `.Contains()`
   on a list now sends one parameter per item), and the tests run on SQLite, not SQL Server.

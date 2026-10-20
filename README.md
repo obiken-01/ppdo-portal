@@ -4,7 +4,7 @@
 > Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
 > and office operations.
 
-**Current version: v1.9.1** (in development on `release/1.9.1`; v1.9.0 frozen on UAT) · **Next: v1.10.0** (placeholder — SAIP)
+**Current version: v1.9.1** (complete, frozen on `release/1.9.1`, going to UAT) · **Next: v1.10.0** (placeholder — SAIP)
 
 ---
 
@@ -24,7 +24,7 @@
 | v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
 | v1.9.0 | Larger requests from Demo 3 (see below) | 🧊 Complete, frozen for UAT |
-| **v1.9.1** | **.NET 10 runtime + AIP workflow UX fixes** (see below) | 🚧 **In development** |
+| **v1.9.1** | **.NET 10 runtime, security fix + AIP workflow UX fixes** (see below) | 🧊 **Complete, frozen for UAT** |
 | **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
 
 > **Production** is at v1.7.4. v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
@@ -36,11 +36,13 @@ See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and a
 
 ## What's in v1.9.1
 
-A patch on top of v1.9.0, built on `release/1.9.1` (cut 2026-10-19 from `release/1.9.0`) and due on
-UAT before the user training in the first week of November. No migrations expected.
+A patch on top of v1.9.0, built on `release/1.9.1` (cut 2026-10-19 from `release/1.9.0`, frozen 2026-10-20)
+and due on UAT before the user training in the first week of November. **No migrations.**
 
 - ⚙️ **.NET 10** — the backend moves from .NET 9 (end of support 2026-11-10) to .NET 10. The Function
   App runtime setting changes in the same deploy as the code.
+- 🛡️ **Rich-text security fix** (PPDO-235) — HtmlSanitizer 9.2 (AngleSharp 1.7.2) closes a known mXSS advisory;
+  Investment Proposal rich text is also cleaned in the browser with DOMPurify. Stored text is not rewritten.
 - ✅ **AIP workflow confirmations** — one combined confirmation per submit/send action listing every
   warning, instead of up to three stacked dialogs.
 - 🙈 **PPMP report hidden** (PPDO-236) — not requested; code kept dormant behind a flag (backend routes 404, no Report type option). Stock Card No. on the price index stays.
@@ -50,6 +52,11 @@ UAT before the user training in the first week of November. No migrations expect
   for department heads.
 - ⚡ **Config caching** — divisions, offices and funding sources are cached briefly and evicted on
   every config write.
+
+⚠️ **Deploying v1.9.1:** no migration, but the Function App's .NET setting moves to **.NET 10 Isolated** in the
+same deploy as the code, and the uat-only `deploy-uat.yml` needs `dotnet-version: '10.0.x'`. Follow
+[`docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md`](docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md). Production moves to
+.NET 10 first through the v1.7.5 hotfix (PPDO-234).
 
 ## What's in v1.9.0
 
@@ -94,7 +101,7 @@ chiefly adding, removing or renaming programs, projects and activities after the
 
 | Layer | Technology |
 |---|---|
-| Backend API | .NET 9 — Azure Functions (isolated worker, Consumption plan) |
+| Backend API | .NET 10 — Azure Functions (isolated worker, Consumption plan) |
 | Frontend | Next.js 14 — TypeScript, Tailwind CSS |
 | Database | Azure SQL Database (Basic tier, Southeast Asia) |
 | ORM | Entity Framework Core 9 |
@@ -135,7 +142,7 @@ ppdo-portal/
 
 | Tool | Install |
 |---|---|
-| .NET 9 SDK | https://dotnet.microsoft.com/download |
+| .NET 10 SDK | https://dotnet.microsoft.com/download |
 | Node.js (LTS) | https://nodejs.org |
 | Azure Functions Core Tools v4 | `npm install -g azure-functions-core-tools@4 --unsafe-perm true` |
 | Azure SWA CLI | `npm install -g @azure/static-web-apps-cli` |
