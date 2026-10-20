@@ -1,7 +1,7 @@
 ---
 type: hub
 version: v1.5.0
-status: shipped
+status: superseded
 tickets: []
 updated: 2026-10-19
 ---
@@ -13,6 +13,8 @@ Up: [Docs home](../HOME.md)
 Previous: [v1.4.4](../v1.4.4/README.md) · Next: [v1.7](../v1.7/README.md) · All releases: [Releases canvas](../Releases.canvas)
 
 PPMP report preview and .xlsx export matching the province form, Stock Card No. on the price index. Merged to main 2026-07-28.
+
+> **Hidden as of v1.9.1 (PPDO-236).** The PPMP report was built on our own initiative and nobody requested it. The code, tests and DI stay dormant behind `FeatureFlags.PpmpReportEnabled` (backend) and `PPMP_REPORT_ENABLED` in `frontend/src/lib/ppmp.ts`; both routes return 404 and the Report type dropdown omits it. The price index Stock Card No. column is kept.
 
 Each document's `status` property says whether it is `current`, `shipped`, `superseded` or `reference` (see [HOME](../HOME.md#status-values)).
 
