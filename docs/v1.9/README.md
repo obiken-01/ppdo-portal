@@ -29,3 +29,4 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 ## Checklists
 
 - [v1.9.0 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.0.md) — v1.9.0 pre-deployment checklist
+- [v1.9.1 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.1.md) — v1.9.1 pre-deployment checklist (.NET 10 runtime switch)

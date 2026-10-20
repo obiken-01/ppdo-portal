@@ -146,7 +146,7 @@ Create in this order — later resources need values from earlier ones.
   - [ ] Add your own client IP for running migrations from the dev machine
 - [ ] **SQL Database** `ppdo-portal-db-uat` — **Basic** tier (5 DTU, 2GB)
 - [ ] **Function App** `ppdo-portal-api-uat`
-  - [ ] Runtime .NET 9 **isolated**, Consumption plan, matching prod's OS
+  - [ ] Runtime .NET 10 **isolated** (was .NET 9 until PPDO-231, v1.9.1), Consumption plan, matching prod's OS (**Windows**: Linux Consumption has no .NET 10)
   - [ ] ⚠️ **Region: Southeast Asia** — colocated with the SQL database (see §3)
   - [ ] Application settings per §5
   - [ ] **CORS** → add the UAT Static Web App URL
@@ -239,7 +239,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Publish Functions
         run: |
