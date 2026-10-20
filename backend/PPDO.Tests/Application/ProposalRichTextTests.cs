@@ -50,7 +50,10 @@ public sealed class ProposalRichTextTests
 
         // ── mXSS payloads, including GHSA-pgww-w46g-26qg's annotation-xml integration point ──
         { "advisory annotation-xml", "<math><annotation-xml encoding=\"text/html\"><style><img src=x onerror=alert(1)></style></annotation-xml></math>", null },
-        { "mXSS svg/style", "<svg></p><style><a id=\"</style><img src=1 onerror=alert(1)>\">", null },
+        // AngleSharp 1.x follows the current HTML spec: "</p>" inside <svg> breaks out of foreign
+        // content, so <style> and the <img> parse as HTML. The <img> (and its onerror) is still
+        // removed; only the inert '">' text remains. Under AngleSharp 0.17.1 this was null.
+        { "mXSS svg/style", "<svg></p><style><a id=\"</style><img src=1 onerror=alert(1)>\">", "<p></p>\"&gt;" },
         { "mXSS math/mtext/mglyph", "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)></style></mglyph></table></mtext></math>", null },
         { "mXSS noscript attribute", "<noscript><p title=\"</noscript><img src=x onerror=alert(1)>\"></noscript>", "\"&gt;" },
         { "comment breakout", "<p>a<!-- hidden --><!--><img src=x onerror=alert(1)>--></p>", "<p>a--&gt;</p>" },
