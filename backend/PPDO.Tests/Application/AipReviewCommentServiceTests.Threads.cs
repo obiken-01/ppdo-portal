@@ -412,23 +412,78 @@ public sealed partial class AipReviewCommentServiceTests
     private async Task<NotificationBatch?> Run(RecordingNotificationService.Call call)
         => await call.Build(_audience.Object, default);
 
+    /// <summary>
+    /// PPDO-239: a thread PPDO starts goes to the office's activity readers through AIP Entry, and to every
+    /// PPDO reviewer through the review drill-down. The author is in the reviewer batch here and is
+    /// dropped later by StageAsync.
+    /// </summary>
     [Fact]
-    public async Task Bell_NewThread_GoesToTheOfficesActivityReaders_WithALinkToTheActivity()
+    public async Task Bell_NewThreadByPpdo_GoesToTheOfficesReaders_AndEveryPpdoReviewer_EachByTheirOwnLink()
     {
-        User encoder = Encoder(), head = DeptHead(), reviewer = PpdoReviewer();
+        User encoder = Encoder(), head = DeptHead(), reviewer = PpdoReviewer(), otherReviewer = PpdoReviewer();
         _audience.Setup(a => a.ActivityReadersAsync(
                 It.Is<AipOffice>(o => o.Id == GroupA), It.Is<AipProgram>(p => p.Id == ProgramId), It.IsAny<CancellationToken>()))
             .ReturnsAsync([encoder, head]);
+        _audience.Setup(a => a.CrossOfficeReviewersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([reviewer, otherReviewer]);
         AipReviewCommentService sut = Build();
 
         await sut.CreateAsync(RecordId, OfficeId, OnActivity("Check the unit\ncost"), reviewer);
 
+        List<RecordingNotificationService.Call> calls = _notifications.Calls.Where(c => c.Type == NotificationTypes.AipComment).ToList();
+        Assert.Equal(2, calls.Count);
+        Assert.All(calls, c => Assert.Same(reviewer, c.Actor));
+        NotificationBatch office = (await Run(calls[0]))!;
+        NotificationBatch ppdo = (await Run(calls[1]))!;
+
+        Assert.Equal("PPDO commented on Act: \"Check the unit cost\"", office.Text);
+        Assert.Equal($"/budget-planning/aip/entry?fiscalYear=2028&programId={ProgramId}&projectId={ProjectId}&activityId={ActivityId}", office.Link);
+        Assert.Equal([encoder, head], office.Recipients);
+
+        Assert.Equal(office.Text, ppdo.Text);
+        Assert.Equal($"/budget-planning/aip/review?officeId={OfficeId}&fiscalYear=2028&programId={ProgramId}&projectId={ProjectId}&activityId={ActivityId}", ppdo.Link);
+        Assert.Equal([reviewer, otherReviewer], ppdo.Recipients);
+    }
+
+    /// <summary>
+    /// PPDO-239: PPDO commenting on PPDO's own AIP — a PPDO user who is both an office reader and a
+    /// reviewer gets one entry (the AIP Entry one), not two.
+    /// </summary>
+    [Fact]
+    public async Task Bell_NewThreadByPpdo_AUserWhoIsBothAnOfficeReaderAndAReviewer_GetsOneEntry()
+    {
+        User author = PpdoReviewer(), both = PpdoReviewer(), otherReviewer = PpdoReviewer(), encoder = Encoder();
+        _audience.Setup(a => a.ActivityReadersAsync(It.IsAny<AipOffice>(), It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([encoder, both]);
+        _audience.Setup(a => a.CrossOfficeReviewersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([author, both, otherReviewer]);
+        AipReviewCommentService sut = Build();
+
+        await sut.CreateAsync(RecordId, OfficeId, OnActivity(), author);
+
+        List<RecordingNotificationService.Call> calls = _notifications.Calls.Where(c => c.Type == NotificationTypes.AipComment).ToList();
+        Assert.Equal(2, calls.Count);
+        Assert.Equal([encoder, both], (await Run(calls[0]))!.Recipients);
+        Assert.Equal([author, otherReviewer], (await Run(calls[1]))!.Recipients);
+    }
+
+    /// <summary>
+    /// PPDO-239: a thread the office's department head starts stays in the office — one batch, to the
+    /// office's activity readers. ⚠️ The reviewers below are set up so a stray reviewer batch would show.
+    /// </summary>
+    [Fact]
+    public async Task Bell_NewThreadByTheOffice_GoesToTheOfficesReadersOnly_NeverToPpdoReviewers()
+    {
+        User encoder = Encoder(), head = DeptHead();
+        _audience.Setup(a => a.ActivityReadersAsync(It.IsAny<AipOffice>(), It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([encoder, head]);
+        _audience.Setup(a => a.CrossOfficeReviewersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([PpdoReviewer(), PpdoReviewer()]);
+        AipReviewCommentService sut = Build();
+
+        await sut.CreateAsync(RecordId, OfficeId, OnActivity("Split this"), head);
+
         RecordingNotificationService.Call call = _notifications.Single(NotificationTypes.AipComment);
-        Assert.Same(reviewer, call.Actor);
         NotificationBatch batch = (await Run(call))!;
-        Assert.Equal("PPDO commented on Act: \"Check the unit cost\"", batch.Text);
-        Assert.Equal($"/budget-planning/aip/entry?fiscalYear=2028&programId={ProgramId}&projectId={ProjectId}&activityId={ActivityId}", batch.Link);
         Assert.Equal([encoder, head], batch.Recipients);
+        Assert.StartsWith("/budget-planning/aip/entry?", batch.Link);
     }
 
     [Fact]

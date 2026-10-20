@@ -477,20 +477,44 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
 
     /// <summary>
     /// A new thread: the office's users who can open the activity (AIP Entry's read, division axis
-    /// included), with a link to it. The author is removed by <see cref="INotificationService.StageAsync"/>.
+    /// included), with a link to it. A thread PPDO starts also goes to every PPDO reviewer, with the
+    /// review drill-down link (PPDO-239); one the department head starts stays in the office. The
+    /// author is removed by <see cref="INotificationService.StageAsync"/>.
     /// </summary>
-    private Task StageThreadStartedAsync(
+    private async Task StageThreadStartedAsync(
         CommentContext ctx, AipReviewComment head, AipCommentSide side, User caller, CancellationToken ct)
-        => _notifications.StageAsync(NotificationTypes.AipComment, caller, async (audience, c) =>
+    {
+        string sideLabel = side == AipCommentSide.Ppdo ? "PPDO" : caller.FullName;
+        HashSet<Guid> toldInOffice = [];
+
+        await _notifications.StageAsync(NotificationTypes.AipComment, caller, async (audience, c) =>
         {
             ActivityPath? path = await PathOfAsync(head, c);
             if (path is null) return null;
-            string sideLabel = side == AipCommentSide.Ppdo ? "PPDO" : caller.FullName;
+            IReadOnlyList<User> readers = await audience.ActivityReadersAsync(path.Office, path.Program, c);
+            toldInOffice.UnionWith(readers.Select(u => u.Id));
             return new NotificationBatch(
                 NotificationText.AipThreadStarted(sideLabel, path.Activity.Name, head.Body),
                 NotificationLinks.AipActivity(ctx.Record.FiscalYear, path.Program.Id, path.Project.Id, path.Activity.Id),
-                await audience.ActivityReadersAsync(path.Office, path.Program, c));
+                readers);
         }, ct);
+
+        if (side != AipCommentSide.Ppdo) return;
+
+        await _notifications.StageAsync(NotificationTypes.AipComment, caller, async (audience, c) =>
+        {
+            ActivityPath? path = await PathOfAsync(head, c);
+            if (path is null) return null;
+            // ⚠️ Not someone already told above: a PPDO user reviewing PPDO's own AIP is in both.
+            List<User> reviewers = (await audience.CrossOfficeReviewersAsync(c))
+                .Where(u => !toldInOffice.Contains(u.Id))
+                .ToList();
+            return new NotificationBatch(
+                NotificationText.AipThreadStarted(sideLabel, path.Activity.Name, head.Body),
+                NotificationLinks.AipReviewActivity(ctx.OfficeId, ctx.Record.FiscalYear, path.Program.Id, path.Project.Id, path.Activity.Id),
+                reviewers);
+        }, ct);
+    }
 
     /// <summary>
     /// A reply or a resolve: the thread's starter and everyone who has replied, kept only while they

@@ -22,6 +22,9 @@ public sealed class NotificationAudience : INotificationAudience
     public Task<IReadOnlyList<User>> ProposalReadersAsync(AipOffice office, AipProgram program, CancellationToken ct = default)
         => ProgramReadersAsync(office, program, includeCrossOffice: true, ct);
 
+    public Task<IReadOnlyList<User>> ProposalOfficeReadersAsync(AipOffice office, AipProgram program, CancellationToken ct = default)
+        => ProgramReadersAsync(office, program, includeCrossOffice: false, ct);
+
     public Task<IReadOnlyList<User>> ActivityReadersAsync(AipOffice office, AipProgram program, CancellationToken ct = default)
         => ProgramReadersAsync(office, program, includeCrossOffice: false, ct);
 
