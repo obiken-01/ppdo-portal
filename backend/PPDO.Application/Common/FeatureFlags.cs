@@ -15,4 +15,12 @@ public static class FeatureFlags
     // static readonly (not const) so flipping it doesn't produce an "unreachable code"
     // compiler warning at every call site that checks it.
     public static readonly bool AuditLogPageEnabled = true;
+
+    /// <summary>
+    /// PPMP report (v1.5). Hidden in v1.9.1 (PPDO-236): it was built on our own initiative and nobody
+    /// asked for it. While false, both <c>/api/budget-planning/ppmp/report/*</c> routes return 404
+    /// before reading anything; the service, Excel exporter, DI and tests stay in place, dormant.
+    /// Restore by flipping this to true and <c>PPMP_REPORT_ENABLED</c> in <c>frontend/src/lib/ppmp.ts</c>.
+    /// </summary>
+    public static readonly bool PpmpReportEnabled = false;
 }

@@ -22,11 +22,15 @@ public sealed class PpmpReportFunctions
     private readonly IPpmpReportExcelService  _excel;
     private readonly IJwtValidator           _jwt;
     private readonly IPermissionService       _permissions;
+    private readonly bool                    _enabled;
 
+    // ppmpEnabled defaults to the feature flag; DI leaves it at the default (bool is not registered).
+    // Tests pass true to keep exercising the dormant code (PPDO-236).
     public PpmpReportFunctions(
         IPpmpReportService report, IPpmpReportExcelService excel,
-        IJwtValidator jwt, IPermissionService permissions)
+        IJwtValidator jwt, IPermissionService permissions, bool? ppmpEnabled = null)
     {
+        _enabled     = ppmpEnabled ?? FeatureFlags.PpmpReportEnabled;
         _report      = report;
         _excel       = excel;
         _jwt         = jwt;
@@ -47,6 +51,8 @@ public sealed class PpmpReportFunctions
             Route = "budget-planning/ppmp/report/preview")] HttpRequestData req,
         CancellationToken ct)
     {
+        if (!_enabled) return req.CreateResponse(HttpStatusCode.NotFound);
+
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null || caller is null) return denied!;
 
@@ -73,6 +79,8 @@ public sealed class PpmpReportFunctions
             Route = "budget-planning/ppmp/report/export")] HttpRequestData req,
         CancellationToken ct)
     {
+        if (!_enabled) return req.CreateResponse(HttpStatusCode.NotFound);
+
         (User? caller, HttpResponseData? denied) = await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
         if (denied is not null || caller is null) return denied!;
 

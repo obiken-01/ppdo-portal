@@ -43,6 +43,7 @@ UAT before the user training in the first week of November. No migrations expect
   App runtime setting changes in the same deploy as the code.
 - ✅ **AIP workflow confirmations** — one combined confirmation per submit/send action listing every
   warning, instead of up to three stacked dialogs.
+- 🙈 **PPMP report hidden** (PPDO-236) — not requested; code kept dormant behind a flag (backend routes 404, no Report type option). Stock Card No. on the price index stays.
 - 💬 **Comments survive a deleted activity** — unresolved comments on an activity that is deleted stay
   in the thread, marked as on a deleted activity, so the reason for a return is not lost.
 - 💰 **Small fixes** — `−₱` format for over-ceiling remaining amounts, corrected Add Division help text
