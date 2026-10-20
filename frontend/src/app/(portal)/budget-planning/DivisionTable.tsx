@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import StatusPill from "@/components/ui/StatusPill";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatPesosSigned } from "@/lib/money";
 import { FIRST_ENTERED_FISCAL_YEAR } from "@/lib/aip-fiscal-years";
 import type { DivisionSummary } from "@/types";
 
@@ -127,7 +127,7 @@ function DivisionRow({
             ? "—"
             : division.allocated === 0 && division.costedInAip === 0
             ? "—"
-            : `₱${formatMoney(division.remaining)}`}
+            : formatPesosSigned(division.remaining)}
         </td>
         <td className="px-4 py-2.5 text-right whitespace-nowrap">
           {/* Hidden, not disabled: a division-scoped encoder can never edit an allocation, and a
@@ -170,7 +170,7 @@ function DivisionRow({
                       <td className="px-4 py-1.5 text-right text-slate-600 tabular-nums">
                         {unassigned || (fund.amount === 0 && fund.used === 0)
                           ? "—"
-                          : `₱${formatMoney(fund.remaining)}`}
+                          : formatPesosSigned(fund.remaining)}
                       </td>
                       <td className="px-4 py-1.5" />
                     </tr>

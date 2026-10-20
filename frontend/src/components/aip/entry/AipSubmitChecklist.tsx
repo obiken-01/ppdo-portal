@@ -26,7 +26,11 @@ import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import { fmtDivisionStamp } from "./AipDivisionParts";
 import { getProposalProjects } from "@/lib/investment-proposals";
 import type { ProposalProjectOption } from "@/types";
-import { buildAipSubmitConfirmation, type AipSubmitConfirmation } from "@/lib/aip-submit-confirm";
+import type { DivisionSummary } from "@/types";
+import {
+  allocationOverageAdvice, allocationOverageLine, buildAipSubmitConfirmation, divisionAllocationOverages,
+  type AipSubmitConfirmation, type DivisionAllocationOverage,
+} from "@/lib/aip-submit-confirm";
 
 /** Issue kinds grouped for display. The slug is switched on, never the message. */
 const KIND_LABELS: Record<string, string> = {
@@ -112,7 +116,7 @@ const STAGE_COPY = {
     heading: "Submit for department review",
     button: "Submit",
     busy: "Submitting…",
-    ready: "Everything checks out. Submitting hands this office’s whole AIP to the department head in one action.",
+    ready: "Submitting hands this office’s whole AIP to the department head in one action.",
   },
   toPpdo: {
     heading: "Send to PPDO",
@@ -121,13 +125,13 @@ const STAGE_COPY = {
     // ⚠️ Says what becomes true, not just what the button does. This is the hop after which
     // nobody in the office can edit anything (spec decision 5), and an encoder who discovers
     // that by finding their fields disabled has been told too late.
-    ready: "Everything checks out. Sending locks this office’s AIP — nobody here can edit it while PPDO has it.",
+    ready: "Sending locks this office’s AIP — nobody here can edit it while PPDO has it.",
   },
   resubmit: {
     heading: "Re-submit to PPDO",
     button: "Re-submit to PPDO",
     busy: "Sending…",
-    ready: "Everything checks out. Re-sending locks this office’s AIP again while PPDO reviews the changes.",
+    ready: "Re-sending locks this office’s AIP again while PPDO reviews the changes.",
   },
 } as const;
 
@@ -140,6 +144,7 @@ export default function AipSubmitChecklist({
   proposalCheck,
   staleSince = null,
   onRefresh,
+  allocation,
 }: {
   readiness: AipReadiness;
   stage: AipSubmitStage;
@@ -171,6 +176,12 @@ export default function AipSubmitChecklist({
   staleSince?: string | null;
   /** Re-reads the readiness; offered beside the stale caption. */
   onRefresh?: () => void;
+  /**
+   * PPDO-237 — the office's division rows, for the over-allocation warning. `rows` is what the page
+   * already holds (the panel line); `refresh` re-reads them at the click, like the proposals.
+   * Omitted before FY 2028, where "used" is the WFP ledger rather than the AIP.
+   */
+  allocation?: { rows: DivisionSummary[]; refresh: () => Promise<DivisionSummary[]> };
 }) {
   // ⚠️ Collapsed by default. The button already carries the count, so the summary an encoder
   // needs is visible without the list; expanded, an office with 80 uncosted activities pushed its
@@ -212,6 +223,23 @@ export default function AipSubmitChecklist({
     ceilingWarning != null &&
     (stage.kind === "encoder" || stage.kind === "awaitingReviewer" ||
       (stage.kind === "division" && !divisionSubmitted));
+
+  // ── Division over its allocation (PPDO-237) ──
+  //
+  // ⚠️ A warning, never a gate — on both hops, and it never enters `issues` or touches `canSubmit`.
+  // Whose rows count depends on the hop: a division's encoder sees their own division; the
+  // department head (and an office-level encoder, whose rows the server already scopes) sees all.
+  const allocationScope: number | null | undefined =
+    stage.kind === "division" ? (divisionSubmitted ? undefined : stage.division.divisionId)
+      : stage.kind === "toPpdo" || stage.kind === "awaitingDivisions" ||
+        stage.kind === "encoder" || stage.kind === "awaitingReviewer" ? null
+        : undefined;
+  const allocationReader: "encoder" | "head" =
+    stage.kind === "toPpdo" || stage.kind === "awaitingDivisions" ? "head" : "encoder";
+  const allocationOverages =
+    allocation && allocationScope !== undefined ? divisionAllocationOverages(allocation.rows, allocationScope) : [];
+  // "Everything … checks out" only when nothing at all is being warned about (PPDO-237).
+  const warned = showCeilingWarning || allocationOverages.length > 0;
 
   // Group by kind so an office with 80 uncosted activities shows one heading and a count rather
   // than 80 identical-looking lines.
@@ -268,6 +296,13 @@ export default function AipSubmitChecklist({
         setCheckingProposals(false);
       }
     }
+    // Read fresh, like the proposals; a failed read falls back to the rows the panel is showing —
+    // stale rather than silent, and it never holds the submit.
+    let freshOverages: DivisionAllocationOverage[] | null = null;
+    if (allocation && allocationScope !== undefined) {
+      const rows = await allocation.refresh().catch(() => allocation.rows);
+      freshOverages = divisionAllocationOverages(rows, allocationScope);
+    }
     setConfirmation(buildAipSubmitConfirmation({
       hop: stage.kind === "division" ? { kind: "division", divisionName: stage.division.name }
         : stage.kind === "toPpdo" ? { kind: "toPpdo", resubmit: stage.resubmit }
@@ -275,6 +310,7 @@ export default function AipSubmitChecklist({
       ceilingWarning,
       unresolved,
       proposalGaps,
+      allocationOverages: freshOverages,
     }));
   }
 
@@ -414,6 +450,23 @@ export default function AipSubmitChecklist({
         </p>
       )}
 
+      {/* ── Division allocation warning (PPDO-237) ──────────────────────────── */}
+      {/* ⚠️ Styled as the ceiling warning above, never as an item to fix: nothing here stops a
+          submit on either hop. One line per division and fund that is over. */}
+      {allocationOverages.length > 0 && (
+        <div role="status" className="flex gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span aria-hidden>⚠️</span>
+          <div>
+            <ul className="space-y-0.5">
+              {allocationOverages.map((o) => (
+                <li key={`${o.divisionLabel}-${o.fundCode}`}>{allocationOverageLine(o)}</li>
+              ))}
+            </ul>
+            <p className="mt-1">{allocationOverageAdvice(allocationReader)}</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Issues ───────────────────────────────────────────────────────── */}
       {/* ⚠️ A LOCKED office never shows the issue list, even when there are issues. It read
           "2 items to fix before submitting" while the work sat with PPDO — naming work the office
@@ -451,8 +504,8 @@ export default function AipSubmitChecklist({
         </p>
       ) : stage.kind === "division" && canSubmit ? (
         <p className="px-4 py-3 text-sm text-slate-600">
-          Everything in {stage.division.name} checks out. Submitting hands it to your department
-          head, and its activities lock for you until they return it.
+          {warned ? "" : `Everything in ${stage.division.name} checks out. `}Submitting hands it to
+          your department head, and its activities lock for you until they return it.
         </p>
       ) : canSubmit ? (
         <p className="px-4 py-3 text-sm text-slate-600">
@@ -460,7 +513,7 @@ export default function AipSubmitChecklist({
             // ⚠️ Says what is still possible, not only what is not. The office CAN keep editing
             // here — only sending it on is someone else's to do.
             ? `Your department head has this office’s AIP. You can still make changes; only they can send it on to PPDO.`
-            : copy.ready}
+            : `${warned ? "" : "Everything checks out. "}${copy.ready}`}
         </p>
       ) : (
         <div className="px-4 py-3">
