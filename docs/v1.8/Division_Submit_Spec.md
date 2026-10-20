@@ -113,6 +113,23 @@ needs to know its submitted work cannot be changed under it.
     the ceiling alone. A separate `CanSubmitToPpdo` (or the existing re-run in `SubmitToPpdoAsync`)
     keeps it blocking at the PPDO step.
 
+    **Changed 2026-10-20 (PPDO-237) — division allocations are now warned on too.** UAT found a
+    division ₱551,000 over its General Fund allocation submitting with no warning, and a readiness
+    panel saying it "checks out", because only the office ceiling was checked. Ralph's rules:
+    - **Warn, never block, on both hops.** The division submit lists the submitting division's
+      over-allocated funds and confirms with **Submit anyway**; the department head's Send /
+      Re-send to PPDO lists every over-allocated division and confirms with **Send anyway**. The
+      office ceiling stays the only hard block on the PPDO hop.
+    - **Per fund**, the way allocations are entered — one line per division × fund that is over.
+      A fund's spare money never covers another fund's overspend.
+    - **An unset allocation is ₱0**, like an unset office ceiling: costed money in a fund with no
+      allocation is over by the whole amount, and the line says the allocation is not set.
+    - **"Costed" is the ceiling's figure** (MOOE + CO, each activity rounded up to the thousand, PS
+      exempt), the dashboard's per-fund `used` — the same money the Division allocations table shows.
+    - **Readiness:** the over-allocation shows as an amber warning line, styled as the encoder-side
+      ceiling warning, and "Everything … checks out" appears only when nothing at all is warned.
+    - Frontend only — no server-side check, no migration. An office with no divisions is unchanged.
+
 Further rules implied by the above (not separate choices):
 
 - **Program and project nodes (containers).** In a divisioned office, a division encoder may rename,
@@ -545,7 +562,10 @@ States as in §6.1. Forbidden: the re-tag select and Return are **hidden** for n
   unchanged.
 - **No division-level comments or comment filtering.** Comments stay office-scoped.
 - **No change to FY ≤ 2027 records** (decision 12).
-- **No per-division ceiling.** The ceiling check is office-wide at every stage (decision 13), and division allocations are not checked here.
+- ~~**No per-division ceiling.** The ceiling check is office-wide at every stage (decision 13), and division allocations are not checked here.~~
+  **Changed 2026-10-20 (PPDO-237):** division allocations are now checked per fund at both hops, as
+  a **warning only** (decision 13). Still a non-goal: any per-division *block*, and any server-side
+  allocation check.
 - **Not a per-user lock or a concurrent-edit guard** — V18-71 is separate.
 
 ---

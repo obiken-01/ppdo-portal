@@ -449,9 +449,14 @@ function AipEntryPageInner() {
   // ⚠️ Ordered by a counter, not an effect-cleanup `cancelled` flag: clearing `divisionRowsStale`
   // re-runs this effect, and a cleanup flag then discarded the very response it had just asked for.
   // The counter drops only a response overtaken by a newer refresh (two quick saves).
+  //
+  // ↩️ PPDO-237 — the submit checklist now warns from these rows too, so in a divisioned FY2028+
+  // office they are refetched even while the panel is closed: a "checks out" read off rows from
+  // before the last save would be the very false all-clear this ticket removes.
   const divisionRowsRequest = useRef(0);
+  const allocationWatched = fiscalYear >= FIRST_ENTERED_FISCAL_YEAR && divisionRows.length > 0;
   useEffect(() => {
-    if (!divisionRowsStale || !divisionPanelOpen || divisionRowsLoading) return;
+    if (!divisionRowsStale || !(divisionPanelOpen || allocationWatched) || divisionRowsLoading) return;
     setDivisionRowsStale(false);
     const request = ++divisionRowsRequest.current;
     fetchDivisionRows()
@@ -461,7 +466,19 @@ function AipEntryPageInner() {
         setNoDivisionRow(none);
       })
       .catch(() => { /* keep the last figures — stale, not wrong */ });
-  }, [divisionRowsStale, divisionPanelOpen, divisionRowsLoading, fetchDivisionRows]);
+  }, [divisionRowsStale, divisionPanelOpen, allocationWatched, divisionRowsLoading, fetchDivisionRows]);
+
+  // PPDO-237 — the submit dialog's fresh read. Also refreshes the panel, so the two never disagree.
+  const refreshDivisionRowsForSubmit = useCallback(async (): Promise<DivisionSummary[]> => {
+    const request = ++divisionRowsRequest.current;
+    const { rows, none } = await fetchDivisionRows();
+    if (request === divisionRowsRequest.current) {
+      setDivisionRows(rows);
+      setNoDivisionRow(none);
+      setDivisionRowsStale(false);
+    }
+    return rows;
+  }, [fetchDivisionRows]);
 
   async function refreshReadiness() {
     if (!record) return;
@@ -934,6 +951,11 @@ function AipEntryPageInner() {
                 }
                 staleSince={readinessStale ? readinessReadAt : null}
                 onRefresh={() => void refreshReadiness()}
+                allocation={
+                  fiscalYear >= FIRST_ENTERED_FISCAL_YEAR
+                    ? { rows: divisionRows, refresh: refreshDivisionRowsForSubmit }
+                    : undefined
+                }
               />
             )}
 
