@@ -1,4 +1,13 @@
+---
+type: guide
+status: current
+tickets: []
+updated: 2026-08-27
+---
+
 # New Machine Setup
+
+Up: [Standards and reference](STANDARDS.md)
 
 Everything needed to get the PPDO Portal building, running, and deployable on a fresh Windows
 machine — including the tooling Claude Code uses, not just what the app needs.
@@ -67,7 +76,7 @@ exceed them.
 | # | Tool | Old machine | Why |
 |---|---|---|---|
 | 1 | **Git for Windows** | 2.39.1 | Version control; also the Bash shell Claude Code uses |
-| 2 | **.NET SDK** | **10.0.400** | Backend targets `net9.0`; SDK 10 builds it fine via roll-forward — see the note below |
+| 2 | **.NET SDK** | **10.0.400** | Backend targets `net10.0` since PPDO-231 (v1.9.1); SDK 10 is required — see the note below |
 | 3 | **Visual Studio 2026 Community** | 18.9.2 | Backend development. **Include the "Azure development" workload** |
 | 4 | **VS Code** | 1.134.0 | Frontend development |
 | 5 | **Node.js** | **22.16.0** | CI pins **20** — see the note below. Includes npm (10.9.2) |
@@ -95,9 +104,10 @@ exceed them.
 > ⚠️ **Two version mismatches carried over from the old machine — reproduce them knowingly, or fix
 > them deliberately. Do not fix them by accident while setting up:**
 >
-> - **.NET SDK 10.0.400 is the only SDK installed**, while every project targets `net9.0`. This
->   works because the SDK builds older target frameworks, and it is what the code has been built
->   with. Installing the 9.0 SDK as well is harmless; installing *only* 10 matches today's setup.
+> - **.NET SDK 10.0.400 is the only SDK installed.** Every project targeted `net9.0` until v1.9.1;
+>   since PPDO-231 they target `net10.0`, so SDK 10 is now required, not just sufficient. A branch
+>   older than v1.9.1 (`main` before PPDO-234, `release/1.9.0` and earlier) still targets `net9.0`
+>   and builds with the same SDK.
 > - **Node 22.16.0 locally vs `node-version: '20'` in `.github/workflows/ci.yml`.** Local and CI
 >   have been on different major versions the whole time. Node 22 is the safer choice for the new
 >   machine since that is what the code was actually developed against — but the real fix is to

@@ -1,11 +1,17 @@
 ---
-status: ready to execute
-version: v1.8.0 UAT (PPDO-21)
-tickets: PPDO-21
-supersedes: nothing — the ordered runbook for `UAT_ENVIRONMENT_SETUP.md`, which stays the reference
+type: runbook
+version: v1.8.0
+status: reference
+tickets: [PPDO-21]
+updated: 2026-09-21
+version_note: "v1.8.0 UAT (PPDO-21)"
+status_note: "ready to execute"
+supersedes_note: "nothing — the ordered runbook for `UAT_ENVIRONMENT_SETUP.md`, which stays the reference"
 ---
 
 # UAT — provisioning steps, in order
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **What this is.** `UAT_ENVIRONMENT_SETUP.md` is the reference: why, what it costs, every setting,
 > teardown. **This is the do-list** — the same information as an ordered sequence you work through
@@ -63,7 +69,7 @@ so teardown is a single delete.
         because every request was crossing the Pacific — it cut requests from ~2–6s to ~0.4s. Put
         UAT in Central US and testers will judge v1.8.0's performance against a handicap production
         no longer has.
-  - [ ] .NET 9 **isolated** · Consumption plan
+  - [ ] .NET 10 **isolated** (was .NET 9 until PPDO-231, v1.9.1) · Consumption plan · **Windows** (Linux Consumption has no .NET 10)
   - [ ] Application settings — §2 below
   - [ ] **CORS** → add the UAT Static Web App URL once you have it (step below).
         ⚠️ Portal only. `host.json` CORS does **not** work for the isolated worker.
@@ -229,3 +235,7 @@ why an Azure charge appears the month *after* you tear down.
 
 *Written 2026-09-21 alongside PPDO-21's noindex change. The reference doc is
 `UAT_ENVIRONMENT_SETUP.md`; this is the sequence.*
+
+## Related
+
+- [UAT Environment — Setup Reference](UAT_ENVIRONMENT_SETUP.md) — guide, reference

@@ -1,11 +1,17 @@
 ---
-status: accepted — 2026-10-14
+type: spec
 version: v1.9.0
-tickets: PPDO-221 (T3 backend), PPDO-222 (T4 frontend); after PPDO-219/220
-supersedes: —
+status: shipped
+tickets: [PPDO-221, PPDO-222, PPDO-219]
+updated: 2026-10-15
+status_note: "accepted — 2026-10-14"
+tickets_note: "PPDO-221 (T3 backend), PPDO-222 (T4 frontend); after PPDO-219/220"
+supersedes_note: "—"
 ---
 
 # v1.9.0 — Notification bell
+
+Up: [v1.9 hub](README.md)
 
 Ralph, 2026-10-14, while settling `Investment_Proposal_Comments_Spec.md` decision 10: "a button on
 the top right beside the name … clickable", Facebook as the model.
@@ -144,3 +150,10 @@ One additive migration (`AddNotifications`), before the code; add to
 - Recipient resolution per event, including the division axis and "never the actor".
 - A user cannot read or mark another user's notification (404).
 - A failure in recipient resolution does not fail the triggering action.
+
+## Related
+
+- [v1.9.0 — PPDO Reviewer Edits to a Submitted AIP](AIP_Reviewer_Edit_Spec.md) — spec, shipped
+- [v1.9.0 — AIP activity comments as threads](AIP_Comment_Threads_Spec.md) — spec, shipped
+- [v1.9.0 — Comments on Investment Proposals](Investment_Proposal_Comments_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](../v1.8/AIP_Review_Spec.md) — spec, shipped

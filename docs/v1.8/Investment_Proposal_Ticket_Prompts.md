@@ -1,11 +1,18 @@
 ---
-status: ready — 2026-09-29
-version: v1.8.0 (Demo 2.15)
-tickets: PPDO-153 (parent), PPDO-154 … PPDO-161
-supersedes: —
+type: plan
+version: v1.8.0
+status: shipped
+tickets: [PPDO-153, PPDO-154, PPDO-161]
+updated: 2026-10-01
+version_note: "v1.8.0 (Demo 2.15)"
+status_note: "ready — 2026-09-29"
+tickets_note: "PPDO-153 (parent), PPDO-154 … PPDO-161"
+supersedes_note: "—"
 ---
 
 # Demo 2.15 — Investment Proposal: ticket prompts
+
+Up: [v1.8 hub](README.md)
 
 Written to [TICKET_PROMPT_STANDARD.md](../TICKET_PROMPT_STANDARD.md). Each prompt below is pasted
 into its Linear ticket's description. The authoritative spec is
@@ -570,3 +577,10 @@ feat(investment-proposal): signatory defaults on Investment Planning Settings (P
 ---
 
 *Investment Proposal ticket prompts — Demo 2.15 — 2026-09-29.*
+
+## Related
+
+- [PGOM Investment Proposal — Template Findings](Investment_Proposal_Findings.md) — findings, reference
+- [v1.8.0 — PGOM Investment Proposal (Demo 2.15)](Investment_Proposal_Spec.md) — spec, shipped
+- [Investment Proposal — wireframes](wireframes/investment-proposal/README.md) — wireframe, shipped
+- [v1.9.0 — Comments on Investment Proposals](../v1.9/Investment_Proposal_Comments_Spec.md) — spec, shipped

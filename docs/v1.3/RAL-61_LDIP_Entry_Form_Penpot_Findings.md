@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.3.0
+status: reference
+tickets: [RAL-61, RAL-59, RAL-80]
+updated: 2026-07-02
+---
+
 # RAL-61 — LDIP Entry Form: Penpot Findings
+
+Up: [v1.3 hub](README.md)
 
 _Extracted 2026-07-02 via the Penpot MCP plugin, before implementation starts. Written up per the
 "extract Penpot designs upfront" convention (plugin access is session-dependent; capture findings
@@ -96,3 +106,8 @@ The ticket itself says "confirm the final LDIP field set with PPDO" — this Pen
 resolve that; if anything it adds a third candidate field set (Financial/Physical Targets) to rule
 out or fold in. Worth a explicit confirmation pass before Section 2/3 implementation, not just a
 schema-naming exercise.
+
+## Related
+
+- [RAL-XXX — LDIP File Upload + Activity-Level Fields (mirror AIP upload)](RAL-113_LDIP_Upload_Findings.md) — findings, shipped
+- [RAL-61 — LDIP Entry Form: Implemented Design](RAL-61_LDIP_Entry_Form_Design.md) — spec, shipped

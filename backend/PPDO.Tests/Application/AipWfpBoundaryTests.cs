@@ -137,7 +137,7 @@ public sealed class AipWfpBoundaryTests
 
         WfpCeilingService sut = new(
             wfpExpRepo.Object, wfpRepo.Object, ledgerRepo.Object, aipRepo.Object,
-            allocation.Object, divisionRepo.Object, fundingSourceRepo.Object);
+            allocation.Object, divisionRepo.Object, new PassThroughConfigCache(funds: fundingSourceRepo.Object));
 
         return (sut, wfpExpRepo, wfpRepo);
     }

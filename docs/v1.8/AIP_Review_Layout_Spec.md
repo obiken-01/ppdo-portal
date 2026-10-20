@@ -1,11 +1,19 @@
 ---
-status: draft
+type: spec
 version: v1.8.0
-tickets: R1 = the drill-down + Full office toggle on the review screen (blocked by PPDO-89)
-supersedes: AIP_Review_Spec.md §6.2 "Success" and "Unresolved filters" rows (layout only) — the gates, actions, comment rules and History modal in that spec are unchanged
+status: shipped
+tickets: [PPDO-89]
+supersedes: [AIP_Review_Spec.md]
+supersedes_scope: "AIP_Review_Spec.md: in part: section 6.2 Success and Unresolved filters rows (layout only)"
+updated: 2026-09-16
+status_note: "draft"
+tickets_note: "R1 = the drill-down + Full office toggle on the review screen (blocked by PPDO-89)"
+supersedes_note: "AIP_Review_Spec.md §6.2 \"Success\" and \"Unresolved filters\" rows (layout only) — the gates, actions, comment rules and History modal in that spec are unchanged"
 ---
 
 # v1.8.0 — AIP Review: the same drill-down as AIP Entry, with a Full office view
+
+Up: [v1.8 hub](README.md)
 
 ## 1. Goal
 
@@ -194,3 +202,12 @@ loading shape. The `lockedReason` widening on its own is too small to be worth c
   controls, and the view switch preserving the selection.
 - ⚠️ Live-test the **department head reading their own office's submitted work**. It is the reader
   most easily broken by a `canEdit` / read-only mix-up, and it is not the one anybody opens first.
+
+## Related
+
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](AIP_Review_Spec.md) — spec, shipped
+- [v1.8.0 — Consolidated AIP moves into the Report page](AIP_Report_Spec.md) — spec, shipped
+- [v1.8.0 — Division heads submit to the department head (PPDO-130)](Division_Submit_Spec.md) — spec, current
+- [AIP Review — wireframes](wireframes/aip-review/README.md) — wireframe, shipped
+- [Consolidated AIP — wireframes (PPDO-73)](wireframes/consolidated-view/README.md) — wireframe, shipped
+- [Submission history — wireframes (PPDO-77)](wireframes/submission-history/README.md) — wireframe, shipped

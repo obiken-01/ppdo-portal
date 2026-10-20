@@ -616,7 +616,7 @@ export default function PriceIndexConfigPage() {
                 className="w-full px-3 py-2 text-sm font-mono border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
               />
               <p className="mt-1 text-[11px] text-slate-600">
-                GSO item code, reproduced per line item in the PPMP report. Optional — leave blank
+                GSO item code for this item. Optional — leave blank
                 if the item has none.
               </p>
             </div>

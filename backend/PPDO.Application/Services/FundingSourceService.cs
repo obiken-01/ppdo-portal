@@ -30,6 +30,7 @@ public sealed class FundingSourceService : IFundingSourceService
     private readonly IAipExpenditureRepository       _aipExpRepo;
     private readonly ILogger<FundingSourceService>   _logger;
     private readonly IAuditService                   _audit;
+    private readonly IConfigLookupCache _configCache;
 
     public FundingSourceService(
         IFundingSourceRepository   repo,
@@ -37,7 +38,8 @@ public sealed class FundingSourceService : IFundingSourceService
         IWfpExpenditureRepository    wfpExpRepo,
         IAipExpenditureRepository    aipExpRepo,
         ILogger<FundingSourceService> logger,
-        IAuditService                audit)
+        IAuditService                audit,
+        IConfigLookupCache configCache)
     {
         _repo       = repo;
         _officeRepo = officeRepo;
@@ -45,6 +47,7 @@ public sealed class FundingSourceService : IFundingSourceService
         _aipExpRepo = aipExpRepo;
         _logger     = logger;
         _audit      = audit;
+        _configCache = configCache;
     }
 
     /// <inheritdoc />
@@ -154,6 +157,7 @@ public sealed class FundingSourceService : IFundingSourceService
 
         await _repo.AddAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateFundingSources();
 
         _logger.LogInformation(
             "Funding source created. Code: {Code}, OfficeId: {OfficeId}", entity.Code, entity.OfficeId);
@@ -258,6 +262,7 @@ public sealed class FundingSourceService : IFundingSourceService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateFundingSources();
 
         if (newOfficeId != oldOfficeId)
             _logger.LogInformation(
@@ -346,6 +351,7 @@ public sealed class FundingSourceService : IFundingSourceService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateFundingSources();
 
         _logger.LogInformation("Funding source deactivated. Code: {Code}", entity.Code);
         await _audit.LogAsync("funding_sources", entity.Id, AuditAction.Delete,
@@ -467,6 +473,7 @@ public sealed class FundingSourceService : IFundingSourceService
         }
 
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateFundingSources();
         _logger.LogInformation(
             "Funding sources CSV imported. New: {New}, Updated: {Updated}, Skipped: {Skipped}", created, updated, skipped);
         return ServiceResult<CsvImportResult>.Ok(new CsvImportResult(created, updated, skipped, errors));

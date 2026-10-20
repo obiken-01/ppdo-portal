@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.8.0
+status: reference
+tickets: []
+updated: 2026-10-01
+---
+
 # PGOM Investment Proposal — Template Findings
+
+Up: [v1.8 hub](README.md)
 
 > **Status:** Findings — complete. Promoted to
 > [Investment_Proposal_Spec.md](Investment_Proposal_Spec.md) (accepted 2026-09-29, v1.8.0 / Demo 2.15),
@@ -533,3 +543,10 @@ calculator is a good one for Ralph. It is a pure function with a tiny blast radi
 testable with `dotnet test`, and `WfpExpenditureCalculator` is the sibling to copy the shape
 from. The Word export itself is **not** a candidate, for the same reasons as
 `ExcelService.cs` (poor feedback loop, layout-heavy).
+
+## Related
+
+- [v1.8.0 — PGOM Investment Proposal (Demo 2.15)](Investment_Proposal_Spec.md) — spec, shipped
+- [Demo 2.15 — Investment Proposal: ticket prompts](Investment_Proposal_Ticket_Prompts.md) — plan, shipped
+- [Investment Proposal — wireframes](wireframes/investment-proposal/README.md) — wireframe, shipped
+- [v1.9.0 — Comments on Investment Proposals](../v1.9/Investment_Proposal_Comments_Spec.md) — spec, shipped

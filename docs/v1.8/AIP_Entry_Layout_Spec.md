@@ -1,11 +1,19 @@
 ---
-status: shipped
+type: spec
 version: v1.8.0
-tickets: E1 = PPDO-88 (delete backend, done), E2 = PPDO-89 (drill-down layout, done), E3 = PPDO-91 (delete controls, done)
-supersedes: AIP_Entry_Spec.md §6.1 layout (tree) — behaviour, gates and API in that spec are unchanged unless named here
+status: shipped
+tickets: [PPDO-88, PPDO-89, PPDO-91]
+supersedes: [AIP_Entry_Spec.md]
+supersedes_scope: "AIP_Entry_Spec.md: in part: the section 6.1 tree layout"
+updated: 2026-09-16
+status_note: "shipped"
+tickets_note: "E1 = PPDO-88 (delete backend, done), E2 = PPDO-89 (drill-down layout, done), E3 = PPDO-91 (delete controls, done)"
+supersedes_note: "AIP_Entry_Spec.md §6.1 layout (tree) — behaviour, gates and API in that spec are unchanged unless named here"
 ---
 
 # v1.8.0 — AIP Entry: drill-down layout + delete Project/Activity
+
+Up: [v1.8 hub](README.md)
 
 ## 1. Goal
 
@@ -326,3 +334,9 @@ same file, fully testable with `dotnet test`) — the transaction around it is n
 - `ReviewerWriteGuardCoverageTests` — the three DELETE routes stay covered (no exemption).
 - Frontend: selection-from-URL fallback to ancestor is pure — extract and unit-check if a frontend test
   harness exists; otherwise covered by the acceptance lines above.
+
+## Related
+
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [AIP Entry — Draft Mirror for Expenditure Lines](AIP_Expenditure_Draft_Spec.md) — spec, shipped
+- [AIP Concurrent Edit — Requirements](AIP_Concurrent_Edit_Spec.md) — spec, current

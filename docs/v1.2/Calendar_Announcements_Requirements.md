@@ -1,4 +1,15 @@
+---
+type: spec
+version: v1.2.0
+status: shipped
+tickets: []
+updated: 2026-06-18
+---
+
 # PPDO Portal — Calendar Event Approval & Public Announcements
+
+Up: [v1.2 hub](README.md)
+
 _Date: June 18, 2026 | Target: PPDO Portal v1.1.1_
 
 > **Working branch:** `release/1.1.1` — all feature branches created off this and PRs target it.
@@ -390,3 +401,7 @@ Chains RAL-82→83→84 and RAL-85→86→87 are independent and can run in para
 ---
 
 *PPDO Portal · v1.2 doc · June 18, 2026 · Ralph Armand Alcaide*
+
+## Related
+
+- [PPDO Portal — v1.1.1 Requirements](../v1.1.1/v1.1.1_Requirements.md) — spec, shipped

@@ -26,7 +26,7 @@
  *   - Focus is trapped inside the modal while open
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,12 @@ export type ConfirmDialogVariant = "primary" | "warning" | "danger";
 
 export interface ConfirmDialogProps {
   title:        string;
-  message:      string;
+  /**
+   * A sentence, or a node when the dialog has to list several things (PPDO-206 — the AIP submit
+   * lists every warning that applies in one dialog). A node renders in a `div`, so it may hold a
+   * list; a string keeps its paragraph.
+   */
+  message:      ReactNode;
   confirmLabel?: string;
   cancelLabel?:  string;
   variant?:      ConfirmDialogVariant;
@@ -170,9 +175,15 @@ export default function ConfirmDialog({
               <h2 id="confirm-title" className="text-base font-semibold text-slate-800 leading-snug">
                 {title}
               </h2>
-              <p id="confirm-message" className="mt-1 text-sm text-slate-600 leading-relaxed">
-                {message}
-              </p>
+              {typeof message === "string" ? (
+                <p id="confirm-message" className="mt-1 text-sm text-slate-600 leading-relaxed">
+                  {message}
+                </p>
+              ) : (
+                <div id="confirm-message" className="mt-1 text-sm text-slate-600 leading-relaxed">
+                  {message}
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AipCommentSide, AipReviewComment } from "@/types";
-import { groupAipThreads, isCollapsedThread, isOpenHead, openThreadCount } from "./aip-comment-threads";
+import { deletedNodeLabel, groupAipThreads, isCollapsedThread, isOpenHead, openThreadCount } from "./aip-comment-threads";
 
 const RESOLVED = "2026-10-16T02:00:00Z";
 
@@ -66,5 +66,13 @@ describe("isCollapsedThread", () => {
     expect(isCollapsedThread(open)).toBe(false);
     expect(isCollapsedThread(resolved)).toBe(true);
     expect(isCollapsedThread(edit)).toBe(false);
+  });
+});
+
+describe("deletedNodeLabel (PPDO-206)", () => {
+  it("names the kind of row that was deleted", () => {
+    expect(deletedNodeLabel("Activity")).toBe("On a deleted activity");
+    expect(deletedNodeLabel("Project")).toBe("On a deleted project");
+    expect(deletedNodeLabel("Program")).toBe("On a deleted program");
   });
 });

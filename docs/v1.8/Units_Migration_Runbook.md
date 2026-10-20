@@ -1,4 +1,14 @@
+---
+type: runbook
+version: v1.8.0
+status: current
+tickets: [PPDO-34]
+updated: 2026-09-03
+---
+
 # PPDO-34 / V18-35 — AIP Units Migration Runbook
+
+Up: [v1.8 hub](README.md)
 
 > The runbook for `20260903004121_MigrateAipAmountsToPesos`, the one migration in v1.8.0 that
 > **rewrites existing values in place**. Called from `docs/v1.8/Pre_Deployment_Checklist.md` §1.
@@ -417,3 +427,9 @@ baseline is the only thing that makes the post-migration number checkable.
 
 *Written 2026-09-03 alongside PPDO-34. Rehearsed on a local development database; the production-copy
 rehearsal in Appendix A is agreed and not yet run. Nothing here has been run against production.*
+
+## Related
+
+- [v1.8.0 — Pre-Deployment to Production Checklist](Pre_Deployment_Checklist.md) — checklist, reference
+- [v1.8.2 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.8.2.md) — checklist, current
+- [v1.9.0 — Pre-Deployment Checklist](../v1.9/Pre_Deployment_Checklist_v1.9.0.md) — checklist, current

@@ -107,6 +107,7 @@ var host = new HostBuilder()
 
         // -- In-memory cache (login rate limiting, RAL-58) -------------------
         services.AddMemoryCache();
+        services.AddSingleton<IConfigLookupCache, ConfigLookupCache>();
 
         // -- Scoped request context ------------------------------------------
         services.AddScoped<CallerContext>();

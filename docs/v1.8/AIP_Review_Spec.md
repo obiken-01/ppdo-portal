@@ -1,4 +1,18 @@
+---
+type: spec
+version: v1.8.0
+status: shipped
+tickets: [PPDO-48, PPDO-68, PPDO-67]
+supersedes: [Phase_Plan.md]
+superseded_by: [AIP_Report_Spec.md, AIP_Review_Layout_Spec.md, Division_Submit_Spec.md, ../v1.9/AIP_Comment_Threads_Spec.md, ../v1.9/AIP_Reviewer_Edit_Spec.md]
+supersedes_scope: "Phase_Plan.md: in part: section 6 for Phase 4"
+superseded_scope: "AIP_Report_Spec.md: in part: section 6.3a Opened from and the Consolidated AIP sidebar item; AIP_Review_Layout_Spec.md: in part: section 6.2 Success and Unresolved filters rows (layout only); Division_Submit_Spec.md: in part: decision 4 for offices with divisions; AIP_Comment_Threads_Spec.md: in part: section 3.1 the encoder never comments; AIP_Reviewer_Edit_Spec.md: in part: decision 5"
+updated: 2026-10-14
+---
+
 # v1.8.0 Phase 4 — AIP Review & Consolidation
+
+Up: [v1.8 hub](README.md)
 
 > **Status:** written 2026-09-08, after Phase 3 (PPDO-48) closed and merged to `release/1.8.0`.
 > **Ticket:** PPDO-68 · **Epic:** PPDO-67 · **Standard:** `docs/SPEC_STANDARD.md`
@@ -874,3 +888,22 @@ plus the 403/404/409 cases named in §4.2.
 
 *Companion to `AIP_Foundation_Spec.md` (Phase 2) and `AIP_Entry_Spec.md` (Phase 3). Supersedes
 `Phase_Plan.md` §6 for Phase 4; §12.4–§12.8 remain the plan's current text.*
+
+## Related
+
+- [v1.8.0 — Phase Plan & Work Items](Phase_Plan.md) — plan, current
+- [AIP Redesign — Working Notes](AIP_Redesign_Notes.md) — findings, superseded
+- [v1.8.0 Phase 2 — AIP Foundation](AIP_Foundation_Spec.md) — spec, shipped
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Review: the same drill-down as AIP Entry, with a Full office view](AIP_Review_Layout_Spec.md) — spec, shipped
+- [v1.8.0 — Consolidated AIP moves into the Report page](AIP_Report_Spec.md) — spec, shipped
+- [v1.8.0 — Division heads submit to the department head (PPDO-130)](Division_Submit_Spec.md) — spec, current
+- [AIP Review — wireframes](wireframes/aip-review/README.md) — wireframe, shipped
+- [Consolidated AIP — wireframes (PPDO-73)](wireframes/consolidated-view/README.md) — wireframe, shipped
+- [Submission history — wireframes (PPDO-77)](wireframes/submission-history/README.md) — wireframe, shipped
+- [AIP amounts — what each screen, API and file shows](AIP_Amount_States.md) — guide, current
+- [AIP Printable Form — Specification (V18-60)](AIP_Form_Spec.md) — spec, current
+- [v1.9.0 — PPDO Reviewer Edits to a Submitted AIP](../v1.9/AIP_Reviewer_Edit_Spec.md) — spec, shipped
+- [v1.9.0 — AIP activity comments as threads](../v1.9/AIP_Comment_Threads_Spec.md) — spec, shipped
+- [v1.9.0 — Comments on Investment Proposals](../v1.9/Investment_Proposal_Comments_Spec.md) — spec, shipped
+- [v1.9.0 — Notification bell](../v1.9/Notification_Centre_Spec.md) — spec, shipped

@@ -1726,7 +1726,7 @@ public sealed class AipService : IAipService
                 {
                     await _activityRepo.DeleteAsync(activity, ct);
 
-                    // PPDO-193 (V18-71) — declared here, after the ledger and comment deletes, and
+                    // PPDO-193 (V18-71) — declared here, after the ledger delete, and
                     // immediately before this save. Every save accepts all changes, which resets the
                     // declared OriginalValue to the copy read in this request; declared any earlier,
                     // the check would pass every time.
@@ -1745,8 +1745,15 @@ public sealed class AipService : IAipService
     }
 
     /// <summary>
-    /// The shared body of the program, project and activity deletes (PPDO-88): ledger rows, comments,
-    /// the node itself and any renumbering commit together, with a full snapshot in the audit row.
+    /// The shared body of the program, project and activity deletes (PPDO-88): ledger rows, the node
+    /// itself and any renumbering commit together, with a full snapshot in the audit row.
+    ///
+    /// <para>
+    /// ⚠️ <b>Comments are kept, not deleted</b> (PPDO-206). A comment is the record of why the row
+    /// was changed — deleting the activity a reviewer questioned used to delete the question too, and
+    /// the reason for the return was then visible nowhere. They stay on the office (node_id has no
+    /// FK), the read flags them orphaned, and an open one still counts until its author resolves it.
+    /// </para>
     /// </summary>
     private async Task<ServiceResult<AipDeleteResultDto>> DeleteNodeAsync(
         AipOffice office,
@@ -1779,8 +1786,8 @@ public sealed class AipService : IAipService
             }).ToList(),
             Comments = comments.Select(c => new
             {
-                // ParentCommentId (PPDO-223): a reply shares its head's node, so it is deleted with it
-                // here and the snapshot keeps which thread it was in.
+                // Kept on the office (PPDO-206); listed so the audit row still shows what was open on
+                // the node when it went. ParentCommentId (PPDO-223) keeps which thread each was in.
                 c.Id, c.ParentCommentId, NodeType = c.NodeType.ToString(), c.NodeId, c.AuthorId,
                 AuthorSide = c.AuthorSide.ToString(), c.Body, c.CreatedAt, c.ResolvedAt,
             }).ToList(),
@@ -1793,7 +1800,6 @@ public sealed class AipService : IAipService
             {
                 // Ledger rows first: their activity FK is NoAction, so the cascade stops at them.
                 await _ledgerRepo.DeleteByActivityIdsAsync(activityIds, ct);
-                await _commentRepo.DeleteByIdsAsync(comments.Select(c => c.Id).ToList(), ct);
                 await deleteNode();
                 renumbered = renumber is null ? [] : await renumber();
                 await _audit.LogAsync(tableName, nodeId, AuditAction.Delete, snapshot, null, ct);
@@ -1807,12 +1813,12 @@ public sealed class AipService : IAipService
 
         _logger.LogInformation(
             "AIP node deleted. NodeType: {NodeType}, Id: {Id}, RefCode: {RefCode}, " +
-            "RemovedActivities: {RemovedActivities}, RemovedComments: {RemovedComments}, " +
+            "RemovedActivities: {RemovedActivities}, KeptComments: {KeptComments}, " +
             "Renumbered: {Renumbered}, UserId: {UserId}",
             nodeType, nodeId, refCode, activities.Count, comments.Count, renumbered.Count, _caller.UserId);
 
         return ServiceResult<AipDeleteResultDto>.Ok(new AipDeleteResultDto(
-            nodeType.ToString(), nodeId, activities.Count, comments.Count, renumbered));
+            nodeType.ToString(), nodeId, activities.Count, renumbered));
     }
 
     /// <summary>FY≤2027 codes are the province file's, so only an entered year renumbers on delete.</summary>

@@ -1,0 +1,376 @@
+{
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "x": 0,
+      "y": -220,
+      "width": 720,
+      "height": 120,
+      "text": "# PPDO Portal releases\nv0.1 to v1.9.0. Click a hub card to open that version's documents. Source: the release history in the repo-root `CLAUDE.md`.\n\n[Docs home](HOME.md)"
+    },
+    {
+      "id": "t-v0.1",
+      "type": "text",
+      "text": "## v0.1 Foundation\n**2026-05-26**\n\nSolution scaffold, CI/CD, auth foundation.",
+      "x": 0,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "t-v1.0",
+      "type": "text",
+      "text": "## v1.0 Core portal and inventory\n\n\nAuth, users, resource links, dashboard, inventory monitoring. No docs folder.",
+      "x": 360,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "t-v1.1",
+      "type": "text",
+      "text": "## v1.1 Budget Planning foundation\n\n\nLDIP, AIP, WFP requirements and config pages; inventory refinements, distribution.",
+      "x": 720,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.1",
+      "type": "file",
+      "file": "v1.1/README.md",
+      "x": 720,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.1.1",
+      "type": "text",
+      "text": "## v1.1.1 Small features\n\n\nProfile, calendar approval, announcements. Shipped inside v1.2.0.",
+      "x": 1080,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.1.1",
+      "type": "file",
+      "file": "v1.1.1/README.md",
+      "x": 1080,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.2",
+      "type": "text",
+      "text": "## v1.2.0 Allocation and divisions\n**2026-06-30**\n\nDivisions replace PermissionGroup; Allocation page; security hardening.",
+      "x": 1440,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.2",
+      "type": "file",
+      "file": "v1.2/README.md",
+      "x": 1440,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.3",
+      "type": "text",
+      "text": "## v1.3.0 LDIP entry and upload\n**2026-07-07**\n\nLDIP entry form, upload, re-upload.",
+      "x": 1800,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.3",
+      "type": "file",
+      "file": "v1.3/README.md",
+      "x": 1800,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.4",
+      "type": "text",
+      "text": "## v1.4.x WFP rework\n**2026-07-12 to 07-21**\n\nv1.4.0 to v1.4.8 (v1.4.6 never merged): wizard, price index, Excel export, ceilings.",
+      "x": 2160,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.4",
+      "type": "file",
+      "file": "v1.4/README.md",
+      "x": 2160,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "h-v1.4.3",
+      "type": "file",
+      "file": "v1.4.3/README.md",
+      "x": 2160,
+      "y": 600,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "h-v1.4.4",
+      "type": "file",
+      "file": "v1.4.4/README.md",
+      "x": 2160,
+      "y": 900,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.5",
+      "type": "text",
+      "text": "## v1.5.0 PPMP report\n**2026-07-28**\n\nPPMP preview and export, Stock Card No.",
+      "x": 2520,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.5",
+      "type": "file",
+      "file": "v1.5/README.md",
+      "x": 2520,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.6",
+      "type": "text",
+      "text": "## v1.6.0 AIP editing\n**2026-07-30**\n\nAIP manual entry and inline editing; responsive shell. No docs folder.",
+      "x": 2880,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "t-v1.7",
+      "type": "text",
+      "text": "## v1.7.x Inventory\n**2026-08-04 to 08-20**\n\nv1.7.0 to v1.7.4: warehouse stock, GSO import, FIFO distribution, Southeast Asia relocation.",
+      "x": 3240,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.7",
+      "type": "file",
+      "file": "v1.7/README.md",
+      "x": 3240,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.8",
+      "type": "text",
+      "text": "## v1.8.x AIP redesign\n**UAT**\n\nv1.8.0 to v1.8.4: AIP Entry and Review, Investment Proposal, external API, caching, concurrent-edit guard.",
+      "x": 3600,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.8",
+      "type": "file",
+      "file": "v1.8/README.md",
+      "x": 3600,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    },
+    {
+      "id": "t-v1.9",
+      "type": "text",
+      "text": "## v1.9.0 Reviewer edits and WFP export\n**frozen for UAT**\n\nReviewer edits, comment threads, notifications, initial WFP and bulk export.",
+      "x": 3960,
+      "y": 0,
+      "width": 320,
+      "height": 240
+    },
+    {
+      "id": "h-v1.9",
+      "type": "file",
+      "file": "v1.9/README.md",
+      "x": 3960,
+      "y": 300,
+      "width": 320,
+      "height": 260
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-v1.0",
+      "fromNode": "t-v0.1",
+      "fromSide": "right",
+      "toNode": "t-v1.0",
+      "toSide": "left"
+    },
+    {
+      "id": "e-v1.1",
+      "fromNode": "t-v1.0",
+      "fromSide": "right",
+      "toNode": "t-v1.1",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.1",
+      "fromNode": "t-v1.1",
+      "fromSide": "bottom",
+      "toNode": "h-v1.1",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.1.1",
+      "fromNode": "t-v1.1",
+      "fromSide": "right",
+      "toNode": "t-v1.1.1",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.1.1",
+      "fromNode": "t-v1.1.1",
+      "fromSide": "bottom",
+      "toNode": "h-v1.1.1",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.2",
+      "fromNode": "t-v1.1.1",
+      "fromSide": "right",
+      "toNode": "t-v1.2",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.2",
+      "fromNode": "t-v1.2",
+      "fromSide": "bottom",
+      "toNode": "h-v1.2",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.3",
+      "fromNode": "t-v1.2",
+      "fromSide": "right",
+      "toNode": "t-v1.3",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.3",
+      "fromNode": "t-v1.3",
+      "fromSide": "bottom",
+      "toNode": "h-v1.3",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.4",
+      "fromNode": "t-v1.3",
+      "fromSide": "right",
+      "toNode": "t-v1.4",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.4",
+      "fromNode": "t-v1.4",
+      "fromSide": "bottom",
+      "toNode": "h-v1.4",
+      "toSide": "top"
+    },
+    {
+      "id": "eh-v1.4.3",
+      "fromNode": "h-v1.4",
+      "fromSide": "bottom",
+      "toNode": "h-v1.4.3",
+      "toSide": "top"
+    },
+    {
+      "id": "eh-v1.4.4",
+      "fromNode": "h-v1.4.3",
+      "fromSide": "bottom",
+      "toNode": "h-v1.4.4",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.5",
+      "fromNode": "t-v1.4",
+      "fromSide": "right",
+      "toNode": "t-v1.5",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.5",
+      "fromNode": "t-v1.5",
+      "fromSide": "bottom",
+      "toNode": "h-v1.5",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.6",
+      "fromNode": "t-v1.5",
+      "fromSide": "right",
+      "toNode": "t-v1.6",
+      "toSide": "left"
+    },
+    {
+      "id": "e-v1.7",
+      "fromNode": "t-v1.6",
+      "fromSide": "right",
+      "toNode": "t-v1.7",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.7",
+      "fromNode": "t-v1.7",
+      "fromSide": "bottom",
+      "toNode": "h-v1.7",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.8",
+      "fromNode": "t-v1.7",
+      "fromSide": "right",
+      "toNode": "t-v1.8",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.8",
+      "fromNode": "t-v1.8",
+      "fromSide": "bottom",
+      "toNode": "h-v1.8",
+      "toSide": "top"
+    },
+    {
+      "id": "e-v1.9",
+      "fromNode": "t-v1.8",
+      "fromSide": "right",
+      "toNode": "t-v1.9",
+      "toSide": "left"
+    },
+    {
+      "id": "eh-v1.9",
+      "fromNode": "t-v1.9",
+      "fromSide": "bottom",
+      "toNode": "h-v1.9",
+      "toSide": "top"
+    }
+  ]
+}

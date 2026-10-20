@@ -180,6 +180,8 @@ export default function DivisionConfigPage() {
   const [ownOfficeOnly, setOwnOfficeOnly] = useState(false);
   const [ownOfficeName, setOwnOfficeName] = useState<string | null>(null);
   const [ownOfficeId, setOwnOfficeId] = useState<number | null>(null);
+  // PPDO-206 — whether the own-office caller's office is the host, for the landing-page options.
+  const [ownIsHostOffice, setOwnIsHostOffice] = useState(true);
   const [divisions, setDivisions] = useState<DivisionResponse[]>([]);
   const [offices, setOffices] = useState<OfficeResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,6 +216,7 @@ export default function DivisionConfigPage() {
         if (!data.canManageConfig) {
           setOwnOfficeOnly(true);
           setOwnOfficeId(data.officeId ?? null);
+          setOwnIsHostOffice(data.isHostOffice);
           setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
         }
       })
@@ -263,6 +266,13 @@ export default function DivisionConfigPage() {
   useEffect(() => {
     if (authChecked) void load();
   }, [authChecked, load]);
+
+  // PPDO-206 — which kind of office the division in the form belongs to. An unknown office (list
+  // not loaded yet) is treated as the host, which offers the wider set — the resolver still skips
+  // anything a user cannot reach.
+  const divisionInHostOffice = ownOfficeOnly
+    ? ownIsHostOffice
+    : (offices.find((o) => o.id === form.officeId)?.isHostOffice ?? true);
 
   // ── Add / Edit ────────────────────────────────────────────────────────────────
 
@@ -677,14 +687,24 @@ export default function DivisionConfigPage() {
               value={form.landingPage}
               onChange={(landingPage) => setForm((prev) => ({ ...prev, landingPage }))}
               reachability={{
-                // Divisions exist under any office, and a per-user override can grant a page
-                // the division's own flags do not — so this is a hint, not a hard filter.
-                // The resolver skips a default a given user cannot reach (RAL-262).
-                isOfficeUser: false,
+                // A per-user override can grant a page the division's own flags do not, so this
+                // is a hint, not a hard filter. The resolver skips a default a given user cannot
+                // reach (RAL-262).
+                //
+                // ↩️ PPDO-206 — a guest-office division is offered what its users can actually
+                // land on: Investment Planning and My Account. The main dashboard bounces office
+                // users, and Investment Planning used to hide behind a flag the department head
+                // adding the division cannot even see.
+                isOfficeUser: !divisionInHostOffice,
                 canAccessInventory: form.canAccessInventory,
-                canAccessBudgetPlanning: form.canAccessBudgetPlanning,
+                canAccessBudgetPlanning: !divisionInHostOffice || form.canAccessBudgetPlanning,
               }}
-              hint="Applied to users in this division who have no preference of their own. Follows the flags ticked above."
+              hint={
+                ownOfficeOnly
+                  // No flags on this form for a department head, so none are mentioned.
+                  ? "Applied to users in this division who have no preference of their own."
+                  : "Applied to users in this division who have no preference of their own. Follows the flags ticked above."
+              }
             />
 
             {formError && (

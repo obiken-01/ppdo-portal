@@ -20,7 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
 import { getAipHistory } from "@/lib/aip-comments";
-import { openThreadCount } from "@/lib/aip-comment-threads";
+import { deletedNodeLabel, openThreadCount } from "@/lib/aip-comment-threads";
 import { aipErrorMessage } from "@/lib/aip";
 import { AIP_WORKFLOW } from "@/lib/aip-workflow";
 import type {
@@ -282,7 +282,7 @@ function HistoryComment({ comment }: { comment: AipReviewComment }) {
           the answer to it (spec §5.1). */}
       <p className="mt-0.5 text-slate-600">
         {comment.isOrphaned || comment.nodeRefCode == null
-          ? "On a row that has since been removed"
+          ? deletedNodeLabel(comment.nodeType)
           : <>On <span className="font-mono text-[11px]">{comment.nodeRefCode}</span></>}
       </p>
 

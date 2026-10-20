@@ -1,4 +1,16 @@
+---
+type: spec
+version: v1.2.0
+status: shipped
+tickets: []
+supersedes: [../v1.1/User_Roles_Permissions.md]
+supersedes_scope: "User_Roles_Permissions.md: in part: identity and permission model, sections 5 and 6"
+updated: 2026-09-02
+---
+
 # PPDO Portal — v1.2.0: Budget Allocation, Configurable Divisions & Permission Model
+
+Up: [v1.2 hub](README.md)
 
 _Version 1.0 (draft) | Date: June 24, 2026 | Target: PPDO Portal v1.2.0_
 _Covers: Budget Planning › Allocation page · configurable per-office Divisions · permission-model simplification (retire PermissionGroup + Division enum + Observer role) · division-scoped WFP · shared MoneyInput component_
@@ -300,3 +312,9 @@ All mechanical, de-risked by the clean slate, but this is the largest single pie
 - `docs/v1.1/Budget_Planning_Pages_Design_Spec.md` — WFP grid layout reused by the Allocation PPA tab.
 - `docs/NAMING_CONVENTIONS.md` · `docs/TICKET_PROMPT_STANDARD.md`.
 - `backend/PPDO.Application/Common/DivisionScope.cs` — to be reworked onto `division_id`.
+
+## Related
+
+- [PPDO Portal — User Roles, Permissions & Access Model](../v1.1/User_Roles_Permissions.md) — spec, superseded
+- [Permission Matrix](../v1.8/Permission_Matrix.md) — standard, current
+- [v1.2.0 — Linear Ticket Drafts](Tickets_Draft.md) — plan, shipped

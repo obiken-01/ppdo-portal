@@ -9,7 +9,7 @@
  * row's badge amber after the thread was resolved. Use `isOpenHead`, never `!c.resolvedAt`.
  */
 
-import type { AipReviewComment } from "@/types";
+import type { AipCommentNodeType, AipReviewComment } from "@/types";
 
 export interface AipCommentThread {
   head: AipReviewComment;
@@ -47,4 +47,12 @@ export function groupAipThreads(comments: readonly AipReviewComment[]): AipComme
  */
 export function isCollapsedThread(t: AipCommentThread): boolean {
   return t.head.resolvedAt != null && !t.head.isReviewerEdit;
+}
+
+/**
+ * "On a deleted activity" — the label an orphaned comment carries (PPDO-206). Deleting a row keeps
+ * its comments; this is how the reader learns the row they questioned is gone.
+ */
+export function deletedNodeLabel(nodeType: AipCommentNodeType): string {
+  return `On a deleted ${nodeType.toLowerCase()}`;
 }

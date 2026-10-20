@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.3
+status: shipped
+tickets: []
+updated: 2026-07-15
+---
+
 # Funding Source Aliases — AIP naming analysis & seed data
+
+Up: [v1.4.3 hub](README.md)
 
 > Supports the new v1.4.3 ticket: add an **aliases / other-names** column to the
 > `funding_sources` config so the WFP entry form can map an AIP activity's free-text fund-source
@@ -99,3 +109,10 @@ appears inside AIP values.
 External labels seen in the AIP that must **not** be aliased to any PPDO-managed fund (they stay
 unmatched → unselected): `DOH`, `DOH HFEP`, `NGAs`, `NGA (ER 1-94)`, `NDRRMC`, `TIEZA`, `TESDA`,
 `DA-BAFE`, `PHILMEC`, `PGO`, `PCSO`, `GSO`, `Brgy. Aid`, `Outsource`, `PDL`, `ELCAC`.
+
+## Related
+
+- [v1.4.3 — Other Fund Source Ceiling & Allocation Setup](v1.4.3_Requirements.md) — spec, shipped
+- [v1.4.3 Tickets — Other Fund Source Ceiling & Allocation Setup](Tickets.md) — plan, shipped
+- [Fund Source, Ceiling & Allocation — Current State Findings](Fund_Source_Ceiling_Allocation_Findings.md) — findings, reference
+- [Funding Source Seed Reconciliation (O2)](Funding_Source_Seed_Reconciliation.md) — findings, shipped

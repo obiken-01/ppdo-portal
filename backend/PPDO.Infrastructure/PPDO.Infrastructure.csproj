@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>PPDO.Infrastructure</RootNamespace>
@@ -14,12 +14,16 @@
 
   <ItemGroup>
     <PackageReference Include="Azure.Storage.Blobs" Version="12.24.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.13">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
+    <!-- PPDO-231: EF Core 10's SqlServer provider brings Microsoft.Data.SqlClient 6.1.7, which pulls
+         System.Security.Cryptography.Pkcs 9.0.11 (CVE-2026-84008 / CVE-2026-70162, DoS). Pinned to
+         the patched 10.0.13 until a SqlClient release carries a fixed version itself. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <!-- Word export (PPDO-158, Investment_Proposal_Spec.md decision 27). Already resolved through
          ClosedXML; pinned explicitly at that same version so a ClosedXML upgrade cannot move the

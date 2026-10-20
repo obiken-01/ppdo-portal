@@ -1,12 +1,19 @@
 ---
-status: ready — open questions resolved and ticketed 2026-09-21
-version: v1.8.1 (deferred out of v1.8.0)
-tickets: PPDO-112 (V18-64) · PPDO-111 (V18-65) · PPDO-113 (V18-66) · PPDO-114 (V18-67)
-milestone: v1.8.1 — AIP Offline Caching Groundwork
-supersedes: nothing — narrows `Phase_Plan.md` §8, which lists V18-64…69
+type: spec
+version: v1.8.2
+status: current
+tickets: [PPDO-112, PPDO-111, PPDO-113, PPDO-114]
+updated: 2026-10-07
+version_note: "v1.8.1 (deferred out of v1.8.0)"
+status_note: "ready — open questions resolved and ticketed 2026-09-21"
+tickets_note: "PPDO-112 (V18-64) · PPDO-111 (V18-65) · PPDO-113 (V18-66) · PPDO-114 (V18-67)"
+supersedes_note: "nothing — narrows `Phase_Plan.md` §8, which lists V18-64…69"
+milestone: "v1.8.1 — AIP Offline Caching Groundwork"
 ---
 
 # v1.8.0 Phase 6 (partial) — AIP Offline Caching Groundwork
+
+Up: [v1.8 hub](README.md)
 
 > **Scope note (2026-09-15, Ralph):** Phase 6 in `Phase_Plan.md` §8 is six items, V18-64 through
 > V18-69. **This spec covers only V18-64, V18-65, V18-66 and V18-67** — the caching/IndexedDB/perf
@@ -331,3 +338,7 @@ pure logic and would benefit most from real tests if a runner is added at ticket
 
 Flag the test-runner question to Ralph at ticket time rather than deciding it inside this spec —
 same open point raised for PPDO-85's threshold math.
+
+## Related
+
+- [Progressive Web App — Feasibility Study](../PWA_Feasibility_Study.md) — findings, reference

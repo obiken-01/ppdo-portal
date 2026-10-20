@@ -99,7 +99,6 @@ public record AipDeleteResultDto(
     string DeletedNodeType,
     int    DeletedId,
     int    RemovedActivityCount,
-    int    RemovedCommentCount,
     IReadOnlyList<AipRenumberedNodeDto> Renumbered);
 
 public record AipProgramDto(

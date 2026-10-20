@@ -402,7 +402,8 @@ public sealed class BudgetPlanningDashboardServiceTests
 
         BudgetPlanningDashboardService svc = new(
             ldipRepo.Object, aipRepo.Object, wfpRepo.Object, wfpExpRepo.Object, ledgerRepo.Object,
-            aipExpRepo.Object, officeRepo.Object, divisionRepo.Object, fundingSourceRepo.Object,
+            aipExpRepo.Object, officeRepo.Object,
+            new PassThroughConfigCache(divisionRepo.Object, officeRepo.Object, fundingSourceRepo.Object),
             auditRepo.Object, allocation.Object,
             ceilingRepo.Object, userRepo.Object, permissions.Object, settingsRepo.Object,
             divisionSubmissionRepo.Object,

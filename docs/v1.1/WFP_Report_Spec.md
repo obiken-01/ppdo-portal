@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.1.0
+status: reference
+tickets: [RAL-68, RAL-79]
+updated: 2026-06-16
+---
+
 # WFP Layout Specification — RAL-68 (Page) + RAL-79 (Report)
+
+Up: [v1.1 hub](README.md)
 
 Source file: `PPDO_WFP 2026_FinalVersion_PPDORevwd_PBORevwd_PTORevwd.xlsx`
 Reference sheet: `PPDO_WFP_2026_3FundS` (750 rows × 58 cols, consolidated 3 fund sources)
@@ -238,3 +248,8 @@ Column widths (approximate, from source Excel):
 - L–O: 15 chars each (quarterly amounts)
 - P: 15 chars (total)
 - Q: 20 chars (fund source)
+
+## Related
+
+- [RAL-68 — WFP Page Implementation Guide](RAL-68_WFP_Page_Implementation.md) — guide, shipped
+- [Budget Planning Pages — Design Spec (extracted from Penpot)](Budget_Planning_Pages_Design_Spec.md) — spec, reference

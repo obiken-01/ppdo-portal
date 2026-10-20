@@ -33,7 +33,7 @@ import type {
 } from "@/types";
 import { getAipComments, addAipComment, resolveAipComment } from "@/lib/aip-comments";
 import {
-  groupAipThreads, isCollapsedThread, isOpenHead, openThreadCount, type AipCommentThread,
+  deletedNodeLabel, groupAipThreads, isCollapsedThread, isOpenHead, openThreadCount, type AipCommentThread,
 } from "@/lib/aip-comment-threads";
 import { aipErrorMessage } from "@/lib/aip";
 import AipReviewerEditTag, { reviewerEditSeenLine } from "@/components/aip/review/AipReviewerEditTag";
@@ -142,8 +142,9 @@ function useComments(): CommentsState | null {
 }
 
 /**
- * Refetches the office's comments after a write elsewhere removed some — a project or activity
- * delete takes its comments with it (PPDO-88). Null outside the provider.
+ * Refetches the office's comments after a write elsewhere changed them — a project or activity
+ * delete leaves its comments orphaned (PPDO-206), and they move to the deleted-rows list. Null
+ * outside the provider.
  */
 export function useReloadAipComments(): (() => Promise<void>) | null {
   return useComments()?.reload ?? null;
@@ -246,7 +247,7 @@ export function AipCommentFilterBar({
                   dropping it would hide an outstanding ask, and linking it would go nowhere. */}
               {c.isOrphaned ? (
                 <p className="px-1 py-1.5 text-xs text-slate-600">
-                  <span className="italic">Removed row</span> · {firstLine(c.body)}
+                  <span className="italic">{deletedNodeLabel(c.nodeType)}</span> · {firstLine(c.body)}
                 </p>
               ) : (
                 <button
@@ -303,6 +304,59 @@ function FilterChip({ side, count }: { side: AipCommentSide; count: number }) {
     >
       {count} from {SIDE_LABEL[side]}
     </button>
+  );
+}
+
+// ── Comments on deleted rows ────────────────────────────────────────────────
+
+/**
+ * The office's threads whose row has been deleted (PPDO-206).
+ *
+ * ⚠️ **Kept, labelled, and still actionable.** Deleting a row no longer deletes the comments on it:
+ * the comment is the record of why the row changed, and an open one still counts against the
+ * re-submit warning. With no row left to anchor to, it would otherwise be counted with nowhere on
+ * screen to read or resolve it — so every orphaned thread is listed here, under the filter bar,
+ * with the same resolve and reply controls as an anchored one.
+ *
+ * Renders nothing when no comment is orphaned. Open by default while any is unresolved.
+ */
+export function AipDeletedRowComments() {
+  const ctx = useComments();
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  if (!ctx?.data) return null;
+
+  const groups = Array.from(ctx.byNode.entries()).filter(([, list]) => list.some((c) => c.isOrphaned));
+  if (groups.length === 0) return null;
+
+  const open = groups.reduce((sum, [, list]) => sum + openThreadCount(list), 0);
+  const expanded = toggled ?? open > 0;
+
+  return (
+    <section className="border border-slate-200 bg-white px-4 py-3" aria-label="Comments on deleted rows">
+      <button
+        type="button"
+        onClick={() => setToggled(!expanded)}
+        aria-expanded={expanded}
+        className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-800"
+      >
+        <span aria-hidden>{expanded ? "▾" : "▸"}</span>
+        Comments on deleted rows
+        {open > 0 && (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-amber-900">
+            {open} unresolved
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {groups.map(([key, list]) => (
+            <div key={key} className="border-l-2 border-slate-200 pl-3">
+              <CommentThread nodeType={list[0].nodeType} nodeId={list[0].nodeId} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -455,7 +509,9 @@ function CommentThread({
   const threads = groupAipThreads(comments);
   const inView = threads.filter((t) => !isCollapsedThread(t));
   const collapsed = threads.filter(isCollapsedThread);
-  const canAdd = canStartThread(ctx, nodeType);
+  // ⚠️ Never a new thread on a deleted row (PPDO-206): its comments are kept as the record, but
+  // there is no row left to ask a change of. Resolve and reply still work.
+  const canAdd = canStartThread(ctx, nodeType) && !comments.some((c) => c.isOrphaned);
 
   async function submit() {
     const body = draft.trim();
@@ -736,7 +792,7 @@ function CommentRow({
           once, on the head. */}
       {comment.isOrphaned && comment.parentCommentId == null && (
         <p className="mt-0.5 text-[10px] italic text-slate-600">
-          The row this referred to has since been removed.
+          {deletedNodeLabel(comment.nodeType)}.
         </p>
       )}
     </div>

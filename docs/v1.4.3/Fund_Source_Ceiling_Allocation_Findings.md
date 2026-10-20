@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.4.3
+status: reference
+tickets: []
+updated: 2026-07-15
+---
+
 # Fund Source, Ceiling & Allocation — Current State Findings
+
+Up: [v1.4.3 hub](README.md)
 
 > Research pass prepared ahead of writing requirements for "ceiling and allocation setup
 > for other fund sources." Branch: `release/1.4.3`. Scope: backend
@@ -282,3 +292,10 @@ immediate scope just the WFP entry-form default + note (gap #3)? The two are ind
 default+note fix does not, by itself, give per-fund-source budget tracking — expenditures under
 the defaulted fund source would still be checked against the single fund-agnostic
 office/division ceiling that exists today.
+
+## Related
+
+- [v1.4.3 — Other Fund Source Ceiling & Allocation Setup](v1.4.3_Requirements.md) — spec, shipped
+- [v1.4.3 Tickets — Other Fund Source Ceiling & Allocation Setup](Tickets.md) — plan, shipped
+- [Funding Source Aliases — AIP naming analysis & seed data](Funding_Source_Aliases.md) — findings, shipped
+- [Funding Source Seed Reconciliation (O2)](Funding_Source_Seed_Reconciliation.md) — findings, shipped

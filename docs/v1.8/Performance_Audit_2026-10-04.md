@@ -1,11 +1,18 @@
 ---
-status: findings
-version: v1.8.x
-date: 2026-10-04
-supersedes: none (follows ../Performance_Audit_2026-07-16.md)
+type: audit
+version: v1.8.0
+status: reference
+tickets: []
+updated: 2026-10-04
+version_note: "v1.8.x"
+status_note: "findings"
+supersedes_note: "none (follows ../Performance_Audit_2026-07-16.md)"
+date: "2026-10-04"
 ---
 
 # Performance audit — 2026-10-04
+
+Up: [v1.8 hub](README.md)
 
 A whole-codebase pass for parts that need optimization, after v1.8.0 reached UAT. **No code was changed.**
 It follows the [2026-07-16 audit](../Performance_Audit_2026-07-16.md) and the rules in
@@ -134,3 +141,8 @@ O12 (audit row in the same save) is left out of the list: it changes the audit c
 2. **Ticket 3: does a PPDO reviewer on AIP Entry ever need other offices' rows?** Default: no. Entry edits one
    office; review has its own screens.
 3. **Should production compression be checked on UAT first?** Default: yes, UAT is the deploy rehearsal.
+
+## Related
+
+- [Performance & Scalability Guidelines](../PERFORMANCE_GUIDELINES.md) — standard, current
+- [Full-application performance audit — findings](../Performance_Audit_2026-07-16.md) — audit, reference

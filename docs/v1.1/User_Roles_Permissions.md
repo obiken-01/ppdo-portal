@@ -1,4 +1,17 @@
+---
+type: spec
+version: v1.1.0
+status: superseded
+tickets: [RAL-97]
+superseded_by: [../v1.2/Allocation_Requirements.md]
+superseded_scope: "Allocation_Requirements.md: in part: identity and permission model, sections 5 and 6"
+updated: 2026-09-02
+---
+
 # PPDO Portal — User Roles, Permissions & Access Model
+
+Up: [v1.1 hub](README.md)
+
 _Version 1.1 | Date: June 11, 2026 | Decisions confirmed by Ralph 2026-06-11_
 _This is the reference for how users, roles, divisions, offices, and permission flags work — including non-PPDO (office) users introduced in v1.1._
 
@@ -161,3 +174,8 @@ Group auto-assignment (`GroupIdFor`): SuperAdmin/Admin → none · user with `of
 - Linear RAL-81 — implementation ticket for the flags, nullable Division, office_id, and the scoping guards
 - `backend/PPDO.Application/Services/PermissionService.cs` — resolution logic
 - Penpot Page 4, Screens 20–21 — PPDO vs office-user dashboard mockups
+
+## Related
+
+- [PPDO Portal — v1.2.0: Budget Allocation, Configurable Divisions & Permission Model](../v1.2/Allocation_Requirements.md) — spec, shipped
+- [Permission Matrix](../v1.8/Permission_Matrix.md) — standard, current

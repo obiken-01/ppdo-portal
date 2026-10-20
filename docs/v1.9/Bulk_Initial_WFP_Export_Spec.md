@@ -1,11 +1,17 @@
 ---
-status: accepted — 2026-10-15
+type: spec
 version: v1.9.0
-tickets: PPDO-227 (epic) — PPDO-228 (T1 plumbing), PPDO-229 (T2 worker), PPDO-230 (T3 UI)
-supersedes: —
+status: shipped
+tickets: [PPDO-227, PPDO-228, PPDO-229, PPDO-230]
+updated: 2026-10-16
+status_note: "accepted — 2026-10-15"
+tickets_note: "PPDO-227 (epic) — PPDO-228 (T1 plumbing), PPDO-229 (T2 worker), PPDO-230 (T3 UI)"
+supersedes_note: "—"
 ---
 
 # v1.9.0 — Bulk export of initial WFPs (background job)
+
+Up: [v1.9 hub](README.md)
 
 Ralph, 2026-10-15: the initial WFP report stays per office (`Initial_WFP_Report_Spec.md`); add a
 **Download all** that produces one ZIP with one Excel file per Consolidated office. Built as a
@@ -226,3 +232,8 @@ T1 → T2 → T3. T2 depends only on T1's interfaces; it can be tested before T3
 - Worker: per-office failure isolation; README content; progress counts; stuck-job recovery and
   the attempt cap; cleanup deletes the file and marks Expired.
 - Endpoints: one active job per year; 403/409/410 cases.
+
+## Related
+
+- [v1.9.0 — Initial WFP report from the consolidated AIP](Initial_WFP_Report_Spec.md) — spec, shipped
+- [v1.9.0 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.0.md) — checklist, current

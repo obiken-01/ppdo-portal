@@ -1,4 +1,16 @@
+---
+type: spec
+version: v1.8.0
+status: superseded
+tickets: [PPDO-15, PPDO-86]
+superseded_by: [v1.8/External_AIP_API_Spec.md, external-api/README.md]
+superseded_scope: "External_AIP_API_Spec.md: in part: sections 4.2, 5 and 6.1; README.md: in part: sections 3, 4.2, 5 and 6.1"
+updated: 2026-09-15
+---
+
 # External AIP API — Contract (v0.6, historical)
+
+Up: [Standards and reference](STANDARDS.md)
 
 > ✅ **Built in v1.8.0** — merged to `release/1.8.0` (PPDO-15, -13, -14, -12; PRs #328–#331). ⚠️ Not
 > live until v1.8.0 merges to `main`, and no partner key can be issued until the API Access page
@@ -373,3 +385,8 @@ endpoint needed.)
 - ✅ **Phase 2 built in v1.8.0:** PPDO-15 (keys), PPDO-13 (auth, scope, rate limit, request log),
   PPDO-14 (read service), PPDO-12 (endpoints + schema contract test) — PRs #328–#331. The API Access
   page to issue and revoke keys is PPDO-86.
+
+## Related
+
+- [External AIP API + partner API keys — build spec](v1.8/External_AIP_API_Spec.md) — spec, shipped
+- [External AIP API — response schema & samples (1.1.1)](external-api/README.md) — spec, shipped

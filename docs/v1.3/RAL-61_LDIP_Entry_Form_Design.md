@@ -1,4 +1,14 @@
+---
+type: spec
+version: v1.3.0
+status: shipped
+tickets: [RAL-61]
+updated: 2026-07-02
+---
+
 # RAL-61 — LDIP Entry Form: Implemented Design
+
+Up: [v1.3 hub](README.md)
 
 _Written 2026-07-02 alongside the implementation. **This supersedes the field table in the
 RAL-61 ticket description** — the form was redesigned in the RAP-01 Penpot frame
@@ -92,3 +102,8 @@ pattern) — the app uses `output: "export"`, so the old `[id]/edit` dynamic seg
 - `/budget-planning/ldip/edit?id=N` renders 200 in dev (the old `[id]/edit` dynamic
   route 500'd under `output: export`); full `npm run build` static export passes ✓
 - 429/429 backend tests; tsc + eslint clean.
+
+## Related
+
+- [RAL-XXX — LDIP File Upload + Activity-Level Fields (mirror AIP upload)](RAL-113_LDIP_Upload_Findings.md) — findings, shipped
+- [RAL-61 — LDIP Entry Form: Penpot Findings](RAL-61_LDIP_Entry_Form_Penpot_Findings.md) — findings, reference

@@ -37,7 +37,11 @@ public sealed class PpmpReportFunctionsTests
     private readonly Mock<IJwtValidator>          _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>      _permissions = new(MockBehavior.Loose);
 
-    private PpmpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);
+    // The report is hidden by FeatureFlags.PpmpReportEnabled (PPDO-236). Every pre-existing test
+    // exercises the dormant code, so it opts in explicitly; the 404 tests use SutDefault.
+    private PpmpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object, ppmpEnabled: true);
+
+    private PpmpReportFunctions SutDefault => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);
 
     // ── Arrange helpers ────────────────────────────────────────────────────────
 
@@ -80,6 +84,25 @@ public sealed class PpmpReportFunctionsTests
 
     private static string Query(string? divisionId = null)
         => $"officeId={OfficeId}&fiscalYear={FiscalYear}" + (divisionId is null ? "" : $"&divisionId={divisionId}");
+
+    // ── Hidden (PPDO-236) ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GetPreview_WhileReportIsHidden_Returns404WithoutReadingAnything()
+    {
+        // MockBehavior.Strict on every collaborator: any call at all (JWT, permission, service) throws.
+        HttpResponseData response = await SutDefault.GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Export_WhileReportIsHidden_Returns404WithoutReadingAnything()
+    {
+        HttpResponseData response = await SutDefault.Export(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
     // ── Auth gate — preview ────────────────────────────────────────────────────
 

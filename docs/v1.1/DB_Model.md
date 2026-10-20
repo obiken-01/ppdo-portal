@@ -1,4 +1,15 @@
+---
+type: spec
+version: v1.1.0
+status: reference
+tickets: []
+updated: 2026-07-01
+---
+
 # PPDO Portal — Database Model
+
+Up: [v1.1 hub](README.md)
+
 _Version 1.1 | Date: June 10, 2026 | Target: PPDO Portal v1.1_
 _Covers: LDIP · AIP · WFP · Account Config · Office Config · Funding Source Config · Audit Log_
 
@@ -328,3 +339,9 @@ CREATE INDEX IX_wfp_source_id                 ON wfp_records           (source_i
 | 14 | **WFP business rule:** `quarterly_total` (Q1+Q2+Q3+Q4) must not exceed `net_appropriation` per expenditure line. Enforced on both frontend (warning) and backend (API validation). Backend rule covered by unit tests |
 | 15 | **CSV download column order** matches the seed CSV files exactly. This is the contract for round-trip CSV editing (download → edit offline → re-upload). Do not change column order without updating the import parser. See column order notes on each config table above |
 | 16 | **Seeding (decided 2026-06-10):** no EF seed migration. Config seed data (`chart_of_accounts.csv`, `offices.csv`, `funding_sources.csv`) is loaded manually by the user through each config page's CSV Upload feature. The seed CSVs stay outside the repo |
+
+## Related
+
+- [PPDO Portal — Data Dictionary (v1.8.0)](../database/DATA_DICTIONARY.md) — guide, reference
+- [LDIP / AIP / WFP Web Application — Requirements & Field Analysis](LDIP_AIP_WFP_Web_Requirements.md) — spec, shipped
+- [AIP Import & WFP Findings](AIP_WFP_Import_Findings.md) — findings, reference

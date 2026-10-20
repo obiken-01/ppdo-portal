@@ -52,7 +52,7 @@ import AipSubmitChecklist, { type AipSubmitStage } from "@/components/aip/entry/
 import { refreshAipNotifications, useAipNotifications } from "@/lib/aip-notifications";
 import { reviewerEditNotice } from "@/lib/aip-reviewer-edit";
 import AipReviewerEditNotice from "@/components/aip/entry/AipReviewerEditNotice";
-import { AipCommentsProvider, AipCommentFilterBar } from "@/components/aip/entry/AipComments";
+import { AipCommentsProvider, AipCommentFilterBar, AipDeletedRowComments } from "@/components/aip/entry/AipComments";
 import { applyAipDeleteToTree } from "@/components/aip/entry/AipDeleteNodeButton";
 import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
 import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
@@ -952,6 +952,8 @@ function AipEntryPageInner() {
             {/* Renders nothing when there is nothing outstanding — a permanent "0 unresolved" strip
                 would be noise on the page encoders use most. */}
             <AipCommentFilterBar onSelectNode={selectNode} />
+            {/* PPDO-206 — threads whose row was deleted: kept, labelled, still resolvable. */}
+            <AipDeletedRowComments />
 
             {myGroups.length === 0 ? (
               <EmptyState

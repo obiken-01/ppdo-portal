@@ -24,12 +24,14 @@ public sealed class OfficeService : IOfficeService
     private readonly IOfficeRepository _repo;
     private readonly ILogger<OfficeService> _logger;
     private readonly IAuditService _audit;
+    private readonly IConfigLookupCache _configCache;
 
-    public OfficeService(IOfficeRepository repo, ILogger<OfficeService> logger, IAuditService audit)
+    public OfficeService(IOfficeRepository repo, ILogger<OfficeService> logger, IAuditService audit, IConfigLookupCache configCache)
     {
         _repo   = repo;
         _logger = logger;
         _audit  = audit;
+        _configCache = configCache;
     }
 
     /// <inheritdoc />
@@ -99,6 +101,7 @@ public sealed class OfficeService : IOfficeService
 
         await _repo.AddAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateOffices();
 
         _logger.LogInformation("Office created. OfficeCode: {OfficeCode}", entity.OfficeCode);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Create,
@@ -141,6 +144,7 @@ public sealed class OfficeService : IOfficeService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateOffices();
         await _audit.LogAsync("offices", entity.Id, AuditAction.Update,
             oldValues: oldSnapshot,
             newValues: AuditSnapshot(entity),
@@ -160,6 +164,7 @@ public sealed class OfficeService : IOfficeService
 
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateOffices();
 
         _logger.LogInformation("Office deactivated. OfficeCode: {OfficeCode}", entity.OfficeCode);
         await _audit.LogAsync("offices", entity.Id, AuditAction.Delete,
@@ -296,6 +301,7 @@ public sealed class OfficeService : IOfficeService
         }
 
         await _repo.SaveChangesAsync(cancellationToken);
+        _configCache.InvalidateOffices();
 
         // One row per office the import actually changed (RAL-246). Deactivating an office
         // silently narrows every scoped query that touches it, so a bulk upload that does so

@@ -67,7 +67,7 @@ import {
 import AipAnnexBReport from "@/components/aip/report/AipAnnexBReport";
 import { getFiscalYears } from "@/lib/budget-planning";
 import { downloadWfpReportExcel, getWfpReportOffices, getWfpReportPreview, wfpErrorMessage } from "@/lib/wfp";
-import { downloadPpmpReportExcel, getPpmpReportPreview } from "@/lib/ppmp";
+import { downloadPpmpReportExcel, getPpmpReportPreview, PPMP_REPORT_ENABLED } from "@/lib/ppmp";
 import PpmpReportView from "./PpmpReportView";
 import BulkExportStatus from "./BulkExportStatus";
 import { useBulkExport } from "./useBulkExport";
@@ -98,11 +98,14 @@ import type {
 // selectors would come up empty.
 // ---------------------------------------------------------------------------
 
-const REPORT_TYPES = [
+const ALL_REPORT_TYPES = [
   { value: "AIP", label: "Annual Investment Program (AIP) — Annex B" },
   { value: "WFP", label: "Work and Financial Plan (WFP)" },
   { value: "PPMP", label: "Project Procurement Management Plan (PPMP)" },
 ] as const;
+
+/** PPMP is hidden while PPMP_REPORT_ENABLED is false (PPDO-236) — the one place it is filtered. */
+const REPORT_TYPES = ALL_REPORT_TYPES.filter((t) => t.value !== "PPMP" || PPMP_REPORT_ENABLED);
 
 /** The entered years — the AIP report renders the entered-year form, not the uploaded FY≤2027 shape. */
 const AIP_YEARS = ENTERED_FISCAL_YEAR_OPTIONS;
