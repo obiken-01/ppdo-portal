@@ -10,7 +10,7 @@
 
 **PPDO Portal & Inventory System** — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines. Inventory monitoring is the first major feature.
 
-**Stack:** .NET 9 (Azure Functions) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
+**Stack:** .NET 10 (Azure Functions, isolated worker) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend  
 **Full spec:** `PROJECT_DOCUMENTATION_NET_AZURE.md`  
 **Design reference:** `PPDO_PROJECT_CONTEXT.md` (Penpot frames, design tokens, business logic)
@@ -21,7 +21,7 @@
 
 ```
 ppdo-portal/
-├── backend/          ← .NET 9 solution (Visual Studio 2026)
+├── backend/          ← .NET 10 solution (Visual Studio 2026)
 │   ├── PPDO.Domain/
 │   ├── PPDO.Infrastructure/
 │   ├── PPDO.Application/
@@ -557,7 +557,7 @@ treat handing one back as a normal, cost-free outcome.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-08-27 — current as of v1.7.4 (merged to `main` 2026-08-20).**
+> **Updated: 2026-10-20 — current as of v1.7.4 (merged to `main` 2026-08-20); v1.7.5 .NET 10 hotfix (PPDO-234) in review.**
 >
 > **Keeping this current is part of the release ritual.** The first commit on every `release/X.Y.Z`
 > branch already bumps `APP_VERSION` in three files (`Sidebar.tsx`, `Footer.tsx`,
@@ -640,6 +640,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.7.2B** | 2026-08-17 | #243, #245 | **Function App relocated Central US → Southeast Asia (RAL-237)** — removes the cross-region hop to Azure SQL; `Validators/` reorganized into per-feature subfolders (RAL-235) | 235, 237 |
 | **v1.7.3** | 2026-08-20 | #249 | Division name resolved in distribution history, code-keyed division upsert, division code in the history pill | 236, 239 |
 | **v1.7.4** | 2026-08-20 | #251 | Warehouse-count movement counted in Stock Overview columns, modal no longer closes on a drag-to-backdrop selection | 240, 273 |
+| **v1.7.5** | *(pending)* | *(this PR)* | **Hotfix: backend moves to .NET 10 / EF Core 10** before .NET 9 isolated end of support (2026-11-10). No code or migration changes; same package versions as PPDO-231 on `release/1.9.1`. ⚠️ `ppdo-portal-api-sea` needs *Stack settings → .NET 10 Isolated* right after the deploy | PPDO-234 |
 
 > **v1.4.6 was never merged to `main`.** Its price-index work is the one real gap found in the
 > branch audit — see the `archive/fix/v1.4.6-budget-planning-query-perf` tag.
