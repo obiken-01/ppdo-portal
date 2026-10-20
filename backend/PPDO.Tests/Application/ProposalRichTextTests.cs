@@ -40,10 +40,12 @@ public sealed class ProposalRichTextTests
         { "attributes on allowed tags", "<p onclick=\"x()\" class=\"c\" style=\"color:red\" id=\"i\">attrs</p><strong onmouseover=\"y()\">b</strong>", "<p>attrs</p><strong>b</strong>" },
 
         // ── Code-holding elements: removed together with their content ──
+        // svg/math: SVG and MathML elements keep lower-case NodeNames, so these leaked their text
+        // (e.g. a nested <script>'s "alert(1)") until the drop list became case-insensitive.
         { "script", "<p>before</p><script>alert('xss')</script><p>after</p>", "<p>before</p><p>after</p>" },
         { "style", "<style>p{color:red}</style><p>styled</p>", "<p>styled</p>" },
-        { "svg", "<p>a</p><svg><script>alert(1)</script><text>svgtext</text></svg><p>b</p>", "<p>a</p>alert(1)svgtext<p>b</p>" },
-        { "math", "<p>a</p><math><mi>x</mi><mtext>mt</mtext></math><p>b</p>", "<p>a</p>xmt<p>b</p>" },
+        { "svg", "<p>a</p><svg><script>alert(1)</script><text>svgtext</text></svg><p>b</p>", "<p>a</p><p>b</p>" },
+        { "math", "<p>a</p><math><mi>x</mi><mtext>mt</mtext></math><p>b</p>", "<p>a</p><p>b</p>" },
         { "iframe, object, embed", "<iframe src=\"https://evil\">fr</iframe><object data=x>obj</object><embed src=y><p>ok</p>", "<p>ok</p>" },
         { "template, noscript", "<template><p>tpl</p></template><noscript><p>ns</p></noscript><p>ok</p>", "<p>ok</p>" },
         { "title, textarea, select", "<title>t</title><textarea>ta</textarea><select><option>o</option></select><p>ok</p>", "<p>ok</p>" },
