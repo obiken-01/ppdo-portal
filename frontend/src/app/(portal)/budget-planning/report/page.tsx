@@ -445,7 +445,8 @@ function WfpReportPageInner() {
   // allowed falls back to their first allowed type rather than erroring — the URL is a convenience,
   // not a grant, and the server refuses the read either way.
   // ↩️ WFP is offered by `canOpenWfpReportForYear` against the first entered year (PPDO-225): a guest
-  // office has the initial WFP for entered years even though it has no entered WFP. PPMP stays
+  // office's department heads have the initial WFP for entered years even though the office has no
+  // entered WFP (its encoders do not, PPDO-240, and so never reach this page). PPMP stays
   // host-only; the year list below narrows WFP to the years the reader may actually open.
   const allowedTypes = REPORT_TYPES.filter((t) =>
     me == null ? false

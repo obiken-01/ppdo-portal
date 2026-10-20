@@ -367,27 +367,32 @@ public sealed class PermissionMatrixTests
     /// WFP (an entered year). Flags come from the real <see cref="PermissionService"/>, so a change to
     /// <c>CanAccessWfp</c> or <c>CanAccessBudgetPlanning</c> that moves a row fails here.
     /// </summary>
-    public static TheoryData<string, UserRole, bool?, bool?, bool, bool?, bool, bool> InitialWfpRows => new()
+    public static TheoryData<string, UserRole, bool?, bool?, bool, bool?, bool?, bool, bool> InitialWfpRows => new()
     {
-        // row,                        role,               office: host? null = none, budgetPlanningOverride, divisionFlag, reviewAll, ownOffice, expected
-        { "SuperAdmin, no office",     UserRole.SuperAdmin, null,  null,  false, null, false, true  },
-        { "Host Admin, other office",  UserRole.Admin,      true,  null,  false, null, false, true  },
-        { "Host Staff WFP reader",     UserRole.Staff,      true,  null,  true,  null, false, true  },
-        { "Host Staff, no BP",         UserRole.Staff,      true,  null,  false, null, false, false },
-        { "Guest Admin, own",          UserRole.Admin,      false, null,  false, null, true,  true  },
-        { "Guest Admin, other",        UserRole.Admin,      false, null,  false, null, false, false },
-        { "Guest Staff, own",          UserRole.Staff,      false, null,  false, null, true,  true  },
-        { "Guest Staff, other",        UserRole.Staff,      false, null,  false, null, false, false },
-        { "Guest Staff BP off, own",   UserRole.Staff,      false, false, false, null, true,  false },
-        { "Guest reviewer, other",     UserRole.Staff,      false, null,  false, true, false, false },
-        { "No office Staff",           UserRole.Staff,      null,  true,  true,  null, false, false },
+        // row,                           role,               office: host? null = none, budgetPlanningOverride, divisionFlag, reviewAll, reviewBp, ownOffice, expected
+        { "SuperAdmin, no office",        UserRole.SuperAdmin, null,  null,  false, null, null, false, true  },
+        { "Host Admin, other office",     UserRole.Admin,      true,  null,  false, null, null, false, true  },
+        { "Host Staff WFP reader",        UserRole.Staff,      true,  null,  true,  null, null, false, true  },
+        { "Host Staff WFP reader, own",   UserRole.Staff,      true,  null,  true,  null, null, true,  true  },
+        { "Host Staff, no BP",            UserRole.Staff,      true,  null,  false, null, null, false, false },
+        { "Guest Admin, own",             UserRole.Admin,      false, null,  false, null, null, true,  true  },
+        { "Guest Admin, other",           UserRole.Admin,      false, null,  false, null, null, false, false },
+        // ↩️ PPDO-240: a guest-office encoder (Staff, no review grant) reads no initial WFP at all.
+        { "Guest encoder, own",           UserRole.Staff,      false, null,  false, null, null, true,  false },
+        { "Guest encoder, other",         UserRole.Staff,      false, null,  false, null, null, false, false },
+        { "Guest head (BP review), own",  UserRole.Staff,      false, null,  false, null, true, true,  true  },
+        { "Guest head (BP review), other", UserRole.Staff,     false, null,  false, null, true, false, false },
+        { "Guest head BP off, own",       UserRole.Staff,      false, false, false, null, true, true,  false },
+        { "Guest reviewer, own",          UserRole.Staff,      false, null,  false, true, null, true,  true  },
+        { "Guest reviewer, other",        UserRole.Staff,      false, null,  false, true, null, false, false },
+        { "No office Staff",              UserRole.Staff,      null,  true,  true,  null, true, false, false },
     };
 
     [Theory]
     [MemberData(nameof(InitialWfpRows))]
     public async Task InitialWfp_WhoReadsWhichOffice(
         string row, UserRole role, bool? isHostOffice, bool? budgetPlanningOverride, bool divisionFlag,
-        bool? reviewAll, bool ownOffice, bool expected)
+        bool? reviewAll, bool? reviewBp, bool ownOffice, bool expected)
     {
         int? officeId = isHostOffice is bool host ? (host ? HostOfficeId : GuestOfficeId) : null;
         User user = new()
@@ -398,14 +403,49 @@ public sealed class PermissionMatrixTests
             Division = new Division { Id = 3, Name = "Test Division", CanAccessBudgetPlanning = divisionFlag },
             OverrideCanAccessBudgetPlanning = budgetPlanningOverride,
             OverrideCanReviewAllOffices = reviewAll,
+            OverrideCanReviewBudgetPlanning = reviewBp,
         };
         // "own" is the caller's office; "other" is an office that is neither theirs nor the host.
         int target = ownOffice ? officeId!.Value : 42;
+        InitialWfpReadRule.Flags flags = new(
+            await _sut.CanAccessWfpAsync(user), await _sut.CanAccessBudgetPlanningAsync(user),
+            await _sut.CanReviewBudgetPlanningAsync(user), await _sut.CanReviewAllOfficesAsync(user));
 
-        bool permits = InitialWfpReadRule.Permits(user, target,
-            await _sut.CanAccessWfpAsync(user), await _sut.CanAccessBudgetPlanningAsync(user));
+        bool permits = InitialWfpReadRule.Permits(user, target, flags);
 
         Assert.True(expected == permits, $"{row}: expected {expected}, got {permits}");
+        // The front door (PPDO-240) must never admit someone the office rule refuses everywhere.
+        if (permits) Assert.True(InitialWfpReadRule.MayReadAny(user, flags), $"{row}: permitted but not a reader");
+    }
+
+    /// <summary>
+    /// PPDO-240: the endpoints' front door. A guest-office encoder is refused before any office is
+    /// looked up; anyone who may read some office passes.
+    /// </summary>
+    [Theory]
+    [InlineData("Guest encoder",          UserRole.Staff, false, null, null, false)]
+    [InlineData("Guest Admin",            UserRole.Admin, false, null, null, true)]
+    [InlineData("Guest head (BP review)", UserRole.Staff, false, true, null, true)]
+    [InlineData("Guest reviewer",         UserRole.Staff, false, null, true, true)]
+    [InlineData("Host Staff WFP reader",  UserRole.Staff, true,  null, null, true)]
+    public async Task InitialWfp_MayReadAny(
+        string row, UserRole role, bool isHostOffice, bool? reviewBp, bool? reviewAll, bool expected)
+    {
+        int officeId = isHostOffice ? HostOfficeId : GuestOfficeId;
+        User user = new()
+        {
+            Id = Guid.NewGuid(), Role = role, OfficeId = officeId,
+            Office = new Office { Id = officeId, OfficeCode = isHostOffice ? "PPDO" : "GSO", IsHostOffice = isHostOffice },
+            DivisionId = 3,
+            Division = new Division { Id = 3, Name = "Test Division", CanAccessBudgetPlanning = true },
+            OverrideCanReviewBudgetPlanning = reviewBp,
+            OverrideCanReviewAllOffices = reviewAll,
+        };
+        InitialWfpReadRule.Flags flags = new(
+            await _sut.CanAccessWfpAsync(user), await _sut.CanAccessBudgetPlanningAsync(user),
+            await _sut.CanReviewBudgetPlanningAsync(user), await _sut.CanReviewAllOfficesAsync(user));
+
+        Assert.True(expected == InitialWfpReadRule.MayReadAny(user, flags), row);
     }
 
     // ── Fixture ───────────────────────────────────────────────────────────────

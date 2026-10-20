@@ -17,8 +17,8 @@ namespace PPDO.Functions.Functions;
 ///
 /// <para>
 /// ↩️ <b>PPDO-224: an entered year (<see cref="AipFiscalYears.IsEntered"/>) is the initial WFP, read off
-/// the consolidated AIP.</b> The gate opens to <c>CanAccessBudgetPlanning</c> so an office can read its
-/// own (spec decision 6), and the service applies the office scope, the Consolidated gate (409) and the
+/// the consolidated AIP.</b> The gate opens to <c>CanAccessBudgetPlanning</c> so an office's department
+/// heads can read its own (spec decision 6; ↩️ PPDO-240 answers a guest-office encoder 403), and the service applies the office scope, the Consolidated gate (409) and the
 /// division rule. ⚠️ <b>FY ≤ 2027 is unchanged:</b> anyone without <c>CanAccessWfp</c> gets the same
 /// bare 403 as before, and everyone else runs exactly the code that was here.
 /// </para>
@@ -60,6 +60,9 @@ public sealed class WfpReportFunctions
 
         int? entered = EnteredYear(req);
         if (entered is null && !await CanAccess(caller))
+            return (null, null, req.CreateResponse(HttpStatusCode.Forbidden));
+        // PPDO-240: a guest-office encoder reads no initial WFP, so 403 before any office is looked up.
+        if (entered is not null && !await _report.MayReadInitialReportsAsync(caller, ct))
             return (null, null, req.CreateResponse(HttpStatusCode.Forbidden));
         return (caller, entered, null);
     }

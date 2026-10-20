@@ -25,8 +25,9 @@ public sealed class WfpReportFunctionsTests
 
     private WfpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);
 
-    private void Caller(bool budgetPlanning, bool wfp)
+    private void Caller(bool budgetPlanning, bool wfp, bool initialReader = true)
     {
+        _report.Setup(r => r.MayReadInitialReportsAsync(_caller, It.IsAny<CancellationToken>())).ReturnsAsync(initialReader);
         _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(_caller);
         _permissions.Setup(p => p.CanAccessBudgetPlanningAsync(_caller, It.IsAny<CancellationToken>())).ReturnsAsync(budgetPlanning);
         _permissions.Setup(p => p.CanAccessWfpAsync(_caller, It.IsAny<CancellationToken>())).ReturnsAsync(wfp);
@@ -100,6 +101,37 @@ public sealed class WfpReportFunctionsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("\"source\":\"Aip\"", FunctionHttp.BodyText(response));
         VerifyNoLegacyCall();
+    }
+
+    [Theory]
+    [InlineData("officeId=3&fiscalYear=2028")]
+    [InlineData("officeId=3&fiscalYear=2029&divisionId=14")]
+    public async Task Fy2028_AGuestOfficeEncoder_Is403_OnAllThreeEndpoints_BeforeAnyOfficeLookup(string query)   // PPDO-240
+    {
+        Caller(budgetPlanning: true, wfp: false, initialReader: false);
+
+        HttpResponseData preview = await Sut.GetPreview(FunctionHttp.Get(query, path: "x"), default);
+        HttpResponseData export = await Sut.Export(FunctionHttp.Get(query, path: "x"), default);
+        HttpResponseData offices = await Sut.GetEligibleOffices(FunctionHttp.Get(query, path: "x"), default);
+
+        Assert.Equal(HttpStatusCode.Forbidden, preview.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, export.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, offices.StatusCode);
+        VerifyNoInitialCall();
+        _report.Verify(r => r.GetInitialEligibleOfficesAsync(It.IsAny<int>(), It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Fy2027_TheInitialReaderRule_IsNotAsked()   // PPDO-240 touches entered years only
+    {
+        Caller(budgetPlanning: true, wfp: true, initialReader: false);
+        _report.Setup(r => r.GetReportAsync(7, 2027, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<WfpReportDto>.Ok(Report()));
+
+        HttpResponseData response = await Sut.GetPreview(FunctionHttp.Get("officeId=7&fiscalYear=2027", path: "x"), default);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        _report.Verify(r => r.MayReadInitialReportsAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
