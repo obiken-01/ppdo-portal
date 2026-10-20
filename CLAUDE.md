@@ -10,7 +10,7 @@
 
 **PPDO Portal & Inventory System** — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines. Inventory monitoring is the first major feature.
 
-**Stack:** .NET 9 (Azure Functions) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
+**Stack:** .NET 10 (Azure Functions, isolated worker) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend  
 **Full spec:** `PROJECT_DOCUMENTATION_NET_AZURE.md`  
 **Design reference:** `PPDO_PROJECT_CONTEXT.md` (Penpot frames, design tokens, business logic)
@@ -21,7 +21,7 @@
 
 ```
 ppdo-portal/
-├── backend/          ← .NET 9 solution (Visual Studio 2026)
+├── backend/          ← .NET 10 solution (Visual Studio 2026)
 │   ├── PPDO.Domain/
 │   ├── PPDO.Infrastructure/
 │   ├── PPDO.Application/
@@ -656,7 +656,7 @@ next release branch. PPDO-226 (HGDG) moved to Backlog — Unscheduled, waiting o
 **In development:** v1.9.1 on `release/1.9.1`, cut 2026-10-19 from the frozen `release/1.9.0`. Linear milestone
 "v1.9.1 — .NET 10 + AIP UX fixes": PPDO-231 (.NET 9 → 10; .NET 9 isolated EOL 2026-11-10), PPDO-206 (AIP workflow UX),
 PPDO-44 (config caching), PPDO-45 (export timing). Due on UAT **before** the November training (Ralph, 2026-10-19). No
-migrations expected. ⚠️ **Every UAT fix merged into `release/1.9.0` must also be merged forward into `release/1.9.1`.**
+migrations expected. ⚠️ **The Function App's .NET setting moves to .NET 10 Isolated in the same deploy as the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md`. ⚠️ **Every UAT fix merged into `release/1.9.0` must also be merged forward into `release/1.9.1`.**
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.

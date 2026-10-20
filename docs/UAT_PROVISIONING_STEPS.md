@@ -69,7 +69,7 @@ so teardown is a single delete.
         because every request was crossing the Pacific — it cut requests from ~2–6s to ~0.4s. Put
         UAT in Central US and testers will judge v1.8.0's performance against a handicap production
         no longer has.
-  - [ ] .NET 9 **isolated** · Consumption plan
+  - [ ] .NET 10 **isolated** (was .NET 9 until PPDO-231, v1.9.1) · Consumption plan · **Windows** (Linux Consumption has no .NET 10)
   - [ ] Application settings — §2 below
   - [ ] **CORS** → add the UAT Static Web App URL once you have it (step below).
         ⚠️ Portal only. `host.json` CORS does **not** work for the isolated worker.

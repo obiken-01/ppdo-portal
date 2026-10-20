@@ -4,7 +4,7 @@
 
 PPDO Portal & Inventory System — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines.
 
-**Stack:** .NET 9 (Azure Functions isolated worker) + Next.js 14 (TypeScript, App Router) + Azure SQL (Entity Framework Core 9)  
+**Stack:** .NET 10 (Azure Functions isolated worker) + Next.js 14 (TypeScript, App Router) + Azure SQL (Entity Framework Core 10)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend
 
 ## Commit Message Format
