@@ -1,4 +1,15 @@
+---
+type: findings
+version: v1.1.0
+status: reference
+tickets: []
+updated: 2026-06-11
+---
+
 # AIP Import & WFP Findings
+
+Up: [v1.1 hub](README.md)
+
 _Reviewed: June 10, 2026 | Target: PPDO Portal v1.1 | Files: AIP_2027 as of June 2, 2026.xlsm · PPDO_WFP 2026_FinalVersion (PPDO_WFP_2026_3FundS) · annex_b_charts_of_account.pdf_
 
 ---
@@ -250,3 +261,8 @@ Every config page has the same 4 capabilities:
 - [ ] Build Funding Source Config page — seed with `funding_sources.csv`
 - [ ] Build AIP upload/import page (parse xlsm, 4 sheets, save all 4 levels)
 - [ ] Build WFP entry page (office + AIP selector → hierarchical activity grid → expenditure popup)
+
+## Related
+
+- [LDIP / AIP / WFP Web Application — Requirements & Field Analysis](LDIP_AIP_WFP_Web_Requirements.md) — spec, shipped
+- [PPDO Portal — Database Model](DB_Model.md) — spec, reference

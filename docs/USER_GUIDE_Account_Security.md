@@ -1,4 +1,13 @@
+---
+type: guide
+status: current
+tickets: []
+updated: 2026-08-27
+---
+
 # PPDO Portal — Your Account and Password
+
+Up: [Standards and reference](STANDARDS.md)
 
 A short guide to signing in, setting up account recovery, and getting back in if you forget
 your password.

@@ -19,9 +19,14 @@ public static class ProposalRichText
     /// <summary>The allow-list, word for word from decision 20.</summary>
     public static readonly IReadOnlyList<string> AllowedTags = ["p", "strong", "em", "ul", "ol", "li", "br"];
 
-    /// <summary>Elements removed together with everything inside them (AngleSharp upper-case names).</summary>
-    private static readonly HashSet<string> DropWithContent =
-        ["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "TITLE", "TEXTAREA", "SELECT"];
+    /// <summary>
+    /// Elements removed together with everything inside them. Case-insensitive: AngleSharp
+    /// upper-cases HTML element names but keeps SVG and MathML ones lower-case ("svg", "math", and
+    /// a <c>&lt;script&gt;</c> nested inside <c>&lt;svg&gt;</c>).
+    /// </summary>
+    private static readonly HashSet<string> DropWithContent = new(
+        ["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "TITLE", "TEXTAREA", "SELECT"],
+        StringComparer.OrdinalIgnoreCase);
 
     // HtmlSanitizer is thread-safe once configured; Announcements shares one instance the same way.
     private static readonly HtmlSanitizer Sanitizer = Build();

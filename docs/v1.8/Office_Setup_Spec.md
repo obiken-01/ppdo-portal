@@ -1,11 +1,17 @@
 ---
-status: draft
+type: spec
 version: v1.8.0
-tickets: C1 = PPDO-106 (office ceilings page) · C2 = PPDO-107 (office-setup grant) · C3 = PPDO-108 (division config, blocked by 107) · C4 = PPDO-109 (per-office fund sources ⚠️ MIGRATION, blocked by 107)
-supersedes: nothing — extends Permission_Matrix.md §4 (new grant), §4a (scope table) and the Allocation page's ownership split
+status: shipped
+tickets: [PPDO-106, PPDO-107, PPDO-108, PPDO-109]
+updated: 2026-09-21
+status_note: "draft"
+tickets_note: "C1 = PPDO-106 (office ceilings page) · C2 = PPDO-107 (office-setup grant) · C3 = PPDO-108 (division config, blocked by 107) · C4 = PPDO-109 (per-office fund sources ⚠️ MIGRATION, blocked by 107)"
+supersedes_note: "nothing — extends Permission_Matrix.md §4 (new grant), §4a (scope table) and the Allocation page's ownership split"
 ---
 
 # v1.8.0 — Office setup: finance sets ceilings, department heads set up their own office
+
+Up: [v1.8 hub](README.md)
 
 ## 1. Goal
 
@@ -241,3 +247,8 @@ C1 is independent and is the one finance needs first for UAT.
   the same wording as a fund that does not exist. `FundingSourceScopeTests` pins the rule itself;
   each service suite pins its own door into it. ⚠️ Each of those guard tests was confirmed to FAIL
   with its guard removed — a guard test that passes either way proves nothing.
+
+## Related
+
+- [Office-User Path — Codebase Impact Assessment](Office_User_Path_Findings.md) — findings, reference
+- [Permission Matrix](Permission_Matrix.md) — standard, current

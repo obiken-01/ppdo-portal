@@ -396,4 +396,38 @@ public sealed class AnnouncementServiceTests
         Assert.True(result.IsSuccess);
         Assert.Single(seed);
     }
+
+    // ── Sanitizer characterization (PPDO-235) ─────────────────────────────────
+    // Pins the default-config HtmlSanitizer output for realistic announcement content, so a
+    // HtmlSanitizer / AngleSharp upgrade cannot change stored HTML without a test saying so.
+
+    public static TheoryData<string, string> SanitizerCases => new()
+    {
+        { "<h2>Notice</h2><p>Office <b>closed</b> on <i>Friday</i>. See <a href=\"https://example.com/memo.pdf\" target=\"_blank\">memo</a>.</p><ul><li>One</li></ul>",
+          "<h2>Notice</h2><p>Office <b>closed</b> on <i>Friday</i>. See <a href=\"https://example.com/memo.pdf\" target=\"_blank\">memo</a>.</p><ul><li>One</li></ul>" },
+        { "<p style=\"text-align:center;color:#333;position:fixed\">centered</p><span class=\"x\">s</span>",
+          "<p style=\"text-align: center; color: rgba(51, 51, 51, 1); position: fixed\">centered</p><span>s</span>" },
+        { "<img src=\"https://example.com/a.png\" alt=\"a\" width=\"100\" onerror=\"alert(1)\">",
+          "<img src=\"https://example.com/a.png\" alt=\"a\" width=\"100\">" },
+        { "<p>Hello</p><script>alert('xss')</script>", "<p>Hello</p>" },
+        { "<a href=\"javascript:alert(1)\">x</a><a href=\"data:text/html,<script>alert(1)</script>\">y</a>", "<a>x</a><a>y</a>" },
+        { "<math><annotation-xml encoding=\"text/html\"><style><img src=x onerror=alert(1)></style></annotation-xml></math>", "" },
+        { "<svg><script>alert(1)</script></svg><p>after</p>", "<p>after</p>" },
+        { "<table border=\"1\"><thead><tr><th>H</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table>",
+          "<table border=\"1\"><thead><tr><th>H</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table>" },
+        { "<iframe src=\"https://www.youtube.com/embed/x\"></iframe><p>v</p>", "<p>v</p>" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SanitizerCases))]
+    public async Task CreateAsync_RealisticContent_StoresPinnedSanitizedHtml(string input, string expected)
+    {
+        (AnnouncementService sut, _) = Build([]);
+
+        ServiceResult<AnnouncementDto> result =
+            await sut.CreateAsync(Admin(), new CreateAnnouncementDto("Title", input));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Value!.Content);
+    }
 }

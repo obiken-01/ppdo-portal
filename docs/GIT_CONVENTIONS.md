@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-05-26
+---
+
 # Git Conventions
+
+Up: [Standards and reference](STANDARDS.md)
 
 ## Ralph's Personal Development Standard (RPDS)
 
@@ -119,6 +128,7 @@ test(auth): add refresh token rotation unit tests
 
 - PR title should match the branch description
 - Link the related Linear issue in the PR description
+- Write the description per [`PR_DESCRIPTION_STANDARD.md`](PR_DESCRIPTION_STANDARD.md) (the GitHub template carries the headings)
 - Squash commits when merging if there are many small WIP commits
 - At minimum, verify CI passes before merging to `main`
 

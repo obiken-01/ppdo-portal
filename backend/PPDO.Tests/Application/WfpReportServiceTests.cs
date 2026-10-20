@@ -144,7 +144,8 @@ public sealed class WfpReportServiceTests
             aipRepo.Object, wfpRepo.Object, expenditures.Object,
             officeRepo.Object, accountRepo.Object,
             new Mock<IAipExpenditureRepository>(MockBehavior.Strict).Object,
-            new Mock<IPermissionService>(MockBehavior.Strict).Object);
+            new Mock<IPermissionService>(MockBehavior.Strict).Object,
+            new PassThroughConfigCache(offices: officeRepo.Object));
 
         return new Fixture(sut, aipRepo, wfpRepo, expenditures, offices, accounts);
     }

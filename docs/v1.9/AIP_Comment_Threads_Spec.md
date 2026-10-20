@@ -1,11 +1,18 @@
 ---
-status: accepted — 2026-10-16
+type: spec
 version: v1.9.0
-tickets: PPDO-223
-supersedes: AIP_Review_Spec.md §3.1 "the encoder never comments" (encoders may now reply)
+status: shipped
+tickets: [PPDO-223]
+supersedes: [../v1.8/AIP_Review_Spec.md]
+supersedes_scope: "AIP_Review_Spec.md: in part: section 3.1 the encoder never comments"
+updated: 2026-10-16
+status_note: "accepted — 2026-10-16"
+supersedes_note: "AIP_Review_Spec.md §3.1 \"the encoder never comments\" (encoders may now reply)"
 ---
 
 # v1.9.0 — AIP activity comments as threads
+
+Up: [v1.9 hub](README.md)
 
 Ralph, 2026-10-15: make AIP review comments work like the Investment Proposal threads
 (`Investment_Proposal_Comments_Spec.md`), so the two comment systems behave the same. Settled
@@ -136,3 +143,10 @@ diff is large.
 - Head-only resolve; replies to resolved threads and to replies refused.
 - Whatever deletes a head (activity delete, group delete, any cleanup) also removes its replies, on real SQL Server.
 - Bell recipients per event, never the actor.
+
+## Related
+
+- [v1.9.0 — PPDO Reviewer Edits to a Submitted AIP](AIP_Reviewer_Edit_Spec.md) — spec, shipped
+- [v1.9.0 — Comments on Investment Proposals](Investment_Proposal_Comments_Spec.md) — spec, shipped
+- [v1.9.0 — Notification bell](Notification_Centre_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](../v1.8/AIP_Review_Spec.md) — spec, shipped

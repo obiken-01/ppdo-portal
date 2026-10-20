@@ -1,11 +1,17 @@
 ---
-status: accepted — 2026-10-15
+type: spec
 version: v1.9.0
-tickets: PPDO-224 (T1 backend), PPDO-225 (T2 frontend)
-supersedes: —
+status: shipped
+tickets: [PPDO-224, PPDO-225]
+updated: 2026-10-15
+status_note: "accepted — 2026-10-15"
+tickets_note: "PPDO-224 (T1 backend), PPDO-225 (T2 frontend)"
+supersedes_note: "—"
 ---
 
 # v1.9.0 — Initial WFP report from the consolidated AIP
+
+Up: [v1.9 hub](README.md)
 
 Demo 3 (2026-10-14): "Create initial WFP Report. This can only be enabled when the AIPs are part of
 the consolidated (mark as done) … the initial WFP report can be generated in our app." Settled with
@@ -136,3 +142,7 @@ No migration. Frontend and backend deploy together.
 - Rule 10: items not adding up to the line.
 - The gate: one group not Consolidated hides the office.
 - Totals: the report's per-fund total equals the AIP's base total for the office.
+
+## Related
+
+- [v1.9.0 — Bulk export of initial WFPs (background job)](Bulk_Initial_WFP_Export_Spec.md) — spec, shipped

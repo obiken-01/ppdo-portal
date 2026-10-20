@@ -1,6 +1,6 @@
 # PPDO Portal Website and Inventory Monitoring System
 
-## Project Documentation — .NET 9 + Azure Stack
+## Project Documentation — .NET 10 + Azure Stack
 
 > **Stack:** ASP.NET Core on Azure Functions · Next.js 14 on Azure Static Web Apps · Azure SQL Database · Azure Application Insights  
 > **Deployment:** Free forever — Azure Static Web Apps (Free) + Azure Functions (Consumption) + Azure SQL (Free offer) + Application Insights (Free 5GB/mo)  
@@ -45,16 +45,16 @@
 
 | Technology | Version | Purpose |
 |---|---|---|
-| Azure Functions (.NET isolated) | .NET 9 | Serverless API — HTTP-triggered functions replace ASP.NET controllers |
+| Azure Functions (.NET isolated) | .NET 10 | Serverless API — HTTP-triggered functions replace ASP.NET controllers |
 | C# | 13 | Primary backend language |
 | Azure SQL Database | SQL Server 2022 (serverless) | Primary relational database — 32 GB free forever per subscription |
 | Entity Framework Core | 9 | ORM — code-first migrations, LINQ queries |
 | ASP.NET Core Identity (adapted) | 9 | User management, password hashing, role assignment |
-| JWT Bearer Auth | built-in (.NET 9) | Access token + refresh token authentication flow |
+| JWT Bearer Auth | built-in (.NET 10) | Access token + refresh token authentication flow |
 | ClosedXML | 0.104+ | Excel `.xlsx` — export PR Report, generate PR import template, parse uploaded PR files — MIT license, no commercial fee |
 | FluentValidation | 11+ | Request body validation (Create PR, Receive Delivery, user forms) |
 | Application Insights | latest | Monitoring, logging, request tracking, exception capture — Azure native |
-| Microsoft.Extensions.Logging | built-in (.NET 9) | `ILogger<T>` — standard logging abstraction used throughout all layers |
+| Microsoft.Extensions.Logging | built-in (.NET 10) | `ILogger<T>` — standard logging abstraction used throughout all layers |
 
 > **ClosedXML vs EPPlus:** ClosedXML is MIT-licensed with no commercial restrictions. EPPlus requires a paid commercial license for production use. ClosedXML handles merged cells, borders, and column widths needed for the PR Report export.
 
@@ -1323,4 +1323,4 @@ No installer to build. No IIS to configure. No SQL scripts to bundle. Just push 
 ---
 
 *Document version: v0.1 — 2026-05-26 — Ralph Armand Alcaide — PPDO Occidental Mindoro*  
-*Stack: ASP.NET Core (.NET 9) on Azure Functions + Next.js 14 on Azure Static Web Apps + Azure SQL Database (Free)*
+*Stack: ASP.NET Core (.NET 10) on Azure Functions + Next.js 14 on Azure Static Web Apps + Azure SQL Database (Free)*

@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-08-17
+---
+
 # Performance & Scalability Guidelines
+
+Up: [Standards and reference](STANDARDS.md)
 
 Lessons distilled from the v1.1.0 production performance audit (2026-06-22). Each rule below
 exists because we hit (or were about to hit) the problem in real code. Read this before adding a
@@ -229,3 +238,10 @@ Frontend:
 - [ ] Shared state (current user, etc.) fetched once via context, not per component.
 - [ ] Loading state matches the loaded layout (skeleton, not a height-changing spinner).
 - [ ] Images via `next/image` with explicit dimensions.
+
+## Related
+
+- [Full-application performance audit — findings](Performance_Audit_2026-07-16.md) — audit, reference
+- [Performance audit — 2026-10-04](v1.8/Performance_Audit_2026-10-04.md) — audit, reference
+- [PPDO Portal — Design System](DESIGN_SYSTEM.md) — standard, current
+- [Naming Conventions](NAMING_CONVENTIONS.md) — standard, current

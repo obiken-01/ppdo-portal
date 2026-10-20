@@ -1,11 +1,17 @@
 ---
-status: accepted — 2026-10-14
+type: spec
 version: v1.9.0
-tickets: PPDO-219 (T1 backend), PPDO-220 (T2 frontend)
-supersedes: —
+status: shipped
+tickets: [PPDO-219, PPDO-220]
+updated: 2026-10-15
+status_note: "accepted — 2026-10-14"
+tickets_note: "PPDO-219 (T1 backend), PPDO-220 (T2 frontend)"
+supersedes_note: "—"
 ---
 
 # v1.9.0 — Comments on Investment Proposals
+
+Up: [v1.9 hub](README.md)
 
 Demo 3 (2026-10-14), item "IP comments". Settled with Ralph the same day: both PPDO and the office
 comment; one thread per proposal; comments are resolved, and open ones block Finalize.
@@ -176,3 +182,14 @@ One additive migration (`AddInvestmentProposalComments`), run before the code. A
 - Read-scope posting by a reviewer, and `ReviewerWriteGuardCoverageTests` listing the endpoint.
 - Cascade on proposal delete.
 - Threads: a reply cannot be resolved, cannot take a reply, and cannot land on a resolved thread or another proposal's thread; the Finalize count ignores replies.
+
+## Related
+
+- [PGOM Investment Proposal — Template Findings](../v1.8/Investment_Proposal_Findings.md) — findings, reference
+- [v1.8.0 — PGOM Investment Proposal (Demo 2.15)](../v1.8/Investment_Proposal_Spec.md) — spec, shipped
+- [Demo 2.15 — Investment Proposal: ticket prompts](../v1.8/Investment_Proposal_Ticket_Prompts.md) — plan, shipped
+- [Investment Proposal — wireframes](../v1.8/wireframes/investment-proposal/README.md) — wireframe, shipped
+- [v1.9.0 — PPDO Reviewer Edits to a Submitted AIP](AIP_Reviewer_Edit_Spec.md) — spec, shipped
+- [v1.9.0 — AIP activity comments as threads](AIP_Comment_Threads_Spec.md) — spec, shipped
+- [v1.9.0 — Notification bell](Notification_Centre_Spec.md) — spec, shipped
+- [v1.8.0 Phase 4 — AIP Review & Consolidation](../v1.8/AIP_Review_Spec.md) — spec, shipped

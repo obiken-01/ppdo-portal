@@ -1,0 +1,79 @@
+filters:
+  and:
+    - file.ext == "md"
+    - file.hasProperty("type")
+    - not:
+        - file.inFolder("linear-export/tickets")
+properties:
+  type:
+    displayName: Type
+  version:
+    displayName: Version
+  status:
+    displayName: Status
+  tickets:
+    displayName: Tickets
+  superseded_by:
+    displayName: Superseded by
+  superseded_scope:
+    displayName: Scope
+  updated:
+    displayName: Updated
+views:
+  - type: table
+    name: Specs by version
+    filters:
+      and:
+        - 'type == "spec"'
+    groupBy:
+      property: version
+      direction: DESC
+    order:
+      - file.name
+      - status
+      - tickets
+      - updated
+  - type: table
+    name: Current standards
+    filters:
+      and:
+        - 'type == "standard"'
+        - 'status == "current"'
+    order:
+      - file.name
+      - updated
+  - type: table
+    name: Superseded
+    filters:
+      or:
+        - 'status == "superseded"'
+        - file.hasProperty("superseded_by")
+    order:
+      - file.name
+      - status
+      - superseded_by
+      - superseded_scope
+  - type: table
+    name: Checklists and runbooks
+    filters:
+      or:
+        - 'type == "checklist"'
+        - 'type == "runbook"'
+    groupBy:
+      property: version
+      direction: DESC
+    order:
+      - file.name
+      - type
+      - status
+      - updated
+  - type: table
+    name: To verify (reference)
+    filters:
+      and:
+        - 'status == "reference"'
+    order:
+      - file.name
+      - type
+      - version
+      - updated

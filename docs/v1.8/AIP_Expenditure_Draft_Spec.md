@@ -1,11 +1,17 @@
 ---
-status: built — PPDO-192, 2026-10-07 (§2 confirmed by Ralph 2026-10-06)
+type: spec
 version: v1.8.2
-tickets: PPDO-192 (expenditure-line draft mirror)
-supersedes: nothing — extends PPDO-112 (V18-64), whose non-goals listed expenditure lines
+status: shipped
+tickets: [PPDO-192]
+updated: 2026-10-07
+status_note: "built — PPDO-192, 2026-10-07 (§2 confirmed by Ralph 2026-10-06)"
+tickets_note: "PPDO-192 (expenditure-line draft mirror)"
+supersedes_note: "nothing — extends PPDO-112 (V18-64), whose non-goals listed expenditure lines"
 ---
 
 # AIP Entry — Draft Mirror for Expenditure Lines
+
+Up: [v1.8 hub](README.md)
 
 > Follows PPDO-112, which mirrors an activity's **descriptive fields** to IndexedDB. That ticket
 > scoped expenditure lines out on purpose ("descriptive fields only"). This spec covers them. Found
@@ -236,3 +242,9 @@ Vitest (`npm test`), pure logic, TDD:
 
 Not unit-testable here (Node-only runner, no DOM): the wiring in `AipExpenditureTable`. Covered by
 §10.
+
+## Related
+
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Entry: drill-down layout + delete Project/Activity](AIP_Entry_Layout_Spec.md) — spec, shipped
+- [AIP Concurrent Edit — Requirements](AIP_Concurrent_Edit_Spec.md) — spec, current

@@ -10,6 +10,17 @@ export function formatMoney(n: number | null | undefined): string {
 }
 
 /**
+ * A signed peso amount with the sign BEFORE the peso sign: "₱100,000.00", "−₱100,000.00" (PPDO-206).
+ *
+ * ⚠️ A true minus (U+2212), not a hyphen, and outside the "₱". Prefixing "₱" to `formatMoney` of a
+ * negative reads "₱-100,000.00", which is how the allocation page's over-ceiling line looked.
+ */
+export function formatPesosSigned(n: number): string {
+  const amount = `₱${formatMoney(Math.abs(n))}`;
+  return n < 0 ? `−${amount}` : amount;
+}
+
+/**
  * Abbreviated peso amount for tight spaces — "1.12M", "10M", "850K", "550" (PPDO-78, the readiness
  * board's cards). No currency sign, matching `formatMoney`; the caller prefixes "₱".
  *

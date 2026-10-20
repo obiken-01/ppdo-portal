@@ -1,4 +1,14 @@
+---
+type: findings
+version: v1.8.0
+status: reference
+tickets: [RAL-61]
+updated: 2026-09-02
+---
+
 # Office-User Path — Codebase Impact Assessment
+
+Up: [v1.8 hub](README.md)
 
 > Assessment date: 2026-08-13 · Branch: `release/1.7.2`
 > Scope: what already exists, and what breaks, when non-PPDO ("office") users are allowed to log in.
@@ -323,3 +333,8 @@ reviews in the system (`Phase_Plan.md` §12.4).
 references `OfficeId` only in the `AipOffice`-entity sense, not the caller sense — there is
 currently no test anywhere asserting that an office user is denied another office's AIP data.
 Any fix in §3.1-3.5 should land with that assertion, per `../TEST_CONVENTIONS.md`.
+
+## Related
+
+- [v1.8.0 — Office setup: finance sets ceilings, department heads set up their own office](Office_Setup_Spec.md) — spec, shipped
+- [Permission Matrix](Permission_Matrix.md) — standard, current

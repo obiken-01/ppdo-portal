@@ -1,4 +1,13 @@
+---
+type: audit
+status: reference
+tickets: [RAL-161]
+updated: 2026-08-14
+---
+
 # Full-application performance audit — findings
+
+Up: [Standards and reference](STANDARDS.md)
 
 > **Status: findings only — no implementation yet.** Written 2026-07-16, triggered by the
 > Budget Planning Dashboard rework (v1.4.5, RAL-161) surfacing 8 unfiltered full-table scans on
@@ -189,3 +198,8 @@ this general cleanup). Within each tier, highest-traffic/highest-severity first.
 
 Everything else (Medium/Low within each tier) is real but lower-traffic — worth folding in
 opportunistically while working through its tier, not a blocker.
+
+## Related
+
+- [Performance & Scalability Guidelines](PERFORMANCE_GUIDELINES.md) — standard, current
+- [Performance audit — 2026-10-04](v1.8/Performance_Audit_2026-10-04.md) — audit, reference

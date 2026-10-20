@@ -10,7 +10,7 @@
 
 **PPDO Portal & Inventory System** — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines. Inventory monitoring is the first major feature.
 
-**Stack:** .NET 9 (Azure Functions) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
+**Stack:** .NET 10 (Azure Functions, isolated worker) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend  
 **Full spec:** `PROJECT_DOCUMENTATION_NET_AZURE.md`  
 **Design reference:** `PPDO_PROJECT_CONTEXT.md` (Penpot frames, design tokens, business logic)
@@ -21,7 +21,7 @@
 
 ```
 ppdo-portal/
-├── backend/          ← .NET 9 solution (Visual Studio 2026)
+├── backend/          ← .NET 10 solution (Visual Studio 2026)
 │   ├── PPDO.Domain/
 │   ├── PPDO.Infrastructure/
 │   ├── PPDO.Application/
@@ -365,6 +365,10 @@ screenshots of the live check are his record of what a ticket looked like when i
   the local database: account names, office ceilings, allocations. List the states checked live in
   the PR body instead.
 
+**PR descriptions (Ralph, 2026-10-19):** follow `docs/PR_DESCRIPTION_STANDARD.md`: issue, purpose, fix
+and alternatives, before → after, an ordered code walkthrough, each test by name, live checks, risk &
+rollback, deploy notes, how to review it, confidence %. A short form covers docs/config-only PRs.
+
 **Confidence in every code change (Ralph, 2026-10-05):** every PR description, and the report at the
 end of a ticket, states a **confidence %** that the change is correct, then in a line or two what it
 rests on (tests, red-tested guards, live checks) and what was not verified that would raise it. Be
@@ -586,9 +590,10 @@ session needs to operate. Three rules keep the two ways of reading them compatib
   and the plugin, theme and snippet folders. `app.json` and `core-plugins.json` are, so the setup
   carries to a new machine.
 
-Optional, when a spec or standard is next touched anyway: a properties block at the top (`status`,
-`version`, `tickets`, `supersedes`), so which document is current is recorded on the document itself
-rather than only in this file. `.canvas` files are JSON and fine to keep beside the spec they
+`docs/HOME.md` is the index of the vault, and the `status` property at the top of each document
+(`current`, `shipped`, `superseded`, `reference`) says whether to rely on it — check it before reading a
+spec as current. Every document carries `type`, `status`, `tickets`, `supersedes` and `updated`; a new
+one gets the same block, an `Up:` line under its title, and an entry in its version hub. `.canvas` files are JSON and fine to keep beside the spec they
 illustrate.
 
 ## What NOT to Do
@@ -617,12 +622,19 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-16 — v1.9.0 complete and frozen on `release/1.9.0`, going to `uat` (six migrations first). Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
+> **Updated: 2026-10-20 — v1.9.1 complete and frozen on `release/1.9.1`, going to `uat` with the .NET 10 runtime switch. Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
 > `Footer.tsx` and `login/page.tsx`. Bump it on the first commit of a `release/X.Y.Z` branch and
-> update this section and the footer date stamp in that same commit. This section previously drifted
+> update this section and the footer date stamp in that same commit.
+>
+> **README.md is part of the same ritual (Ralph, 2026-10-18).** Every `release/X.Y.Z` branch (minor or
+> patch) updates `README.md` before it freezes: the current-version line, the Status table row, a
+> "What's in vX.Y.Z" summary, and the pre-deployment checklist link if there is one. Hotfixes
+> (`fix/…` / emergency patches) are **exempt**. The README lives on `main`'s front page only after
+> the release merges, so write it for the release branch, not for what production runs today.
+> This section previously drifted
 > eleven weeks and six minor versions behind the code, which is why the rule is written down here.
 
 **Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
@@ -641,6 +653,12 @@ notification bell, the initial WFP report and its bulk export. ⚠️ **Six migr
 settings before the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md`. Needed for the user training in the
 first week of November 2026. ⚠️ **Frozen:** only fixes found in UAT go in (`fix/v1.9.0-…`); new work waits for the
 next release branch. PPDO-226 (HGDG) moved to Backlog — Unscheduled, waiting on requirements.
+**Complete, frozen for UAT:** v1.9.1 on `release/1.9.1`, cut 2026-10-19 from the frozen `release/1.9.0`; last merge #520
+(PPDO-236) on 2026-10-20. Linear milestone "v1.9.1 — .NET 10 + AIP UX fixes": PPDO-231 (.NET 9 → 10; .NET 9 isolated EOL
+2026-11-10), PPDO-235 (HtmlSanitizer/AngleSharp mXSS fix + DOMPurify), PPDO-206 (AIP workflow UX), PPDO-44 (config caching),
+PPDO-236 (PPMP report hidden behind `FeatureFlags.PpmpReportEnabled`), PPDO-45 (export timing, closed with no change). Due on
+UAT **before** the November training (Ralph, 2026-10-19). **No migrations.** ⚠️ **Frozen:** only fixes found in UAT go in
+(`fix/v1.9.1-…`). Production moves to .NET 10 separately via **PPDO-234** (v1.7.5 hotfix on `main`), after UAT proves it. ⚠️ **The Function App's .NET setting moves to .NET 10 Isolated in the same deploy as the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md`. ⚠️ **Every UAT fix merged into `release/1.9.0` must also be merged forward into `release/1.9.1`.**
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.
@@ -776,7 +794,9 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.8.2 — Dashboard Redesign, Caching & Remaining Optimizations** | ✅ **Complete on `release/1.8.2`** (2026-10-07), going to UAT |
 | **v1.8.3 — Concurrent-edit guard: turn it on** (+ next AIP work) | ✅ **Complete on `release/1.8.3`** (2026-10-13). PPDO-121 and PPDO-199's last item moved on to v1.8.4 |
 | **v1.8.4 — Minor fixes** | ✅ **Complete on `release/1.8.4`**, on `uat` (#486, 2026-10-14) |
-| **v1.9.0 — Larger requests** | 🧊 **Complete and frozen on `release/1.9.0`** (2026-10-16), going to UAT |
+| **v1.9.0 — Larger requests** | 🧊 **Complete and frozen on `release/1.9.0`** (2026-10-16), on UAT |
+| **v1.9.1 — .NET 10 + AIP UX fixes** | 🧊 **Complete and frozen on `release/1.9.1`** (2026-10-20), going to UAT |
+| **v1.7.5 — Production .NET 10 hotfix** | ⏳ PPDO-234, on `main`, after UAT runs .NET 10 |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -895,6 +915,7 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 |---|---|
 | `docs/SPEC_STANDARD.md` | Writing or accepting a feature spec |
 | `docs/TICKET_PROMPT_STANDARD.md` | Writing a Linear ticket implementation prompt |
+| `docs/PR_DESCRIPTION_STANDARD.md` | Writing any PR description (template: `.github/pull_request_template.md`) |
 | `docs/PERFORMANCE_GUIDELINES.md` | Adding a query, endpoint, or list view |
 | `docs/DESIGN_SYSTEM.md` | Creating or restyling any page |
 | `docs/NAMING_CONVENTIONS.md` | Adding a table or column |
@@ -907,11 +928,12 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 | `docs/v1.8/RETROSPECTIVE.md` | Planning a release or changing process |
 | `docs/AI_DLC_Evaluation.md` | Considering an external AI development-workflow framework (AI-DLC assessed 2026-09-08 — cherry-pick, do not install) |
 | `docs/v1.8/Pre_Deployment_Checklist.md` | Merging `release/1.8.0` → `main` — v1.8.0 ships a migration that **rewrites existing AIP amounts**, so the baseline sums and restore path are captured before it runs |
+| `docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md` | Taking `release/1.9.1` to `uat` or `main` — no migration, but the Function App moves to **.NET 10 Isolated** in the same deploy as the code, and `deploy-uat.yml` needs `10.0.x` |
 | `docs/v1.9/Pre_Deployment_Checklist_v1.9.0.md` | Taking `release/1.9.0` to `uat` or `main` — six additive migrations and the export Blob container, all **before** the code |
 | `docs/v1.8/Pre_Deployment_Checklist_v1.8.2.md` | Taking `release/1.8.2` to `uat` or `main` — one additive migration that must run **before** the code, a one-time sign-out of every user (PPDO-141), and the start of PPDO-121's App Insights window |
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.0 (complete, going to UAT; v1.8.0–v1.9.0 unreleased, awaiting PDC/finance sign-off) — 2026-10-16 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.1 (complete, frozen, going to UAT; v1.8.0–v1.9.1 unreleased, awaiting PDC/finance sign-off) — 2026-10-20 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

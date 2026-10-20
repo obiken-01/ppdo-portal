@@ -1,4 +1,15 @@
+---
+type: spec
+version: v1.1.0
+status: shipped
+tickets: []
+updated: 2026-06-10
+---
+
 # LDIP / AIP / WFP Web Application — Requirements & Field Analysis
+
+Up: [v1.1 hub](README.md)
+
 *Prepared for Claude Code | Province of Occidental Mindoro — PPDO | June 9, 2026*
 
 ---
@@ -366,3 +377,8 @@ Province / LGU
 - The AIP reference code is the **primary key** across all three systems and must be treated with care — especially the sub-office label distinction (same 5-segment code, different name).
 - Consider a **tree/accordion UI** for the hierarchical PPA structure rather than a flat table.
 - The **LBP Form No. 4** (WFP in the files) maps to the AIP hierarchy and needs a separate view/export that groups by: AIP Reference Code → MFO → Performance Indicator → Budget (PS/MOOE/CO).
+
+## Related
+
+- [AIP Import & WFP Findings](AIP_WFP_Import_Findings.md) — findings, reference
+- [PPDO Portal — Database Model](DB_Model.md) — spec, reference

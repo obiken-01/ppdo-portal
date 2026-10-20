@@ -55,7 +55,7 @@ import AipReviewViewSwitch, { type AipReviewView } from "@/components/aip/review
 import AipEntryPicker from "@/components/aip/entry/AipEntryPicker";
 import AipSelectedPanel from "@/components/aip/entry/AipSelectedPanel";
 import { AipOfficeHeader } from "@/components/aip/entry/AipEntryPanelParts";
-import { AipCommentsProvider, AipCommentFilterBar } from "@/components/aip/entry/AipComments";
+import { AipCommentsProvider, AipCommentFilterBar, AipDeletedRowComments } from "@/components/aip/entry/AipComments";
 import { sumActivityAmounts } from "@/components/aip/entry/AipRowFigures";
 import {
   idsForAipNode, listAipProgramOptions, resolveAipSelection,
@@ -451,6 +451,8 @@ export default function AipReviewPage() {
                 same as AIP Entry. In Full office the chips keep today's behaviour — the anchors open
                 in place, because the whole tree is on screen. */}
             <AipCommentFilterBar onSelectNode={view === "drilldown" ? selectNode : undefined} />
+            {/* PPDO-206 — threads whose row was deleted: kept, labelled, still resolvable. */}
+            <AipDeletedRowComments />
 
             {!hasGroups ? (
               <EmptyState

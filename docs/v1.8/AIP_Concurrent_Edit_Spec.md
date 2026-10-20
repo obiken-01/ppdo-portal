@@ -1,11 +1,18 @@
 ---
-status: approved — §2 settled 2026-09-22
-version: v1.8.x (Phase 7)
-tickets: V18-71 (PPDO-116 … PPDO-121)
-supersedes: —
+type: spec
+version: v1.8.2
+status: current
+tickets: [PPDO-116, PPDO-121]
+updated: 2026-10-07
+version_note: "v1.8.x (Phase 7)"
+status_note: "approved — §2 settled 2026-09-22"
+tickets_note: "V18-71 (PPDO-116 … PPDO-121)"
+supersedes_note: "—"
 ---
 
 # AIP Concurrent Edit — Requirements
+
+Up: [v1.8 hub](README.md)
 
 Governed by [SPEC_STANDARD.md](../SPEC_STANDARD.md). Implements **V18-71** from
 [Phase_Plan.md](Phase_Plan.md) §8.
@@ -418,3 +425,9 @@ Verifiable against the running app by a person, two browsers, one office:
 - Deleted row → 404, not 409.
 - `UpdatedById` is set on every AIP write path, not only the inline editor. Worth a sweep test over the endpoint list rather than one case, in the shape of `ReviewerWriteGuardCoverageTests`.
 - Missing / malformed version → 400 (after the Deploy 3 flip).
+
+## Related
+
+- [v1.8.0 Phase 3 — AIP Entry](AIP_Entry_Spec.md) — spec, shipped
+- [v1.8.0 — AIP Entry: drill-down layout + delete Project/Activity](AIP_Entry_Layout_Spec.md) — spec, shipped
+- [AIP Entry — Draft Mirror for Expenditure Lines](AIP_Expenditure_Draft_Spec.md) — spec, shipped

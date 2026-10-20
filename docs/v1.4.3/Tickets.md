@@ -1,4 +1,14 @@
+---
+type: plan
+version: v1.4.3
+status: shipped
+tickets: [RAL-116, RAL-154, RAL-155, RAL-156, RAL-157, RAL-158]
+updated: 2026-07-15
+---
+
 # v1.4.3 Tickets — Other Fund Source Ceiling & Allocation Setup
+
+Up: [v1.4.3 hub](README.md)
 
 > Three implementation prompts, following [`../TICKET_PROMPT_STANDARD.md`](../TICKET_PROMPT_STANDARD.md).
 > Authoritative spec: [`v1.4.3_Requirements.md`](v1.4.3_Requirements.md). Backend-first — **A must
@@ -262,3 +272,10 @@ RAL-154/155/156 fund-scoping logic. Do NOT add a caching layer — this is a que
 When done, commit with:
 perf(budget-planning): batch WFP report N+1 queries into IN-list lookups (RAL-158)
 ```
+
+## Related
+
+- [v1.4.3 — Other Fund Source Ceiling & Allocation Setup](v1.4.3_Requirements.md) — spec, shipped
+- [Fund Source, Ceiling & Allocation — Current State Findings](Fund_Source_Ceiling_Allocation_Findings.md) — findings, reference
+- [Funding Source Aliases — AIP naming analysis & seed data](Funding_Source_Aliases.md) — findings, shipped
+- [Funding Source Seed Reconciliation (O2)](Funding_Source_Seed_Reconciliation.md) — findings, shipped

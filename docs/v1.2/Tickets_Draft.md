@@ -1,4 +1,14 @@
+---
+type: plan
+version: v1.2.0
+status: shipped
+tickets: [RAL-97, RAL-102, RAL-98, RAL-99, RAL-101, RAL-100]
+updated: 2026-06-24
+---
+
 # v1.2.0 — Linear Ticket Drafts
+
+Up: [v1.2 hub](README.md)
 
 These are the **Claude Code implementation prompts** per `docs/TICKET_PROMPT_STANDARD.md`.
 Authoritative spec for all of them: `docs/v1.2/Allocation_Requirements.md`.
@@ -297,3 +307,7 @@ feat(ui): shared MoneyInput component with peso prefix and comma formatting (RAL
 Once approved, create the six issues in Linear (assign real RAL numbers, set the `blockedBy` chain above),
 paste each prompt as the kickoff, and substitute the numbers into the branch names. Suggested build order:
 **T1 → T6 → T2 → T3 → T4 → T5** (T6 early so T4/T5 can consume `MoneyInput`).
+
+## Related
+
+- [PPDO Portal — v1.2.0: Budget Allocation, Configurable Divisions & Permission Model](Allocation_Requirements.md) — spec, shipped

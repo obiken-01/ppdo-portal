@@ -1,4 +1,13 @@
+---
+type: standard
+status: current
+tickets: []
+updated: 2026-06-22
+---
+
 # Naming Conventions
+
+Up: [Standards and reference](STANDARDS.md)
 
 ## Ralph's Personal Development Standard (RPDS)
 
@@ -172,3 +181,8 @@ to `CalendarEvents` are `Status` / `ReviewedById`, not `status` / `reviewed_by_i
 ---
 
 _Part of Ralph's Personal Development Standard (RPDS) v1.0_
+
+## Related
+
+- [PPDO Portal — Design System](DESIGN_SYSTEM.md) — standard, current
+- [Performance & Scalability Guidelines](PERFORMANCE_GUIDELINES.md) — standard, current

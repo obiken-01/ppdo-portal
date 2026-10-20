@@ -11,6 +11,14 @@ import api from "./api";
 import type { ApiResponse, PpmpReportDto } from "@/types";
 
 /**
+ * PPMP report switch (PPDO-236). Hidden in v1.9.1 — the report was built on our own initiative and
+ * nobody asked for it. While false the Report type dropdown omits PPMP (a stale `?type=PPMP` falls
+ * back to the reader's first allowed type) and the backend routes return 404. Restore by flipping
+ * this and `FeatureFlags.PpmpReportEnabled` in PPDO.Application.
+ */
+export const PPMP_REPORT_ENABLED = false;
+
+/**
  * The full PPMP report preview for one office + fiscal year. divisionId is only honored for
  * allocation officers (CanManagePpdoAllocation) — division-scoped callers are always forced
  * server-side to their own division (RAL-136).
