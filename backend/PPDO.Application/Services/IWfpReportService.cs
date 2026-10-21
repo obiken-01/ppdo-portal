@@ -56,4 +56,11 @@ public interface IWfpReportService
     /// </summary>
     Task<ServiceResult<WfpReportDto>> GetInitialReportAsync(
         int officeId, int fiscalYear, int? requestedDivisionId, User caller, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the caller may read any office's initial WFP (PPDO-240, <c>InitialWfpReadRule.MayReadAny</c>):
+    /// a PPDO reader, or an office's department head. False for a guest-office encoder, whom the
+    /// endpoints answer 403 before looking any office up.
+    /// </summary>
+    Task<bool> MayReadInitialReportsAsync(User caller, CancellationToken cancellationToken = default);
 }

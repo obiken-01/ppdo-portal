@@ -14,8 +14,10 @@ namespace PPDO.Tests.Application;
 /// 2026-10-15 for threads). Same harness as <see cref="InvestmentProposalServiceTests"/>.
 ///
 /// <para>
-/// A thread start goes to everyone who can open the proposal (<see cref="INotificationAudience.ProposalReadersAsync"/>,
-/// whose rule is <see cref="NotificationAudienceTests"/>); a reply and a resolve go to the thread's
+/// A thread started by PPDO goes to everyone who can open the proposal
+/// (<see cref="INotificationAudience.ProposalReadersAsync"/>); one started by the office stays in the office
+/// (<see cref="INotificationAudience.ProposalOfficeReadersAsync"/>, PPDO-239). Both rules are pinned in
+/// <see cref="NotificationAudienceTests"/>. A reply and a resolve go to the thread's
 /// starter and repliers, and only while they can still open it. The actor is dropped by
 /// <see cref="NotificationService"/> (<see cref="NotificationServiceTests"/>).
 /// </para>
@@ -27,6 +29,12 @@ public sealed partial class InvestmentProposalServiceTests
     /// <summary>The audience answers <paramref name="readers"/> for this proposal's office and program.</summary>
     private void Readers(params User[] readers)
         => _audience.Setup(a => a.ProposalReadersAsync(
+                It.Is<AipOffice>(o => o.Id == AipOfficeId), It.Is<AipProgram>(p => p.Id == ProgramId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(readers);
+
+    /// <summary>The audience answers <paramref name="readers"/> as the office's own readers of this proposal.</summary>
+    private void OfficeReaders(params User[] readers)
+        => _audience.Setup(a => a.ProposalOfficeReadersAsync(
                 It.Is<AipOffice>(o => o.Id == AipOfficeId), It.Is<AipProgram>(p => p.Id == ProgramId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(readers);
 
@@ -53,11 +61,42 @@ public sealed partial class InvestmentProposalServiceTests
     public async Task ThreadStarted_ByTheOffice_NamesTheOffice()
     {
         int id = await CreateAsync();
-        Readers(_reviewer);
+        OfficeReaders(_deptHead);
 
         await _sut.AddCommentAsync(id, "Done", null, _encoder);
 
         Assert.StartsWith("O7 commented on the proposal", (await BatchOf(NotificationTypes.ProposalComment)).Text);
+    }
+
+    /// <summary>
+    /// PPDO-239: the office's own discussion stays in the office. ⚠️ Not _reviewer or _hostAdmin, who
+    /// can open the proposal: the office readers are asked, never everyone who can open it.
+    /// </summary>
+    [Fact]
+    public async Task ThreadStarted_ByTheOffice_GoesToTheOfficesReadersOnly_NotToPpdo()
+    {
+        int id = await CreateAsync();
+        Readers(_encoder, _deptHead, _reviewer, _hostAdmin);
+        OfficeReaders(_encoder, _deptHead);
+
+        await _sut.AddCommentAsync(id, "Is the cost right?", null, _encoder);
+
+        NotificationBatch batch = await BatchOf(NotificationTypes.ProposalComment);
+        Assert.Equal([_encoder, _deptHead], batch.Recipients);
+        Assert.Equal($"/budget-planning/proposals/edit?id={id}&comments=open", batch.Link);
+    }
+
+    /// <summary>PPDO-239: a PPDO thread is unchanged — every reader of the proposal, PPDO included.</summary>
+    [Fact]
+    public async Task ThreadStarted_ByPpdo_StillGoesToEveryReader_NotJustTheOffice()
+    {
+        int id = await CreateAsync();
+        Readers(_encoder, _deptHead, _reviewer, _hostAdmin);
+        OfficeReaders(_encoder, _deptHead);
+
+        await _sut.AddCommentAsync(id, "Check the budget line", null, _reviewer);
+
+        Assert.Equal([_encoder, _deptHead, _reviewer, _hostAdmin], (await BatchOf(NotificationTypes.ProposalComment)).Recipients);
     }
 
     [Fact]
@@ -124,6 +163,8 @@ public sealed partial class InvestmentProposalServiceTests
     {
         Mock<INotificationAudience> broken = new();
         broken.Setup(a => a.ProposalReadersAsync(It.IsAny<AipOffice>(), It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("user query failed"));
+        broken.Setup(a => a.ProposalOfficeReadersAsync(It.IsAny<AipOffice>(), It.IsAny<AipProgram>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("user query failed"));
         _notifications.ForwardTo = new NotificationService(
             new Mock<INotificationRepository>().Object, broken.Object, NullLogger<NotificationService>.Instance);

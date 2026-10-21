@@ -2,8 +2,8 @@
 type: spec
 version: v1.9.0
 status: shipped
-tickets: [PPDO-221, PPDO-222, PPDO-219]
-updated: 2026-10-15
+tickets: [PPDO-221, PPDO-222, PPDO-219, PPDO-239]
+updated: 2026-10-20
 status_note: "accepted — 2026-10-14"
 tickets_note: "PPDO-221 (T3 backend), PPDO-222 (T4 frontend); after PPDO-219/220"
 supersedes_note: "—"
@@ -54,7 +54,8 @@ there in one click. Today each feature signals on its own (sidebar pills, banner
 
 | Event | Recipients | Text | Link |
 |---|---|---|---|
-| Proposal thread started | Everyone who can open the proposal, except the author | "{Side} commented on the proposal for {ref} — {project}: "{first 80 chars}"" | The proposal, comments panel |
+| Proposal thread started **by the office** (PPDO-239) | The office's own users who can open the proposal (division axis included), except the author. **Not** PPDO reviewers, host-office readers or SuperAdmin | "{Side} commented on the proposal for {ref} — {project}: "{first 80 chars}"" | The proposal, comments panel |
+| Proposal thread started **by PPDO** | Everyone who can open the proposal (the office's readers + every PPDO reviewer), except the author | Same | Same |
 | Reply in a proposal thread (2026-10-15) | The thread's starter and everyone who has replied, except the replier | "{Name} replied on the proposal for {ref} — {project}: "{first 80 chars}"" | Same |
 | Proposal thread resolved | The thread's starter and everyone who has replied, except the resolver | "{Name} resolved your comment on the proposal for {ref} — {project}" | Same |
 | AIP returned by PPDO | Every user of the office who can open its AIP | "PPDO returned your FY {fy} AIP with {n} comments" | AIP Entry, that year |
@@ -62,6 +63,15 @@ there in one click. Today each feature signals on its own (sidebar pills, banner
 | AIP sent to PPDO | PPDO cross-office reviewers (`CanReviewAllOffices`) | "{Office} sent its FY {fy} AIP to PPDO" | AIP Review, that office |
 | Division submitted | The office's department head(s) | "{Division} submitted its FY {fy} AIP work" | AIP Entry |
 | PPDO reviewer edit | Every user of the office who can open the activity | "PPDO edited {activity}: {change}" / "PPDO added {account} to {activity}" | The activity |
+| AIP activity thread started **by the department head** | The office's own users who can open the activity (division axis included), except the author | "{Name} commented on {activity}: "{first 80 chars}"" | AIP Entry, the activity |
+| AIP activity thread started **by PPDO** (PPDO-239) | The office's users who can open the activity (AIP Entry link) **and** every PPDO cross-office reviewer (`CanReviewAllOffices`, review drill-down link), except the author. Each user once: someone in both lists gets the AIP Entry entry only | "PPDO commented on {activity}: "{first 80 chars}"" | AIP Entry / AIP Review drill-down |
+| Reply / resolve in an AIP thread | The thread's starter and repliers who can still open it: office users by AIP Entry, PPDO reviewers by the review drill-down | "{Name} replied on {activity}: …" / "{Name} resolved your comment on {activity}" | Same split |
+
+**Who hears about a new comment thread (Ralph, 2026-10-20 — PPDO-239).** A thread the office starts
+is the office's own discussion: only the office's users who can open the item hear about it. A
+thread a PPDO reviewer starts reaches every PPDO reviewer and the affected office's users. Replies
+and resolves are unchanged (starter + repliers who can still open it). This changes notifications
+only, never who can read, write or resolve a comment.
 
 "Can open" uses the same scope the target's read endpoint uses (`BudgetPlanningScope`, the
 division axis included), resolved once per event for the office's users.

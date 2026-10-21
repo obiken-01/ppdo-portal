@@ -144,15 +144,22 @@ export function canOpenWfpReport(me: MeResponse): boolean {
 
 /**
  * The **WFP report type for one fiscal year** (PPDO-225). For an entered year this is the *initial
- * WFP*, read off the consolidated AIP, and every Budget Planning reader gets it — PPDO for any
- * office, an office for its own (`Initial_WFP_Report_Spec.md` decision 6). FY ≤ 2027 stays host-office
- * only, exactly as before.
+ * WFP*, read off the consolidated AIP — PPDO for any office, an office's **department heads** for their
+ * own (`Initial_WFP_Report_Spec.md` decision 6). FY ≤ 2027 stays host-office only, exactly as before.
+ *
+ * ↩️ **PPDO-240 (2026-10-20): a guest-office encoder no longer gets it.** A head is Admin/SuperAdmin,
+ * or holds `canReviewBudgetPlanning` or `canReviewAllOffices`. Because this was the encoder's only
+ * report type, `canOpenBudgetPlanningReport` drops the whole page for them with no other change.
+ * PPDO's own users are untouched: the host office reads the initial WFP as it reads the WFP.
  *
  * ⚠️ The Report page's WFP year list, the type dropdown and the sidebar all read this, so they cannot
- * disagree. The server enforces the same split (`WfpReportFunctions.AuthorizeReportAsync`).
+ * disagree. The server enforces the same split (`WfpReportFunctions.AuthorizeReportAsync`,
+ * `InitialWfpReadRule.MayReadAny`).
  */
 export function canOpenWfpReportForYear(me: MeResponse, fiscalYear: number): boolean {
-  return isEnteredFiscalYear(fiscalYear) ? me.canAccessBudgetPlanning : canOpenWfpReport(me);
+  if (!isEnteredFiscalYear(fiscalYear)) return canOpenWfpReport(me);
+  return me.canAccessBudgetPlanning
+    && (me.isHostOffice || isAdminRole(me) || me.canReviewBudgetPlanning || me.canReviewAllOffices);
 }
 
 /**
@@ -161,7 +168,8 @@ export function canOpenWfpReportForYear(me: MeResponse, fiscalYear: number): boo
  * ⚠️ Derived from the rules above rather than stated again, so the page and the sidebar cannot come
  * to disagree about who has something to read there. A reader with no allowed type would land on a
  * page whose every selector was empty. Since PPDO-225 the initial WFP means every Budget Planning
- * reader has one, but it is still derived rather than assumed.
+ * reader has one, but it is still derived rather than assumed — ↩️ which is why PPDO-240 closing the
+ * initial WFP to guest-office encoders closed the page to them too.
  */
 export function canOpenBudgetPlanningReport(me: MeResponse): boolean {
   return canOpenWfpReport(me) || canOpenAipReport(me)
