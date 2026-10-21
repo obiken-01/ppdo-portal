@@ -5,7 +5,7 @@ status: current
 tickets: [PPDO-7]
 superseded_by: [../v1.9/AIP_Reviewer_Edit_Spec.md]
 superseded_scope: "AIP_Reviewer_Edit_Spec.md: in part: section 5"
-updated: 2026-10-16
+updated: 2026-10-20
 ---
 
 # Permission Matrix
@@ -335,16 +335,23 @@ decision 6). There are no WFP records for those years, so the report is opened t
 is. ↩️ This widens PPDO-20 ("the WFP report is PPDO-only") **for entered years only**; FY ≤ 2027 is
 §2.2a's `CanAccessWfp`, unchanged.
 
-The endpoint gate is `CanAccessBudgetPlanning`; the office rule is `InitialWfpReadRule`:
+The endpoint gate is `CanAccessBudgetPlanning`, then `InitialWfpReadRule.MayReadAny` (PPDO-240); the
+office rule is `InitialWfpReadRule.Permits`. ↩️ **PPDO-240 (2026-10-20): a guest office's initial WFP is
+its department heads', not every user's.** A head is Admin/SuperAdmin, or holds `CanReviewBudgetPlanning`
+or `CanReviewAllOffices`. The frontend states the same rule in `canOpenWfpReportForYear`, which drives the
+sidebar item, the page and the layout guard.
 
 | Caller | Target office | Reads? |
 |---|---|---|
 | SuperAdmin, any office or none | any | ✅ (`CanAccessWfp`) |
-| Host Admin, or host Staff holding `CanAccessWfp` | any | ✅ PPDO reads every office |
+| Host Admin, or host Staff holding `CanAccessWfp` | any | ✅ PPDO reads every office (PPDO-240: unchanged) |
 | Host Staff without Budget Planning | any | ❌ 403 at the gate |
-| Guest Admin / Staff with Budget Planning | **their own** | ✅ |
-| Guest Admin / Staff | another office | ❌ **404**, the same answer as a missing office |
-| Guest Staff with the Budget Planning override `false` | their own | ❌ |
+| Guest Admin with Budget Planning | **their own** | ✅ |
+| Guest Staff holding `CanReviewBudgetPlanning` (department head) | **their own** | ✅ |
+| Guest-office `CanReviewAllOffices` holder | **their own** | ✅ |
+| **Guest Staff with neither review grant (encoder)** | any, own included | ❌ **403** before any office lookup; no Report page (PPDO-240) |
+| Guest head (any of the three above) | another office | ❌ **404**, the same answer as a missing office |
+| Guest Staff with the Budget Planning override `false` | their own | ❌ 403 at the gate |
 | Guest-office `CanReviewAllOffices` holder | another office | ❌ 404: review scope (`ResolveForReview`) is not the WFP report's |
 | No office | any | ❌ (unless SuperAdmin) |
 
@@ -356,11 +363,12 @@ another office. **(2) the division**, by the activity's division tag (PPDO-148):
 | Caller | Division |
 |---|---|
 | Own office, host (PPDO's own initial WFP) | §3.3 `WfpDivisionScope`, unchanged: finance and Admin choose; Staff forced to their division; Staff with none see nothing (404) |
-| Own office, guest: Admin, or Staff with no division | Whole office, or the division they ask for |
-| Own office, guest: Staff with a division | Forced to their division, whatever they ask |
+| Own office, guest: Admin, or a head (Staff) with no division | Whole office, or the division they ask for |
+| Own office, guest: a head (Staff) with a division | Forced to their division, whatever they ask |
 | Another office (a PPDO reader on a guest office) | Whole office, or the division asked for — never narrowed by the reader's own division |
 
-Pinned by `PermissionMatrixTests.InitialWfp_WhoReadsWhichOffice` (the office rows),
+Pinned by `PermissionMatrixTests.InitialWfp_WhoReadsWhichOffice` (the office rows) and
+`InitialWfp_MayReadAny` (the PPDO-240 front door), `budget-planning-access.test.ts` (the same rule on the page),
 `WfpInitialReportTests` (gate, scope and division through the service) and `WfpReportFunctionsTests`
 (the FY ≤ 2027 gate is still `CanAccessWfp`).
 
