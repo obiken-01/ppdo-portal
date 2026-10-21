@@ -1238,6 +1238,10 @@ function WfpEntryPageInner() {
     }
 
     let cancelled = false;
+    // PPDO-244 — clear the previous activity first. Its ref kept "+ Add expenditure" enabled and
+    // its lines stayed on screen under the new activity's header until the new one loaded.
+    setActivityRef(null);
+    setExpenditures([]);
     setLoadingActivity(true);
 
     ensureWfpActivity({
@@ -1744,7 +1748,12 @@ function WfpEntryPageInner() {
                 </p>
               )}
 
-              {expenditures.length === 0 ? (
+              {loadingActivity ? (
+                // Same height as the empty-state line, so the panel does not jump when it loads.
+                <div className="px-3 py-6 space-y-2 animate-pulse" aria-busy="true" aria-label="Loading expenditures">
+                  <div className="h-3 bg-slate-100 w-2/3 mx-auto" />
+                </div>
+              ) : expenditures.length === 0 ? (
                 <p className="px-3 py-6 text-sm text-slate-600 text-center">
                   No expenditures added yet.
                 </p>
@@ -1797,7 +1806,7 @@ function WfpEntryPageInner() {
                     setEditingExpenditure(null);
                     setWizardOpen(true);
                   }}
-                  disabled={activityRef == null || isWfpLocked}
+                  disabled={activityRef == null || loadingActivity || isWfpLocked}
                   className="text-sm font-medium text-green-700 hover:underline disabled:opacity-50"
                 >
                   + Add expenditure

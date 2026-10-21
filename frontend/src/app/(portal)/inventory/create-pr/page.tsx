@@ -512,7 +512,7 @@ export default function CreatePRPage() {
   const isStaff = me?.role === "Staff";
 
   // Staff are clamped to their own division by the backend, so only offer that one.
-  const { divisions: divisionOptions } = useInventoryDivisions(me?.division ?? null, isStaff);
+  const { divisions: divisionOptions, loading: divisionsLoading } = useInventoryDivisions(me?.division ?? null, isStaff);
 
   // ── Header field patch ─────────────────────────────────────────────────────
 
@@ -979,10 +979,11 @@ export default function CreatePRPage() {
               <select
                 value={header.division}
                 onChange={(e) => patchHeader({ division: e.target.value })}
-                disabled={isStaff}
+                disabled={isStaff || divisionsLoading}
                 className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-cell-auto disabled:text-slate-500 disabled:cursor-not-allowed"
               >
-                <option value="">— Select Division —</option>
+                {/* PPDO-244 — say the list is loading rather than offer an empty one. */}
+                <option value="">{divisionsLoading ? "Loading divisions…" : "— Select Division —"}</option>
                 {divisionOptions.map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
