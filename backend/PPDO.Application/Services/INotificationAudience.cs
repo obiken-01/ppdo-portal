@@ -29,6 +29,14 @@ public interface INotificationAudience
     Task<IReadOnlyList<User>> ProposalReadersAsync(AipOffice office, AipProgram program, CancellationToken ct = default);
 
     /// <summary>
+    /// The office's own users who can open a proposal on <paramref name="program"/>: the
+    /// <see cref="ProposalReadersAsync"/> rule with every other office's user left out, so never a
+    /// host-office reader, a cross-office reviewer or SuperAdmin. For a thread the office starts:
+    /// its discussion stays in the office (PPDO-239).
+    /// </summary>
+    Task<IReadOnlyList<User>> ProposalOfficeReadersAsync(AipOffice office, AipProgram program, CancellationToken ct = default);
+
+    /// <summary>
     /// The office's own users who can open an activity on <paramref name="program"/>: AIP Entry's read,
     /// division axis included. Users of other offices are never in it.
     /// </summary>

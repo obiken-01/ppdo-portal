@@ -136,7 +136,8 @@ public sealed partial class InvestmentProposalService
     // ── Notifications (PPDO-221, Notification_Centre_Spec.md §3.1) ────────────
 
     /// <summary>
-    /// A new thread goes to everyone who can open the proposal; a reply goes to the thread's starter
+    /// A new thread started by PPDO goes to everyone who can open the proposal; one started by the
+    /// office goes to the office's own readers only (PPDO-239). A reply goes to the thread's starter
     /// and everyone who has replied. The actor is removed by <see cref="INotificationService.StageAsync"/>.
     /// </summary>
     private Task StageCommentNotificationAsync(
@@ -151,7 +152,11 @@ public sealed partial class InvestmentProposalService
                 new NotificationBatch(
                     NotificationText.ProposalThreadStarted(SideLabel(side, caller), refCode, project, body),
                     link,
-                    await audience.ProposalReadersAsync(ctx.Office, ctx.Program, c)), ct);
+                    // PPDO-239: the office's own discussion stays in the office; PPDO's reaches everyone
+                    // who can open the proposal, every PPDO reviewer included.
+                    side == ProposalCommentSide.Office
+                        ? await audience.ProposalOfficeReadersAsync(ctx.Office, ctx.Program, c)
+                        : await audience.ProposalReadersAsync(ctx.Office, ctx.Program, c)), ct);
 
         return _notifications.StageAsync(NotificationTypes.ProposalReply, caller, async (audience, c) =>
             new NotificationBatch(

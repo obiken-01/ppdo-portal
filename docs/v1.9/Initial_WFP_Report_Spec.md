@@ -2,8 +2,8 @@
 type: spec
 version: v1.9.0
 status: shipped
-tickets: [PPDO-224, PPDO-225]
-updated: 2026-10-15
+tickets: [PPDO-224, PPDO-225, PPDO-240]
+updated: 2026-10-20
 status_note: "accepted — 2026-10-15"
 tickets_note: "PPDO-224 (T1 backend), PPDO-225 (T2 frontend)"
 supersedes_note: "—"
@@ -49,6 +49,13 @@ WFP remains the working WFP afterwards.
    has no entered WFP, but it does have an AIP to read this from. Office users go through
    `OfficeScope.Resolve` (own office); division-scoped staff are forced to their own division, as
    the WFP report already does (RAL-136). Needs a `Permission_Matrix.md` row.
+   ↩️ **PPDO-240, 2026-10-20 (Ralph): "an office's own users" is now "an office's department
+   heads".** A head is Admin/SuperAdmin, or holds `CanReviewBudgetPlanning` or
+   `CanReviewAllOffices`. A guest-office encoder (Staff with neither grant) gets no initial WFP: no
+   Report page, no menu item, and **403** from the three report endpoints (offices, preview,
+   export), before any office is looked up. The initial WFP was the encoder's only report type, so
+   the whole page goes. PPDO's own users are unchanged. A head who is Staff without the grant is
+   fixed by granting `CanReviewBudgetPlanning`. Permission_Matrix §3.4 carries the rows.
 7. **Reserve on MOOE and CO lines only, not PS.** PS is exempt from the AIP ceiling (DECISION C) and
    is not operational spending, so a 10% reserve on salaries would overstate the plan.
 8. **Amounts are the AIP's base figures**, not the +30% printed uplift (DECISION G is presentation

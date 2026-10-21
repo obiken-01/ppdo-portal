@@ -119,6 +119,34 @@ public sealed class NotificationAudienceTests
         Assert.DoesNotContain(_gsoEncoder, await _sut.ProposalReadersAsync(_ptoAipOffice, _programA));
     }
 
+    // ── Proposal office readers (a thread the office starts — PPDO-239) ─────────
+
+    [Fact]
+    public async Task ProposalOfficeReaders_AreTheOfficesOwnReaders_DivisionAxisIncluded()
+    {
+        IReadOnlyList<User> readers = await _sut.ProposalOfficeReadersAsync(_ptoAipOffice, _programA);
+
+        AssertExactly(readers, _ptoEncoderA, _ptoUnassigned, _ptoDeptHead, _ptoAdmin);
+        // Excluded: every PPDO user, _gsoReviewer and _superAdmin (they can open the proposal, but an
+        // office's own discussion stays in the office); _ptoEncoderB (division B); _gsoEncoder.
+    }
+
+    [Fact]
+    public async Task ProposalOfficeReaders_OnAnotherDivisionsProgram_SwapsTheEncoders()
+    {
+        AssertExactly(await _sut.ProposalOfficeReadersAsync(_ptoAipOffice, _programB),
+            _ptoEncoderB, _ptoUnassigned, _ptoDeptHead, _ptoAdmin);
+    }
+
+    [Fact]
+    public async Task ProposalOfficeReaders_AskOnlyForTheOfficesOwnUsers()
+    {
+        await _sut.ProposalOfficeReadersAsync(_ptoAipOffice, _programA);
+
+        _users.Verify(r => r.GetNotificationCandidatesAsync(Pto, false, It.IsAny<CancellationToken>()), Times.Once);
+        _users.VerifyNoOtherCalls();
+    }
+
     // ── Activity readers (reviewer edit) ──────────────────────────────────────
 
     [Fact]

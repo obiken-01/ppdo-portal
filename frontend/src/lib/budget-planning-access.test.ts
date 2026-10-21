@@ -28,9 +28,27 @@ function user(overrides: Partial<MeResponse> = {}): MeResponse {
 const ppdoStaff = (o: Partial<MeResponse> = {}) =>
   user({ officeId: PPDO_OFFICE, isHostOffice: true, divisionId: 2, ...o });
 
+// ↩️ PPDO-240: a guest office's initial WFP belongs to its department heads.
+const guestEncoder = (o: Partial<MeResponse> = {}) => user({ divisionId: 4, ...o });
+const guestHeads: [string, MeResponse][] = [
+  ["guest Admin", user({ role: "Admin" })],
+  ["guest Staff with CanReviewBudgetPlanning", user({ divisionId: 4, canReviewBudgetPlanning: true })],
+  ["guest Staff with CanReviewAllOffices", user({ divisionId: 4, canReviewAllOffices: true })],
+];
+
 describe("canOpenWfpReportForYear (PPDO-225)", () => {
-  it("offers a guest office the WFP for an entered year", () => {
-    expect(canOpenWfpReportForYear(user(), ENTERED)).toBe(true);
+  it.each(guestHeads)("offers the WFP for an entered year to a %s", (_, me) => {
+    expect(canOpenWfpReportForYear(me, ENTERED)).toBe(true);
+  });
+
+  it("does not offer it to a guest-office encoder, with or without a division (PPDO-240)", () => {
+    expect(canOpenWfpReportForYear(guestEncoder(), ENTERED)).toBe(false);
+    expect(canOpenWfpReportForYear(user(), ENTERED)).toBe(false);
+  });
+
+  it("leaves PPDO's own Staff and SuperAdmin as they were", () => {
+    expect(canOpenWfpReportForYear(ppdoStaff(), ENTERED)).toBe(true);
+    expect(canOpenWfpReportForYear(user({ role: "SuperAdmin", officeId: null }), ENTERED)).toBe(true);
   });
 
   it("keeps FY <= 2027 host-office only", () => {
@@ -52,8 +70,17 @@ describe("canOpenWfpReportForYear (PPDO-225)", () => {
 });
 
 describe("canOpenBudgetPlanningReport (page and sidebar share it)", () => {
-  it("opens for a guest office with Budget Planning, because the initial WFP is theirs", () => {
-    expect(canOpenBudgetPlanningReport(user())).toBe(true);
+  it.each(guestHeads)("opens for a %s", (_, me) => {
+    expect(canOpenBudgetPlanningReport(me)).toBe(true);
+  });
+
+  it("stays closed for a guest-office encoder: no menu item, and the layout guard redirects (PPDO-240)", () => {
+    expect(canOpenBudgetPlanningReport(guestEncoder())).toBe(false);
+    expect(canOpenBudgetPlanningReport(user())).toBe(false);
+  });
+
+  it("opens for PPDO Staff", () => {
+    expect(canOpenBudgetPlanningReport(ppdoStaff())).toBe(true);
   });
 
   it("stays closed without Budget Planning", () => {

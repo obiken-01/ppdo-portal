@@ -10,9 +10,13 @@
  *
  * On success: stores access + refresh tokens via auth.login() then
  * navigates to /dashboard.
+ *
+ * Quiet restore (PPDO-238): if this browser signed in before and no ?reason= banner is
+ * showing, the page first tries POST /auth/refresh. A still-valid refresh cookie forwards the
+ * user to their landing page without the form, as going straight to a portal page would.
  */
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -31,6 +35,8 @@ import type {
 } from "@/types/auth";
 import { resolveLandingPath, LANDING_FALLBACK } from "@/lib/landing";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
+import { classifyRefreshFailure, REFRESH_TIMEOUT_MS } from "@/lib/auth-redirect";
+import { clearSessionFlag, hasSessionFlag, shouldTryRestore } from "@/lib/session-restore";
 
 // Zod otherwise probes `Function("")` to decide whether it may compile validators. The site's
 // Content-Security-Policy forbids eval, so the probe was blocked and filed a CSP violation report
@@ -83,6 +89,32 @@ function StatusDot({ status }: { status: ApiStatus }) {
       Server unavailable — login may be slow
     </span>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Quiet session restore (PPDO-238)
+// ---------------------------------------------------------------------------
+
+type RestoreOutcome =
+  | { kind: "ok"; data: LoginResponse }
+  | { kind: "unauthorized" }
+  | { kind: "unreachable" };
+
+// Module-level — dedupes the refresh across StrictMode double-mounts, as the portal layout's
+// _refreshInFlight does. Two concurrent refreshes would rotate the cookie twice and the
+// second could 401 as superseded.
+let _restoreInFlight: Promise<RestoreOutcome> | null = null;
+
+function quietRefresh(): Promise<RestoreOutcome> {
+  if (!_restoreInFlight) {
+    // Bare axios, never the api.ts instance: its 401 interceptor would redirect.
+    _restoreInFlight = axios
+      .post<LoginResponse>(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true, timeout: REFRESH_TIMEOUT_MS })
+      .then(({ data }): RestoreOutcome => ({ kind: "ok", data }))
+      .catch((err: unknown): RestoreOutcome => ({ kind: classifyRefreshFailure(err).kind }))
+      .finally(() => { _restoreInFlight = null; });
+  }
+  return _restoreInFlight;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +371,12 @@ function LoginPageInner() {
   // clicked before React finishes hydrating and attaches handleSubmit.
   const [mounted, setMounted] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  // True while the quiet restore (PPDO-238) runs. The form stays laid out underneath, hidden,
+  // so the card keeps its size when it comes back.
+  const [restoring, setRestoring] = useState(false);
+  // Set once the user chooses the password instead (link or submit) — a late restore result
+  // is then ignored. A late refresh could also 401 as superseded after their login rotates it.
+  const restoreAbandoned = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -346,6 +384,54 @@ function LoginPageInner() {
 
   const reasonParam = searchParams.get("reason");
   const logoutReason = isRefreshErrorReason(reasonParam) ? LOGOUT_REASON_MESSAGES[reasonParam] : null;
+
+  // Quiet restore — runs once per page load. No loop with the portal guard: on success the
+  // access token is in memory, so the guard does not refresh again; a guard that sends the
+  // user back here either adds ?reason= or has already cleared the flag via auth.logout().
+  useEffect(() => {
+    if (!shouldTryRestore({ hasFlag: hasSessionFlag(), reasonParam })) return;
+
+    let cancelled = false;
+    const isStale = () => cancelled || restoreAbandoned.current;
+    setRestoring(true);
+
+    (async () => {
+      const outcome = await quietRefresh();
+      if (isStale()) return;
+
+      if (outcome.kind === "unauthorized") {
+        // The cookie is gone or invalid — stop trying on every visit. No ?reason=: the user
+        // came here on purpose and the form is what they expect.
+        clearSessionFlag();
+        setRestoring(false);
+        return;
+      }
+      if (outcome.kind === "unreachable") {
+        // Cold start / network — the cookie was never proven invalid, so keep the flag.
+        setRestoring(false);
+        return;
+      }
+
+      // Same steps as a password login (onSubmit below).
+      auth.login(outcome.data);
+      clearMeCache();
+      try {
+        const me = await fetchMe();
+        if (!isStale()) router.replace(resolveLandingPath(me));
+      } catch {
+        if (!isStale()) router.replace(LANDING_FALLBACK);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // reasonParam is read once: the restore is a page-load decision.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function showPasswordForm() {
+    restoreAbandoned.current = true;
+    setRestoring(false);
+  }
 
   // Fire a health check on mount — wakes up Azure Functions + Azure SQL
   // (both auto-sleep after inactivity on the free tier).
@@ -372,6 +458,7 @@ function LoginPageInner() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   async function onSubmit(values: FormData) {
+    showPasswordForm();
     setServerError(null);
     try {
       const { data } = await api.post<LoginResponse>("/auth/login", {
@@ -489,7 +576,32 @@ function LoginPageInner() {
             Sign in to your PPDO staff account
           </p>
 
-          <form method="post" onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+          <div className="relative">
+          {restoring && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 text-center"
+            >
+              <span className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-medium text-slate-800">Signing you back in…</p>
+              <button
+                type="button"
+                onClick={showPasswordForm}
+                className="text-sm text-green-700 hover:text-green-800 hover:underline transition-colors"
+              >
+                Sign in with password instead
+              </button>
+            </div>
+          )}
+
+          <form
+            method="post"
+            onSubmit={handleSubmit(onSubmit)}
+            noValidate
+            className={`space-y-5 ${restoring ? "invisible" : ""}`}
+            aria-hidden={restoring || undefined}
+          >
             {/* Username */}
             <div>
               <label
@@ -575,6 +687,7 @@ function LoginPageInner() {
               {!mounted ? "Loading…" : isSubmitting ? "Signing in…" : "Sign In"}
             </button>
           </form>
+          </div>{/* end form area */}
 
           {/* API status indicator */}
           <div className="mt-6 flex items-center justify-between">

@@ -46,8 +46,13 @@ public sealed class WfpInitialReportTests
     private readonly User _ppdoFinance   = Make(Ppdo, true, PpdoPlanning, u => u.OverrideCanManagePpdoAllocation = true);
     private readonly User _ppdoAdmin     = Make(Ppdo, true, null, role: UserRole.Admin);
     private readonly User _ppdoUnassigned = Make(Ppdo, true, null, u => u.OverrideCanAccessBudgetPlanning = true);
-    private readonly User _ptoCash       = Make(Pto, false, PtoCash);
-    private readonly User _ptoUnassigned = Make(Pto, false, null);
+    // ↩️ PPDO-240: a guest office's initial WFP is its department heads' — Admin, or Staff holding a
+    // review grant. The plain encoders below read nothing.
+    private readonly User _ptoCash       = Make(Pto, false, PtoCash, u => u.OverrideCanReviewBudgetPlanning = true);
+    private readonly User _ptoUnassigned = Make(Pto, false, null, u => u.OverrideCanReviewBudgetPlanning = true);
+    private readonly User _ptoCashEncoder = Make(Pto, false, PtoCash);
+    private readonly User _ptoUnassignedEncoder = Make(Pto, false, null);
+    private readonly User _ptoReviewer   = Make(Pto, false, PtoCash, u => u.OverrideCanReviewAllOffices = true);
     private readonly User _ptoAdmin      = Make(Pto, false, null, role: UserRole.Admin);
     private readonly User _ptoNoBudget   = Make(Pto, false, null, u => u.OverrideCanAccessBudgetPlanning = false);
     private readonly User _gsoReviewer   = Make(Gso, false, null, u => u.OverrideCanReviewAllOffices = true);
@@ -307,10 +312,29 @@ public sealed class WfpInitialReportTests
     }
 
     [Fact]
-    public async Task AnOfficeUser_ReadsTheirOwnOffice()
+    public async Task AnOfficesDepartmentHead_ReadsTheirOwnOffice()
     {
-        foreach (User user in new[] { _ptoCash, _ptoUnassigned, _ptoAdmin })
+        foreach (User user in new[] { _ptoCash, _ptoUnassigned, _ptoAdmin, _ptoReviewer })
             Assert.True((await Report(user)).IsSuccess, user.FullName);
+    }
+
+    [Fact]
+    public async Task AnOfficeEncoder_ReadsNothing_NotEvenTheirOwnOffice()   // PPDO-240
+    {
+        foreach (User user in new[] { _ptoCashEncoder, _ptoUnassignedEncoder })
+        {
+            Assert.Equal(ServiceErrorCode.NotFound, (await Report(user)).Code);
+            Assert.Empty(await _sut.GetInitialEligibleOfficesAsync(FiscalYear, user));
+            Assert.False(await _sut.MayReadInitialReportsAsync(user), user.FullName);
+        }
+    }
+
+    [Fact]
+    public async Task MayReadInitialReports_IsTrueForEveryReaderOfSomeOffice()   // PPDO-240 front door
+    {
+        foreach (User user in new[] { _ppdoFinance, _ppdoAdmin, _ppdoUnassigned, _superAdmin, _ptoCash, _ptoUnassigned, _ptoAdmin, _ptoReviewer, _gsoReviewer })
+            Assert.True(await _sut.MayReadInitialReportsAsync(user), user.FullName);
+        Assert.False(await _sut.MayReadInitialReportsAsync(_ptoNoBudget));
     }
 
     [Fact]

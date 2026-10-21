@@ -36,12 +36,11 @@ public sealed partial class WfpReportService
             .ToHashSet();
         if (consolidated.Count == 0) return [];
 
-        bool canAccessWfp = await _permissions.CanAccessWfpAsync(caller, cancellationToken);
-        bool canAccessBudgetPlanning = await _permissions.CanAccessBudgetPlanningAsync(caller, cancellationToken);
+        InitialWfpReadRule.Flags flags = await InitialReadFlagsAsync(caller, cancellationToken);
 
         return (await _configCache.GetOfficesAsync(cancellationToken))
             .Where(o => o.IsActive && consolidated.Contains(o.Id)
-                     && InitialWfpReadRule.Permits(caller, o.Id, canAccessWfp, canAccessBudgetPlanning))
+                     && InitialWfpReadRule.Permits(caller, o.Id, flags))
             .Select(o => new WfpReportOfficeDto(o.Id, o.OfficeCode, o.OfficeName, AipWorkflowStatus.Consolidated))
             .ToList();
     }
@@ -117,9 +116,18 @@ public sealed partial class WfpReportService
     /// service is safe on its own.
     /// </summary>
     private async Task<bool> MayReadInitialReportAsync(User caller, int officeId, CancellationToken ct)
-        => InitialWfpReadRule.Permits(caller, officeId,
+        => InitialWfpReadRule.Permits(caller, officeId, await InitialReadFlagsAsync(caller, ct));
+
+    /// <inheritdoc />
+    public async Task<bool> MayReadInitialReportsAsync(User caller, CancellationToken cancellationToken = default)
+        => InitialWfpReadRule.MayReadAny(caller, await InitialReadFlagsAsync(caller, cancellationToken));
+
+    private async Task<InitialWfpReadRule.Flags> InitialReadFlagsAsync(User caller, CancellationToken ct)
+        => new(
             await _permissions.CanAccessWfpAsync(caller, ct),
-            await _permissions.CanAccessBudgetPlanningAsync(caller, ct));
+            await _permissions.CanAccessBudgetPlanningAsync(caller, ct),
+            await _permissions.CanReviewBudgetPlanningAsync(caller, ct),
+            await _permissions.CanReviewAllOfficesAsync(caller, ct));
 
     /// <summary>The division filter to apply, or null when the caller sees nothing (404).</summary>
     private sealed record InitialDivision(int? DivisionId);
