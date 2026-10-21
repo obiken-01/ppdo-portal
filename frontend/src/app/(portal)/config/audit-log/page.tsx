@@ -171,7 +171,7 @@ export default function AuditLogPage() {
         from: fromDate ? new Date(fromDate).toISOString() : undefined,
         // Inclusive end-of-day for the "to" date, since a bare date parses to midnight.
         to: toDate ? new Date(`${toDate}T23:59:59.999`).toISOString() : undefined,
-      });
+      }, silent);
       if (seq !== reqSeqRef.current) return; // superseded by a newer load — drop this result
       setEntries(result.items);
       setTotalCount(result.totalCount);

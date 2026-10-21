@@ -45,7 +45,8 @@ function publish() {
 function load(userId: string): Promise<void> {
   _fetchedAt = Date.now();
   const run = api
-    .get<ApiResponse<AipReviewNotifications>>("/budget-planning/aip/review/notifications")
+    // A sidebar badge, refreshed on focus and page change: kept off the top loading bar (PPDO-244).
+    .get<ApiResponse<AipReviewNotifications>>("/budget-planning/aip/review/notifications", { skipProgress: true })
     .then(({ data }) => {
       if (_userId === userId) _value = data.data ?? null;
     })
