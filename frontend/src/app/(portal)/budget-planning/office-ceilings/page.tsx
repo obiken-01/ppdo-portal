@@ -219,8 +219,11 @@ export default function OfficeCeilingsPage() {
               aria-label="Fiscal year"
               value={fiscalYear ?? ""}
               onChange={(e) => setFiscalYear(Number(e.target.value))}
+              // PPDO-244 — an empty select reads as "no years"; say it is still loading.
+              disabled={availableFiscalYears.length === 0}
               className="border border-slate-200 px-3 py-2 text-sm text-slate-800"
             >
+              {availableFiscalYears.length === 0 && <option value="">Loading…</option>}
               {availableFiscalYears.map((year) => (
                 <option key={year} value={year}>
                   FY {year}
@@ -230,7 +233,8 @@ export default function OfficeCeilingsPage() {
             <button
               type="button"
               onClick={() => setBulkOpen(true)}
-              disabled={fiscalYear == null || officesWithoutCeiling.length === 0}
+              // PPDO-244 — `loading` too: while a new year loads, `cards` still holds the old year's.
+              disabled={loading || fiscalYear == null || officesWithoutCeiling.length === 0}
               className="px-3 py-2 border border-slate-200 text-sm text-slate-800 hover:bg-slate-50 disabled:text-slate-400 transition-colors"
             >
               Carry forward from FY {fiscalYear != null ? fiscalYear - 1 : "—"}

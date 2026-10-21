@@ -27,6 +27,15 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { auth } from "./auth";
 import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl, REFRESH_TIMEOUT_MS } from "./auth-redirect";
+import { trackRequestEnd, trackRequestStart } from "./loading-progress";
+
+// The two fields `ProgressTrackable` (lib/loading-progress.ts) reads, on every request config.
+declare module "axios" {
+  interface AxiosRequestConfig {
+    skipProgress?: boolean;
+    _progressTracked?: boolean;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Base URL — set NEXT_PUBLIC_API_BASE_URL in .env.local
@@ -53,6 +62,17 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  return config;
+});
+
+// ---------------------------------------------------------------------------
+// Top loading bar — count this request as in flight (PPDO-244)
+// ---------------------------------------------------------------------------
+
+// Pass `{ skipProgress: true }` on background polls and silent refreshes. The bare refresh call
+// below uses plain axios, so it never reaches these interceptors.
+api.interceptors.request.use((config) => {
+  trackRequestStart(config);
   return config;
 });
 
@@ -185,6 +205,19 @@ api.interceptors.response.use(
     } finally {
       isRefreshing = false;
     }
+  }
+);
+
+// Registered after the refresh interceptor, so a request that 401s, refreshes and retries is
+// counted until the retry settles. Only counts; it never changes the response or the error.
+api.interceptors.response.use(
+  (response) => {
+    trackRequestEnd(response.config);
+    return response;
+  },
+  (error: AxiosError) => {
+    trackRequestEnd(error.config);
+    return Promise.reject(error);
   }
 );
 

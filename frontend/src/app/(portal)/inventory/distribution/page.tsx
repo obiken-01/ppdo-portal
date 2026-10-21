@@ -17,7 +17,7 @@
  *                                                            batches (server-side)
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
@@ -305,8 +305,12 @@ export default function DistributionPage() {
     return () => clearTimeout(id);
   }, [searchTerm, summary?.description]);
 
+  // PPDO-244 — the latest pick wins; a slower answer for an item picked earlier is dropped.
+  const summarySeq = useRef(0);
+
   // Load item breakdown
   async function loadSummary(stockNo: string, description: string) {
+    const seq = ++summarySeq.current;
     setSelectedStockNo(stockNo);
     setSearchTerm(description);
     setSuggestOpen(false);
@@ -317,15 +321,17 @@ export default function DistributionPage() {
       const { data } = await api.get<ItemDistributionSummaryResponse>(
         `/distributions/item/${encodeURIComponent(stockNo)}`
       );
+      if (seq !== summarySeq.current) return;
       setSummary(data);
     } catch (e: unknown) {
+      if (seq !== summarySeq.current) return;
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 404) {
         toast.error("No data", `No delivery activity found for ${stockNo}.`);
       } else {
         toast.error("Load failed", "Could not load item breakdown.");
       }
-    } finally { setSummaryLoading(false); }
+    } finally { if (seq === summarySeq.current) setSummaryLoading(false); }
   }
 
   /** Submits all split rows in one call — the backend FIFO-allocates each across batches. */
