@@ -30,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { remainingAfterRun } from "@/lib/toast-timer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,17 +119,55 @@ function ToastCard({
 }) {
   const cfg = VARIANT_CONFIG[item.variant];
 
-  // Auto-dismiss timer
+  // Auto-dismiss timer. Hover or keyboard focus pauses it (and the bar);
+  // leaving resumes with the time that was left.
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    timerRef.current = setTimeout(() => onDismiss(item.id), AUTO_DISMISS_MS);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  const remainingRef = useRef(AUTO_DISMISS_MS);
+  const startedAtRef = useRef(0);
+  const hoverRef = useRef(false);
+  const focusRef = useRef(false);
+  const [paused, setPaused] = useState(false);
+
+  const startTimer = useCallback(() => {
+    startedAtRef.current = Date.now();
+    timerRef.current = setTimeout(() => onDismiss(item.id), remainingRef.current);
   }, [item.id, onDismiss]);
+
+  const stopTimer = useCallback(() => {
+    if (!timerRef.current) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+    remainingRef.current = remainingAfterRun(
+      remainingRef.current,
+      startedAtRef.current,
+      Date.now(),
+    );
+  }, []);
+
+  useEffect(() => {
+    startTimer();
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [startTimer]);
+
+  function setInteraction(source: "hover" | "focus", active: boolean) {
+    const wasPaused = hoverRef.current || focusRef.current;
+    if (source === "hover") hoverRef.current = active;
+    else focusRef.current = active;
+    const isPaused = hoverRef.current || focusRef.current;
+    if (isPaused === wasPaused) return;
+    if (isPaused) stopTimer();
+    else startTimer();
+    setPaused(isPaused);
+  }
 
   return (
     <div
       role="alert"
       className="flex flex-col bg-white shadow-lg border border-slate-200 min-w-72 max-w-sm w-full overflow-hidden animate-slide-in"
+      onMouseEnter={() => setInteraction("hover", true)}
+      onMouseLeave={() => setInteraction("hover", false)}
+      onFocus={() => setInteraction("focus", true)}
+      onBlur={() => setInteraction("focus", false)}
       // No rounded corners — rectangular by design
     >
       {/* ── Main row: accent bar | icon | text | close ── */}
@@ -163,12 +202,13 @@ function ToastCard({
         </button>
       </div>
 
-      {/* ── Progress bar — shrinks left-to-right over AUTO_DISMISS_MS ── */}
+      {/* ── Progress bar — shrinks right-to-left over AUTO_DISMISS_MS ── */}
       <div className="h-1 w-full bg-slate-100">
         <div
-          className={`h-full ${cfg.progress} origin-left`}
+          className={`h-full ${cfg.progress} origin-left animate-toast-progress motion-reduce:animate-none`}
           style={{
-            animation: `toast-progress ${AUTO_DISMISS_MS}ms linear forwards`,
+            animationDuration: `${AUTO_DISMISS_MS}ms`,
+            animationPlayState: paused ? "paused" : "running",
           }}
         />
       </div>
