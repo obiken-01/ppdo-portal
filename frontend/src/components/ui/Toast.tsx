@@ -196,7 +196,7 @@ function ToastCard({
         <button
           onClick={() => onDismiss(item.id)}
           aria-label="Dismiss"
-          className="px-3 text-slate-600 hover:text-slate-600 hover:bg-slate-50 transition-colors self-stretch flex items-start pt-2.5 text-base leading-none shrink-0"
+          className="px-3 text-slate-600 hover:text-slate-600 hover:bg-slate-50 transition-colors self-stretch flex items-center text-base leading-none shrink-0"
         >
           ×
         </button>
