@@ -622,7 +622,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-20 — v1.9.1 complete and frozen on `release/1.9.1`, going to `uat` with the .NET 10 runtime switch. Production waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
+> **Updated: 2026-10-21 — `release/1.10.0` cut from the frozen `release/1.9.1` for SAIP (spec first). v1.9.1 is on its way to `uat` with three approved training fixes (PPDO-238/239/240). Production runs v1.7.5 on .NET 10 and waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -659,6 +659,12 @@ next release branch. PPDO-226 (HGDG) moved to Backlog — Unscheduled, waiting o
 PPDO-236 (PPMP report hidden behind `FeatureFlags.PpmpReportEnabled`), PPDO-45 (export timing, closed with no change). Due on
 UAT **before** the November training (Ralph, 2026-10-19). **No migrations.** ⚠️ **Frozen:** only fixes found in UAT go in
 (`fix/v1.9.1-…`). Production moves to .NET 10 separately via **PPDO-234** (v1.7.5 hotfix on `main`), after UAT proves it. ⚠️ **The Function App's .NET setting moves to .NET 10 Isolated in the same deploy as the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md`. ⚠️ **Every UAT fix merged into `release/1.9.0` must also be merged forward into `release/1.9.1`.**
+**Freeze exceptions in v1.9.1 (Ralph, 2026-10-20), so they land before training:** PPDO-238 (login page restores a
+still-valid session, #527), PPDO-239 (office comments notify only the office; PPDO comments reach every PPDO
+reviewer, #528), PPDO-240 (guest-office encoders lose the Report page and the initial-WFP API, #529).
+**In planning:** v1.10.0 on `release/1.10.0`, cut 2026-10-21 from `release/1.9.1`. Lead item: SAIP (PPDO-241),
+spec `docs/v1.10/SAIP_Spec.md`. ⚠️ **Every UAT fix merged into `release/1.9.1` must also be merged forward into
+`release/1.10.0`.**
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.
@@ -796,7 +802,8 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.8.4 — Minor fixes** | ✅ **Complete on `release/1.8.4`**, on `uat` (#486, 2026-10-14) |
 | **v1.9.0 — Larger requests** | 🧊 **Complete and frozen on `release/1.9.0`** (2026-10-16), on UAT |
 | **v1.9.1 — .NET 10 + AIP UX fixes** | 🧊 **Complete and frozen on `release/1.9.1`** (2026-10-20), going to UAT |
-| **v1.7.5 — Production .NET 10 hotfix** | ⏳ PPDO-234, on `main`, after UAT runs .NET 10 |
+| **v1.7.5 — Production .NET 10 hotfix** | ✅ **Done** — PPDO-234, on `main` and in production |
+| **v1.10.0 — SAIP** | 📝 **Spec drafted** (`docs/v1.10/SAIP_Spec.md`), epic PPDO-241 |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
 
 ### v1.0.1 Patch — Changes (merged to main 2026-06-08)
@@ -934,6 +941,6 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.1 (complete, frozen, going to UAT; v1.8.0–v1.9.1 unreleased, awaiting PDC/finance sign-off) — 2026-10-20 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.10.0 (release/1.10.0 cut for SAIP; v1.8.0–v1.9.1 unreleased, awaiting PDC/finance sign-off) — 2026-10-21 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

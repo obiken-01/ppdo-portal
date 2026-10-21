@@ -4,7 +4,7 @@
 > Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
 > and office operations.
 
-**Current version: v1.9.1** (complete, frozen on `release/1.9.1`, going to UAT) · **Next: v1.10.0** (placeholder — SAIP)
+**Current version: v1.10.0** (in planning on `release/1.10.0` — SAIP) · **Previous: v1.9.1** (frozen, going to UAT)
 
 ---
 
@@ -24,15 +24,23 @@
 | v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
 | v1.9.0 | Larger requests from Demo 3 (see below) | 🧊 Complete, frozen for UAT |
-| **v1.9.1** | **.NET 10 runtime, security fix + AIP workflow UX fixes** (see below) | 🧊 **Complete, frozen for UAT** |
-| **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
+| v1.9.1 | .NET 10 runtime, security fix + AIP workflow UX fixes (see below) | 🧊 Complete, frozen for UAT |
+| **v1.10.0** | **SAIP** — Supplemental AIP (see below) | 📝 **Spec drafted, in planning** |
 
-> **Production** is at v1.7.4. v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
+> **Production** is at v1.7.5 (v1.7.4 on .NET 10). v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
 > finance users sign off. They ship as one deploy, with the migrations run by hand first.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and architecture rules.
 
 ---
+
+## What's in v1.10.0 (planned)
+
+Built on `release/1.10.0`, cut 2026-10-21 from `release/1.9.1`. Lead item: the **SAIP**. Once an office's AIP
+is marked as done, it is changed through an SAIP: the office edits a working copy, the department head sends it to
+PPDO with a signed request letter, and a PPDO reviewer approves or returns it. Reports keep the approved figures
+until approval. Spec: [`docs/v1.10/SAIP_Spec.md`](docs/v1.10/SAIP_Spec.md) (draft, PPDO-241). ⚠️ Expect additive
+migrations.
 
 ## What's in v1.9.1
 
