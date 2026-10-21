@@ -253,6 +253,12 @@ export default function ReceiveDeliveryPage() {
 
   useEffect(() => {
     if (!selectedPRId) { setSelectedPR(null); setItems([]); setDeliveredQty({}); return; }
+    // PPDO-244 — drop the previous PR's rows (and their typed quantities) at once, and ignore a
+    // slower answer for a PR the user has already moved off.
+    let cancelled = false;
+    setSelectedPR(null);
+    setItems([]);
+    setDeliveredQty({});
     setPRLoading(true);
     setFormError(null);
 
@@ -264,6 +270,7 @@ export default function ReceiveDeliveryPage() {
         api.get<Record<string, number>>(`/deliveries/totals?prId=${selectedPRId}`)
           .then((r) => r.data).catch(() => ({} as Record<string, number>)),
       ]);
+      if (cancelled) return;
       const pr = prRes.data;
       setSelectedPR(pr);
       setItems(itemsFromPR(pr));
@@ -271,8 +278,9 @@ export default function ReceiveDeliveryPage() {
     }
 
     load()
-      .catch(() => toast.error("Failed to load PR", "Could not fetch PR details."))
-      .finally(() => setPRLoading(false));
+      .catch(() => { if (!cancelled) toast.error("Failed to load PR", "Could not fetch PR details."); })
+      .finally(() => { if (!cancelled) setPRLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedPRId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── PR combobox helpers ─────────────────────────────────────────────────────
@@ -433,7 +441,7 @@ export default function ReceiveDeliveryPage() {
         <div className="flex items-center justify-end">
           <button
             onClick={handleSubmit}
-            disabled={submitting || !selectedPRId}
+            disabled={submitting || prLoading || !selectedPRId}
             className="flex items-center gap-2 px-6 py-2.5 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
@@ -596,7 +604,7 @@ export default function ReceiveDeliveryPage() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleSubmit}
-            disabled={submitting || !selectedPRId}
+            disabled={submitting || prLoading || !selectedPRId}
             className="flex items-center gap-2 px-8 py-3 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting

@@ -41,6 +41,7 @@ import ProposalSectionCard, { SectionSkeleton, primaryBtn, secondaryBtn, type Se
 import ProposalWorkPlanEditor from "./ProposalWorkPlanEditor";
 import ProposalComments, { COMMENTS_PANEL_ID } from "./ProposalComments";
 import { openCommentsNote } from "@/lib/proposal-comments";
+import { useInFlightLock } from "@/lib/in-flight-lock";
 import AnnexH1Preview from "./AnnexH1Preview";
 import {
   SectionA, SectionB, SectionC, SectionD, SectionE, SectionF, SectionI, SectionJ, SectionK, SectionL, SectionM, SectionS,
@@ -182,8 +183,8 @@ export default function ProposalEditor({
     setWorking(w);
   }
 
-  /** Saves `keys` in one PUT. Resolves true when it did. */
-  const save = useCallback(async (keys: SectionKey[]): Promise<boolean> => {
+  /** Saves `keys` in one PUT. Resolves true when it did. Call `save` below, never this directly. */
+  const saveNow = useCallback(async (keys: SectionKey[]): Promise<boolean> => {
     const p = proposalRef.current;
     const w = workingRef.current;
     const dirtyNow = SECTIONS.filter((s) => isSectionDirty(w, p.content, s.key)).map((s) => s.key);
@@ -223,6 +224,15 @@ export default function ProposalEditor({
     return false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
+
+  // ⚠️ PPDO-244 — one save at a time. Ctrl+S has no disabled state, so two fast presses sent two PUTs
+  // with the same rowVersion and the second came back as a false "changed by someone else" conflict.
+  // A save asked for while one is pending is dropped and resolves false.
+  const saveLock = useInFlightLock();
+  const save = useCallback(
+    async (keys: SectionKey[]): Promise<boolean> => (await saveLock.run(() => saveNow(keys))) ?? false,
+    [saveLock, saveNow]
+  );
 
   const saveAll = useCallback(() => save(SECTIONS.map((s) => s.key)), [save]);
   useEffect(() => {

@@ -588,8 +588,11 @@ export interface AuditLogListParams {
   to?: string;
 }
 
-/** GET /api/config/audit-log — filtered, paginated audit trail. SuperAdmin-only. */
-export async function listAuditLog(params: AuditLogListParams = {}): Promise<AuditLogPage> {
+/**
+ * GET /api/config/audit-log — filtered, paginated audit trail. SuperAdmin-only.
+ * `background` marks the auto-refresh tick, which stays off the top loading bar (PPDO-244).
+ */
+export async function listAuditLog(params: AuditLogListParams = {}, background = false): Promise<AuditLogPage> {
   const query: Record<string, string> = {};
   if (params.page) query.page = String(params.page);
   if (params.pageSize) query.pageSize = String(params.pageSize);
@@ -599,7 +602,7 @@ export async function listAuditLog(params: AuditLogListParams = {}): Promise<Aud
   if (params.from) query.from = params.from;
   if (params.to) query.to = params.to;
 
-  const { data } = await api.get<ApiResponse<AuditLogPage>>("/config/audit-log", { params: query });
+  const { data } = await api.get<ApiResponse<AuditLogPage>>("/config/audit-log", { params: query, skipProgress: background });
   return unwrap(data);
 }
 
