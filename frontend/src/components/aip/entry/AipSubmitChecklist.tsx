@@ -21,6 +21,7 @@ import type { AipDivisionStatus, AipReadiness, AipReadinessIssue, AipUnresolvedC
 import { fmtThousandsReadout } from "@/lib/aip-units";
 import { ceilingStaleCaption } from "@/lib/ceiling-staleness";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useInFlightLock } from "@/lib/in-flight-lock";
 import { useUnresolvedCounts } from "./AipComments";
 import AipHistoryButton from "@/components/aip/review/AipHistoryButton";
 import { fmtDivisionStamp } from "./AipDivisionParts";
@@ -282,7 +283,15 @@ export default function AipSubmitChecklist({
   const [confirmingReturn, setConfirmingReturn] = useState(false);
   const [checkingProposals, setCheckingProposals] = useState(false);
 
-  async function onActionClick() {
+  // ⚠️ PPDO-244 — the button re-enables when the proposal read ends, but the allocation re-read below
+  // is still running; a second click there started a second round of reads. One round at a time.
+  const actionLock = useInFlightLock();
+
+  function onActionClick() {
+    return actionLock.run(buildConfirmation);
+  }
+
+  async function buildConfirmation() {
     if (stage.kind !== "encoder" && stage.kind !== "toPpdo" && stage.kind !== "division") return;
     let proposalGaps: ProposalProjectOption[] | null = null;
     if (proposalCheck) {

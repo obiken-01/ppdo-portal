@@ -1163,8 +1163,9 @@ function EditRow({
             getLabel={accountLabel}
             getSearchText={accountSearch}
             allOptionLabel="— Account —"
-            placeholder="Search accounts…"
-            disabled={busy || lockAccount}
+            // PPDO-244 — on a cold cache the list can still be loading when the editor opens.
+            placeholder={accounts.length === 0 ? "Loading…" : "Search accounts…"}
+            disabled={busy || lockAccount || accounts.length === 0}
           />
           {/* Directly under the picker that determines it, so the answer is where the question
               was asked — not in a legend elsewhere on the row. */}
@@ -1189,8 +1190,8 @@ function EditRow({
               getLabel={(f) => fundLabel(f, generalFundId)}
               getSearchText={fundSearch}
               allOptionLabel="— Fund —"
-              placeholder="Search funds…"
-              disabled={busy}
+              placeholder={fundingSources.length === 0 ? "Loading…" : "Search funds…"}
+              disabled={busy || fundingSources.length === 0}
             />
             {missingFund && <p className="mt-1 text-[11px] text-red-700">{missingFund}</p>}
             </>)}

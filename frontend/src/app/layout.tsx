@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { NOINDEX, SITE_URL } from "@/lib/seo";
 import ServiceWorkerRegistrar from "@/components/pwa/ServiceWorkerRegistrar";
+import TopLoadingBar from "@/components/layout/TopLoadingBar";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -65,6 +66,8 @@ export default function RootLayout({
         )}
       </head>
       <body className="antialiased">
+        {/* PPDO-244 — one loading bar for every page, portal and public; no page code needed. */}
+        <TopLoadingBar />
         {children}
         <ServiceWorkerRegistrar />
       </body>

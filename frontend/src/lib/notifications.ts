@@ -20,8 +20,9 @@ export const POLL_INTERVAL_MS = 60_000;
 /** Page size of the dropdown; the full page uses the same. */
 export const PAGE_SIZE = 20;
 
+/** The bell's 60 s poll — kept off the top loading bar (PPDO-244). */
 export async function getUnreadCount(): Promise<number> {
-  const { data } = await api.get<ApiResponse<NotificationCount>>("/notifications/unread-count");
+  const { data } = await api.get<ApiResponse<NotificationCount>>("/notifications/unread-count", { skipProgress: true });
   return unwrap(data).count;
 }
 
