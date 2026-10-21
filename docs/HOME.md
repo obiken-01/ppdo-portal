@@ -35,6 +35,7 @@ These live at the repo root, not in `docs/`, so they are named here rather than 
 - [v1.7 — Inventory](v1.7/README.md)
 - [v1.8 — AIP redesign](v1.8/README.md)
 - [v1.9 — Reviewer edits, comments, notifications and WFP export](v1.9/README.md)
+- [v1.10 — SAIP](v1.10/README.md) (in planning)
 
 There is no docs folder for v1.0 or v1.6.0; their record is in the root `CLAUDE.md` release history.
 
