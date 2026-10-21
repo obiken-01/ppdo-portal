@@ -67,6 +67,10 @@ figures change only on approval.
     the office's AIP readers; a division submitted → the department head (existing event). Comment
     threads on an SAIP follow PPDO-239's rule.
 
+17. **Changes so far** (Ralph, 2026-10-21): while an SAIP is open the office sees a live list of what it
+    changes (copy vs approved, net difference, ceiling after) and can filter AIP Entry to changed PPAs
+    only. The same diff is saved at approval and drives the history, the review screen and the SAIP report.
+
 ### Open follow-ups (not blocking)
 
 - A. Whether the PPDC or finance must also sign off on an SAIP (today: a PPDO reviewer only).
@@ -121,7 +125,7 @@ figures change only on approval.
 | `POST …/saips/{saipId}/return` | Reviewer | 409 not sent |
 | `POST …/saips/{saipId}/approve` | Reviewer | 409 not sent; 409 the approved AIP changed since the copy (should not happen; guard) |
 | `POST …/saips/{saipId}/cancel` | Office head | 409 already Approved/Cancelled |
-| `GET  …/saips/{saipId}/changes` | Office readers, reviewers | 404 |
+| `GET  …/saips/{saipId}/changes` | Office readers, reviewers | 404. While the SAIP is open it is **computed live** (copy vs approved); once Approved it reads the saved `aip_saip_changes`. One diff function serves both (decision 17). |
 | `GET  …/saips/{saipId}/report` and `/report/export` | Report readers (PPDO-240 rule) | 404 not approved |
 
 The existing AIP Entry, division submit, comment and reviewer-edit endpoints work on the copy when
@@ -149,7 +153,8 @@ report, review list or the GSO feed can never pick up unapproved figures by acci
 ### `aip_saip_changes`
 Written at approval: `saip_id`, `node_type` (project, activity, expenditure, item), `node_id`
 (approved row id after apply), `change` (added, changed, reduced to zero), `field`, `before`,
-`after`. Drives the history and the SAIP report.
+`after`. Drives the history and the SAIP report. Written at approval by the same diff function the live
+"changes so far" panel uses, so what the office saw is what gets saved.
 
 ### Division submissions
 The copy has its own `aip_division_submissions` rows, so the division step (decision 6) works
@@ -167,6 +172,14 @@ unchanged.
 - Send to PPDO: the existing submit checklist, plus "Letter attached" and "New projects' proposals
   finalized".
 - Cancel: a confirm dialog that says the changes will be discarded.
+- **Changes so far panel** (Ralph, 2026-10-21): on AIP Entry while an SAIP is open, a panel titled
+  "SAIP {n} · changes so far ({count})" lists each changed or added PPA with what changed, the approved
+  and SAIP amounts and the difference, then the **net change** to the office's AIP and the ceiling after
+  the SAIP. It refreshes after each save. Empty: "No changes yet. Edit an amount or add an activity."
+- **Show only changed PPAs**: a toggle on the AIP Entry tree that hides untouched programs, projects and
+  activities, keeping the parents of any changed row visible. Off by default; remembered per user in
+  this browser.
+- Users never pick PPAs before editing: the SAIP is whatever they change or add (decision 4).
 - Loading keeps the page shell (no layout shift); errors use the existing toast.
 
 **AIP Review (PPDO)**
@@ -218,6 +231,9 @@ Office and SAIP number pickers. Empty when the office has no approved SAIP.
 - [ ] After approval, Annex B shows the amended figures; comments and proposal links on changed
       activities still open the right rows.
 - [ ] The SAIP history shows SAIP 1's before → after and the letter.
+- [ ] While SAIP 1 is open, "changes so far" lists each change with the right net total, and updates after a save.
+- [ ] "Show only changed PPAs" hides untouched rows and keeps their parents; turning it off shows everything.
+- [ ] After approval, the saved changes match what the panel showed just before.
 - [ ] The SAIP report lists only SAIP 1's added or changed PPAs, with amended amounts; Excel matches.
 - [ ] Cancel discards the copy; the AIP is unchanged; SAIP 1 is shown as Cancelled.
 - [ ] A second SAIP can't start while one is open; SAIP 2 can start after SAIP 1 is approved.
