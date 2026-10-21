@@ -25,8 +25,9 @@ export async function getLatestBulkExport(fiscalYear: number): Promise<InitialWf
   return res.data.data ?? null;
 }
 
+/** The 3 s job poll — kept off the top loading bar (PPDO-244). */
 export async function getBulkExport(id: number): Promise<InitialWfpExportJobDto> {
-  const { data } = await api.get<ApiResponse<InitialWfpExportJobDto>>(`${BASE}/${id}`);
+  const { data } = await api.get<ApiResponse<InitialWfpExportJobDto>>(`${BASE}/${id}`, { skipProgress: true });
   if (data.data == null) throw new Error(data.error ?? "Unexpected empty response.");
   return data.data;
 }

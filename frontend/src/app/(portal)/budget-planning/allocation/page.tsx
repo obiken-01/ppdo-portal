@@ -1119,7 +1119,9 @@ function AllocationPageInner() {
                 offices={officeList}
                 value={selectedOfficeId}
                 onChange={setSelectedOfficeId}
-                placeholder="— select office —"
+                // PPDO-244 — searchable before the list arrives, it found nothing.
+                disabled={officeList.length === 0}
+                placeholder={officeList.length === 0 ? "Loading offices…" : "— select office —"}
               />
             ) : (
               <span className="text-sm text-slate-600 font-medium">
