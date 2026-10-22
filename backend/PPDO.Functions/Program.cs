@@ -268,6 +268,9 @@ var host = new HostBuilder()
         services.AddScoped<IAipReviewService, AipReviewService>();
         services.AddScoped<IAipConsolidatedService, AipConsolidatedService>();
         services.AddScoped<IAipNotificationService, AipNotificationService>();
+        // v1.10.0 — SAIP (PPDO-246). The only repository allowed to read draft copies.
+        services.AddScoped<ISaipRepository, SaipRepository>();
+        services.AddScoped<ISaipService, SaipService>();
 
         // -- v1.9.0 — Bulk initial WFP export, background jobs (PPDO-228) -------
         // docs/v1.9/Bulk_Initial_WFP_Export_Spec.md. One generic repository for the queue operations

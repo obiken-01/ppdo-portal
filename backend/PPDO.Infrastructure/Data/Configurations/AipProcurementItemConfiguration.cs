@@ -17,6 +17,11 @@ public sealed class AipProcurementItemConfiguration : IEntityTypeConfiguration<A
     {
         builder.ToTable("aip_procurement_items");
 
+        // v1.10.0 — PPDO-246. SAIP working copy: the approved row a copied row came from. A plain
+        // column, not an FK: the copy is deleted on cancel and rewritten onto the approved tree on
+        // approval, and a self-reference would only add a delete-order constraint to both.
+        builder.Property(x => x.SourceId).HasColumnName("source_id");
+
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
 

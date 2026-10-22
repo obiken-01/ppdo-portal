@@ -5,7 +5,7 @@ status: current
 tickets: [PPDO-7]
 superseded_by: [../v1.9/AIP_Reviewer_Edit_Spec.md]
 superseded_scope: "AIP_Reviewer_Edit_Spec.md: in part: section 5"
-updated: 2026-10-20
+updated: 2026-10-22
 ---
 
 # Permission Matrix
@@ -379,6 +379,32 @@ Office users keep their per-office export and get 403 on all four. Checked in th
 `InitialWfpExportService`. Jobs are per fiscal year, so any `CanAccessWfp` holder reads any job. Not
 subject to `ReviewerWriteGuard`: queuing a download changes no plan content. Pinned by
 `InitialWfpExportServiceTests` and `WfpBulkExportFunctionsTests`.
+
+### 3.5 SAIPs — who starts, cancels and reads one (v1.10.0 — PPDO-246)
+
+An SAIP changes a **Consolidated** office's AIP through a draft copy
+([SAIP_Spec.md](../v1.10/SAIP_Spec.md) decisions 1–4, 12). No new permission flag: the rules are built
+from the existing ones, in `SaipService`. All four endpoints are gated on `CanAccessBudgetPlanning`
+(`AuthorizeAsync`, not `AuthorizeWriteAsync`: start and cancel move the office's own workflow, as
+`submit-to-ppdo` does). The order inside the service is **read scope (404) → year (400) → head (403) →
+state (409)**, so a 403 or 409 never confirms another office.
+
+| Caller | Start / Cancel (`POST …/offices/{id}/saips`, `…/saips/{saipId}/cancel`) | List / Get (`GET …/saips`, `…/saips/{saipId}`) |
+|---|---|---|
+| SuperAdmin | ✅ any office ("as head") | ✅ any office |
+| Guest Admin, own office | ✅ the department head | ✅ |
+| Guest Staff holding `CanReviewBudgetPlanning`, own office | ✅ the department head | ✅ |
+| Guest Staff without it (encoder), own office | ❌ **403** "Only the department head can start an SAIP." | ✅ |
+| Host Admin (PPDO), another office | ❌ **403**: reads every office, but is not that office's head | ✅ |
+| PPDO reviewer (`CanReviewAllOffices`), another office | ❌ **403** | ✅ |
+| Any user of another guest office | ❌ **404**, the same answer as a missing office | ❌ **404** |
+
+Read scope is `OfficeScope.ResolveForReview`, the AIP review read. The head is Admin or
+`CanReviewBudgetPlanning` **in the office the SAIP is for** — the same rule as
+`AipSubmitService.IsDepartmentHeadAsync`, plus the office check, which is what stops a host-office Admin.
+An SAIP id that belongs to another office, asked for under this office's route, is **404**.
+
+Pinned by `SaipServiceTests` (every row above) and `SaipCopySqlServerTests`.
 
 ---
 

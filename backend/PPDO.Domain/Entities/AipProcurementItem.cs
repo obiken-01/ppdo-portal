@@ -80,6 +80,12 @@ public sealed class AipProcurementItem
     /// </summary>
     public decimal LineTotal { get; private set; }
 
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-246): the approved row this one was copied from when its
+    /// SAIP started. Null on every approved row, and on a row added inside an SAIP.
+    /// </summary>
+    public int? SourceId { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent expenditure line.</summary>

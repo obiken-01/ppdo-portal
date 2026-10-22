@@ -72,7 +72,7 @@ public sealed class AipActivityTotalsRecomputeTests : IDisposable
                 -- concurrency behaviour itself is SQL Server's and is verified against it.
                 updated_at TEXT NULL,
                 updated_by_id TEXT NULL,
-                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001', source_id INTEGER NULL
             );
             CREATE TABLE aip_expenditures (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +93,7 @@ public sealed class AipActivityTotalsRecomputeTests : IDisposable
                 -- default exists only so EF can read the value back after an insert. The
                 -- concurrency behaviour itself is SQL Server's and is verified against it.
                 updated_by_id TEXT NULL,
-                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001', source_id INTEGER NULL
             );
             """);
     }

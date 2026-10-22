@@ -76,6 +76,24 @@ public sealed class AipOffice
     /// </summary>
     public string WorkflowStatus { get; set; } = "Draft";
 
+    /// <summary>
+    /// The SAIP this row is the draft copy for (v1.10.0 — PPDO-246). <b>Null on every approved
+    /// row.</b>
+    ///
+    /// <para>
+    /// ⚠️ An EF global query filter (<c>saip_id IS NULL</c>) hides every copy from every ordinary
+    /// read, so reports, review lists, the dashboard and the GSO feed never see unapproved figures.
+    /// Only SAIP code reads copies, through <c>ISaipRepository</c> and <c>IgnoreQueryFilters()</c>.
+    /// </para>
+    /// </summary>
+    public int? SaipId { get; set; }
+
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-246): the approved group row this one was copied from when its
+    /// SAIP started. Null on every approved row, and on a row added inside an SAIP.
+    /// </summary>
+    public int? SourceId { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     /// <summary>The parent AIP record.</summary>

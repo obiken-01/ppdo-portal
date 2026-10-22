@@ -51,7 +51,7 @@ public sealed class AipNotificationRepositoryTests : IDisposable
                 name TEXT NOT NULL DEFAULT '',
                 sector TEXT NOT NULL DEFAULT '',
                 office_id INTEGER NULL,
-                workflow_status TEXT NOT NULL DEFAULT 'Draft'
+                workflow_status TEXT NOT NULL DEFAULT 'Draft', saip_id INTEGER NULL, source_id INTEGER NULL
             );
 
             INSERT INTO aip_records (id, fiscal_year, status) VALUES
