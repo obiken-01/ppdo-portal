@@ -55,8 +55,13 @@ public sealed class AipDivisionSubmissionConfiguration : IEntityTypeConfiguratio
         // ↩️ PPDO-247 — saip_id joins the key, so an SAIP's copy has its own row per division. SQL
         // Server treats NULLs as equal in a unique index, so the AIP itself still gets exactly one row
         // per (record, division), as before.
+        //
+        // ⚠️ HasFilter(null) is load-bearing. EF's SQL Server convention filters a unique index on a
+        // nullable column to "[saip_id] IS NOT NULL", which would drop uniqueness for exactly the AIP
+        // rows (saip_id NULL) this index exists to protect.
         builder.HasIndex(s => new { s.AipRecordId, s.DivisionId, s.SaipId })
             .IsUnique()
+            .HasFilter(null)
             .HasDatabaseName("UX_aip_division_submissions_record_division_saip");
 
         builder.HasOne<AipSaip>()

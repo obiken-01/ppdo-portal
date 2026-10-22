@@ -321,6 +321,10 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("returned_by_user_id");
 
+                    b.Property<int?>("SaipId")
+                        .HasColumnType("int")
+                        .HasColumnName("saip_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -345,14 +349,16 @@ namespace PPDO.Infrastructure.Data.Migrations
 
                     b.HasIndex("ReturnedById");
 
-                    b.HasIndex("SubmittedById");
+                    b.HasIndex("SaipId");
 
-                    b.HasIndex("AipRecordId", "DivisionId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_aip_division_submissions_record_division");
+                    b.HasIndex("SubmittedById");
 
                     b.HasIndex("AipRecordId", "OfficeId")
                         .HasDatabaseName("IX_aip_division_submissions_record_office");
+
+                    b.HasIndex("AipRecordId", "DivisionId", "SaipId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_aip_division_submissions_record_division_saip");
 
                     b.ToTable("aip_division_submissions", null, t =>
                         {
@@ -4580,6 +4586,12 @@ namespace PPDO.Infrastructure.Data.Migrations
                         .HasForeignKey("ReturnedById")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_aip_division_submissions_users_returned_by_user_id");
+
+                    b.HasOne("PPDO.Domain.Entities.AipSaip", null)
+                        .WithMany()
+                        .HasForeignKey("SaipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("FK_aip_division_submissions_aip_saips_saip_id");
 
                     b.HasOne("PPDO.Domain.Entities.User", "SubmittedBy")
                         .WithMany()

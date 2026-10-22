@@ -28,13 +28,13 @@ public sealed partial class SaipCopySqlServerTests
         Office = new Office { Id = s.PtoId, OfficeCode = "PTO", IsHostOffice = false },
     };
 
-    private static AipExpenditureService Expenditures(AppDbContext ctx)
+    private static AipExpenditureService Expenditures(AppDbContext ctx, IAipCeilingService? ceiling = null)
     {
         AipRepository aip = new(ctx);
         AipExpenditureRepository exp = new(ctx);
         return new AipExpenditureService(
             aip, exp, new AipActivityTotalsService(aip, exp, NullLogger<AipActivityTotalsService>.Instance),
-            Mock.Of<IAipCeilingService>(), new AccountRepository(ctx), new Repository<FundingSource>(ctx),
+            ceiling ?? Mock.Of<IAipCeilingService>(), new AccountRepository(ctx), new Repository<FundingSource>(ctx),
             Mock.Of<IAuditService>(), new PermissionService(),
             new AipDivisionLock(aip, new AipDivisionSubmissionRepository(ctx), new PermissionService()),
             Mock.Of<IUserRepository>(), new AipReviewCommentRepository(ctx), new RecordingNotificationService(),
@@ -161,6 +161,63 @@ public sealed partial class SaipCopySqlServerTests
         }
     }
 
+    // ── Ceiling: warn on save, block at send (Ralph, 2026-10-22) ──────────────
+
+    [SqlServerFact]
+    public async Task SavingACopyLineOverTheCeiling_Saves_AndReturnsTheWarning()
+    {
+        Seeded s = await SeedAsync(3107);
+        SaipDto saip = await StartAsync(s);
+        Mock<IAipCeilingService> ceiling = new();
+        ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("General Fund MOOE + CO totals ₱9,000.00, which is ₱1,000.00 over the ceiling.");
+
+        AipExpenditure line;
+        await using (AppDbContext ctx = _db.NewContext()) line = await PlainCopyLineAsync(ctx, saip.Id);
+        await using (AppDbContext ctx = _db.NewContext())
+        {
+            ServiceResult<AipExpenditureWriteResultDto> result = await Expenditures(ctx, ceiling.Object).UpdateAsync(
+                line.Id, new UpdateAipExpenditureDto(null, s.FundId, 0m, 5000m, 500m), PtoAdmin(s), line.RowVersion);
+
+            Assert.True(result.IsSuccess, result.Error);   // not blocked
+            Assert.Contains("over the ceiling", result.Value!.SaipCeilingWarning);
+        }
+
+        await using (AppDbContext ctx = _db.NewContext())
+            Assert.Equal(5000m, (await ctx.AipExpenditures.AsNoTracking().SingleAsync(e => e.Id == line.Id)).Mooe);
+        // Measured on the copy's group, so on the amended totals.
+        ceiling.Verify(c => c.ValidateForSubmitAsync(
+            It.Is<int>(id => saip.DraftAipOfficeIds.Contains(id)), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [SqlServerFact]
+    public async Task SavingAnOrdinaryAipLine_GetsNoSaipCeilingWarning()
+    {
+        // The AIP's own saves keep their old behaviour: the warning belongs to the SAIP.
+        Seeded s = await SeedAsync(3108);
+        Mock<IAipCeilingService> ceiling = new();
+        ceiling.Setup(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync("over");
+        AipExpenditure line;
+        await using (AppDbContext ctx = _db.NewContext())
+        {
+            await ctx.Database.ExecuteSqlRawAsync(
+                "UPDATE aip_offices SET workflow_status = 'Draft' WHERE id = {0}", s.PtoGroupIds[0]);
+            line = await ctx.AipExpenditures.AsNoTracking()
+                .Where(e => e.Activity.Project.Program.OfficeId == s.PtoGroupIds[0] && !e.ProcurementItems.Any())
+                .FirstAsync();
+        }
+
+        await using (AppDbContext ctx = _db.NewContext())
+        {
+            ServiceResult<AipExpenditureWriteResultDto> result = await Expenditures(ctx, ceiling.Object).UpdateAsync(
+                line.Id, new UpdateAipExpenditureDto(null, s.FundId, 0m, 1100m, 500m), PtoAdmin(s), line.RowVersion);
+
+            Assert.True(result.IsSuccess, result.Error);
+            Assert.Null(result.Value!.SaipCeilingWarning);
+        }
+        ceiling.Verify(c => c.ValidateForSubmitAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── Division rows ─────────────────────────────────────────────────────────
 
     [SqlServerFact]
@@ -198,6 +255,14 @@ public sealed partial class SaipCopySqlServerTests
         {
             // A second row for the same SAIP and division is a duplicate, as for the AIP.
             ctx.Add(new AipDivisionSubmission { AipRecordId = s.RecordId, OfficeId = s.PtoId, DivisionId = divisionId, SaipId = saip.Id });
+            await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
+        }
+
+        await using (AppDbContext ctx = _db.NewContext())
+        {
+            // ⚠️ And the AIP keeps its own rule: a second AIP row (saip_id NULL) is a duplicate too.
+            // EF's default would have filtered the index to saip_id IS NOT NULL and let this through.
+            ctx.Add(new AipDivisionSubmission { AipRecordId = s.RecordId, OfficeId = s.PtoId, DivisionId = divisionId });
             await Assert.ThrowsAsync<DbUpdateException>(() => ctx.SaveChangesAsync());
         }
     }
