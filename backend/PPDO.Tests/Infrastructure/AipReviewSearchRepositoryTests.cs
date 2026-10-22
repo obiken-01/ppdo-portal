@@ -59,14 +59,14 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 name TEXT NOT NULL DEFAULT '',
                 sector TEXT NOT NULL DEFAULT '',
                 office_id INTEGER NULL,
-                workflow_status TEXT NOT NULL DEFAULT 'Draft'
+                workflow_status TEXT NOT NULL DEFAULT 'Draft', saip_id INTEGER NULL, source_id INTEGER NULL
             );
             CREATE TABLE aip_programs (
                 id INTEGER PRIMARY KEY,
                 office_id INTEGER NOT NULL,
                 ref_code TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
-                function_band TEXT NOT NULL DEFAULT 'Core'
+                function_band TEXT NOT NULL DEFAULT 'Core', source_id INTEGER NULL
             );
             CREATE TABLE aip_projects (
                 id INTEGER PRIMARY KEY,
@@ -75,7 +75,7 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 name TEXT NOT NULL DEFAULT '',
                 description TEXT NULL,
                 objective TEXT NULL,
-                is_synthetic INTEGER NOT NULL DEFAULT 0
+                is_synthetic INTEGER NOT NULL DEFAULT 0, source_id INTEGER NULL
             );
             CREATE TABLE aip_activities (
                 id INTEGER PRIMARY KEY,
@@ -104,7 +104,7 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 -- concurrency behaviour itself is SQL Server's and is verified against it.
                 updated_at TEXT NULL,
                 updated_by_id TEXT NULL,
-                row_version BLOB NOT NULL DEFAULT x'0000000000000001'
+                row_version BLOB NOT NULL DEFAULT x'0000000000000001', source_id INTEGER NULL
             );
             CREATE TABLE aip_division_submissions (
                 id INTEGER PRIMARY KEY,

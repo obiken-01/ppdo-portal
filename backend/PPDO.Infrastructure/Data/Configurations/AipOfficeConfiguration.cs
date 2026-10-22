@@ -72,6 +72,36 @@ public sealed class AipOfficeConfiguration : IEntityTypeConfiguration<AipOffice>
         builder.HasIndex(o => new { o.OfficeId, o.WorkflowStatus })
             .HasDatabaseName("IX_aip_offices_workflow_status");
 
+        // ── SAIP working copy (v1.10.0 — PPDO-246, SAIP_Spec.md §5) ───────────────
+        //
+        // A draft copy is a second set of group rows in the same record, carrying saip_id. The
+        // approved rows keep saip_id NULL.
+        builder.Property(o => o.SaipId).HasColumnName("saip_id");
+        builder.Property(o => o.SourceId).HasColumnName("source_id");
+
+        builder.HasIndex(o => o.SaipId)
+            .HasDatabaseName("IX_aip_offices_saip_id");
+
+        // NO ACTION: an SAIP row is never deleted (a cancelled one stays in the history), and its
+        // copy is removed by SaipRepository before the SAIP is closed.
+        builder.HasOne<AipSaip>()
+            .WithMany()
+            .HasForeignKey(o => o.SaipId)
+            .HasConstraintName("FK_aip_offices_aip_saips_saip_id")
+            .OnDelete(DeleteBehavior.NoAction)
+            .IsRequired(false);
+
+        // ⚠️ THE GUARD. Every existing read of aip_offices — AIP Entry, the review list, Annex B,
+        // the initial WFP, the dashboard, the ceiling sums, the GSO feed — skips draft copies, so no
+        // report can pick up unapproved figures by accident. Reads that start from a child table
+        // and join up through Office (e.g. e.Activity.Project.Program.Office.AipRecordId) are
+        // filtered too: EF applies this filter to the navigation join. Reads keyed on a parent id
+        // are filtered by construction, because the parent ids come from a filtered office read.
+        //
+        // Only SAIP code sees copies, through SaipRepository and IgnoreQueryFilters(). Do not add
+        // IgnoreQueryFilters() anywhere else. SaipCopyQueryFilterTests pins this.
+        builder.HasQueryFilter(o => o.SaipId == null);
+
         // Cascade: deleting an AIP record removes its entire hierarchy.
         builder.HasOne(o => o.AipRecord)
             .WithMany(r => r.Offices)

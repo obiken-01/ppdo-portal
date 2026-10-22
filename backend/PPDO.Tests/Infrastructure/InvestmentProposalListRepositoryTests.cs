@@ -28,23 +28,23 @@ public sealed class InvestmentProposalListRepositoryTests : IDisposable
 
         using AppDbContext setup = new(_options);
         setup.Database.ExecuteSqlRaw("""
-            CREATE TABLE aip_offices (id INTEGER PRIMARY KEY, aip_record_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL);
-            CREATE TABLE aip_programs (id INTEGER PRIMARY KEY, office_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL);
-            CREATE TABLE aip_projects (id INTEGER PRIMARY KEY, program_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL);
-            CREATE TABLE aip_activities (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, total TEXT NULL);
+            CREATE TABLE aip_offices (id INTEGER PRIMARY KEY, aip_record_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL, saip_id INTEGER NULL, source_id INTEGER NULL);
+            CREATE TABLE aip_programs (id INTEGER PRIMARY KEY, office_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL, source_id INTEGER NULL);
+            CREATE TABLE aip_projects (id INTEGER PRIMARY KEY, program_id INTEGER NOT NULL, ref_code TEXT NOT NULL, name TEXT NOT NULL, source_id INTEGER NULL);
+            CREATE TABLE aip_activities (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, total TEXT NULL, source_id INTEGER NULL);
             CREATE TABLE Users (Id TEXT PRIMARY KEY, FullName TEXT NOT NULL);
             CREATE TABLE investment_proposals (
                 id INTEGER PRIMARY KEY, aip_project_id INTEGER NOT NULL, status TEXT NOT NULL,
                 updated_at TEXT NOT NULL, updated_by_user_id TEXT NULL);
 
-            INSERT INTO aip_offices VALUES (100, 28, '1000', 'OPA'), (101, 28, '2000', 'PTO'), (102, 29, '1000', 'OPA 2029');
-            INSERT INTO aip_programs VALUES
+            INSERT INTO aip_offices (id, aip_record_id, ref_code, name) VALUES (100, 28, '1000', 'OPA'), (101, 28, '2000', 'PTO'), (102, 29, '1000', 'OPA 2029');
+            INSERT INTO aip_programs (id, office_id, ref_code, name) VALUES
                 (200, 100, '001', 'Rice Program'), (201, 100, '002', 'Corn Program'),
                 (202, 101, '001', 'Revenue Program'), (203, 102, '001', 'Next Year');
-            INSERT INTO aip_projects VALUES
+            INSERT INTO aip_projects (id, program_id, ref_code, name) VALUES
                 (300, 200, '001', 'Rice Seed Support'), (301, 201, '001', 'Corn Seed Support'),
                 (302, 202, '001', 'Tax Mapping'), (303, 203, '001', 'Next Year Project');
-            INSERT INTO aip_activities VALUES (1, 300, '100.50'), (2, 300, '200.25'), (3, 301, NULL);
+            INSERT INTO aip_activities (id, project_id, total) VALUES (1, 300, '100.50'), (2, 300, '200.25'), (3, 301, NULL);
             INSERT INTO Users VALUES ('11111111-1111-1111-1111-111111111111', 'Office Encoder');
             INSERT INTO investment_proposals VALUES (1, 300, 'Draft', '2028-01-05 03:00:00', '11111111-1111-1111-1111-111111111111');
             """);

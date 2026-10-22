@@ -92,6 +92,16 @@ public static class AuditAction
     /// <summary>The department head moved an activity to another division. Nine characters.</summary>
     public const string RetagActivityDivision = "RETAG_DIV";
 
+    // ── SAIP (v1.10.0 — PPDO-246) ─────────────────────────────────────────────
+    // Written against `aip_saips` rows. Not AIP hand-offs: the approved AIP does not move, so they
+    // stay out of AipHandOffs below.
+
+    /// <summary>The department head started an SAIP and its draft copy was made. Ten characters.</summary>
+    public const string SaipStart = "SAIP_START";
+
+    /// <summary>The department head cancelled an SAIP; its draft copy was deleted. Ten characters.</summary>
+    public const string SaipCancel = "SAIP_CANCL";
+
     /// <summary>
     /// Every AIP workflow hand-off, in one place (PPDO-77 read them for History; PPDO-75 reads the
     /// latest one for the returned notice). Add a new hand-off here, or both reads miss it.

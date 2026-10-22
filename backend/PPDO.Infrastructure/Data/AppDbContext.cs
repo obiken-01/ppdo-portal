@@ -108,6 +108,10 @@ public sealed class AppDbContext : DbContext
     // ── v1.8.0 — Division submit to the department head (PPDO-130) ─────────────
     public DbSet<AipDivisionSubmission> AipDivisionSubmissions { get; set; } = null!;
 
+    // ── v1.10.0 — SAIP (PPDO-246) ──────────────────────────────────────────────
+    public DbSet<AipSaip> AipSaips { get; set; } = null!;
+    public DbSet<AipSaipChange> AipSaipChanges { get; set; } = null!;
+
     // ── v1.8.0 Demo 2.15 — Investment proposals (PPDO-154) ───────────────────
     public DbSet<InvestmentProposal> InvestmentProposals { get; set; } = null!;
     public DbSet<InvestmentProposalBeneficiary> InvestmentProposalBeneficiaries { get; set; } = null!;
