@@ -46,4 +46,11 @@ public interface IAipDivisionSubmissionRepository
     /// (aip_record_id, division_id) index rejects a second first-submit of the same division.
     /// </summary>
     Task SaveChangesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-247): one SAIP's division rows for config office
+    /// <paramref name="officeId"/>, tracked, ordered by division. The AIP's own rows are never in it.
+    /// </summary>
+    Task<IReadOnlyList<AipDivisionSubmission>> GetForSaipAsync(
+        int saipId, int officeId, CancellationToken ct = default);
 }

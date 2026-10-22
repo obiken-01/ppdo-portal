@@ -45,7 +45,8 @@ public static class AipTreeMapper
         a.DivisionId, divisionName, canEdit,
         // The single mapper for this DTO, so every read path gets the token — see
         // AipActivityDto.RowVersion for why a read that omits it silently disables the guard.
-        a.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null);
+        a.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null,
+        a.SourceId);
 
     /// <summary>
     /// The nested tree for <paramref name="offices"/>, drawing each level from the flat lists

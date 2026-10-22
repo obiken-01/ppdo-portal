@@ -32,6 +32,29 @@ public interface IAipRepository : IRepository<AipRecord>
     /// <summary>Returns the single AipOffice whose PK equals <paramref name="id"/>, or null (RAL-62 manual entry).</summary>
     Task<AipOffice?> GetOfficeByIdAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-247): the draft-copy group row whose PK equals
+    /// <paramref name="id"/>, tracked, or null. Never an approved row — that is
+    /// <see cref="GetOfficeByIdAsync"/>, which the query filter keeps blind to copies.
+    ///
+    /// <para>
+    /// ⚠️ One of the few <c>IgnoreQueryFilters()</c> on <c>aip_offices</c>, narrowed to one id AND to
+    /// <c>saip_id IS NOT NULL</c>. Write paths call it only after <see cref="GetOfficeByIdAsync"/>
+    /// came back empty (<c>AipGroupLookup</c>), so an id the caller names is resolved to the row it
+    /// is — a copy row by its own id — and no list read ever sees a copy.
+    /// </para>
+    /// </summary>
+    Task<AipOffice?> GetDraftGroupByIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-247): the draft-copy group rows of config office
+    /// <paramref name="configOfficeId"/> in record <paramref name="aipRecordId"/>, tracked, ordered
+    /// by ref code. Empty when the office has no open SAIP — a copy exists only while its SAIP is
+    /// open (cancel deletes it, approval removes it), and one SAIP is open at a time.
+    /// </summary>
+    Task<IReadOnlyList<AipOffice>> GetDraftGroupsForOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default);
+
     /// <summary>AipOffice rows WHERE aip_record_id IN (<paramref name="aipIds"/>). Used by the list endpoint for office-count aggregation.</summary>
     Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdsAsync(IReadOnlyList<int> aipIds, CancellationToken ct = default);
 

@@ -26,6 +26,13 @@ public sealed class SaipService : ISaipService
     private readonly IPermissionService        _permissions;
     private readonly IAuditService             _audit;
     private readonly IUserRepository           _userRepo;
+    // PPDO-247 — the letter, the send and the live changes.
+    private readonly IFileStore                       _files;
+    private readonly IAipSubmitService                _submit;
+    private readonly IInvestmentProposalRepository    _proposals;
+    private readonly INotificationService             _notifications;
+    private readonly IAipCeilingService               _ceiling;
+    private readonly IAipDivisionSubmissionRepository _divisions;
     private readonly ILogger<SaipService>      _logger;
 
     public SaipService(
@@ -35,6 +42,12 @@ public sealed class SaipService : ISaipService
         IPermissionService        permissions,
         IAuditService             audit,
         IUserRepository           userRepo,
+        IFileStore                       files,
+        IAipSubmitService                submit,
+        IInvestmentProposalRepository    proposals,
+        INotificationService             notifications,
+        IAipCeilingService               ceiling,
+        IAipDivisionSubmissionRepository divisions,
         ILogger<SaipService>      logger)
     {
         _saipRepo    = saipRepo;
@@ -43,6 +56,12 @@ public sealed class SaipService : ISaipService
         _permissions = permissions;
         _audit       = audit;
         _userRepo    = userRepo;
+        _files         = files;
+        _submit        = submit;
+        _proposals     = proposals;
+        _notifications = notifications;
+        _ceiling       = ceiling;
+        _divisions     = divisions;
         _logger      = logger;
     }
 
@@ -263,7 +282,301 @@ public sealed class SaipService : ISaipService
         return ServiceResult<SaipDto>.Ok(await ToDtoAsync(saip, found.Record, draft, ct));
     }
 
+    // ── The signed request letter (decision 7) ────────────────────────────────
+
+    public async Task<ServiceResult<SaipDto>> PutLetterAsync(
+        int aipRecordId, int officeId, int saipId, string? fileName, byte[] content, User caller,
+        CancellationToken ct = default)
+    {
+        (OfficeContext? found, AipSaip? saip, string notFound) = await ResolveSaipAsync(aipRecordId, officeId, saipId, caller, ct);
+        if (found is null || saip is null) return ServiceResult<SaipDto>.NotFound(notFound);
+
+        if (!await IsDepartmentHeadAsync(caller, officeId, ct))
+            return Denied<SaipDto>(caller, "attach the letter to");
+
+        if (!SaipLetterRules.EditableStatuses.Contains(saip.Status))
+            return ServiceResult<SaipDto>.Conflict(saip.Status == SaipStatus.SubmittedToPpdo
+                ? $"The letter is locked once SAIP {saip.Number} is sent to PPDO."
+                : $"SAIP {saip.Number} is {saip.Status.ToLowerInvariant()}. Its letter can no longer change.");
+
+        if (SaipLetterRules.Validate(fileName, content, out SaipLetterRules.Kind? kind, out string name) is string bad)
+            return ServiceResult<SaipDto>.BadRequest(bad);
+
+        // A new key per upload, so a replace never overwrites the file a reader may be downloading,
+        // and a failed save below leaves the old letter in place.
+        string key = $"saip-letters/{saip.Id}/{Guid.NewGuid():N}{kind!.Extension}";
+        string? oldKey = saip.LetterFileKey;
+        object before = new { saip.LetterFileName, saip.LetterSizeBytes };
+
+        using (MemoryStream body = new(content, writable: false))
+            await _files.SaveAsync(key, body, ct);
+
+        saip.LetterFileKey      = key;
+        saip.LetterFileName     = name;
+        saip.LetterContentType  = kind.ContentType;
+        saip.LetterSizeBytes    = content.LongLength;
+        try
+        {
+            await _saipRepo.UpdateAsync(saip, ct);
+            await _saipRepo.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            await DeleteFileQuietlyAsync(key, saip.Id, ct);
+            return ServiceResult<SaipDto>.Conflict(
+                $"SAIP {saip.Number} was changed by someone else. Reload and try again.");
+        }
+        catch
+        {
+            await DeleteFileQuietlyAsync(key, saip.Id, ct);
+            throw;
+        }
+
+        // The replaced file belongs to no SAIP any more. Cancel keeps the letter (decision 12);
+        // replacing it is the head choosing a different one, so the old file goes.
+        if (oldKey is not null) await DeleteFileQuietlyAsync(oldKey, saip.Id, ct);
+
+        await _audit.LogAsync("aip_saips", saip.Id, AuditAction.SaipLetter, before,
+            new { saip.LetterFileName, saip.LetterSizeBytes, saip.LetterContentType }, ct);
+        _logger.LogInformation(
+            "SAIP letter attached. SaipId: {SaipId}, Number: {Number}, OfficeId: {OfficeId}, SizeBytes: {SizeBytes}, "
+            + "Replaced: {Replaced}, UserId: {UserId}",
+            saip.Id, saip.Number, officeId, content.LongLength, oldKey is not null, caller.Id);
+
+        return ServiceResult<SaipDto>.Ok(await ToDtoAsync(saip, found.Record, await DraftIdsAsync(saip, ct), ct));
+    }
+
+    public async Task<ServiceResult<SaipLetterFile>> GetLetterAsync(
+        int aipRecordId, int officeId, int saipId, User caller, CancellationToken ct = default)
+    {
+        (OfficeContext? found, AipSaip? saip, string notFound) = await ResolveSaipAsync(aipRecordId, officeId, saipId, caller, ct);
+        if (found is null || saip is null) return ServiceResult<SaipLetterFile>.NotFound(notFound);
+
+        if (saip.LetterFileKey is null)
+            return ServiceResult<SaipLetterFile>.NotFound($"SAIP {saip.Number} has no letter yet.");
+
+        await using Stream? stream = await _files.OpenReadAsync(saip.LetterFileKey, ct);
+        if (stream is null)
+        {
+            _logger.LogError(
+                "SAIP letter file is missing from storage. SaipId: {SaipId}, FileKey: {FileKey}", saip.Id, saip.LetterFileKey);
+            return ServiceResult<SaipLetterFile>.NotFound($"SAIP {saip.Number}'s letter file could not be found.");
+        }
+
+        using MemoryStream copy = new();
+        await stream.CopyToAsync(copy, ct);
+        return ServiceResult<SaipLetterFile>.Ok(new SaipLetterFile(
+            copy.ToArray(), saip.LetterFileName ?? "request-letter",
+            saip.LetterContentType ?? "application/octet-stream"));
+    }
+
+    private async Task DeleteFileQuietlyAsync(string key, int saipId, CancellationToken ct)
+    {
+        try
+        {
+            await _files.DeleteAsync(key, ct);
+        }
+        catch (Exception ex)
+        {
+            // A stray file costs storage, not correctness: nothing points at it any more.
+            _logger.LogError(ex, "SAIP letter file could not be deleted. SaipId: {SaipId}, FileKey: {FileKey}", saipId, key);
+        }
+    }
+
+    // ── Send to PPDO (decisions 6–8, 10) ──────────────────────────────────────
+
+    /// <summary>The refusal when no letter is attached (spec §3).</summary>
+    public const string LetterMissingMessage = "Attach the signed request letter first.";
+
+    private static readonly string[] SendableStates = [SaipStatus.DepartmentReview, SaipStatus.ReturnedByPpdo];
+
+    public async Task<ServiceResult<SaipDto>> SubmitAsync(
+        int aipRecordId, int officeId, int saipId, User caller, CancellationToken ct = default)
+    {
+        (OfficeContext? found, AipSaip? saip, string notFound) = await ResolveSaipAsync(aipRecordId, officeId, saipId, caller, ct);
+        if (found is null || saip is null) return ServiceResult<SaipDto>.NotFound(notFound);
+
+        if (!await IsDepartmentHeadAsync(caller, officeId, ct))
+            return Denied<SaipDto>(caller, "send");
+
+        if (!SaipStatus.IsOpen(saip.Status))
+            return ServiceResult<SaipDto>.Conflict($"SAIP {saip.Number} is already {saip.Status.ToLowerInvariant()}.");
+        if (saip.Status == SaipStatus.SubmittedToPpdo)
+            return ServiceResult<SaipDto>.Conflict($"SAIP {saip.Number} is already with PPDO.");
+
+        SaipSendChecklist? checklist = await _submit.GetSaipChecklistAsync(aipRecordId, officeId, saip.Id, ct);
+        if (checklist is null)
+        {
+            // An open SAIP always has a copy. Without one there is nothing to send; say so, not 500.
+            _logger.LogError("Open SAIP has no draft copy. SaipId: {SaipId}, OfficeId: {OfficeId}", saip.Id, officeId);
+            return ServiceResult<SaipDto>.Conflict($"SAIP {saip.Number} has no working copy. Cancel it and start again.");
+        }
+
+        // ⚠️ Every gate is checked and every failure named in one answer, the way the AIP's own send
+        // does it, so a head fixing the letter does not then learn about a draft proposal.
+        List<string> blockers = [];
+        string state = checklist.Groups[0].WorkflowStatus;
+        if (!SendableStates.Contains(state))
+        {
+            if (checklist.DivisionBlockers.Count > 0) blockers.AddRange(checklist.DivisionBlockers);
+            else blockers.Add($"SAIP {saip.Number} has not been submitted for department review yet.");
+        }
+        else
+        {
+            blockers.AddRange(checklist.DivisionBlockers);
+        }
+
+        if (saip.LetterFileKey is null) blockers.Add(LetterMissingMessage);
+
+        if (await UnfinalizedNewProjectsAsync(checklist.Groups, ct) is { Count: > 0 } drafts)
+            blockers.Add("These new projects need a Finalized investment proposal first: "
+                         + string.Join(", ", drafts) + ".");
+
+        blockers.AddRange(checklist.WorkBlockers);
+        if (checklist.CeilingBlocker is string ceiling) blockers.Add(ceiling);
+
+        if (blockers.Count > 0)
+            return ServiceResult<SaipDto>.Conflict(
+                $"SAIP {saip.Number} cannot be sent to PPDO yet:\n"
+                + string.Join("\n", blockers.Take(10).Select(b => "• " + b))
+                + (blockers.Count > 10 ? $"\n• …and {blockers.Count - 10} more." : string.Empty));
+
+        string from = saip.Status;
+        foreach (AipOffice group in checklist.Groups)
+            group.WorkflowStatus = AipWorkflowStatus.SubmittedToPpdo;  // locks the copy (AipWriteGuard)
+        saip.Status        = SaipStatus.SubmittedToPpdo;
+        saip.SubmittedById = caller.Id;
+        saip.SubmittedAt   = DateTime.UtcNow;
+        await _saipRepo.UpdateAsync(saip, ct);
+
+        string office = caller.OfficeId == officeId && caller.Office?.OfficeCode is { Length: > 0 } code
+            ? code : checklist.Groups[0].Name;
+        await _notifications.StageAsync(NotificationTypes.SaipSentToPpdo, caller, async (audience, c) =>
+            new NotificationBatch(
+                NotificationText.SaipSentToPpdo(office, saip.Number, found.Record.FiscalYear),
+                NotificationLinks.SaipReview(officeId, found.Record.FiscalYear, saip.Id),
+                await audience.CrossOfficeReviewersAsync(c)), ct);
+
+        try
+        {
+            // One save: the SAIP row, the copy's groups and the notifications share the DbContext.
+            await _saipRepo.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return ServiceResult<SaipDto>.Conflict(
+                $"SAIP {saip.Number} was changed by someone else. Reload and try again.");
+        }
+
+        await _audit.LogAsync("aip_saips", saip.Id, AuditAction.SaipSubmit,
+            new { Status = from },
+            new { saip.Status, DraftGroupIds = checklist.Groups.Select(g => g.Id).ToArray() }, ct);
+        _logger.LogInformation(
+            "SAIP sent to PPDO. SaipId: {SaipId}, Number: {Number}, AipRecordId: {AipRecordId}, OfficeId: {OfficeId}, "
+            + "OldStatus: {OldStatus}, UserId: {UserId}",
+            saip.Id, saip.Number, aipRecordId, officeId, from, caller.Id);
+
+        return ServiceResult<SaipDto>.Ok(
+            await ToDtoAsync(saip, found.Record, checklist.Groups.Select(g => g.Id).ToList(), ct));
+    }
+
+    /// <summary>
+    /// The names of projects added in this SAIP whose investment proposal is missing or not Final
+    /// (decision 8). One lookup per new project: an SAIP adds a handful, not hundreds.
+    /// </summary>
+    private async Task<List<string>> UnfinalizedNewProjectsAsync(IReadOnlyList<AipOffice> groups, CancellationToken ct)
+    {
+        IReadOnlyList<AipProgram> programs = await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(
+            groups.Select(g => g.Id).ToList(), ct);
+        IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(
+            programs.Select(p => p.Id).ToList(), ct);
+
+        List<string> drafts = [];
+        foreach (AipProject added in projects.Where(j => j.SourceId is null && !j.IsSynthetic))
+        {
+            InvestmentProposal? proposal = await _proposals.GetByProjectIdAsync(added.Id, ct);
+            if (proposal?.Status != InvestmentProposalStatus.Final)
+                drafts.Add($"{added.RefCode} {added.Name}".Trim());
+        }
+        return drafts;
+    }
+
+    // ── Changes so far (decision 17) ──────────────────────────────────────────
+
+    public async Task<ServiceResult<SaipChangesDto>> GetChangesAsync(
+        int aipRecordId, int officeId, int saipId, User caller, CancellationToken ct = default)
+    {
+        (OfficeContext? found, AipSaip? saip, string notFound) = await ResolveSaipAsync(aipRecordId, officeId, saipId, caller, ct);
+        if (found is null || saip is null) return ServiceResult<SaipChangesDto>.NotFound(notFound);
+
+        // ↩️ Live only while open. An approved SAIP reads the saved aip_saip_changes, which approval
+        // writes (PPDO-248) with this same SaipDiff; a cancelled one has nothing to show.
+        if (!SaipStatus.IsOpen(saip.Status))
+            return ServiceResult<SaipChangesDto>.Conflict(
+                $"SAIP {saip.Number} is {saip.Status.ToLowerInvariant()}. Changes are worked out live only while an SAIP is open.");
+
+        IReadOnlyList<AipOffice> draft = await _saipRepo.GetDraftOfficesAsync(saip.Id, ct);
+        if (draft.Count == 0)
+        {
+            _logger.LogError("Open SAIP has no draft copy. SaipId: {SaipId}, OfficeId: {OfficeId}", saip.Id, officeId);
+            return ServiceResult<SaipChangesDto>.Conflict($"SAIP {saip.Number} has no working copy. Cancel it and start again.");
+        }
+
+        // Sequential awaits — one DbContext (CLAUDE.md).
+        SaipDiff.Tree approved = await LoadTreeAsync(found.Groups, ct);
+        SaipDiff.Tree copy     = await LoadTreeAsync(draft, ct);
+        IReadOnlyDictionary<int, string> divisionNames =
+            (await _divisions.GetDivisionsByOfficeIdsAsync([officeId], ct)).ToDictionary(d => d.Id, d => d.Name);
+
+        SaipDiffResult diff = SaipDiff.Compute(approved, copy, divisionNames);
+        AipCeilingStatusDto ceilingAfter = await _ceiling.GetStatusAsync(draft[0].Id, ct);
+
+        return ServiceResult<SaipChangesDto>.Ok(new SaipChangesDto(
+            saip.Id, saip.Number, saip.Status, IsLive: true,
+            diff.Changes, diff.NetByFund, diff.ApprovedTotal, diff.AmendedTotal, diff.NetChange, ceilingAfter));
+    }
+
+    /// <summary>
+    /// One side of the diff: the groups' programs → projects → activities → lines, five flat queries.
+    /// The by-id reads do not join <c>aip_offices</c>, so they read a copy's rows as readily as the
+    /// approved ones — which side is decided by the group ids passed in.
+    /// </summary>
+    private async Task<SaipDiff.Tree> LoadTreeAsync(IReadOnlyList<AipOffice> groups, CancellationToken ct)
+    {
+        IReadOnlyList<AipProgram> programs = await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(
+            groups.Select(g => g.Id).ToList(), ct);
+        IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsNoTrackingAsync(
+            programs.Select(p => p.Id).ToList(), ct);
+        IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsNoTrackingAsync(
+            projects.Select(j => j.Id).ToList(), ct);
+        IReadOnlyList<AipExpenditure> lines = await _expRepo.GetByActivityIdsAsync(
+            activities.Select(a => a.Id).ToList(), ct);
+        return new SaipDiff.Tree(programs, projects, activities, lines);
+    }
+
     // ── Shared ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// <see cref="ResolveAsync"/> plus the SAIP, which must belong to this office and record. Every
+    /// miss is the same 404 an out-of-scope office gets (PPDO-46).
+    /// </summary>
+    private async Task<(OfficeContext? Context, AipSaip? Saip, string NotFound)> ResolveSaipAsync(
+        int aipRecordId, int officeId, int saipId, User caller, CancellationToken ct)
+    {
+        (OfficeContext? found, string notFound) = await ResolveAsync(aipRecordId, officeId, caller, ct);
+        if (found is null) return (null, null, notFound);
+
+        AipSaip? saip = await _saipRepo.GetByIntIdAsync(saipId, ct);
+        if (saip is null || saip.AipRecordId != aipRecordId || saip.OfficeId != officeId)
+            return (null, null, SaipNotFound(saipId));
+
+        return (found, saip, notFound);
+    }
+
+    private async Task<IReadOnlyList<int>> DraftIdsAsync(AipSaip saip, CancellationToken ct)
+        => SaipStatus.IsOpen(saip.Status)
+            ? (await _saipRepo.GetDraftOfficesAsync(saip.Id, ct)).Select(o => o.Id).ToList()
+            : [];
 
     private sealed record OfficeContext(AipRecord Record, IReadOnlyList<AipOffice> Groups);
 

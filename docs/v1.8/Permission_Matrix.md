@@ -406,6 +406,24 @@ An SAIP id that belongs to another office, asked for under this office's route, 
 
 Pinned by `SaipServiceTests` (every row above) and `SaipCopySqlServerTests`.
 
+**Letter, send and changes (PPDO-247).** Same gate, same scope, same order.
+
+| Caller | Letter upload (`PUT …/saips/{saipId}/letter`) | Send (`POST …/saips/{saipId}/submit`) | Letter download, changes (`GET …/letter`, `GET …/changes`) |
+|---|---|---|---|
+| SuperAdmin | ✅ | ✅ | ✅ |
+| The office's department head | ✅ while Draft, DepartmentReview or ReturnedByPpdo; **409** once sent or closed | ✅; **409** naming every gate that fails | ✅ |
+| Encoder, own office | ❌ **403** | ❌ **403** (division submit only) | ✅ |
+| Host Admin or PPDO reviewer, another office | ❌ **403** | ❌ **403** | ✅ |
+| Any user of another guest office | ❌ **404** | ❌ **404** | ❌ **404** |
+
+**Editing the copy** needs no new rule. The existing AIP Entry, expenditure, division-submit and comment
+endpoints act on the copy's rows with their own checks (`AipWriteGuard`, the division lock, the reviewer
+write-denial). The copy's groups carry the SAIP's state in `workflow_status`, so the copy locks once it is
+sent, like a submitted AIP. On top of that: an approved row in the copy cannot be deleted (**400**
+"Approved items can't be deleted in an SAIP. Set the amount to ₱0."), and the AIP's own
+`submit-to-ppdo` refuses while an SAIP is open (**400**). Pinned by `AipServiceSaipTests`,
+`AipDivisionSubmitServiceTests.Saip` and `SaipCopySqlServerTests.EditSubmit`.
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)

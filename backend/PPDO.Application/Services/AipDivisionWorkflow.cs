@@ -71,6 +71,13 @@ public interface IAipDivisionWorkflow
     /// only — it does not save.</b> The caller saves once, together with the office's own state
     /// change, so the two cannot land apart; then it calls <see cref="AuditReturnsAsync"/>.
     /// </summary>
+    /// <summary>
+    /// <see cref="LoadAsync"/> for an SAIP's working copy (v1.10.0 — PPDO-247): the same divisions,
+    /// and that SAIP's own division rows instead of the AIP's.
+    /// </summary>
+    Task<AipDivisionOfficeState?> LoadForSaipAsync(
+        AipRecord record, int officeId, int saipId, CancellationToken ct = default);
+
     IReadOnlyList<AipDivisionSubmission> StageReturnAll(AipDivisionOfficeState state, Guid byUserId);
 
     /// <summary>One <c>RETURN_DIV</c> audit row per returned division, after the save.</summary>
@@ -102,6 +109,18 @@ public sealed class AipDivisionWorkflow : IAipDivisionWorkflow
         if (!divisions.Any(d => d.IsActive)) return null;
 
         IReadOnlyList<AipDivisionSubmission> rows = await _repo.GetForOfficeAsync(record.Id, officeId, ct);
+        return new AipDivisionOfficeState(record.Id, officeId, divisions.ToDictionary(d => d.Id), rows);
+    }
+
+    public async Task<AipDivisionOfficeState?> LoadForSaipAsync(
+        AipRecord record, int officeId, int saipId, CancellationToken ct = default)
+    {
+        if (!AipFiscalYears.IsEntered(record.FiscalYear)) return null;
+
+        IReadOnlyList<Division> divisions = await _repo.GetDivisionsByOfficeIdsAsync([officeId], ct);
+        if (!divisions.Any(d => d.IsActive)) return null;
+
+        IReadOnlyList<AipDivisionSubmission> rows = await _repo.GetForSaipAsync(saipId, officeId, ct);
         return new AipDivisionOfficeState(record.Id, officeId, divisions.ToDictionary(d => d.Id), rows);
     }
 

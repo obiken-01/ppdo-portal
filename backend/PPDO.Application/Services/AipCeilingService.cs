@@ -69,9 +69,12 @@ public sealed class AipCeilingService : IAipCeilingService
         if (gfId is null)
             return new AipCeilingStatusDto(null, false, 0m, 0m, 0m, WithinCeiling: false, []);
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(aipOfficeId, ct);
+        // PPDO-247 — a copy group id gives the office's AMENDED status: the sums below run over the
+        // SAIP's copy instead of the approved rows (decision 10, "measured on the amended totals").
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, aipOfficeId, ct);
         if (office?.OfficeId is not int configOfficeId)
             return new AipCeilingStatusDto(gfId, false, 0m, 0m, 0m, WithinCeiling: false, []);
+        int? saipId = office.SaipId;
 
         // ⚠️ GetOfficeByIdAsync does not Include the parent record, so the fiscal year is a second
         // fetch. Reading office.AipRecord.FiscalYear here compiles and throws at runtime.
@@ -93,14 +96,14 @@ public sealed class AipCeilingService : IAipCeilingService
         // the caller happened to hand over made every other group's General Fund work invisible to
         // its own ceiling.
         decimal encoded = await SumEncodedBaseRoundedAsync(
-            record.Id, configOfficeId, gfId.Value, ct);
+            record.Id, configOfficeId, gfId.Value, saipId, ct);
 
         // ⚠️ No Math.Max. A negative remaining is the signal a ceiling was cut below encoded work,
         // and it is exactly what must block submit (A5-b).
         decimal remaining = ceiling - encoded;
 
         IReadOnlyList<AipFundCeilingStatusDto> otherFunds =
-            await GetOtherFundStatusesAsync(record, configOfficeId, ct);
+            await GetOtherFundStatusesAsync(record, configOfficeId, saipId, ct);
 
         return new AipCeilingStatusDto(
             gfId, ceilingSet, ceiling, encoded, remaining, WithinCeiling: remaining >= 0m, otherFunds);
@@ -188,14 +191,14 @@ public sealed class AipCeilingService : IAipCeilingService
     /// <para>⚠️ Sequential awaits — one shared DbContext. A handful of enforced funds at most.</para>
     /// </summary>
     private async Task<IReadOnlyList<AipFundCeilingStatusDto>> GetOtherFundStatusesAsync(
-        AipRecord record, int configOfficeId, CancellationToken ct)
+        AipRecord record, int configOfficeId, int? saipId, CancellationToken ct)
     {
         IReadOnlyList<FundingSource> enforced = await _allocation.GetEnforcedAipCeilingFundsAsync(ct);
 
         List<AipFundCeilingStatusDto> statuses = [];
         foreach (FundingSource fund in enforced.Where(f => f.OfficeId is null || f.OfficeId == configOfficeId))
         {
-            decimal encoded = await SumEncodedBaseRoundedAsync(record.Id, configOfficeId, fund.Id, ct);
+            decimal encoded = await SumEncodedBaseRoundedAsync(record.Id, configOfficeId, fund.Id, saipId, ct);
             ServiceResult<BudgetCeilingDto> ceilingResult =
                 await _allocation.GetCeilingAsync(configOfficeId, record.FiscalYear, fund.Id, ct);
 
@@ -328,10 +331,13 @@ public sealed class AipCeilingService : IAipCeilingService
     /// columns.
     /// </summary>
     private async Task<decimal> SumEncodedBaseRoundedAsync(
-        int aipRecordId, int configOfficeId, int generalFundId, CancellationToken ct)
+        int aipRecordId, int configOfficeId, int generalFundId, int? saipId, CancellationToken ct)
     {
-        IReadOnlyList<AipActivityFundTotalsDto> perActivity =
-            await _expRepo.SumMooeCoByConfigOfficeAndFundAsync(
+        // PPDO-247 — with an SAIP copy, the copy's lines instead of the approved ones. The other
+        // groups of the office are all in the copy (it copies every group), so nothing is missed.
+        IReadOnlyList<AipActivityFundTotalsDto> perActivity = saipId is int sid
+            ? await _expRepo.SumMooeCoBySaipAndFundAsync(sid, generalFundId, ct)
+            : await _expRepo.SumMooeCoByConfigOfficeAndFundAsync(
                 aipRecordId, configOfficeId, generalFundId, ct);
 
         decimal total = 0m;
@@ -360,6 +366,11 @@ public sealed class AipCeilingService : IAipCeilingService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null) return AipLedgerAttribution.Unresolvable;
 
+        // ⚠️ PPDO-247 — deliberately the FILTERED lookup, not AipGroupLookup: an SAIP copy activity
+        // resolves to no office here, so it writes no ledger row. The ledger is the approved AIP's
+        // reservation against division allocations; a draft copy reserving too would count the
+        // office's money twice on the dashboard. The copy's ceilings are checked on its own totals at
+        // the send to PPDO, and approval (PPDO-248) re-runs this upsert for the applied rows.
         AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
         if (office is null) return AipLedgerAttribution.Unresolvable;
 

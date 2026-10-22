@@ -84,9 +84,15 @@ public sealed class AipDivisionLock : IAipDivisionLock
         // Sequential awaits — one DbContext, which is not thread-safe (CLAUDE.md).
         IReadOnlyList<Division> divisions = await _submissions.GetDivisionsByOfficeIdsAsync(officeIds, ct);
         List<int> divisioned = divisions.Where(d => d.IsActive).Select(d => d.OfficeId).Distinct().ToList();
+        // ↩️ PPDO-247 — an SAIP's working copy has its own division rows. The groups handed in are
+        // either approved rows or one office's copy (AIP Entry's tree read and the by-id writes never
+        // mix them), so a copy group means "read that SAIP's rows".
+        int? saipId = offices.FirstOrDefault(o => o.SaipId is not null)?.SaipId;
         IReadOnlyList<AipDivisionSubmission> rows = divisioned.Count == 0
             ? []
-            : await _submissions.GetForOfficesAsync(record.Id, divisioned, ct);
+            : saipId is int sid
+                ? await _submissions.GetForSaipAsync(sid, divisioned[0], ct)
+                : await _submissions.GetForOfficesAsync(record.Id, divisioned, ct);
 
         bool adminRole = caller.Role is UserRole.SuperAdmin or UserRole.Admin;
         // Resolved once, not per office: the grant is per user. "Of THIS office" is the office

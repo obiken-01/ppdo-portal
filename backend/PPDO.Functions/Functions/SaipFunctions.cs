@@ -1,5 +1,7 @@
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
+using PPDO.Application.Common;
+using PPDO.Application.DTOs.BudgetPlanning;
 using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
@@ -100,5 +102,95 @@ public sealed class SaipFunctions
 
         return await ConfigHttp.FromResultAsync(req,
             await _saips.CancelAsync(aipId, officeId, saipId, caller!, ct), ct);
+    }
+
+    // ── PUT /api/budget-planning/aip/{aipId}/offices/{officeId}/saips/{saipId}/letter?fileName= ──
+    // PPDO-247. Body: the raw file bytes, as every upload in this API takes them (the AIP and LDIP
+    // uploads); the name rides in ?fileName=. ↩️ The spec sketched multipart — one file and one name
+    // need no form encoding, and the frontend sends a File as the body directly. The type is read
+    // from the bytes by the service, never from the request's Content-Type.
+    [Function("SaipPutLetter")]
+    public async Task<HttpResponseData> PutLetter(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/saips/{saipId:int}/letter")] HttpRequestData req,
+        int aipId, int officeId, int saipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        byte[] content = await ReadCappedAsync(req.Body, SaipLetterRules.MaxBytes + 1, ct);
+        return await ConfigHttp.FromResultAsync(req,
+            await _saips.PutLetterAsync(aipId, officeId, saipId, req.Query["fileName"], content, caller!, ct), ct);
+    }
+
+    // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/saips/{saipId}/letter ──
+    [Function("SaipGetLetter")]
+    public async Task<HttpResponseData> GetLetter(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/saips/{saipId:int}/letter")] HttpRequestData req,
+        int aipId, int officeId, int saipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        ServiceResult<SaipLetterFile> result = await _saips.GetLetterAsync(aipId, officeId, saipId, caller!, ct);
+        // A refusal is an envelope the page can read, never a file.
+        if (!result.IsSuccess) return await ConfigHttp.FromResultAsync(req, result, ct);
+
+        // ⚠️ Headers before the body: one added after the write is silently dropped on the real host.
+        HttpResponseData response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", result.Value!.ContentType);
+        response.Headers.Add("Content-Disposition", InvestmentProposalFunctions.ContentDisposition(result.Value.FileName));
+        response.Headers.Add("X-Content-Type-Options", "nosniff");
+        await response.WriteBytesAsync(result.Value.Content, ct);
+        return response;
+    }
+
+    // ── POST /api/budget-planning/aip/{aipId}/offices/{officeId}/saips/{saipId}/submit ──
+    // Like start and cancel: AuthorizeAsync, not AuthorizeWriteAsync (see the class comment).
+    [Function("SaipSubmit")]
+    public async Task<HttpResponseData> Submit(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/saips/{saipId:int}/submit")] HttpRequestData req,
+        int aipId, int officeId, int saipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _saips.SubmitAsync(aipId, officeId, saipId, caller!, ct), ct);
+    }
+
+    // ── GET /api/budget-planning/aip/{aipId}/offices/{officeId}/saips/{saipId}/changes ──
+    [Function("SaipChanges")]
+    public async Task<HttpResponseData> Changes(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get",
+            Route = "budget-planning/aip/{aipId:int}/offices/{officeId:int}/saips/{saipId:int}/changes")] HttpRequestData req,
+        int aipId, int officeId, int saipId, CancellationToken ct)
+    {
+        (User? caller, HttpResponseData? denied) =
+            await ConfigHttp.AuthorizeAsync(req, _jwt, CanAccess, ct);
+        if (denied is not null) return denied;
+
+        return await ConfigHttp.FromResultAsync(req,
+            await _saips.GetChangesAsync(aipId, officeId, saipId, caller!, ct), ct);
+    }
+
+    /// <summary>
+    /// Reads at most <paramref name="limit"/> bytes of the body. One byte over the letter cap is
+    /// enough for the service to answer "too large" without buffering a huge upload in memory.
+    /// </summary>
+    private static async Task<byte[]> ReadCappedAsync(Stream body, long limit, CancellationToken ct)
+    {
+        using MemoryStream buffer = new();
+        byte[] chunk = new byte[81920];
+        int read;
+        while (buffer.Length < limit
+               && (read = await body.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, limit - buffer.Length)), ct)) > 0)
+            buffer.Write(chunk, 0, read);
+        return buffer.ToArray();
     }
 }
