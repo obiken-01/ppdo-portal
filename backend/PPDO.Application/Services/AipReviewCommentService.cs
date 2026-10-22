@@ -84,7 +84,9 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
     {
         // ⚠️ The comments read's resolver, not AipReviewService's: the office's own people read this
         // too (spec §4), and the review resolver refuses anyone without the cross-office flag.
-        CommentContext? ctx = await ResolveAsync(aipRecordId, officeId, caller, ct);
+        // PPDO-247 — workingCopy: false. This is the AIP's own history, on its approved groups; an
+        // SAIP's hand-offs are the SAIP history's (spec §6), not this list's.
+        CommentContext? ctx = await ResolveAsync(aipRecordId, officeId, caller, ct, workingCopy: false);
         if (ctx is null)
             return ServiceResult<AipOfficeHistoryDto>.NotFound(NotFoundMessage(aipRecordId, officeId));
 
@@ -277,7 +279,7 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         if (comment is null)
             return ServiceResult<AipReviewCommentDto>.NotFound($"Comment {commentId} not found.");
 
-        AipOffice? group = await _aipRepo.GetOfficeByIdAsync(comment.AipOfficeId, ct);
+        AipOffice? group = await AipGroupLookup.FindGroupAsync(_aipRepo, comment.AipOfficeId, ct);
         if (group is null)
             return ServiceResult<AipReviewCommentDto>.NotFound($"Comment {commentId} not found.");
 
@@ -575,7 +577,7 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         if (project is null) return null;
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null) return null;
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         return office is null ? null : new ActivityPath(office, program, project, activity);
     }
 
@@ -621,7 +623,7 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
     /// reads every office, and their own office is ignored rather than added to the set.
     /// </summary>
     private async Task<CommentContext?> ResolveAsync(
-        int aipRecordId, int officeId, User caller, CancellationToken ct)
+        int aipRecordId, int officeId, User caller, CancellationToken ct, bool workingCopy = true)
     {
         AipRecord? record = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
         if (record is null) return null;
@@ -631,8 +633,15 @@ public sealed class AipReviewCommentService : IAipReviewCommentService
         if (!scope.Permits(officeId)) return null;
 
         IReadOnlyList<AipOffice> all = await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct);
-        List<AipOffice> groups = all.Where(o => o.OfficeId == officeId).ToList();
-        if (groups.Count == 0) return null;
+        if (!all.Any(o => o.OfficeId == officeId)) return null;
+        if (!workingCopy)
+            return new CommentContext(record, officeId, all.Where(o => o.OfficeId == officeId).ToList());
+
+        // PPDO-247 — while the office has an open SAIP its comment threads are on the working copy
+        // (spec §4): the list, a new thread's node check and the counts all read the copy's groups.
+        // Checked against the approved groups first, so an office with no AIP still 404s.
+        (List<AipOffice> groups, _) =
+            await AipGroupLookup.WorkingGroupsAsync(_aipRepo, aipRecordId, officeId, all, ct);
 
         return new CommentContext(record, officeId, groups);
     }

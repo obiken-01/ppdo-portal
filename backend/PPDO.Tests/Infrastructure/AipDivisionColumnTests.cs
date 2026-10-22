@@ -91,16 +91,27 @@ public sealed class AipDivisionColumnTests
     }
 
     [Fact]
-    public void AipDivisionSubmission_IsUniquePerRecordAndDivision()
+    public void AipDivisionSubmission_IsUniquePerRecordDivisionAndSaip()
     {
         // One row per division per fiscal year: a second submit updates the row rather than
         // adding a second one that disagrees with it.
+        //
+        // ↩️ PPDO-247 — saip_id joins the key so an SAIP's copy has its own rows. SQL Server treats
+        // NULLs as equal in a unique index, so the AIP itself still has one row per division.
         IEntityType submission = Entity<AipDivisionSubmission>();
 
         IIndex unique = Assert.Single(submission.GetIndexes(), i => i.IsUnique);
         Assert.Equal(
-            new[] { "aip_record_id", "division_id" },
+            new[] { "aip_record_id", "division_id", "saip_id" },
             unique.Properties.Select(p => p.GetColumnName()).ToArray());
+    }
+
+    [Fact]
+    public void AipDivisionSubmission_HidesSaipRowsFromEveryOrdinaryRead()
+    {
+        // PPDO-247 — without the filter every existing division read (the lock, the dashboard, the
+        // review search) would start counting an SAIP's division submits as the AIP's.
+        Assert.NotNull(Entity<AipDivisionSubmission>().GetDeclaredQueryFilters().SingleOrDefault()?.Expression);
     }
 
     [Fact]

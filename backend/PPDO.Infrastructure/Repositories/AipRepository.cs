@@ -61,6 +61,21 @@ public sealed class AipRepository : Repository<AipRecord>, IAipRepository
         => await _context.Set<AipOffice>().FirstOrDefaultAsync(o => o.Id == id, ct);
 
     /// <inheritdoc />
+    public async Task<AipOffice?> GetDraftGroupByIdAsync(int id, CancellationToken ct = default)
+        => await _context.Set<AipOffice>()
+            .IgnoreQueryFilters()           // ⚠️ SAIP path only — narrowed to one copy row below.
+            .FirstOrDefaultAsync(o => o.Id == id && o.SaipId != null, ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipOffice>> GetDraftGroupsForOfficeAsync(
+        int aipRecordId, int configOfficeId, CancellationToken ct = default)
+        => await _context.Set<AipOffice>()
+            .IgnoreQueryFilters()           // ⚠️ SAIP path only — copies of one office below.
+            .Where(o => o.AipRecordId == aipRecordId && o.OfficeId == configOfficeId && o.SaipId != null)
+            .OrderBy(o => o.RefCode).ThenBy(o => o.Id)
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<AipOffice>> GetOfficesByAipIdsAsync(
         IReadOnlyList<int> aipIds, CancellationToken ct = default)
     {

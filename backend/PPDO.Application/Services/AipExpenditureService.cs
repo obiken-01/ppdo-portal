@@ -303,6 +303,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "delete from");
         if (refused is not null) return refused;
         if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
+        if (AipWriteGuard.CheckSaipDelete<AipExpenditureWriteResultDto>(ctx.Office, line.SourceId) is { } approvedLine)
+            return approvedLine;
         if (AipRowVersionRequired.Check<AipExpenditureWriteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         // Snapshot BEFORE the delete, log AFTER it — the values are still readable on the
@@ -461,7 +463,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null) return null;
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        // PPDO-247 — an SAIP copy row resolves to its copy group, so lines on the working copy are
+        // edited through these same endpoints (spec §4).
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         return office is null ? null : new AipContext(activity, office, project, program);
     }
 

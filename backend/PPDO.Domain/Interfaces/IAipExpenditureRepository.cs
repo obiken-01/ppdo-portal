@@ -140,6 +140,22 @@ public interface IAipExpenditureRepository : IRepository<AipExpenditure>
         int aipRecordId, CancellationToken ct = default);
 
     /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-247): <see cref="GetFundCodesByAipRecordAsync"/> for one
+    /// SAIP's draft copy. The record-wide read joins through <c>aip_offices</c>, whose query filter
+    /// hides copies, so the copy needs its own.
+    /// </summary>
+    Task<IReadOnlyList<AipActivityFundCodeDto>> GetFundCodesBySaipAsync(
+        int saipId, CancellationToken ct = default);
+
+    /// <summary>
+    /// SAIP working copy (v1.10.0 — PPDO-247): <see cref="SumMooeCoByConfigOfficeAndFundAsync"/>
+    /// over one SAIP's draft copy instead of the office's approved rows — the office's
+    /// <b>amended</b> figure, which the ceilings are measured on while the SAIP is open (decision 10).
+    /// </summary>
+    Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoBySaipAndFundAsync(
+        int saipId, int fundingSourceId, CancellationToken ct = default);
+
+    /// <summary>
     /// The single-activity form of <see cref="GetFundCodesByAipRecordAsync"/>, already joined into
     /// display order.
     ///

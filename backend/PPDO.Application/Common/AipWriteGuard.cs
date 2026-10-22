@@ -75,6 +75,25 @@ public static class AipWriteGuard
         return null;
     }
 
+    /// <summary>The SAIP delete refusal (v1.10.0 — PPDO-247, spec §3, decision 5).</summary>
+    public const string SaipApprovedDeleteMessage =
+        "Approved items can't be deleted in an SAIP. Set the amount to ₱0.";
+
+    /// <summary>
+    /// The SAIP delete rule (v1.10.0 — PPDO-247, decision 5): in an SAIP's working copy, a row copied
+    /// from the approved AIP (<paramref name="sourceId"/> set) cannot be deleted — the office lowers
+    /// it to ₱0 instead. A row added in this SAIP (no source) can. Outside an SAIP this never refuses.
+    ///
+    /// <para>
+    /// Run it after <see cref="CheckAsync{T}"/>, like the division checks: it can only refuse.
+    /// <c>BadRequest</c>, because the caller can see the row and the spec's wording is a 400.
+    /// </para>
+    /// </summary>
+    public static ServiceResult<T>? CheckSaipDelete<T>(AipOffice office, int? sourceId)
+        => office.SaipId is not null && sourceId is not null
+            ? ServiceResult<T>.BadRequest(SaipApprovedDeleteMessage)
+            : null;
+
     /// <summary>The refusal a PPDO reviewer gets on an office that has not reached PPDO yet.</summary>
     public const string ReviewerEditStateMessage =
         "PPDO can edit this office's AIP only after it is submitted to PPDO.";

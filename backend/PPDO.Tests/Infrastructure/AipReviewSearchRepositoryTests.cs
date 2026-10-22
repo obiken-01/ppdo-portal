@@ -115,7 +115,8 @@ public sealed class AipReviewSearchRepositoryTests : IDisposable
                 submitted_at TEXT NULL,
                 submitted_by_user_id TEXT NULL,
                 returned_at TEXT NULL,
-                returned_by_user_id TEXT NULL
+                returned_by_user_id TEXT NULL,
+                saip_id INTEGER NULL
             );
             """);
     }

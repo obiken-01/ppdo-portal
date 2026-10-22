@@ -141,6 +141,34 @@ public sealed class AipExpenditureRepository : Repository<AipExpenditure>, IAipE
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityFundCodeDto>> GetFundCodesBySaipAsync(
+        int saipId, CancellationToken ct = default)
+        // ⚠️ IgnoreQueryFilters lifts the aip_offices filter on the join below, narrowed to one SAIP's
+        // copy by the same WHERE. Without it the join would read "saip_id IS NULL AND saip_id = @id".
+        => await _context.Set<AipExpenditure>()
+            .IgnoreQueryFilters()
+            .Where(e => e.Activity.Project.Program.Office.SaipId == saipId
+                     && e.FundingSourceSnapshot != null)
+            .GroupBy(e => new { e.ActivityId, Code = e.FundingSourceSnapshot! })
+            .Select(g => new AipActivityFundCodeDto(g.Key.ActivityId, g.Key.Code, g.Min(e => e.Id)))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<AipActivityFundTotalsDto>> SumMooeCoBySaipAndFundAsync(
+        int saipId, int fundingSourceId, CancellationToken ct = default)
+        // Same shape as SumMooeCoByConfigOfficeAndFundAsync, over the copy (see GetFundCodesBySaipAsync).
+        => await _context.Set<AipExpenditure>()
+            .IgnoreQueryFilters()
+            .Where(e => e.FundingSourceId == fundingSourceId
+                     && e.Activity.Project.Program.Office.SaipId == saipId)
+            .GroupBy(e => e.ActivityId)
+            .Select(g => new AipActivityFundTotalsDto(
+                g.Key,
+                g.Sum(e => (decimal?)e.Mooe) ?? 0m,
+                g.Sum(e => (decimal?)e.Co) ?? 0m))
+            .ToListAsync(ct);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<string>> GetFundCodesByActivityIdAsync(
         int activityId, CancellationToken ct = default)
     {

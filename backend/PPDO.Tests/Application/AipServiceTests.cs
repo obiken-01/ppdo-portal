@@ -314,6 +314,9 @@ public sealed partial class AipServiceTests
             .ReturnsAsync((IReadOnlyList<AipActivityFundCodeDto>)[]);
         expRepo.Setup(r => r.GetFundCodesByActivityIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<string>)[]);
+        // PPDO-247 — the tree read's fund codes for an SAIP copy.
+        expRepo.Setup(r => r.GetFundCodesBySaipAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<AipActivityFundCodeDto>)[]);
 
         // ── PPDO-88: delete — snapshot lines, transaction, ledger and comments ───────
         List<AipExpenditure> expList = expSeed ?? [];
