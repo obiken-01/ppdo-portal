@@ -35,7 +35,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import CsvUploadButton from "@/components/ui/CsvUploadButton";
@@ -67,7 +67,7 @@ export default function StockBalancesPage() {
       .then((data) => {
         if (!data.canAccessInventory) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── New-entry form ─────────────────────────────────────────────────────────

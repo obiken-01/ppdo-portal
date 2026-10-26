@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -235,7 +235,7 @@ export default function ReceiveDeliveryPage() {
         setMe(data);
         setReceivedBy(data.fullName);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load PR list ────────────────────────────────────────────────────────────

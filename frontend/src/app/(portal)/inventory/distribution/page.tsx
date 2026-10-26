@@ -20,7 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -285,7 +285,7 @@ export default function DistributionPage() {
       .then((data) => {
         if (!data.canAccessInventory) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // Item autocomplete — debounced
