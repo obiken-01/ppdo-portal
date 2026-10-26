@@ -387,14 +387,14 @@ export default function InventoryDashboardPage() {
           <StatCard
             label="Open"
             value={statsLoading ? "—" : (pr?.open ?? 0)}
-            bg="bg-[#EBF4FF]"
+            bg="bg-stat-blue"
             textColor="text-info-500"
             icon="🔵"
           />
           <StatCard
             label="Partially Delivered"
             value={statsLoading ? "—" : (pr?.partiallyDelivered ?? 0)}
-            bg="bg-[#FEF9EC]"
+            bg="bg-stat-amber"
             textColor="text-amber-500"
             icon="🟡"
           />
@@ -420,7 +420,7 @@ export default function InventoryDashboardPage() {
           <StatCard
             label="Low / Out of Stock"
             value={statsLoading ? "—" : (al?.lowOrOutOfStock ?? 0)}
-            bg="bg-[#FEF2F2]"
+            bg="bg-stat-red"
             textColor="text-danger-500"
             icon="⚠️"
             sub="items"
@@ -435,7 +435,7 @@ export default function InventoryDashboardPage() {
           <StatCard
             label="Unique Items Tracked"
             value={statsLoading ? "—" : (al?.uniqueItemsTracked ?? 0)}
-            bg="bg-[#F3F0FF]"
+            bg="bg-stat-purple"
             textColor="text-purple-700"
             icon="🗂️"
             sub="items"
