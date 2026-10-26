@@ -20,7 +20,11 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [
-    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    {
+      name: "setup",
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
+    },
     {
       name: "public",
       testMatch: /public\.spec\.ts/,
