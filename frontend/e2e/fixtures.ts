@@ -11,8 +11,8 @@ import { test as base, type BrowserContext } from "@playwright/test";
 //   3. write the rotated cookie back to e2e/.auth/<KEY>.json after every test, so a retry or a
 //      restarted worker starts from the live token.
 //
-// Trade-off: Playwright's built-in trace recording doesn't cover this hand-made context.
-// Use the HTML report's screenshots, or run with --ui, to debug a failure.
+// Tracing still works: a context made from the `browser` fixture is recorded like any other
+// (checked with --trace on: page snapshots and screencast frames are in the trace).
 
 export const test = base.extend<object, { personaContext: BrowserContext; statePath: string }>({
   statePath: [
