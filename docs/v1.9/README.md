@@ -37,4 +37,5 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 
 ## Audits
 
+- [v1.9.2 — Performance audit 2026-11](Performance_Audit_2026-11.md) — re-measure after PPDO-182…189; bundle baseline done, UAT measurements pending (PPDO-257)
 - [v1.9.1 — Loading guard audit](Loading_Guard_Audit.md) — which actions on the heavy pages could run before their data loaded, and the fixes (PPDO-244)
