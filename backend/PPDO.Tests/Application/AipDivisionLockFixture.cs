@@ -31,14 +31,19 @@ internal sealed class AipDivisionLockFixture
         Repo.Setup(r => r.GetForOfficesAsync(It.IsAny<int>(), It.IsAny<IReadOnlyList<int>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int recordId, IReadOnlyList<int> ids, CancellationToken _) =>
                 (IReadOnlyList<AipDivisionSubmission>)Submissions
-                    .Where(s => s.AipRecordId == recordId && ids.Contains(s.OfficeId)).ToList());
+                    .Where(s => s.SaipId == null && s.AipRecordId == recordId && ids.Contains(s.OfficeId)).ToList());
 
         // PPDO-149 — the workflow's reads and writes. "Tracked" here means the same instances the
         // list holds, so a transition that edits a row in place is visible to the next read.
         Repo.Setup(r => r.GetForOfficeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int recordId, int officeId, CancellationToken _) =>
                 (IReadOnlyList<AipDivisionSubmission>)Submissions
-                    .Where(s => s.AipRecordId == recordId && s.OfficeId == officeId).ToList());
+                    .Where(s => s.SaipId == null && s.AipRecordId == recordId && s.OfficeId == officeId).ToList());
+        // PPDO-247 — the query filter keeps SAIP rows out of the two reads above; this is their door.
+        Repo.Setup(r => r.GetForSaipAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int saipId, int officeId, CancellationToken _) =>
+                (IReadOnlyList<AipDivisionSubmission>)Submissions
+                    .Where(s => s.SaipId == saipId && s.OfficeId == officeId).ToList());
         Repo.Setup(r => r.GetDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((int id, CancellationToken _) => Divisions.FirstOrDefault(d => d.Id == id));
         Repo.Setup(r => r.AddAsync(It.IsAny<AipDivisionSubmission>(), It.IsAny<CancellationToken>()))
@@ -70,10 +75,10 @@ internal sealed class AipDivisionLockFixture
         return d;
     }
 
-    public void Submit(int aipRecordId, int officeId, int divisionId)
+    public void Submit(int aipRecordId, int officeId, int divisionId, int? saipId = null)
         => Submissions.Add(new AipDivisionSubmission
         {
             AipRecordId = aipRecordId, OfficeId = officeId, DivisionId = divisionId,
-            Status = AipDivisionStatus.Submitted, SubmittedAt = DateTime.UtcNow,
+            Status = AipDivisionStatus.Submitted, SubmittedAt = DateTime.UtcNow, SaipId = saipId,
         });
 }

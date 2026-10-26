@@ -164,8 +164,25 @@ public sealed class AipService : IAipService
         // PPDO-184 — narrow AFTER the scope filter, so this can only take offices away. Applied
         // before the programs/projects/activities reads, which are keyed off this list, so the
         // other offices' rows are never loaded at all.
+        //
+        // ↩️ PPDO-247 — and AIP Entry (the only caller passing it) works on the office's open SAIP's
+        // copy when there is one (spec §4). Swapped only AFTER the scope filter has kept the office,
+        // so the copy is shown to exactly the people who could see the approved groups, and only on
+        // this one-office read: the record-wide read, Annex B and every report stay approved.
+        int? saipId = null;
         if (onlyOfficeId is int only)
+        {
             offices = offices.Where(o => o.OfficeId == only).ToList();
+            if (offices.Count > 0)
+            {
+                IReadOnlyList<AipOffice> draft = await _aipRepo.GetDraftGroupsForOfficeAsync(id, only, ct);
+                if (draft is { Count: > 0 })
+                {
+                    offices = draft;
+                    saipId  = draft[0].SaipId;
+                }
+            }
+        }
 
         List<int> officeIds  = offices.Select(o => o.Id).ToList();
         IReadOnlyList<AipProgram> allPrograms = await _aipRepo.GetProgramsByOfficeIdsNoTrackingAsync(officeIds, ct);
@@ -182,8 +199,9 @@ public sealed class AipService : IAipService
         //
         // ⚠️ Sequential await, never Task.WhenAll with the reads above — they share one DbContext,
         // which is not thread-safe (the GetStatsAsync production 500, CLAUDE.md).
-        IReadOnlyList<AipActivityFundCodeDto> fundRows =
-            await _expRepo.GetFundCodesByAipRecordAsync(id, ct);
+        IReadOnlyList<AipActivityFundCodeDto> fundRows = saipId is int sid
+            ? await _expRepo.GetFundCodesBySaipAsync(sid, ct)      // the record-wide read cannot see a copy
+            : await _expRepo.GetFundCodesByAipRecordAsync(id, ct);
         // Grouped once, not searched per activity: the linear scan would be O(activities × lines).
         // Absent id means "no funded line", which the lookup below turns into an empty list.
         Dictionary<int, IReadOnlyList<string>> fundCodes = fundRows
@@ -223,12 +241,12 @@ public sealed class AipService : IAipService
                                     div.NameOf(a.DivisionId),
                                     officeWritable && div.CanWriteActivity(a.DivisionId)))
                                 .ToList(),
-                            j.IsSynthetic, j.Description, j.Objective))
+                            j.IsSynthetic, j.Description, j.Objective, j.SourceId))
                         .ToList();
-                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand);
+                    return new AipProgramDto(p.Id, p.OfficeId, p.RefCode, p.Name, projDtos, p.FunctionBand, p.SourceId);
                 })
                 .ToList();
-            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, o.OfficeId, progDtos);
+            return new AipOfficeDto(o.Id, o.AipRecordId, o.RefCode, o.Name, o.Sector, o.OfficeId, progDtos, o.SaipId);
         }).ToList();
 
         // Drives the frontend's Re-upload button gating — see ReplaceImportAsync's guard below.
@@ -1056,7 +1074,7 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipProgramDto>> AddProgramAsync(
         int officeId, CreateAipProgramDto dto, User caller, CancellationToken ct = default)
     {
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, officeId, ct);
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {officeId} not found.");
 
@@ -1127,7 +1145,7 @@ public sealed class AipService : IAipService
         if (program is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP program {programId} not found.");
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
@@ -1171,7 +1189,7 @@ public sealed class AipService : IAipService
         if (program is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP program {project.ProgramId} not found.");
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
@@ -1255,12 +1273,17 @@ public sealed class AipService : IAipService
     public async Task<ServiceResult<AipOfficeDto>> UpdateOfficeAsync(
         int officeId, UpdateAipOfficeDto dto, User caller, CancellationToken ct = default)
     {
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, officeId, ct);
         if (office is null)
             return ServiceResult<AipOfficeDto>.NotFound($"AIP office {officeId} not found.");
 
         ServiceResult<AipOfficeDto>? statusError = await CheckWritableAsync<AipOfficeDto>(office, caller, $"AIP office {officeId} not found.", ct, "edit");
         if (statusError is not null) return statusError;
+
+        // PPDO-247 — an SAIP changes projects, activities and amounts (decision 5). An office group's
+        // name is not among them, and renaming the copy would collide with its own approved row.
+        if (office.SaipId is not null)
+            return ServiceResult<AipOfficeDto>.BadRequest(SaipOfficeGroupMessage);
 
         if (string.IsNullOrWhiteSpace(dto.Name))
             return ServiceResult<AipOfficeDto>.BadRequest("Office name is required.");
@@ -1293,7 +1316,7 @@ public sealed class AipService : IAipService
         if (program is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
@@ -1343,7 +1366,7 @@ public sealed class AipService : IAipService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP program {project.ProgramId} not found.");
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipProjectDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
@@ -1386,7 +1409,7 @@ public sealed class AipService : IAipService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP program {project.ProgramId} not found.");
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP office {program.OfficeId} not found.");
         if (office.AipRecordId != aipRecordId)
@@ -1475,7 +1498,7 @@ public sealed class AipService : IAipService
         // The full walk up to the owning office — activity → project → program → AipOffice.
         AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
         AipProgram? program = project is null ? null : await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
-        AipOffice?  office  = program is null ? null : await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice?  office  = program is null ? null : await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
 
@@ -1544,7 +1567,7 @@ public sealed class AipService : IAipService
 
         AipProject? project = await _aipRepo.GetProjectByIdAsync(activity.ProjectId, ct);
         AipProgram? program = project is null ? null : await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
-        AipOffice?  office  = program is null ? null : await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice?  office  = program is null ? null : await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null) return ServiceResult<AipActivityDto>.NotFound(notFound);
 
         // The office checks only — not GuardAsync, whose container rule would answer an encoder
@@ -1591,13 +1614,14 @@ public sealed class AipService : IAipService
 
     public async Task<ServiceResult<bool>> DeleteOfficeAsync(int officeId, User caller, CancellationToken ct = default)
     {
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(officeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, officeId, ct);
         if (office is null)
             return ServiceResult<bool>.NotFound($"AIP office {officeId} not found.");
 
         (ServiceResult<bool>? statusError, AipDivisionContext div) =
             await GuardAsync<bool>(office, caller, $"AIP office {officeId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckSaipDelete<bool>(office, office.SourceId) is { } approvedGroup) return approvedGroup;
 
         IReadOnlyList<AipProgram> officePrograms = await _aipRepo.GetProgramsByOfficeIdsAsync([office.Id], ct);
         IReadOnlyList<AipProject> officeProjects =
@@ -1632,13 +1656,14 @@ public sealed class AipService : IAipService
         if (program is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {programId} not found.");
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
         (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
             await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP program {programId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckSaipDelete<AipDeleteResultDto>(office, program.SourceId) is { } approvedProgram) return approvedProgram;
 
         IReadOnlyList<AipProject> projects = await _aipRepo.GetProjectsByProgramIdsAsync([program.Id], ct);
         IReadOnlyList<AipActivity> activities =
@@ -1658,6 +1683,10 @@ public sealed class AipService : IAipService
     }
 
     /// <summary>Investment proposal decision 26, word for word.</summary>
+    /// <summary>PPDO-247 — the refusal for an office-group edit inside an SAIP's copy.</summary>
+    public const string SaipOfficeGroupMessage =
+        "An SAIP changes projects, activities and amounts. Office groups stay as approved.";
+
     public const string DeleteProjectHasProposalMessage =
         "This project has an investment proposal. Delete the proposal first.";
 
@@ -1670,13 +1699,14 @@ public sealed class AipService : IAipService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {project.ProgramId} not found.");
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
         (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
             await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP project {projectId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckSaipDelete<AipDeleteResultDto>(office, project.SourceId) is { } approvedProject) return approvedProject;
 
         IReadOnlyList<AipActivity> activities = await _aipRepo.GetActivitiesByProjectIdsAsync([project.Id], ct);
         if (div.RefuseContainerDelete(activities.Select(a => a.DivisionId), "project") is string heldProject)
@@ -1705,13 +1735,14 @@ public sealed class AipService : IAipService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP program {project.ProgramId} not found.");
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (office is null)
             return ServiceResult<AipDeleteResultDto>.NotFound($"AIP office {program.OfficeId} not found.");
 
         (ServiceResult<AipDeleteResultDto>? statusError, AipDivisionContext div) =
             await GuardAsync<AipDeleteResultDto>(office, caller, $"AIP activity {activityId} not found.", ct, "delete from");
         if (statusError is not null) return statusError;
+        if (AipWriteGuard.CheckSaipDelete<AipDeleteResultDto>(office, activity.SourceId) is { } approvedActivity) return approvedActivity;
         if (AipWriteGuard.CheckDivision<AipDeleteResultDto>(div, activity.DivisionId) is { } locked) return locked;
         if (AipRowVersionRequired.Check<AipDeleteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
@@ -1824,6 +1855,11 @@ public sealed class AipService : IAipService
     /// <summary>FY≤2027 codes are the province file's, so only an entered year renumbers on delete.</summary>
     private async Task<bool> RenumbersOnDeleteAsync(AipOffice office, CancellationToken ct)
     {
+        // PPDO-247 — never inside an SAIP's copy: its siblings are the approved rows' copies, and an
+        // SAIP does not renumber ref codes (spec §7). Only rows added in the SAIP can be deleted, so
+        // the gap it leaves is the new row's own.
+        if (office.SaipId is not null) return false;
+
         AipRecord? record = await _aipRepo.GetByIntIdAsync(office.AipRecordId, ct);
         return record is not null && AipFiscalYears.IsEntered(record.FiscalYear);
     }
@@ -2273,7 +2309,7 @@ public sealed class AipService : IAipService
         if (program is null)
             return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
 
-        AipOffice? bandOffice = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        AipOffice? bandOffice = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         if (bandOffice is null || !OfficeScope.Resolve(caller).Permits(bandOffice.OfficeId))
             return ServiceResult<AipProgramDto>.NotFound($"AIP program {programId} not found.");
 
@@ -2306,7 +2342,7 @@ public sealed class AipService : IAipService
         AipProgram? creationProgram = creationProject is null
             ? null : await _aipRepo.GetProgramByIdAsync(creationProject.ProgramId, ct);
         AipOffice?  creationOffice  = creationProgram is null
-            ? null : await _aipRepo.GetOfficeByIdAsync(creationProgram.OfficeId, ct);
+            ? null : await AipGroupLookup.FindGroupAsync(_aipRepo, creationProgram.OfficeId, ct);
         if (creationOffice is null || !OfficeScope.Resolve(caller).Permits(creationOffice.OfficeId))
             return ServiceResult<AipActivityDto>.NotFound($"AIP activity {activityId} not found.");
 

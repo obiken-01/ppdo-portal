@@ -41,6 +41,9 @@ public sealed class AipDivisionSubmissionRepositoryTests : IDisposable
                 submitted_by_user_id TEXT NULL,
                 returned_at TEXT NULL,
                 returned_by_user_id TEXT NULL,
+                saip_id INTEGER NULL,
+                -- SQL Server's key is (record, division, saip_id) with NULLs equal (PPDO-247). SQLite
+                -- treats NULLs as distinct, so the AIP-only key is kept here to keep that rule tested.
                 UNIQUE (aip_record_id, division_id)
             );
             INSERT INTO aip_division_submissions (aip_record_id, office_id, division_id, status) VALUES

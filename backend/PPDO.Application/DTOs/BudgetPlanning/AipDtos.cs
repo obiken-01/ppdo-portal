@@ -73,7 +73,13 @@ public record AipActivityDto(
     /// its next save runs unguarded no matter what the write path does.
     /// </para>
     /// </summary>
-    string? RowVersion = null);
+    string? RowVersion = null,
+    /// <summary>
+    /// SAIP working copy (PPDO-247): the approved activity this copy row came from. Null on an
+    /// approved row and on an activity added in the SAIP — which is what lets AIP Entry show
+    /// "Approved" (no delete) versus "New in SAIP {n}" (spec §6).
+    /// </summary>
+    int? SourceId = null);
 
 public record AipProjectDto(
     int    Id,
@@ -86,7 +92,9 @@ public record AipProjectDto(
     // positional construction still compiles. Not printed on Annex B — the form's columns are the
     // province's, and these feed a separate report that is not specified yet.
     string? Description = null,
-    string? Objective = null);
+    string? Objective = null,
+    /// <summary>SAIP working copy (PPDO-247): see <see cref="AipActivityDto.SourceId"/>.</summary>
+    int? SourceId = null);
 
 /// <summary>A node whose ref code changed because a sibling was deleted (PPDO-88).</summary>
 public record AipRenumberedNodeDto(string NodeType, int Id, string RefCode);
@@ -107,7 +115,9 @@ public record AipProgramDto(
     string  RefCode,
     string  Name,
     IReadOnlyList<AipProjectDto> Projects,
-    string? FunctionBand);
+    string? FunctionBand,
+    /// <summary>SAIP working copy (PPDO-247): see <see cref="AipActivityDto.SourceId"/>.</summary>
+    int? SourceId = null);
 
 public record AipOfficeDto(
     int    Id,
@@ -127,7 +137,13 @@ public record AipOfficeDto(
     /// Null only for an unmatched legacy row, exactly as on <c>AipOffice.OfficeId</c>.
     /// </summary>
     int?   OfficeId,
-    IReadOnlyList<AipProgramDto> Programs);
+    IReadOnlyList<AipProgramDto> Programs,
+    /// <summary>
+    /// SAIP working copy (PPDO-247): the open SAIP this group is the draft copy for. Null on an
+    /// approved group. Set only on AIP Entry's tree read (<c>?officeId=</c>) while the office has an
+    /// open SAIP, where the copy is returned in place of the approved groups.
+    /// </summary>
+    int? SaipId = null);
 
 public record AipRecordDto(
     int      Id,

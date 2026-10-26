@@ -170,4 +170,10 @@ public sealed record AipExpenditureWriteResultDto(
     /// against their own line (AIP_Concurrent_Edit_Spec.md §4, totals-recompute rule). Null only when
     /// the activity cannot be read back.
     /// </summary>
-    string? ActivityRowVersion = null);
+    string? ActivityRowVersion = null,
+    /// <summary>
+    /// PPDO-247 (Ralph, 2026-10-22: "warn on save, block at Send to PPDO") — on a save to an SAIP's
+    /// working copy, the ceiling refusal the send would give on the amended totals, or null when every
+    /// fund is within its ceiling. A warning only: the save has happened. Always null outside an SAIP.
+    /// </summary>
+    string? SaipCeilingWarning = null);

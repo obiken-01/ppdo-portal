@@ -42,6 +42,8 @@ public sealed class AipSubmitService : IAipSubmitService
     private readonly IUserRepository                  _userRepo;
     // PPDO-221 — hand-offs go to the notification feed.
     private readonly INotificationService             _notifications;
+    // PPDO-247 — an SAIP's state follows its copy's groups through these same hand-offs.
+    private readonly ISaipRepository                  _saipRepo;
     private readonly ILogger<AipSubmitService>        _logger;
 
     public AipSubmitService(
@@ -55,6 +57,7 @@ public sealed class AipSubmitService : IAipSubmitService
         IPermissionService               permissions,
         IUserRepository                  userRepo,
         INotificationService             notifications,
+        ISaipRepository                  saipRepo,
         ILogger<AipSubmitService>        logger)
     {
         _aipRepo     = aipRepo;
@@ -67,6 +70,7 @@ public sealed class AipSubmitService : IAipSubmitService
         _permissions = permissions;
         _userRepo    = userRepo;
         _notifications = notifications;
+        _saipRepo    = saipRepo;
         _logger      = logger;
     }
 
@@ -98,7 +102,7 @@ public sealed class AipSubmitService : IAipSubmitService
         // ⚠️ PPDO-149 (§3.2). An office with divisions submits BY division. Checked before every
         // other rule so the answer names the right route rather than a readiness gap the division
         // flow would report differently.
-        if (ctx.Groups.Count > 0 && await _divisions.LoadAsync(ctx.Record, ctx.OfficeId, ct) is not null)
+        if (ctx.Groups.Count > 0 && await LoadDivisionsAsync(ctx.Record, ctx.OfficeId, ctx.SaipId, ct) is not null)
             return ServiceResult<AipSubmitResultDto>.BadRequest(
                 "This office submits by division. Each division head submits their own division.");
 
@@ -123,6 +127,7 @@ public sealed class AipSubmitService : IAipSubmitService
             group.WorkflowStatus = AipWorkflowStatus.DepartmentReview;
             await _officeRepo.UpdateAsync(group, ct);
         }
+        await MirrorSaipAsync(ctx.SaipId, AipWorkflowStatus.DepartmentReview, ct);
         await _officeRepo.SaveChangesAsync(ct);
 
         await _audit.LogAsync("aip_offices", ctx.Groups[0].Id, AuditAction.SubmitToDeptHead,
@@ -178,6 +183,12 @@ public sealed class AipSubmitService : IAipSubmitService
         if (ctx.Groups.Count == 0 || ctx.OfficeId != officeId)
             return ServiceResult<AipSubmitResultDto>.NotFound(
                 $"AIP office {officeId} not found in record {aipRecordId}.");
+
+        // PPDO-247 — with an SAIP open, the groups resolved above are its copy, and an SAIP goes to
+        // PPDO only through its own send (letter and proposal gates, spec §4). Without this the copy
+        // could be sent here with neither.
+        if (ctx.SaipId is not null)
+            return ServiceResult<AipSubmitResultDto>.BadRequest(SaipSendElsewhereMessage);
 
         if (ctx.Record.Status != PlanningStatus.Draft)
             return ServiceResult<AipSubmitResultDto>.BadRequest(
@@ -282,7 +293,7 @@ public sealed class AipSubmitService : IAipSubmitService
         // ↩️ PPDO-149 (§3.4 "Return all"): in an office with divisions this hands EVERY submitted
         // division back too. Without it the office would sit in Draft with every division still
         // locked, and nobody but the department head could touch any of it.
-        AipDivisionOfficeState? divisions = await _divisions.LoadAsync(ctx.Record, ctx.OfficeId, ct);
+        AipDivisionOfficeState? divisions = await LoadDivisionsAsync(ctx.Record, ctx.OfficeId, ctx.SaipId, ct);
         IReadOnlyList<AipDivisionSubmission> returned =
             divisions is null ? [] : _divisions.StageReturnAll(divisions, caller.Id);
 
@@ -293,6 +304,7 @@ public sealed class AipSubmitService : IAipSubmitService
             group.WorkflowStatus = AipWorkflowStatus.Draft;
             await _officeRepo.UpdateAsync(group, ct);
         }
+        await MirrorSaipAsync(ctx.SaipId, AipWorkflowStatus.Draft, ct);
         // PPDO-221 — to the users of the returned divisions, or the whole office when it has none.
         await StageDepartmentHeadReturnAsync(
             ctx.Record, ctx.OfficeId, divisions is null ? null : returned.Select(r => r.DivisionId).ToList(), caller, ct);
@@ -335,12 +347,16 @@ public sealed class AipSubmitService : IAipSubmitService
         if (!OfficeScope.ResolveForReview(caller, crossOffice).Permits(officeId))
             return ServiceResult<AipDivisionStatusListDto>.NotFound(notFound);
 
-        List<AipOffice> groups = (await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct))
+        List<AipOffice> approved = (await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct))
             .Where(o => o.OfficeId == officeId).ToList();
-        if (groups.Count == 0) return ServiceResult<AipDivisionStatusListDto>.NotFound(notFound);
+        if (approved.Count == 0) return ServiceResult<AipDivisionStatusListDto>.NotFound(notFound);
+
+        // PPDO-247 — the division panel shows the open SAIP's copy and its own division rows.
+        (List<AipOffice> groups, int? saipId) =
+            await AipGroupLookup.WorkingGroupsAsync(_aipRepo, aipRecordId, officeId, approved, ct);
 
         string officeStatus = groups[0].WorkflowStatus;
-        AipDivisionOfficeState? state = await _divisions.LoadAsync(record, officeId, ct);
+        AipDivisionOfficeState? state = await LoadDivisionsAsync(record, officeId, saipId, ct);
         if (state is null)
             return ServiceResult<AipDivisionStatusListDto>.Ok(
                 new AipDivisionStatusListDto(officeId, officeStatus, false, 0, []));
@@ -434,6 +450,7 @@ public sealed class AipSubmitService : IAipSubmitService
             row = new AipDivisionSubmission
             {
                 AipRecordId = aipRecordId, OfficeId = c.OfficeId, DivisionId = divisionId,
+                SaipId      = c.SaipId,   // PPDO-247 — the copy's own row; null on the AIP
             };
             await _divRepo.AddAsync(row, ct);
         }
@@ -453,11 +470,14 @@ public sealed class AipSubmitService : IAipSubmitService
             .All(id => id == divisionId || c.State.IsSubmitted(id));
         bool officeMoves = allIn && officeFrom is AipWorkflowStatus.Draft or AipWorkflowStatus.ReturnedByPpdo;
         if (officeMoves)
+        {
             foreach (AipOffice group in c.Groups)
             {
                 group.WorkflowStatus = AipWorkflowStatus.DepartmentReview;
                 await _officeRepo.UpdateAsync(group, ct);
             }
+            await MirrorSaipAsync(c.SaipId, AipWorkflowStatus.DepartmentReview, ct);
+        }
 
         // PPDO-221 — "{Division} submitted its FY AIP work", to the office's department heads.
         await _notifications.StageAsync(NotificationTypes.AipDivisionSubmitted, caller, async (audience, token) =>
@@ -544,11 +564,14 @@ public sealed class AipSubmitService : IAipSubmitService
         string officeFrom  = c.Groups[0].WorkflowStatus;
         bool   officeMoves = officeFrom == AipWorkflowStatus.DepartmentReview;
         if (officeMoves)
+        {
             foreach (AipOffice group in c.Groups)
             {
                 group.WorkflowStatus = AipWorkflowStatus.Draft;
                 await _officeRepo.UpdateAsync(group, ct);
             }
+            await MirrorSaipAsync(c.SaipId, AipWorkflowStatus.Draft, ct);
+        }
 
         // PPDO-221 — to that division's users.
         await StageDepartmentHeadReturnAsync(c.Record, c.OfficeId, [divisionId], caller, ct);
@@ -588,16 +611,20 @@ public sealed class AipSubmitService : IAipSubmitService
         if (division is null || caller.OfficeId != division.OfficeId)
             return (null, ServiceResult<AipDivisionSubmitResultDto>.NotFound(notFound));
 
-        List<AipOffice> groups = (await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct))
+        List<AipOffice> approved = (await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct))
             .Where(o => o.OfficeId == division.OfficeId).ToList();
-        if (groups.Count == 0)
+        if (approved.Count == 0)
             return (null, ServiceResult<AipDivisionSubmitResultDto>.NotFound(notFound));
+
+        // PPDO-247 — with an SAIP open, a division submits its part of the copy (decision 6).
+        (List<AipOffice> groups, int? saipId) =
+            await AipGroupLookup.WorkingGroupsAsync(_aipRepo, aipRecordId, division.OfficeId, approved, ct);
 
         if (record.Status != PlanningStatus.Draft)
             return (null, ServiceResult<AipDivisionSubmitResultDto>.BadRequest(
                 $"The FY {record.FiscalYear} AIP is '{record.Status}' and cannot be submitted."));
 
-        AipDivisionOfficeState? state = await _divisions.LoadAsync(record, division.OfficeId, ct);
+        AipDivisionOfficeState? state = await LoadDivisionsAsync(record, division.OfficeId, saipId, ct);
         if (state is null)
             return (null, ServiceResult<AipDivisionSubmitResultDto>.BadRequest(
                 "This office has no divisions — submit the whole office instead."));
@@ -608,7 +635,7 @@ public sealed class AipSubmitService : IAipSubmitService
                 + "Its divisions can no longer be submitted or returned."));
 
         return (new DivisionContext(record, division, division.OfficeId, groups, state,
-            await IsDepartmentHeadAsync(caller, ct)), null);
+            await IsDepartmentHeadAsync(caller, ct), saipId), null);
     }
 
     /// <summary>
@@ -659,7 +686,7 @@ public sealed class AipSubmitService : IAipSubmitService
 
     private sealed record DivisionContext(
         AipRecord Record, Division Division, int OfficeId, List<AipOffice> Groups,
-        AipDivisionOfficeState State, bool IsDepartmentHead);
+        AipDivisionOfficeState State, bool IsDepartmentHead, int? SaipId);
 
     // ── The checklist ─────────────────────────────────────────────────────────
 
@@ -785,7 +812,7 @@ public sealed class AipSubmitService : IAipSubmitService
         {
             ceiling = await _ceiling.GetStatusAsync(ctx.Groups[0].Id, ct);
             ceilingWarning = await _ceiling.ValidateForSubmitAsync(ctx.Groups[0].Id, ct);
-            divisions = await _divisions.LoadAsync(ctx.Record, ctx.OfficeId, ct);
+            divisions = await LoadDivisionsAsync(ctx.Record, ctx.OfficeId, ctx.SaipId, ct);
         }
 
         bool complete = issues.Count == 0;
@@ -883,10 +910,69 @@ public sealed class AipSubmitService : IAipSubmitService
         // office's work, so narrow to the caller's own — otherwise a PPDO admin pressing submit
         // would move the entire province at once.
         if (caller.OfficeId is int callerOfficeId)
+        {
             mine = mine.Where(o => o.OfficeId == callerOfficeId).ToList();
 
-        return new ReadinessContext(record, caller.OfficeId ?? 0, mine);
+            // PPDO-247 — the office works on its open SAIP's copy when there is one: readiness, the
+            // encoder's submit and the department head's return all act on the copy (spec §4).
+            if (mine.Count > 0)
+            {
+                (List<AipOffice> working, int? saipId) = await AipGroupLookup.WorkingGroupsAsync(
+                    _aipRepo, aipRecordId, callerOfficeId, mine, ct);
+                return new ReadinessContext(record, callerOfficeId, working, saipId);
+            }
+        }
+
+        return new ReadinessContext(record, caller.OfficeId ?? 0, mine, null);
     }
 
-    private sealed record ReadinessContext(AipRecord Record, int OfficeId, List<AipOffice> Groups);
+    private sealed record ReadinessContext(AipRecord Record, int OfficeId, List<AipOffice> Groups, int? SaipId);
+
+    // ── SAIP (v1.10.0 — PPDO-247) ─────────────────────────────────────────────
+
+    /// <summary>The refusal on the AIP's own send route while the office has an SAIP open.</summary>
+    public const string SaipSendElsewhereMessage =
+        "This office has an SAIP open. Send it to PPDO from the SAIP, with its signed request letter.";
+
+    private Task<AipDivisionOfficeState?> LoadDivisionsAsync(
+        AipRecord record, int officeId, int? saipId, CancellationToken ct)
+        => saipId is int sid
+            ? _divisions.LoadForSaipAsync(record, officeId, sid, ct)
+            : _divisions.LoadAsync(record, officeId, ct);
+
+    /// <summary>
+    /// Keeps <c>aip_saips.status</c> in step with its copy's groups, staged in the caller's save. The
+    /// groups' <c>WorkflowStatus</c> is what every write guard reads, so they lead; the SAIP row is
+    /// what the SAIP list and banner read. Their states share names, which is what makes this a copy.
+    /// </summary>
+    private async Task MirrorSaipAsync(int? saipId, string status, CancellationToken ct)
+    {
+        if (saipId is not int sid) return;
+        AipSaip? saip = await _saipRepo.GetByIntIdAsync(sid, ct);
+        if (saip is null) return;
+        saip.Status = status;
+        await _saipRepo.UpdateAsync(saip, ct);
+    }
+
+    public async Task<SaipSendChecklist?> GetSaipChecklistAsync(
+        int aipRecordId, int officeId, int saipId, CancellationToken ct = default)
+    {
+        AipRecord? record = await _aipRepo.GetByIntIdAsync(aipRecordId, ct);
+        if (record is null) return null;
+
+        List<AipOffice> groups = (await _aipRepo.GetDraftGroupsForOfficeAsync(aipRecordId, officeId, ct))
+            .Where(g => g.SaipId == saipId)
+            .ToList();
+        if (groups.Count == 0) return null;
+
+        Checklist checklist = await BuildAsync(new ReadinessContext(record, officeId, groups, saipId), ct);
+        AipReadinessDto r = checklist.Readiness;
+
+        List<string> divisionBlockers = [];
+        if (r.WaitingDivisions is { Count: > 0 } waiting) divisionBlockers.Add(WaitingMessage(waiting));
+        if (checklist.UntaggedCount > 0) divisionBlockers.Add(UntaggedMessage(checklist.UntaggedCount));
+
+        return new SaipSendChecklist(
+            r, groups, divisionBlockers, r.Issues.Select(i => i.Message).ToList(), r.CeilingWarning);
+    }
 }

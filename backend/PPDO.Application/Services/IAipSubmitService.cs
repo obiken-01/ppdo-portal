@@ -119,4 +119,24 @@ public interface IAipSubmitService
     /// </summary>
     Task<ServiceResult<AipDivisionSubmitResultDto>> ReturnDivisionAsync(
         int aipRecordId, int divisionId, User caller, CancellationToken ct = default);
+
+    /// <summary>
+    /// The AIP's send-to-PPDO checklist run on an SAIP's working copy (v1.10.0 — PPDO-247): every
+    /// division in, every activity complete, the enforced ceilings on the <b>amended</b> totals. The
+    /// SAIP's own gates (letter, proposals) are <c>SaipService</c>'s. Null when the record or the
+    /// copy is not there. No scope check: the caller (<c>SaipService.SubmitAsync</c>) has done it.
+    /// </summary>
+    Task<SaipSendChecklist?> GetSaipChecklistAsync(
+        int aipRecordId, int officeId, int saipId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// What stands between an SAIP and PPDO on the AIP's own checklist (PPDO-247). Each list is empty
+/// when that gate passes. <see cref="Groups"/> is the copy's group rows, tracked, for the send.
+/// </summary>
+public sealed record SaipSendChecklist(
+    AipReadinessDto Readiness,
+    IReadOnlyList<AipOffice> Groups,
+    IReadOnlyList<string> DivisionBlockers,
+    IReadOnlyList<string> WorkBlockers,
+    string? CeilingBlocker);

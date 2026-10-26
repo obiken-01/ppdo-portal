@@ -49,9 +49,30 @@ public sealed class AipDivisionSubmissionConfiguration : IEntityTypeConfiguratio
 
         // One row per division per fiscal year. This is what makes a double submit an update of
         // the same row rather than a second row that disagrees with the first.
-        builder.HasIndex(s => new { s.AipRecordId, s.DivisionId })
+        // PPDO-247 — the SAIP a row belongs to; null on every AIP row.
+        builder.Property(s => s.SaipId).HasColumnName("saip_id");
+
+        // ↩️ PPDO-247 — saip_id joins the key, so an SAIP's copy has its own row per division. SQL
+        // Server treats NULLs as equal in a unique index, so the AIP itself still gets exactly one row
+        // per (record, division), as before.
+        //
+        // ⚠️ HasFilter(null) is load-bearing. EF's SQL Server convention filters a unique index on a
+        // nullable column to "[saip_id] IS NOT NULL", which would drop uniqueness for exactly the AIP
+        // rows (saip_id NULL) this index exists to protect.
+        builder.HasIndex(s => new { s.AipRecordId, s.DivisionId, s.SaipId })
             .IsUnique()
-            .HasDatabaseName("UX_aip_division_submissions_record_division");
+            .HasFilter(null)
+            .HasDatabaseName("UX_aip_division_submissions_record_division_saip");
+
+        builder.HasOne<AipSaip>()
+            .WithMany()
+            .HasForeignKey(s => s.SaipId)
+            .HasConstraintName("FK_aip_division_submissions_aip_saips_saip_id")
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // ⚠️ PPDO-247 — every ordinary read sees the AIP's rows only. SAIP rows are read through
+        // AipDivisionSubmissionRepository.GetForSaipAsync, the one IgnoreQueryFilters on this table.
+        builder.HasQueryFilter(s => s.SaipId == null);
 
         // The read path: every division of one office in one record, in one query (spec §5 —
         // "one query per office, never per division").

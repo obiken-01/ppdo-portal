@@ -54,6 +54,19 @@ public sealed class AipDivisionSubmission
     /// <summary>Who returned it last.</summary>
     public Guid? ReturnedById { get; set; }
 
+    /// <summary>
+    /// The SAIP whose working copy this row is a division submit on (v1.10.0 — PPDO-247). <b>Null on
+    /// every AIP row.</b> An SAIP goes through the same division step as the AIP (decision 6), and its
+    /// copy shares the record and office with the approved AIP, so its rows are told apart by this.
+    ///
+    /// <para>
+    /// ⚠️ An EF query filter (<c>saip_id IS NULL</c>) keeps every existing read on the AIP's own rows,
+    /// as <see cref="AipOffice.SaipId"/> does for the tree. Only the SAIP-aware repository methods
+    /// read the others.
+    /// </para>
+    /// </summary>
+    public int? SaipId { get; set; }
+
     // ── Navigation ────────────────────────────────────────────────────────────
 
     public AipRecord? AipRecord { get; set; }

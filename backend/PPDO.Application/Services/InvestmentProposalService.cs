@@ -479,7 +479,9 @@ public sealed partial class InvestmentProposalService : IInvestmentProposalServi
         if (project is null) return null;
         AipProgram? program = await _aip.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null) return null;
-        AipOffice? office = await _aip.GetOfficeByIdAsync(program.OfficeId, ct);
+        // PPDO-247 — a project added in an SAIP lives in the working copy, and its proposal must be
+        // created and Finalized before the SAIP can be sent (decision 8), so the copy group resolves.
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aip, program.OfficeId, ct);
         if (office is null) return null;
         AipRecord? record = await _aip.GetByIntIdAsync(office.AipRecordId, ct);
         return record is null ? null : new ProjectContext(project, program, office, record);

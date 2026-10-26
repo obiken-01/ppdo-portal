@@ -8,6 +8,8 @@ using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
 
+using PPDO.Tests.TestHelpers;
+
 namespace PPDO.Tests.Application;
 
 /// <summary>
@@ -23,7 +25,7 @@ namespace PPDO.Tests.Application;
 /// the cancel's saip-belongs-to-office check.
 /// </para>
 /// </summary>
-public sealed class SaipServiceTests
+public sealed partial class SaipServiceTests
 {
     private const int Record   = 28;
     private const int Pto      = 3;     // the guest office starting the SAIP
@@ -36,6 +38,13 @@ public sealed class SaipServiceTests
     private readonly Mock<IAipExpenditureRepository> _expRepo  = new();
     private readonly Mock<IAuditService>             _audit    = new();
     private readonly Mock<IUserRepository>           _users    = new();
+    // PPDO-247 — the letter, the send and the live changes (SaipServiceTests.EditSubmit.cs).
+    private readonly Mock<IFileStore>                       _files     = new();
+    private readonly Mock<IAipSubmitService>                _submit    = new();
+    private readonly Mock<IInvestmentProposalRepository>    _proposals = new();
+    private readonly RecordingNotificationService           _notifications = new();
+    private readonly Mock<IAipCeilingService>               _ceiling   = new();
+    private readonly Mock<IAipDivisionSubmissionRepository> _divRepo   = new();
 
     private AipRecord _record = new() { Id = Record, FiscalYear = 2028, Status = PlanningStatus.Draft };
 
@@ -81,7 +90,8 @@ public sealed class SaipServiceTests
 
     private SaipService Sut() => new(
         _saipRepo.Object, _aipRepo.Object, _expRepo.Object, new PermissionService(),
-        _audit.Object, _users.Object, NullLogger<SaipService>.Instance);
+        _audit.Object, _users.Object, _files.Object, _submit.Object, _proposals.Object, _notifications,
+        _ceiling.Object, _divRepo.Object, NullLogger<SaipService>.Instance);
 
     // ── Callers (spec §3, per-role table) ─────────────────────────────────────
 

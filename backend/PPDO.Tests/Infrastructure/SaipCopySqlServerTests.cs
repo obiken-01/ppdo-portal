@@ -45,7 +45,7 @@ namespace PPDO.Tests.Infrastructure;
 /// <see cref="Cancel_RemovesTheWholeCopyAndNothingElse"/> fails.
 /// </para>
 /// </summary>
-public sealed class SaipCopySqlServerTests : IClassFixture<SqlServerTestDatabase>
+public sealed partial class SaipCopySqlServerTests : IClassFixture<SqlServerTestDatabase>
 {
     private readonly SqlServerTestDatabase _db;
 
@@ -154,7 +154,10 @@ public sealed class SaipCopySqlServerTests : IClassFixture<SqlServerTestDatabase
             .ReturnsAsync(new Dictionary<Guid, string>());
         return new SaipService(
             new SaipRepository(ctx), new AipRepository(ctx), new AipExpenditureRepository(ctx),
-            new PermissionService(), Mock.Of<IAuditService>(), users.Object, NullLogger<SaipService>.Instance);
+            new PermissionService(), Mock.Of<IAuditService>(), users.Object,
+            Mock.Of<IFileStore>(), Mock.Of<IAipSubmitService>(), Mock.Of<IInvestmentProposalRepository>(),
+            new RecordingNotificationService(), Mock.Of<IAipCeilingService>(),
+            Mock.Of<IAipDivisionSubmissionRepository>(), NullLogger<SaipService>.Instance);
     }
 
     private async Task<SaipDto> StartAsync(Seeded s)

@@ -14,6 +14,8 @@ public static class NotificationTypes
     public const string AipReturnedByPpdo           = "AipReturnedByPpdo";
     public const string AipReturnedByDepartmentHead = "AipReturnedByDepartmentHead";
     public const string AipSentToPpdo               = "AipSentToPpdo";
+    /// <summary>PPDO-247 — an office sent an SAIP to PPDO (spec decision 16).</summary>
+    public const string SaipSentToPpdo              = "SaipSentToPpdo";
     public const string AipDivisionSubmitted        = "AipDivisionSubmitted";
     public const string AipReviewerEdit             = "AipReviewerEdit";
     public const string InitialWfpExportReady       = "InitialWfpExportReady";
@@ -57,6 +59,10 @@ public static class NotificationText
 
     public static string AipSentToPpdo(string office, int fiscalYear)
         => Fit($"{office} sent its FY {fiscalYear} AIP to PPDO");
+
+    /// <summary>"PTO sent SAIP 1 of its FY 2028 AIP to PPDO" (PPDO-247).</summary>
+    public static string SaipSentToPpdo(string office, int number, int fiscalYear)
+        => Fit($"{office} sent SAIP {number} of its FY {fiscalYear} AIP to PPDO");
 
     public static string AipDivisionSubmitted(string division, int fiscalYear)
         => Fit($"{division} submitted its FY {fiscalYear} AIP work");
@@ -127,6 +133,13 @@ public static class NotificationLinks
 
     public static string AipReview(int officeId, int fiscalYear)
         => $"/budget-planning/aip/review?officeId={officeId}&fiscalYear={fiscalYear}";
+
+    /// <summary>
+    /// The review screen on one office's SAIP (PPDO-247). <c>saipId</c> is for the SAIP review screen
+    /// (PPDO-250); until then the page ignores it and opens the office's review.
+    /// </summary>
+    public static string SaipReview(int officeId, int fiscalYear, int saipId)
+        => $"/budget-planning/aip/review?officeId={officeId}&fiscalYear={fiscalYear}&saipId={saipId}";
 
     /// <summary>The report page on that year, where the initial WFP and its <b>Download all</b> live.</summary>
     public static string WfpReport(int fiscalYear)

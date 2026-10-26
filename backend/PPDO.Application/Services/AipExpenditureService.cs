@@ -165,7 +165,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
                     AipReviewerEditComment.Account(line.AccountNumberSnapshot, line.AccountTitleSnapshot),
                     ctx.Activity.Name), ct);
 
-        return await AfterWriteAsync(line, activityId, afterDelete: false, ct);
+        return await AfterWriteAsync(line, activityId, afterDelete: false, ctx.Office, ct);
     }
 
     // ── Update ────────────────────────────────────────────────────────────────
@@ -279,7 +279,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
                     AipReviewerEditComment.Account(line.AccountNumberSnapshot, line.AccountTitleSnapshot) + " "
                     + AipReviewerEditComment.Changes((stored.Ps, stored.Mooe, stored.Co), (line.Ps, line.Mooe, line.Co))), ct);
 
-        return await AfterWriteAsync(line, line.ActivityId, afterDelete: false, ct);
+        return await AfterWriteAsync(line, line.ActivityId, afterDelete: false, ctx.Office, ct);
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -303,6 +303,8 @@ public sealed class AipExpenditureService : IAipExpenditureService
                 ctx.Office, caller, _aipRepo, NotFoundLine(expenditureId), ct, "delete from");
         if (refused is not null) return refused;
         if (await CheckDivisionAsync(ctx, caller, ct) is { } locked) return locked;
+        if (AipWriteGuard.CheckSaipDelete<AipExpenditureWriteResultDto>(ctx.Office, line.SourceId) is { } approvedLine)
+            return approvedLine;
         if (AipRowVersionRequired.Check<AipExpenditureWriteResultDto>(expectedRowVersion) is { } versionRequired) return versionRequired;
 
         // Snapshot BEFORE the delete, log AFTER it — the values are still readable on the
@@ -336,7 +338,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
         // ⚠️ afterDelete: true. This is the one call site where removing the last line must take
         // the activity to 0 rather than leaving it untouched — see IAipExpenditureService.
-        return await AfterWriteAsync(line: null, activityId, afterDelete: true, ct);
+        return await AfterWriteAsync(line: null, activityId, afterDelete: true, ctx.Office, ct);
     }
 
     // ── Concurrent-edit guard (V18-71 / PPDO-118) ─────────────────────────────
@@ -409,7 +411,7 @@ public sealed class AipExpenditureService : IAipExpenditureService
     /// <c>GetStatsAsync</c> (CLAUDE.md).
     /// </summary>
     private async Task<ServiceResult<AipExpenditureWriteResultDto>> AfterWriteAsync(
-        AipExpenditure? line, int activityId, bool afterDelete, CancellationToken ct)
+        AipExpenditure? line, int activityId, bool afterDelete, AipOffice office, CancellationToken ct)
     {
         if (afterDelete)
             await _totals.RecalculateAfterLineDeleteAsync(activityId, ct);
@@ -440,7 +442,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
             fundCodes,
             // PPDO-191 — read AFTER the recompute above: EF reads the activity's new rowversion back
             // onto the tracked instance when it saves the totals, so this is the post-write value.
-            activity?.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null));
+            activity?.RowVersion is { Length: > 0 } rv ? Convert.ToBase64String(rv) : null,
+            // PPDO-247 — warn on save, block at Send to PPDO (Ralph). Measured on the copy's amended
+            // totals; the AIP's own saves are unchanged.
+            office.SaipId is not null ? await _ceiling.ValidateForSubmitAsync(office.Id, ct) : null));
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
@@ -461,7 +466,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         AipProgram? program = await _aipRepo.GetProgramByIdAsync(project.ProgramId, ct);
         if (program is null) return null;
 
-        AipOffice? office = await _aipRepo.GetOfficeByIdAsync(program.OfficeId, ct);
+        // PPDO-247 — an SAIP copy row resolves to its copy group, so lines on the working copy are
+        // edited through these same endpoints (spec §4).
+        AipOffice? office = await AipGroupLookup.FindGroupAsync(_aipRepo, program.OfficeId, ct);
         return office is null ? null : new AipContext(activity, office, project, program);
     }
 

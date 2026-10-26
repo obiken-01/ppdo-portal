@@ -102,6 +102,12 @@ public static class AuditAction
     /// <summary>The department head cancelled an SAIP; its draft copy was deleted. Ten characters.</summary>
     public const string SaipCancel = "SAIP_CANCL";
 
+    /// <summary>The department head attached or replaced an SAIP's request letter (PPDO-247). Ten characters.</summary>
+    public const string SaipLetter = "SAIP_LETTR";
+
+    /// <summary>The department head sent an SAIP to PPDO (PPDO-247). Nine characters.</summary>
+    public const string SaipSubmit = "SAIP_SEND";
+
     /// <summary>
     /// Every AIP workflow hand-off, in one place (PPDO-77 read them for History; PPDO-75 reads the
     /// latest one for the returned notice). Add a new hand-off here, or both reads miss it.
