@@ -37,4 +37,5 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 
 ## Audits
 
+- [v1.9.2 — UAT pre-sweep findings](UAT_PreSweep_Findings.md) — suspects from reading the code, to confirm in the A1–A3 sweep (PPDO-252)
 - [v1.9.1 — Loading guard audit](Loading_Guard_Audit.md) — which actions on the heavy pages could run before their data loaded, and the fixes (PPDO-244)
