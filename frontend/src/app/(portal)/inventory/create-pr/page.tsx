@@ -40,7 +40,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { listAccounts } from "@/lib/config";
 import { useToast } from "@/components/ui/Toast";
@@ -506,7 +506,7 @@ export default function CreatePRPage() {
           division:    (data.division as string) ?? "",
         }));
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   const isStaff = me?.role === "Staff";

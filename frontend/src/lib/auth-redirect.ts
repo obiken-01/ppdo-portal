@@ -63,3 +63,30 @@ export function loginUrlWithReason(reason: RefreshErrorReason | null): string {
 export function reconnectingUrl(next: string): string {
   return `/reconnecting?next=${encodeURIComponent(next)}`;
 }
+
+/**
+ * Where a portal page sends the user when its fetchMe() fails (PPDO-260).
+ *
+ * Same split as a failed refresh: no HTTP response at all (cold start, restart, timeout)
+ * goes to /reconnecting, which retries and comes back to `currentPath`; any answer from
+ * the server goes to /login as before. A 401 never gets this far in practice, because
+ * the api.ts interceptor handles it first.
+ *
+ * Loop guard: if /auth/refresh works but /auth/me keeps failing (a CORS misconfiguration
+ * on GET looks exactly like a network error), /reconnecting succeeds and sends the user
+ * straight back, the page fails again, and so on, hundreds of times a second. So a second
+ * network failure within ME_RECONNECT_COOLDOWN_MS of the last trip to /reconnecting
+ * (`lastReconnectAt`) falls back to /login.
+ */
+export const ME_RECONNECT_COOLDOWN_MS = 30_000;
+
+export function meFailureRedirect(
+  error: unknown,
+  currentPath: string,
+  lastReconnectAt: number | null = null,
+  now: number = Date.now(),
+): string {
+  if (!isNetworkError(error)) return "/login";
+  if (lastReconnectAt !== null && now - lastReconnectAt < ME_RECONNECT_COOLDOWN_MS) return "/login";
+  return reconnectingUrl(currentPath);
+}

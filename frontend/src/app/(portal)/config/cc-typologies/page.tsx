@@ -30,7 +30,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createCcTypology,
@@ -131,7 +131,7 @@ export default function CcTypologiesPage() {
       .then((data) => {
         if (!data.canManageConfig) router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   useEffect(() => {

@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -232,7 +232,7 @@ export default function InventoryDashboardPage() {
           router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
         }
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load data ──────────────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ export default function InventoryDashboardPage() {
       }
       return prSortDir === "asc" ? cmp : -cmp;
     });
-  }, [prs, prSortCol, prSortDir, STATUS_ORDER]);
+  }, [prs, prSortCol, prSortDir]);
 
   const rawAlertItems = ledger.filter((r) => r.isLowStock || r.isOutOfStock);
 
