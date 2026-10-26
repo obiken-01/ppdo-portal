@@ -44,7 +44,7 @@ function RevealableAnswerInput({
         onTouchStart={() => setRevealed(true)}
         onTouchEnd={() => setRevealed(false)}
         className="absolute right-1 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
-                   text-slate-500 hover:text-slate-700 select-none"
+                   text-slate-500 hover:text-slate-800 select-none"
       >
         {revealed ? "Hide" : "Show"}
       </button>
