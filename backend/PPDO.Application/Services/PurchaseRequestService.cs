@@ -138,6 +138,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (scope.SeeNothing)
             return Array.Empty<PRSummaryDto>();
 
+        // PPDO-261: division scope alone isn't enough; the feature flag gates reads too.
+        if (!await CanReadInventoryAsync(requester, "ListPRs", cancellationToken))
+            return Array.Empty<PRSummaryDto>();
+
         IReadOnlyList<PurchaseRequest> all = scope.SeeAll
             ? await _prs.GetAllAsync(cancellationToken)
             : await _prs.GetByDivisionAsync(scope.DivisionId!.Value, cancellationToken);
@@ -160,7 +164,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         CancellationToken cancellationToken = default)
     {
         DivisionScope scope = DivisionScope.Resolve(requester);
-        if (scope.SeeNothing)
+        if (scope.SeeNothing || !await CanReadInventoryAsync(requester, "SearchPRs", cancellationToken))
             return new PRSearchResultDto(
                 Array.Empty<PRSummaryDto>(), 0, filter.Page, filter.PageSize,
                 new PRStatusCountsDto(0, 0, 0, 0));
@@ -204,6 +208,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         Guid id,
         CancellationToken cancellationToken = default)
     {
+        // PPDO-261: checked before the lookup, so a 403 never reveals whether the PR exists.
+        if (!await CanReadInventoryAsync(requester, "ViewPR", cancellationToken))
+            return ServiceResult<PRResponseDto>.Forbidden("You do not have access to Inventory.");
+
         PurchaseRequest? pr = await _prs.GetWithItemsAsync(id, cancellationToken);
         if (pr is null)
             return ServiceResult<PRResponseDto>.NotFound($"Purchase Request {id} not found.");
@@ -790,6 +798,22 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// PPDO-261: inventory reads need <c>CanAccessInventory</c>, the same flag writes check.
+    /// Logs the denial (structured, UserId + Feature) per CLAUDE.md.
+    /// </summary>
+    private async Task<bool> CanReadInventoryAsync(
+        User requester, string feature, CancellationToken cancellationToken)
+    {
+        if (await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return true;
+
+        _logger.LogWarning(
+            "Permission denied — user {UserId} lacks CanAccessInventory. Feature: {Feature}",
+            requester.Id, feature);
+        return false;
+    }
 
     /// <summary>
     /// Validates string fields against their DB column max lengths (see
