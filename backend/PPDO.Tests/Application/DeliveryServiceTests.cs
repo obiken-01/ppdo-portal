@@ -740,4 +740,65 @@ public sealed class DeliveryServiceTests
             "PurchaseRequests", It.IsAny<Guid>(), It.IsAny<string>(),
             It.IsAny<object?>(), It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    // ── PPDO-261: reads require CanAccessInventory, not just division scope ─────────
+
+    [Fact]
+    public async Task GetAllAsync_StaffWithoutInventoryAccess_ReturnsEmptyWithoutQuerying()
+    {
+        Mock<IDeliveryRepository> deliveryRepo = new();
+
+        DeliveryPagedResultDto result =
+            await BuildSut(deliveryRepo, new Mock<IPurchaseRequestRepository>())
+                .GetAllAsync(MakeStaffNoInventory(), page: 1, pageSize: 25);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        deliveryRepo.Verify(
+            r => r.GetPagedAsync(It.IsAny<int?>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByPRIdAsync_StaffWithoutInventoryAccess_ReturnsForbidden()
+    {
+        // Own-division PR: division scope alone would allow it.
+        PurchaseRequest pr = MakePR(divisionId: PlanningDiv);
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        ServiceResult<IReadOnlyList<DeliverySummaryDto>> result =
+            await BuildSut(new Mock<IDeliveryRepository>(), prRepo)
+                .GetByPRIdAsync(MakeStaffNoInventory(), pr.Id);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        prRepo.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetDeliveredTotalsByPRAsync_StaffWithoutInventoryAccess_ReturnsForbidden()
+    {
+        PurchaseRequest pr = MakePR(divisionId: PlanningDiv);
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        ServiceResult<IReadOnlyDictionary<Guid, decimal>> result =
+            await BuildSut(new Mock<IDeliveryRepository>(), prRepo)
+                .GetDeliveredTotalsByPRAsync(MakeStaffNoInventory(), pr.Id);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        prRepo.Verify(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_StaffWithoutInventoryAccess_ReturnsForbidden()
+    {
+        Mock<IDeliveryRepository> deliveryRepo = new();
+
+        ServiceResult<DeliveryResponseDto> result =
+            await BuildSut(deliveryRepo, new Mock<IPurchaseRequestRepository>())
+                .GetByIdAsync(MakeStaffNoInventory(), Guid.NewGuid());
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        deliveryRepo.Verify(
+            r => r.GetByIdWithItemsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

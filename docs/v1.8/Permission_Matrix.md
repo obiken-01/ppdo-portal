@@ -2,10 +2,10 @@
 type: standard
 version: v1.8.0
 status: current
-tickets: [PPDO-7]
+tickets: [PPDO-7, PPDO-261]
 superseded_by: [../v1.9/AIP_Reviewer_Edit_Spec.md]
 superseded_scope: "AIP_Reviewer_Edit_Spec.md: in part: section 5"
-updated: 2026-10-20
+updated: 2026-10-26
 ---
 
 # Permission Matrix
@@ -69,6 +69,20 @@ Office is not read by any of these five.
 > **`CanManageResourceLinks` carries an extra rule the flag cannot express.** Staff who hold it may
 > **add only** — edit and delete always require Admin/SuperAdmin regardless of the flag. That is
 > enforced at the endpoint, not in `PermissionService`.
+
+> **`CanAccessInventory` gates inventory reads too, not just writes (PPDO-261, 2026-10-26).**
+> Before v1.9.2 the read endpoints applied division scope only, so a Staff member whose division had
+> inventory off could still read their own division's PRs, deliveries, stats and ledger through the
+> API (the UI hid the pages). Now every inventory read checks the flag first:
+>
+> | Read | Without the flag |
+> |---|---|
+> | `GET /purchase-requests`, `/purchase-requests/search`, `/deliveries`, `/inventory/stats`, `/inventory/ledger` | empty result (same shape office users already get) |
+> | `GET /purchase-requests/{id}`, `/deliveries/{id}`, `/deliveries/totals`, a PR's deliveries | **403**, checked before the lookup so it never reveals whether the record exists |
+>
+> Items Master reads stay ungated: it is a catalogue, not division data. Pinned by the
+> `*_StaffWithoutInventoryAccess_*` tests in `PurchaseRequestServiceTests`, `DeliveryServiceTests` and
+> `InventoryServiceTests`; the flag's own resolution is unchanged, so `PermissionMatrixTests` needs no new row.
 
 ### 2.2 `CanAccessBudgetPlanning` — the one flag whose default flips by office
 
@@ -639,7 +653,7 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224) · §2.1 inventory-read note 2026-10-26 (PPDO-261)*
 
 ## Related
 

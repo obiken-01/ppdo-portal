@@ -1270,4 +1270,62 @@ public sealed class PurchaseRequestServiceTests
             "PurchaseRequests", It.IsAny<Guid>(), AuditAction.Create,
             null, It.IsAny<object?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    // ── PPDO-261: reads require CanAccessInventory, not just division scope ─────────
+
+    [Fact]
+    public async Task GetAllAsync_StaffWithoutInventoryAccess_ReturnsEmptyWithoutQuerying()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        IReadOnlyList<PRSummaryDto> result =
+            await BuildSut(prRepo).GetAllAsync(MakeStaffNoInventory(PlanningDiv));
+
+        Assert.Empty(result);
+        prRepo.Verify(r => r.GetByDivisionAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        prRepo.Verify(r => r.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SearchAsync_StaffWithoutInventoryAccess_ReturnsEmptyWithoutQuerying()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = new();
+
+        PRSearchResultDto result =
+            await BuildSut(prRepo).SearchAsync(MakeStaffNoInventory(PlanningDiv), DefaultSearchFilter());
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+        prRepo.Verify(r => r.SearchAsync(
+            It.IsAny<PRSearchCriteria>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_StaffWithoutInventoryAccess_ReturnsForbiddenBeforeLoading()
+    {
+        // Own-division PR: division scope alone would allow it; the feature flag must not.
+        PurchaseRequest planningPR = MakePR("101-1041-GF-2026-10-26-001", PlanningDiv);
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.GetWithItemsAsync(planningPR.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(planningPR);
+
+        ServiceResult<PRResponseDto> result =
+            await BuildSut(prRepo).GetByIdAsync(MakeStaffNoInventory(PlanningDiv), planningPR.Id);
+
+        Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+        // Checked before the lookup, so a 403 never reveals whether the PR exists.
+        prRepo.Verify(r => r.GetWithItemsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_AdminWithNoDivision_StillAllowed()
+    {
+        PurchaseRequest pr = MakePR("101-1041-GF-2026-10-26-002", PlanningDiv);
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        prRepo.Setup(r => r.GetWithItemsAsync(pr.Id, It.IsAny<CancellationToken>())).ReturnsAsync(pr);
+
+        ServiceResult<PRResponseDto> result = await BuildSut(prRepo).GetByIdAsync(MakeAdmin(), pr.Id);
+
+        Assert.True(result.IsSuccess);
+    }
 }

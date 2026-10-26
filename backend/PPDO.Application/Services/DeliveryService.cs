@@ -65,7 +65,7 @@ public sealed class DeliveryService : IDeliveryService
         // Division scope — office users (Staff/Observer with no division) see nothing,
         // never the all-divisions list. See DivisionScope.
         DivisionScope scope = DivisionScope.Resolve(requester);
-        if (scope.SeeNothing)
+        if (scope.SeeNothing || !await CanReadInventoryAsync(requester, "ListDeliveries", cancellationToken))
             return new DeliveryPagedResultDto(Array.Empty<DeliverySummaryDto>(), 0, page, pageSize);
 
         DeliveryPageResult result =
@@ -84,6 +84,10 @@ public sealed class DeliveryService : IDeliveryService
         Guid prId,
         CancellationToken cancellationToken = default)
     {
+        // PPDO-261: checked before the lookup, so a 403 never reveals whether the PR exists.
+        if (!await CanReadInventoryAsync(requester, "ListPRDeliveries", cancellationToken))
+            return ServiceResult<IReadOnlyList<DeliverySummaryDto>>.Forbidden("You do not have access to Inventory.");
+
         PurchaseRequest? pr = await _prs.GetByIdAsync(prId, cancellationToken);
         if (pr is null)
             return ServiceResult<IReadOnlyList<DeliverySummaryDto>>.NotFound(
@@ -109,6 +113,9 @@ public sealed class DeliveryService : IDeliveryService
         Guid prId,
         CancellationToken cancellationToken = default)
     {
+        if (!await CanReadInventoryAsync(requester, "DeliveredTotals", cancellationToken))
+            return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.Forbidden("You do not have access to Inventory.");
+
         PurchaseRequest? pr = await _prs.GetByIdAsync(prId, cancellationToken);
         if (pr is null)
             return ServiceResult<IReadOnlyDictionary<Guid, decimal>>.NotFound(
@@ -133,6 +140,9 @@ public sealed class DeliveryService : IDeliveryService
         Guid id,
         CancellationToken cancellationToken = default)
     {
+        if (!await CanReadInventoryAsync(requester, "ViewDelivery", cancellationToken))
+            return ServiceResult<DeliveryResponseDto>.Forbidden("You do not have access to Inventory.");
+
         Delivery? delivery = await _deliveries.GetByIdWithItemsAsync(id, cancellationToken);
         if (delivery is null)
             return ServiceResult<DeliveryResponseDto>.NotFound($"Delivery {id} not found.");
@@ -409,6 +419,22 @@ public sealed class DeliveryService : IDeliveryService
         => new(Enumerable.Range(0, 5)
             .Select(_ => RefChars[Random.Shared.Next(RefChars.Length)])
             .ToArray());
+
+    /// <summary>
+    /// PPDO-261: inventory reads need <c>CanAccessInventory</c>, the same flag writes check.
+    /// Logs the denial (structured, UserId + Feature) per CLAUDE.md.
+    /// </summary>
+    private async Task<bool> CanReadInventoryAsync(
+        User requester, string feature, CancellationToken cancellationToken)
+    {
+        if (await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return true;
+
+        _logger.LogWarning(
+            "Permission denied — user {UserId} lacks CanAccessInventory. Feature: {Feature}",
+            requester.Id, feature);
+        return false;
+    }
 
     // ── Mapping ────────────────────────────────────────────────────────────────
 
