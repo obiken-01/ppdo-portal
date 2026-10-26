@@ -93,60 +93,62 @@ export default function AipDivisionsPanel({
         </div>
       )}
 
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-            <th className="px-4 py-2">Division</th>
-            <th className="px-4 py-2">Status</th>
-            <th className="px-4 py-2 text-right">Activities</th>
-            <th className="px-4 py-2">Submitted</th>
-            <th className="px-4 py-2"><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.divisions.map((d) => {
-            const isSubmitted = d.status === "Submitted";
-            return (
-              <tr key={d.divisionId} className="border-b border-slate-100 last:border-b-0">
-                <td className="px-4 py-2 text-slate-800">
-                  {d.name}
-                  {!d.isActive && <span className="ml-1 text-xs text-slate-600">(inactive)</span>}
-                </td>
-                <td className="px-4 py-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      isSubmitted ? "bg-green-100 text-green-800"
-                        : d.activityCount === 0 ? "bg-slate-100 text-slate-600"
-                          : "bg-amber-100 text-amber-800"
-                    }`}
-                  >
-                    {isSubmitted ? "Submitted" : d.activityCount === 0 ? "Nothing to submit" : "Draft"}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums text-slate-800">{d.activityCount}</td>
-                <td className="px-4 py-2 text-xs text-slate-600">
-                  {isSubmitted
-                    ? `${fmtDivisionStamp(d.submittedAt)}${d.submittedByName ? ` · ${d.submittedByName}` : ""}`
-                    : "—"}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {/* Hidden, not disabled, for anyone the server says cannot return (spec §6.2). */}
-                  {d.canReturn && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => setReturning(d)}
-                      className="border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <th className="px-4 py-2">Division</th>
+              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2 text-right">Activities</th>
+              <th className="px-4 py-2">Submitted</th>
+              <th className="px-4 py-2"><span className="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.divisions.map((d) => {
+              const isSubmitted = d.status === "Submitted";
+              return (
+                <tr key={d.divisionId} className="border-b border-slate-100 last:border-b-0">
+                  <td className="px-4 py-2 text-slate-800">
+                    {d.name}
+                    {!d.isActive && <span className="ml-1 text-xs text-slate-600">(inactive)</span>}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        isSubmitted ? "bg-green-100 text-green-800"
+                          : d.activityCount === 0 ? "bg-slate-100 text-slate-600"
+                            : "bg-amber-100 text-amber-800"
+                      }`}
                     >
-                      Return
-                    </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      {isSubmitted ? "Submitted" : d.activityCount === 0 ? "Nothing to submit" : "Draft"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-800">{d.activityCount}</td>
+                  <td className="px-4 py-2 text-xs text-slate-600">
+                    {isSubmitted
+                      ? `${fmtDivisionStamp(d.submittedAt)}${d.submittedByName ? ` · ${d.submittedByName}` : ""}`
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {/* Hidden, not disabled, for anyone the server says cannot return (spec §6.2). */}
+                    {d.canReturn && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setReturning(d)}
+                        className="border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Return
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       {returning && (
         <ConfirmDialog

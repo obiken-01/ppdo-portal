@@ -131,6 +131,22 @@ Files that render a `<table>` with no `overflow-x-auto` / `overflow-auto` in the
 
 **Check:** checklist item 10 at 390 px. Look for horizontal **page** scroll on each.
 
+**Result (2026-10-26, local, 375 px, `admin`, PPDO-256):** every portal route without an ID was loaded,
+plus AIP Detail. The portal scrolls inside `<main>`, so the test is `main.scrollWidth > main.clientWidth`
+(the document itself never overflows).
+
+- **Fixed:** Allocation (division table, 405 px), AIP Entry (`AipDivisionsPanel` table, 453 px) and the
+  WFP page (the Division picker grew to fit its longest option, 543 px). The tables now scroll in their
+  own box; the picker shrinks to the row.
+- **By design, left for Ralph's call:** AIP Detail (`min-w-[1800px]`) and the WFP Report (`min-w-[1600px]`).
+  Both let `<main>` scroll sideways on purpose, because their `sticky top-0` header needs `<main>` as its
+  scroll container. A wrapper with `overflow-x-auto` would break the sticky header on desktop too. On AIP
+  Detail the sector tab row (552 px) also overflows, but the table already makes the page that wide.
+- ~~WFP Entry, Procurement Presets, `AipConflictPanel`, `AipExpenditureTable`~~: no page overflow in the
+  states reached. Their tables are `w-full` and only appear after a choice, so a wide one is still possible
+  with long data. Re-check in the A1 sweep.
+- Clean: every Config, Inventory, Admin and shell page, and the rest of Budget Planning.
+
 ## S7 — Lint warning
 
 `inventory/page.tsx:294`: `useMemo` lists `STATUS_ORDER` (module constant) as a dependency. Harmless.
