@@ -2,7 +2,7 @@
 type: standard
 status: current
 tickets: []
-updated: 2026-09-17
+updated: 2026-10-26
 ---
 
 # PPDO Portal — Design System
@@ -17,9 +17,9 @@ Companion docs: `PERFORMANCE_GUIDELINES.md` §6-7 (loading states, images),
 `NAMING_CONVENTIONS.md` (file and component naming), `CLAUDE.md` (frontend architecture rules).
 
 > **Status:** the token layer is mature and reviewed, and as of 2026-08-10 its application is too —
-> all 7 divergences §7 originally found (Inventory having diverged first, then drifted from Budget
-> Planning and Config) are resolved. What's left is two open decisions, not drift: `lucide-react`
-> (adopt or remove) and dark mode (finish or remove). §7 keeps the full history — what changed, what
+> all 9 divergences §7 originally found (Inventory having diverged first, then drifted from Budget
+> Planning and Config) are resolved, including the last two decisions (2026-10-26): `lucide-react`
+> and dark mode were both removed. §7 keeps the full history — what changed, what
 > was deliberately left alone, and why — for anyone touching these pages next.
 
 ---
@@ -104,10 +104,8 @@ These exist for shadcn/Radix component compatibility.
 (`bg-primary`, `text-foreground`) in application code. The aliases are indirection with no
 benefit here, and they make it harder to see what colour you're actually getting.
 
-> **Dark mode is scaffolded but not implemented.** `darkMode: ["class"]` is set and `globals.css`
-> has a full `.dark` block, but nothing toggles it and no page has been reviewed in it. Treat dark
-> mode as **not supported** — don't rely on it, don't half-maintain it. Removing it or finishing it
-> is an open decision.
+> **Dark mode is not supported.** The scaffolding (`darkMode` config and the `.dark` variable block) was
+> removed 2026-10-26 (§7 #9). Re-add it only with a real, reviewed implementation.
 
 ---
 
@@ -267,10 +265,8 @@ immediately; skeleton only the data region.
 established pattern (`📦` Inventory, `📋` Create PR, `🚚` Receive Delivery, `📊` Report, `🏭`
 Warehouse, `📢` Announcements).
 
-> `lucide-react` is a declared dependency with **zero imports anywhere in the codebase**. Either
-> adopt it deliberately and convert consistently, or drop it from `package.json`. Don't leave it
-> half-present — and don't start importing it into one page, which would give us two icon systems.
-> Decision pending (§7).
+> `lucide-react` was removed 2026-10-26 (§7 #8) — it had zero imports. Don't re-add it for one page, which
+> would give us two icon systems; adopt it deliberately and convert consistently or not at all.
 
 ---
 
@@ -372,8 +368,8 @@ making them uniform.
 | 5 | ~~**`ConfigPageHeader` adoption**~~ | ✅ **Done 2026-08-10** — adopted by the Inventory dashboard, the BP dashboard, and the AIP/LDIP/Allocation/Report/WFP pages. `title`/`description` widened `string` → `ReactNode` so WFP's inline promo badge and status pill didn't have to be flattened or moved into `actions`. Not adopted by wizards or per-record detail views — see exceptions below | Use it everywhere | — |
 | 6 | ~~**Inventory sub-pages have no `h1`**~~ | ✅ **Done 2026-08-10** — the 5 audited (`items-master`, `item-ledger`, `pr-register`, `pr-report`, `distribution`) plus `create-pr` and `receive-delivery`, which the audit missed and Ralph caught live. All 7 now render a `ConfigPageHeader` | Add `ConfigPageHeader` | — |
 | 7 | ~~**Rounded corners in portal**~~ | ✅ **Done 2026-08-10** — 30 occurrences across 10 files, not the 6 originally counted (see below) | Remove (keep `rounded-full`) | — |
-| 8 | **`lucide-react` unused** | Declared dependency, 0 imports | Decide: adopt or remove | Low |
-| 9 | **Dark mode** | Scaffolded, unimplemented, unreviewed | Decide: finish or remove | Low |
+| 8 | ~~**`lucide-react` unused**~~ | ✅ **Done 2026-10-26** — dependency removed from `package.json` and the lockfile (0 imports); re-add when there is a real use | Remove | — |
+| 9 | ~~**Dark mode**~~ | ✅ **Done 2026-10-26** — removed `darkMode: ["class"]` from `tailwind.config.ts` and the `.dark` variable block from `globals.css`; no `dark:` class or theme toggle existed | Remove | — |
 
 ### Deliberately NOT unified
 
