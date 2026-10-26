@@ -17,9 +17,9 @@ Companion docs: `PERFORMANCE_GUIDELINES.md` §6-7 (loading states, images),
 `NAMING_CONVENTIONS.md` (file and component naming), `CLAUDE.md` (frontend architecture rules).
 
 > **Status:** the token layer is mature and reviewed, and as of 2026-08-10 its application is too —
-> all 7 divergences §7 originally found (Inventory having diverged first, then drifted from Budget
-> Planning and Config) are resolved. What's left is two open decisions, not drift: `lucide-react`
-> (adopt or remove) and dark mode (finish or remove). §7 keeps the full history — what changed, what
+> all 9 divergences §7 originally found (Inventory having diverged first, then drifted from Budget
+> Planning and Config) are resolved, including the last two decisions (2026-10-26): `lucide-react`
+> and dark mode were both removed. §7 keeps the full history — what changed, what
 > was deliberately left alone, and why — for anyone touching these pages next.
 
 ---
@@ -104,10 +104,8 @@ These exist for shadcn/Radix component compatibility.
 (`bg-primary`, `text-foreground`) in application code. The aliases are indirection with no
 benefit here, and they make it harder to see what colour you're actually getting.
 
-> **Dark mode is scaffolded but not implemented.** `darkMode: ["class"]` is set and `globals.css`
-> has a full `.dark` block, but nothing toggles it and no page has been reviewed in it. Treat dark
-> mode as **not supported** — don't rely on it, don't half-maintain it. Removing it or finishing it
-> is an open decision.
+> **Dark mode is not supported.** The scaffolding (`darkMode` config and the `.dark` variable block) was
+> removed 2026-10-26 (§7 #9). Re-add it only with a real, reviewed implementation.
 
 ---
 
@@ -267,10 +265,8 @@ immediately; skeleton only the data region.
 established pattern (`📦` Inventory, `📋` Create PR, `🚚` Receive Delivery, `📊` Report, `🏭`
 Warehouse, `📢` Announcements).
 
-> `lucide-react` is a declared dependency with **zero imports anywhere in the codebase**. Either
-> adopt it deliberately and convert consistently, or drop it from `package.json`. Don't leave it
-> half-present — and don't start importing it into one page, which would give us two icon systems.
-> Decision pending (§7).
+> `lucide-react` was removed 2026-10-26 (§7 #8) — it had zero imports. Don't re-add it for one page, which
+> would give us two icon systems; adopt it deliberately and convert consistently or not at all.
 
 ---
 
