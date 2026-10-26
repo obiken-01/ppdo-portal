@@ -549,6 +549,13 @@ Where a detail is genuinely a judgment call with an obvious answer, state the as
 on instead of asking. **Do not begin implementation of a feature that adds a table, an endpoint, a
 permission, or a screen until the spec exists.**
 
+### Parallel ticket work: start child sessions from a local session (Ralph, 2026-10-26)
+
+When work is split across several sessions, **suggest a local CLI session as the parent first** and
+start the ticket sessions from it, so they group under it as a tree in the Claude app. Sessions
+created from a cloud session through the remote-session tool show **flat**, even though they record
+the parent. Use cloud-created sessions only when the work can't run locally, and say so when proposing it.
+
 ### Flag manual-implementation candidates when planning
 
 **When formulating an implementation plan for a ticket, assess whether Ralph could hand-code it
