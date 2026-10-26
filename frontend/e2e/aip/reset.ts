@@ -50,3 +50,18 @@ export async function resetAipOffice(request: APIRequestContext): Promise<void> 
       for (const project of program.projects as Json[])
         await head.call("delete", `/budget-planning/aip/projects/${project.id}`);
 }
+
+/**
+ * Takes the E2E office's rows out of the AIP again (opt-in teardown, E2E_AIP_CLEANUP=1), so it does
+ * not sit in the consolidated AIP between runs. The next seed puts them back from the office's LDIP.
+ * Runs as the seed Admin: the department head may not remove the office's rows.
+ */
+export async function removeAipOffice(request: APIRequestContext): Promise<void> {
+  await resetAipOffice(request);
+  const w = readWorld();
+  const admin = await Api.login(request, process.env.E2E_SEED_EMAIL ?? "", process.env.E2E_SEED_PASSWORD ?? "");
+  expect(admin, "seed admin login failed").not.toBeNull();
+  const detail = await admin!.call<Json>("get", `/budget-planning/aip/${w.aipId}`);
+  for (const row of (detail.offices as Json[]).filter((o) => o.officeId === w.officeId))
+    await admin!.call("delete", `/budget-planning/aip/offices/${row.id}`);
+}

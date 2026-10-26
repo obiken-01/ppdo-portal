@@ -88,11 +88,15 @@ export async function addActivity(page: Page, a: ActivitySpec) {
   await expect(page.getByPlaceholder("Search accounts…")).toBeHidden();
 }
 
-/** Submits the encoder's division to the department head and waits for the server's answer. */
-export async function submitDivision(page: Page, division: "A" | "B") {
+/**
+ * Submits the encoder's division to the department head and waits for the server's answer.
+ * `warnings` are lines the confirm must list (it always lists missing proposals, for example).
+ */
+export async function submitDivision(page: Page, division: "A" | "B", warnings: (string | RegExp)[] = []) {
   await page.getByRole("button", { name: `Submit E2E Division ${division} (test)` }).click();
-  // The confirm lists warnings (e.g. a project without a proposal) and offers "Submit anyway".
-  await page.getByRole("dialog").getByRole("button", { name: /^Submit/ }).click();
+  const dialog = page.getByRole("dialog", { name: `Submit E2E Division ${division} (test)?` });
+  for (const w of warnings) await expect(dialog.getByRole("listitem").filter({ hasText: w })).toBeVisible();
+  await dialog.getByRole("button", { name: /^Submit/ }).click();
   // ⚠️ Wait for the confirmed state, not for the button to disappear: it hides at once, and
   // closing the browser then would cancel the request.
   await expect(page.getByRole("status").filter({ hasText: "your department head can return it" }).first()).toBeVisible();
@@ -115,4 +119,18 @@ export async function openReview(page: Page) {
   await page.goto(`/budget-planning/aip/review?officeId=${w.officeId}&fiscalYear=${FISCAL_YEAR}`);
   await expect(page.getByRole("heading", { level: 1, name: "AIP Review" })).toBeVisible();
   await page.waitForLoadState("networkidle");
+}
+
+/**
+ * Changes the MOOE of the open activity's first expenditure line. `scope` is the page, or the
+ * reviewer's "Edit amounts" dialog. Amounts are typed in pesos.
+ */
+export async function editFirstLineMooe(scope: Page | Locator, mooe: number) {
+  await scope.getByRole("button", { name: "Edit", exact: true }).first().click();
+  // A `has:` locator must come from the page, not from `scope`, or it is resolved twice over.
+  const page = "goto" in scope ? scope : scope.page();
+  const row = scope.getByRole("row").filter({ has: page.getByPlaceholder("Search accounts…") });
+  await row.getByRole("textbox", { name: "0.00" }).nth(1).fill(String(mooe));
+  await row.getByRole("button", { name: "Save" }).click();
+  await expect(scope.getByRole("button", { name: "Edit", exact: true }).first()).toBeVisible();
 }

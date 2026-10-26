@@ -50,6 +50,12 @@ export default defineConfig({
     {
       name: "aip-setup",
       testMatch: /aip[\\/]aip\.setup\.ts/,
+      teardown: "aip-teardown",
+    },
+    {
+      // Opt-in (E2E_AIP_CLEANUP=1): takes the E2E office back out of the AIP after the journeys.
+      name: "aip-teardown",
+      testMatch: /aip[\\/]aip\.teardown\.ts/,
     },
     {
       name: "aip",

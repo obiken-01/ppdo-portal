@@ -66,6 +66,42 @@ lines follow the persona **definitions** in the plan (§3.1). An account with ex
 local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
 A new page gets a row in `routes.ts`.
 
+## AIP journeys (`e2e/aip/`, PPDO-259)
+
+These change data, so they run in their own **E2E office** that the suite builds itself, never in a
+real office. They follow PPDO-195's T0–T14 plan.
+
+| File | What it covers |
+|---|---|
+| `aip.setup.ts` → `seed.ts` | Builds the E2E office through the API: office `E2E` (ref `01-099`), its own LDIP (2 programs), its rows in the open FY2028 AIP, divisions A/B, GF ceiling ₱1.5M, split A ₱900K / B ₱500K, program 1 → A and 2 → B, and four accounts: `e2e.head` (department head), `e2e.encoder.a`, `e2e.encoder.b`, `e2e.reviewer` (PPDO, cross-office reviewer). Find-or-create: a second run changes nothing. |
+| `aip-review-journey.spec.ts` | Encoders add activities and submit (₱250,500 counts as ₱251,000) → head sends to PPDO → reviewer comments and sends back → encoder sees the return and the comment (bell included), replies, resubmits → head resends → reviewer sees the reply and accepts. |
+| `aip-v19-checks.spec.ts` | Over a division's allocation: warned, not blocked (PPDO-237). Over the office ceiling: encoder may submit, head may not send (PPDO-146). Reviewer edits an amount with a reason (PPDO-214). Office sees "PPDO made N changes" and marks it seen (PPDO-213). |
+| `aip-scope.spec.ts` | Office users asking for another office's data get their own office, a refusal or a redirect, never the other office's name or ref code. Encoder A can't write to division B's activity (checked against a control call from encoder B). |
+
+Each spec first **resets** the E2E office (`reset.ts`): it reopens or returns it as the reviewer,
+returns submitted divisions as the head, and deletes its projects. So a failed run never blocks the
+next one. Comments on deleted rows are kept by design (PPDO-206), so "N unresolved comments" grows from
+run to run; the specs never assert those counts.
+
+**Run it**
+
+```bash
+# E2E_SEED_*: an Admin WITHOUT the cross-office review grant. That grant makes an account a
+# comment-only reviewer, and the seed's writes would be refused (ReviewerWriteGuard).
+E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=aip
+```
+
+Watch it: add `--headed --workers=1`, or use `npm run e2e:ui` and pick the `aip` project.
+
+The seed generates each account's password and keeps it only in `e2e/.auth/aip-accounts.json`
+(git-ignored). If a saved password stops working, the next run resets that account.
+
+**On UAT:** also set `E2E_BASE_URL` (frontend) and `E2E_API_URL` (the Function App's `/api`). The
+seed then creates the E2E office, an LDIP, two divisions and four users **on UAT**. That is the point,
+but it is a decision: tell the finance testers that an "E2E Test Office (automated)" will appear on
+their review board. Add `E2E_AIP_CLEANUP=1` to take the office back out of the AIP when the run ends;
+otherwise it stays in the consolidated AIP (accepted) until the next run resets it.
+
 ## Rules
 
 - **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signIn, world } from "./session";
+import { signIn } from "./session";
 import { resetAipOffice } from "./reset";
 import { addActivity, divisionFigure, openEntry, openReview, pickActivity, sendToPpdo, submitDivision } from "./entry";
 

@@ -43,6 +43,8 @@ export interface AipWorld {
   divisionIds: { A: number; B: number };
   gfId: number;
   programRefCodes: string[];
+  /** Another guest office, for the scope-leak checks: its name and ref code must never reach E2E users. */
+  foreignOffice: { id: number; name: string; refCode: string };
   accounts: Record<AipRole, AipAccount>;
 }
 
@@ -192,19 +194,37 @@ export async function seedAipWorld(request: APIRequestContext): Promise<AipWorld
   // department head: for a guest office the host-office Admin may not write these (PPDO-18).
   const headApi = await Api.login(request, accounts.head.username, accounts.head.password);
   expect(headApi, "department head login failed").not.toBeNull();
-  await headApi!.call("put", "/budget-planning/allocation/divisions", {
-    officeId, fiscalYear: FISCAL_YEAR, fundingSourceId: gfId,
-    allocations: [{ divisionId: divisionIds.A, amount: ALLOCATION.A }, { divisionId: divisionIds.B, amount: ALLOCATION.B }],
-  });
-  for (const [i, refCode] of programRefCodes.entries()) {
+  // Written only when different: once the office's AIP has left the office (a journey can stop
+  // there), the server refuses allocation changes, and they would be no-ops anyway.
+  const wanted: Array<[number, number]> = [[divisionIds.A, ALLOCATION.A], [divisionIds.B, ALLOCATION.B]];
+  const current = await headApi!.call<Json[]>("get", "/budget-planning/allocation/divisions", undefined,
+    { officeId, fiscalYear: FISCAL_YEAR, fundingSourceId: gfId });
+  const allocationOk = wanted.every(([id, amount]) =>
+    current.some((c) => c.divisionId === id && Number(c.amount) === amount));
+  if (!allocationOk) {
+    await headApi!.call("put", "/budget-planning/allocation/divisions", {
+      officeId, fiscalYear: FISCAL_YEAR, fundingSourceId: gfId,
+      allocations: wanted.map(([divisionId, amount]) => ({ divisionId, amount })),
+    });
+  }
+  const assigned = await headApi!.call<Json[]>("get", "/budget-planning/allocation/programs", undefined,
+    { officeId, fiscalYear: FISCAL_YEAR });
+  for (let i = 0; i < programRefCodes.length; i++) {
+    const refCode = programRefCodes[i];
+    const divisionId = i === 0 ? divisionIds.A : divisionIds.B;
+    const row = assigned.find((a) => a.programRefCode === refCode);
+    const ids = (row?.divisionIds as number[] | undefined) ?? [];
+    if (ids.length === 1 && ids[0] === divisionId) continue;
     await headApi!.call("put", "/budget-planning/allocation/programs", {
-      officeRefCode: aipOfficeRef, programRefCode: refCode,
-      divisionIds: [i === 0 ? divisionIds.A : divisionIds.B],
+      officeRefCode: aipOfficeRef, programRefCode: refCode, divisionIds: [divisionId],
     });
   }
 
+  const foreign = offices.find((o) => o.id !== officeId && o.isHostOffice !== true && o.isActive === true && o.officeRefCode);
+  if (!foreign) throw new Error("Need one other active guest office for the scope checks.");
+  const foreignOffice = { id: foreign.id as number, name: foreign.officeName as string, refCode: foreign.officeRefCode as string };
 
-  const world: AipWorld = { apiUrl: API_URL, aipId, officeId, officeRefCode, divisionIds, gfId, programRefCodes, accounts };
+  const world: AipWorld = { apiUrl: API_URL, aipId, officeId, officeRefCode, divisionIds, gfId, programRefCodes, foreignOffice, accounts };
   fs.mkdirSync(path.dirname(WORLD_FILE), { recursive: true });
   fs.writeFileSync(WORLD_FILE, JSON.stringify(world, null, 2));
   return world;
