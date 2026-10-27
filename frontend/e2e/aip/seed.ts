@@ -29,7 +29,8 @@ export const ALLOCATION = { A: 900_000, B: 500_000 } as const; // ₱100,000 lef
 export type AipRole = "head" | "encoderA" | "encoderB" | "reviewer";
 
 export interface AipAccount {
-  role: AipRole;
+  /** An AipRole here; the inventory seed reuses this shape for its own account. */
+  role: string;
   username: string;
   fullName: string;
   password: string;
@@ -55,7 +56,7 @@ export const API_URL = (process.env.E2E_API_URL ?? "http://localhost:7071/api").
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 
-type Json = Record<string, unknown>;
+export type Json = Record<string, unknown>;
 
 const ENVELOPE_KEYS = new Set(["data", "error", "message", "success"]);
 
@@ -230,7 +231,7 @@ export async function seedAipWorld(request: APIRequestContext): Promise<AipWorld
   return world;
 }
 
-function hostOfficeId(offices: Json[]): number {
+export function hostOfficeId(offices: Json[]): number {
   const host = offices.find((o) => o.isHostOffice === true);
   if (!host) throw new Error("No host office (PPDO) found.");
   return host.id as number;
@@ -258,10 +259,11 @@ function writeAccounts(accounts: Record<AipRole, AipAccount>) {
   fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
 }
 
-async function ensureAccount(
+/** Creates or updates a Staff test account and makes sure it can sign in with a known password. */
+export async function ensureAccount(
   request: APIRequestContext,
   admin: Api,
-  spec: { role: AipRole; username: string; fullName: string; officeId: number | null; divisionId: number | null; overrides: Json },
+  spec: { role: string; username: string; fullName: string; officeId: number | null; divisionId: number | null; overrides: Json },
   saved: AipAccount | undefined,
 ): Promise<AipAccount> {
   const users = await admin.call<Json[]>("get", "/users");

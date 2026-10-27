@@ -36,7 +36,7 @@ export default defineConfig({
     // side. Different personas still run in parallel. See e2e/fixtures.ts.
     ...PERSONAS.filter((p) => p.configured).map((p) => ({
       name: `as-${p.key}`,
-      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/],
+      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
       dependencies: ["setup"],
       workers: 1,
       use: {
@@ -61,6 +61,18 @@ export default defineConfig({
       name: "aip",
       testMatch: /aip[\\/].*\.spec\.ts/,
       dependencies: ["aip-setup"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
+    },
+    // PPDO-259 — inventory journey, in its own PPDO division "E2E Inventory (test)" (e2e/inventory/seed.ts).
+    {
+      name: "inventory-setup",
+      testMatch: /inventory[\\/]inventory\.setup\.ts/,
+    },
+    {
+      name: "inventory",
+      testMatch: /inventory[\\/].*\.spec\.ts/,
+      dependencies: ["inventory-setup"],
       workers: 1,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },
