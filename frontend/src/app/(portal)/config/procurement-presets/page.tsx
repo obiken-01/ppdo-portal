@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createProcurementPreset,
@@ -175,7 +175,7 @@ export default function ProcurementPresetsConfigPage() {
         }
         setAuthChecked(true);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load accounts + price index once ─────────────────────────────────────────

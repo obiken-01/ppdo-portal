@@ -20,7 +20,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { resolveLandingPath } from "@/lib/landing";
 
 export default function HomePage() {
@@ -33,9 +33,10 @@ export default function HomePage() {
       .then((me) => {
         if (!cancelled) router.replace(resolveLandingPath(me));
       })
-      .catch(() => {
+      .catch((err) => {
         // Session could not be established — the portal guard would land here too.
-        if (!cancelled) router.replace("/login");
+        // A network error goes to /reconnecting, not /login (PPDO-260).
+        if (!cancelled) router.replace(meFailurePath(err));
       });
 
     return () => { cancelled = true; };

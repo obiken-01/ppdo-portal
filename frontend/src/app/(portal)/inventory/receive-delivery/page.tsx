@@ -14,13 +14,14 @@
  *   POST /api/deliveries                 → submit
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   CreateDeliveryItemRequest,
   CreateDeliveryRequest,
@@ -204,6 +205,7 @@ export default function ReceiveDeliveryPage() {
   // PR combobox
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
   const [prsLoading, setPRsLoading] = useState(false);
+  const [prsError, setPRsError]     = useState(false);
   const [prSearch, setPrSearch]     = useState("");
   const [prOpen, setPrOpen]         = useState(false);
 
@@ -211,6 +213,9 @@ export default function ReceiveDeliveryPage() {
   const [selectedPRId, setSelectedPRId] = useState("");
   const [selectedPR, setSelectedPR]     = useState<PRResponse | null>(null);
   const [prLoading, setPRLoading]       = useState(false);
+  const [prError, setPRError]           = useState(false);
+  // Bumped by Retry to re-run the PR-detail load for the same PR.
+  const [prReloadKey, setPRReloadKey]   = useState(0);
 
   // Delivery header
   const [deliveryDate, setDeliveryDate] = useState(TODAY);
@@ -235,24 +240,31 @@ export default function ReceiveDeliveryPage() {
         setMe(data);
         setReceivedBy(data.fullName);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load PR list ────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!authChecked) return;
+  // PPDO-260 S2: a failed load shows an error with Retry. A toast and an empty
+  // picker read as "there are no open PRs".
+  const loadPRs = useCallback(() => {
     setPRsLoading(true);
+    setPRsError(false);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => setPRs(data.filter((p) => p.status !== "Completed")))
-      .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
+      .catch(() => setPRsError(true))
       .finally(() => setPRsLoading(false));
-  }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    loadPRs();
+  }, [authChecked, loadPRs]);
 
   // ── Load PR detail when selected ────────────────────────────────────────────
 
   useEffect(() => {
-    if (!selectedPRId) { setSelectedPR(null); setItems([]); setDeliveredQty({}); return; }
+    if (!selectedPRId) { setSelectedPR(null); setItems([]); setDeliveredQty({}); setPRError(false); return; }
     // PPDO-244 — drop the previous PR's rows (and their typed quantities) at once, and ignore a
     // slower answer for a PR the user has already moved off.
     let cancelled = false;
@@ -260,16 +272,19 @@ export default function ReceiveDeliveryPage() {
     setItems([]);
     setDeliveredQty({});
     setPRLoading(true);
+    setPRError(false);
     setFormError(null);
 
     async function load() {
       // Single aggregate call for per-item delivered totals — replaces the old
       // fetch-every-delivery's-full-detail loop (RAL-192 follow-up).
-      const [prRes, totals] = await Promise.all([
+      // PPDO-260: a failed totals call is a failed load. It used to fall back to {},
+      // which showed every item as not yet received and hid "Exceeds remaining qty".
+      const [prRes, totalsRes] = await Promise.all([
         api.get<PRResponse>(`/purchase-requests/${selectedPRId}`),
-        api.get<Record<string, number>>(`/deliveries/totals?prId=${selectedPRId}`)
-          .then((r) => r.data).catch(() => ({} as Record<string, number>)),
+        api.get<Record<string, number>>(`/deliveries/totals?prId=${selectedPRId}`),
       ]);
+      const totals = totalsRes.data;
       if (cancelled) return;
       const pr = prRes.data;
       setSelectedPR(pr);
@@ -278,10 +293,10 @@ export default function ReceiveDeliveryPage() {
     }
 
     load()
-      .catch(() => { if (!cancelled) toast.error("Failed to load PR", "Could not fetch PR details."); })
+      .catch(() => { if (!cancelled) setPRError(true); })
       .finally(() => { if (!cancelled) setPRLoading(false); });
     return () => { cancelled = true; };
-  }, [selectedPRId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedPRId, prReloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── PR combobox helpers ─────────────────────────────────────────────────────
 
@@ -441,7 +456,7 @@ export default function ReceiveDeliveryPage() {
         <div className="flex items-center justify-end">
           <button
             onClick={handleSubmit}
-            disabled={submitting || prLoading || !selectedPRId}
+            disabled={submitting || prLoading || prError || !selectedPRId}
             className="flex items-center gap-2 px-6 py-2.5 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
@@ -469,6 +484,9 @@ export default function ReceiveDeliveryPage() {
                 onSelect={selectPR}
                 loading={prsLoading}
               />
+              {prsError && !selectedPRId && (
+                <LoadError message="Couldn't load the purchase requests." onRetry={loadPRs} className="py-3" />
+              )}
               {selectedPRId && (
                 <div className="mt-1.5 flex items-center gap-2">
                   <span className="text-xs text-green-600 font-medium">✓ Selected</span>
@@ -515,6 +533,11 @@ export default function ReceiveDeliveryPage() {
               <TableSkeleton
                 columns={["#", "Stock No.", "Description", "Unit", "Qty Ordered", "Already Received", "Remaining", "Qty This Delivery"]}
                 rowCount={3}
+              />
+            ) : prError ? (
+              <LoadError
+                message="Couldn't load this PR's items and what was already received."
+                onRetry={() => setPRReloadKey((k) => k + 1)}
               />
             ) : (
               <div className="overflow-x-auto overflow-y-hidden">
@@ -604,7 +627,7 @@ export default function ReceiveDeliveryPage() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleSubmit}
-            disabled={submitting || prLoading || !selectedPRId}
+            disabled={submitting || prLoading || prError || !selectedPRId}
             className="flex items-center gap-2 px-8 py-3 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting

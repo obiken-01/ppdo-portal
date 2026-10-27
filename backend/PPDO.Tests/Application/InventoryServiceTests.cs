@@ -100,7 +100,7 @@ public sealed class InventoryServiceTests
                 .ReturnsAsync(new Dictionary<string, StockNoPoolMovement>());
         }
         return new(invRepo.Object, prRepo.Object, itemRepo.Object, stockBalanceRepo.Object,
-                   NullLogger<InventoryService>.Instance);
+                   new PermissionService(), NullLogger<InventoryService>.Instance);
     }
 
     // ── Group 1 — PR stat cards ───────────────────────────────────────────────
@@ -722,5 +722,45 @@ public sealed class InventoryServiceTests
         Assert.Equal(7m,  row.OnHand);
         stockBalanceRepo.Verify(r => r.GetAllPoolMovementsAsync(
             It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ── PPDO-261: reads require CanAccessInventory, not just division scope ─────────
+
+    private static User MakeStaffNoInventory(int divisionId = PlanningDiv) => new()
+    {
+        Id = Guid.NewGuid(), FullName = "Staff No Inv", Email = "noinv@ppdo.gov.ph",
+        PasswordHash = "hash", Role = UserRole.Staff, DivisionId = divisionId,
+        Division = new Division { Id = divisionId, OfficeId = 100, Name = "Planning Division", CanAccessInventory = false },
+        IsActive = true,
+    };
+
+    [Fact]
+    public async Task GetStatsAsync_StaffWithoutInventoryAccess_ReturnsEmptyWithoutQuerying()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        Mock<IItemMasterRepository> itemRepo = new();
+
+        InventoryStatsDto result =
+            await BuildSut(invRepo, prRepo, itemRepo).GetStatsAsync(MakeStaffNoInventory());
+
+        Assert.Equal(0, result.PurchaseRequests.Total);
+        Assert.Equal(0, result.InventoryAlerts.UniqueItemsTracked);
+        prRepo.Verify(r => r.GetStatsAggregateAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+        invRepo.Verify(r => r.GetItemStockLevelsAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetItemLedgerAsync_StaffWithoutInventoryAccess_ReturnsEmptyWithoutQuerying()
+    {
+        Mock<IPurchaseRequestRepository> prRepo = new();
+        Mock<IInventoryRepository> invRepo = new();
+        Mock<IItemMasterRepository> itemRepo = new();
+
+        IReadOnlyList<ItemLedgerRowDto> result =
+            await BuildSut(invRepo, prRepo, itemRepo).GetItemLedgerAsync(MakeStaffNoInventory());
+
+        Assert.Empty(result);
+        invRepo.Verify(r => r.GetItemStockLevelsAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

@@ -50,29 +50,6 @@
 
     --radius: 0.5rem;
   }
-
-  /* Dark mode placeholder — not a priority for PPDO v1 but keeps shadcn happy */
-  .dark {
-    --background: 147 59% 8%;
-    --foreground: 143 57% 95%;
-    --card: 147 59% 10%;
-    --card-foreground: 143 57% 95%;
-    --popover: 147 59% 10%;
-    --popover-foreground: 143 57% 95%;
-    --primary: 147 59% 55%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 147 59% 15%;
-    --secondary-foreground: 143 57% 95%;
-    --muted: 147 59% 15%;
-    --muted-foreground: 208 7% 60%;
-    --accent: 147 59% 15%;
-    --accent-foreground: 143 57% 95%;
-    --destructive: 1 72% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 147 59% 18%;
-    --input: 147 59% 18%;
-    --ring: 147 59% 55%;
-  }
 }
 
 @layer base {

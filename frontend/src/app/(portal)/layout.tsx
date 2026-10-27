@@ -276,6 +276,8 @@ export default function PortalLayout({
       (me.canManageOfficeSetup && OWN_OFFICE_CONFIG_ROUTES.some((r) => pathname.startsWith(r))) ||
       pathname.startsWith("/profile") ||
       pathname.startsWith("/account") ||
+      // PPDO-262: office users get notifications (PPDO-239) and the bell's "View all" links here.
+      pathname.startsWith("/notifications") ||
       // /home resolves the destination itself; letting the gate fire here too would
       // race it to the same place (RAL-264).
       pathname === "/home";

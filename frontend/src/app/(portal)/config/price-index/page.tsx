@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createPriceIndexItem,
@@ -197,7 +197,7 @@ export default function PriceIndexConfigPage() {
         }
         setAuthChecked(true);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Debounce search ─────────────────────────────────────────────────────────

@@ -366,94 +366,96 @@ function FundSection({
             />
           )}
 
-          <table className="w-full mt-4 text-sm border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="text-left py-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
-                  Division
-                </th>
-                <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-52">
-                  Amount (₱)
-                </th>
-                <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-20">
-                  % of Ceiling
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {/* ⚠️ An empty tbody rendered as a bare table with a header and nothing under it,
-                  which reads as "loading" or "broken" rather than "this office has no divisions".
-                  That silence is half of why the failed save went unnoticed (Demo 2.4). */}
-              {hasNoDivisions && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-xs text-slate-600">
-                    No divisions are configured for this office, so there is nothing to allocate
-                    to. Add them in{" "}
-                    <Link href="/config/divisions" className="text-green-700 hover:underline">
-                      Config → Divisions
-                    </Link>
-                    .
-                  </td>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-2 text-xs font-medium text-slate-600 uppercase tracking-wide">
+                    Division
+                  </th>
+                  <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-52">
+                    Amount (₱)
+                  </th>
+                  <th className="text-right py-2 text-xs font-medium text-slate-600 uppercase tracking-wide w-20">
+                    % of Ceiling
+                  </th>
                 </tr>
-              )}
-              {divisions.map((div, i) => {
-                const amount = allocationInputs[div.id] ?? null;
-                const pct =
-                  (ceilingInput ?? 0) > 0 && (amount ?? 0) > 0
-                    ? (((amount ?? 0) / ceilingInput!) * 100).toFixed(1)
-                    : "—";
-                return (
-                  <tr key={div.id} className="hover:bg-slate-50">
-                    <td className="py-2 pr-3">
-                      <span className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 shrink-0"
-                          style={{
-                            backgroundColor: DIVISION_COLORS[i % DIVISION_COLORS.length],
-                          }}
-                        />
-                        {div.name}
-                        {div.code && (
-                          <span className="text-xs text-slate-600 font-mono">{div.code}</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right">
-                      <div className="flex justify-end">
-                        <MoneyInput
-                          value={amount}
-                          onChange={(v) => onAllocationInputChange(div.id, v)}
-                          className="w-48 text-sm"
-                          disabled={!canSetAllocations}
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2 text-right text-slate-600 tabular-nums">
-                      {pct}
-                      {pct !== "—" ? "%" : ""}
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {/* ⚠️ An empty tbody rendered as a bare table with a header and nothing under it,
+                    which reads as "loading" or "broken" rather than "this office has no divisions".
+                    That silence is half of why the failed save went unnoticed (Demo 2.4). */}
+                {hasNoDivisions && (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-xs text-slate-600">
+                      No divisions are configured for this office, so there is nothing to allocate
+                      to. Add them in{" "}
+                      <Link href="/config/divisions" className="text-green-700 hover:underline">
+                        Config → Divisions
+                      </Link>
+                      .
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t border-slate-300">
-                <td className="py-2 text-sm font-semibold text-slate-800">Total</td>
-                <td
-                  className={`py-2 text-right font-semibold tabular-nums ${
-                    isOverCeiling ? "text-red-600" : "text-slate-600"
-                  }`}
-                >
-                  ₱{formatMoney(allocationTotal)}
-                </td>
-                <td className="py-2 text-right text-slate-600 tabular-nums">
-                  {(ceilingInput ?? 0) > 0
-                    ? `${((allocationTotal / ceilingInput!) * 100).toFixed(1)}%`
-                    : "—"}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+                )}
+                {divisions.map((div, i) => {
+                  const amount = allocationInputs[div.id] ?? null;
+                  const pct =
+                    (ceilingInput ?? 0) > 0 && (amount ?? 0) > 0
+                      ? (((amount ?? 0) / ceilingInput!) * 100).toFixed(1)
+                      : "—";
+                  return (
+                    <tr key={div.id} className="hover:bg-slate-50">
+                      <td className="py-2 pr-3">
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 shrink-0"
+                            style={{
+                              backgroundColor: DIVISION_COLORS[i % DIVISION_COLORS.length],
+                            }}
+                          />
+                          {div.name}
+                          {div.code && (
+                            <span className="text-xs text-slate-600 font-mono">{div.code}</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right">
+                        <div className="flex justify-end">
+                          <MoneyInput
+                            value={amount}
+                            onChange={(v) => onAllocationInputChange(div.id, v)}
+                            className="w-48 text-sm"
+                            disabled={!canSetAllocations}
+                          />
+                        </div>
+                      </td>
+                      <td className="py-2 text-right text-slate-600 tabular-nums">
+                        {pct}
+                        {pct !== "—" ? "%" : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-300">
+                  <td className="py-2 text-sm font-semibold text-slate-800">Total</td>
+                  <td
+                    className={`py-2 text-right font-semibold tabular-nums ${
+                      isOverCeiling ? "text-red-600" : "text-slate-600"
+                    }`}
+                  >
+                    ₱{formatMoney(allocationTotal)}
+                  </td>
+                  <td className="py-2 text-right text-slate-600 tabular-nums">
+                    {(ceilingInput ?? 0) > 0
+                      ? `${((allocationTotal / ceilingInput!) * 100).toFixed(1)}%`
+                      : "—"}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
           <div className="mt-4 flex items-center gap-3">
             <button

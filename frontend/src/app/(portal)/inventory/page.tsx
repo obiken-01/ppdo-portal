@@ -19,14 +19,14 @@
  *   GET /api/inventory/ledger         → ItemLedgerRowResponse[] (alerts table)
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
-import { useToast } from "@/components/ui/Toast";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   PRSummaryResponse,
   InventoryStatsResponse,
@@ -202,18 +202,20 @@ const STATUS_ORDER: Record<string, number> = {
 
 export default function InventoryDashboardPage() {
   const router    = useRouter();
-  const { toast } = useToast();
 
   const [authChecked] = useState(true);
 
   const [stats,         setStats]         = useState<InventoryStatsResponse | null>(null);
   const [statsLoading,  setStatsLoading]  = useState(false);
+  const [statsError,    setStatsError]    = useState(false);
 
   const [prs,           setPRs]           = useState<PRSummaryResponse[]>([]);
   const [prsLoading,    setPRsLoading]    = useState(false);
+  const [prsError,      setPRsError]      = useState(false);
 
   const [ledger,        setLedger]        = useState<ItemLedgerRowResponse[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerError,   setLedgerError]   = useState(false);
 
   // ── Sort state — PR table ──────────────────────────────────────────────────
   const [prSortCol, setPrSortCol] = useState<string | null>(null);
@@ -232,32 +234,46 @@ export default function InventoryDashboardPage() {
           router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard");
         }
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!authChecked) return;
-
+  // PPDO-260 S1: each load keeps its own error flag. A failed load must not fall
+  // through to zeros or "all items are sufficiently stocked", which read as real data.
+  const loadStats = useCallback(() => {
     setStatsLoading(true);
+    setStatsError(false);
     api.get<InventoryStatsResponse>("/inventory/stats")
       .then(({ data }) => setStats(data))
-      .catch(() => toast.error("Failed to load stats", "Could not fetch inventory stats."))
+      .catch(() => setStatsError(true))
       .finally(() => setStatsLoading(false));
+  }, []);
 
+  const loadPRs = useCallback(() => {
     setPRsLoading(true);
+    setPRsError(false);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => setPRs(data))
-      .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
+      .catch(() => setPRsError(true))
       .finally(() => setPRsLoading(false));
+  }, []);
 
+  const loadLedger = useCallback(() => {
     setLedgerLoading(true);
+    setLedgerError(false);
     api.get<ItemLedgerRowResponse[]>("/inventory/ledger")
       .then(({ data }) => setLedger(data))
-      .catch(() => toast.error("Failed to load ledger", "Could not fetch item ledger."))
+      .catch(() => setLedgerError(true))
       .finally(() => setLedgerLoading(false));
-  }, [authChecked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    loadStats();
+    loadPRs();
+    loadLedger();
+  }, [authChecked, loadStats, loadPRs, loadLedger]);
 
   // ── Sort handlers ──────────────────────────────────────────────────────────
 
@@ -291,7 +307,7 @@ export default function InventoryDashboardPage() {
       }
       return prSortDir === "asc" ? cmp : -cmp;
     });
-  }, [prs, prSortCol, prSortDir, STATUS_ORDER]);
+  }, [prs, prSortCol, prSortDir]);
 
   const rawAlertItems = ledger.filter((r) => r.isLowStock || r.isOutOfStock);
 
@@ -322,6 +338,7 @@ export default function InventoryDashboardPage() {
   }
 
   const pr = stats?.purchaseRequests;
+  const noStats = statsLoading || statsError;
   const al = stats?.inventoryAlerts;
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -379,28 +396,28 @@ export default function InventoryDashboardPage() {
         <StatGroup title="📋  Purchase Requests">
           <StatCard
             label="Total PRs"
-            value={statsLoading ? "—" : (pr?.total ?? 0)}
+            value={noStats ? "—" : (pr?.total ?? 0)}
             bg="bg-slate-50"
             textColor="text-slate-800"
             icon="📄"
           />
           <StatCard
             label="Open"
-            value={statsLoading ? "—" : (pr?.open ?? 0)}
-            bg="bg-[#EBF4FF]"
+            value={noStats ? "—" : (pr?.open ?? 0)}
+            bg="bg-stat-blue"
             textColor="text-info-500"
             icon="🔵"
           />
           <StatCard
             label="Partially Delivered"
-            value={statsLoading ? "—" : (pr?.partiallyDelivered ?? 0)}
-            bg="bg-[#FEF9EC]"
+            value={noStats ? "—" : (pr?.partiallyDelivered ?? 0)}
+            bg="bg-stat-amber"
             textColor="text-amber-500"
             icon="🟡"
           />
           <StatCard
             label="Completed"
-            value={statsLoading ? "—" : (pr?.fullyDeliveredOrCompleted ?? 0)}
+            value={noStats ? "—" : (pr?.fullyDeliveredOrCompleted ?? 0)}
             bg="bg-green-50"
             textColor="text-green-600"
             icon="✅"
@@ -411,7 +428,7 @@ export default function InventoryDashboardPage() {
         <StatGroup title="📦  Inventory Alerts">
           <StatCard
             label="In Stock"
-            value={statsLoading ? "—" : (al?.inStock ?? 0)}
+            value={noStats ? "—" : (al?.inStock ?? 0)}
             bg="bg-green-50"
             textColor="text-green-600"
             icon="✅"
@@ -419,23 +436,23 @@ export default function InventoryDashboardPage() {
           />
           <StatCard
             label="Low / Out of Stock"
-            value={statsLoading ? "—" : (al?.lowOrOutOfStock ?? 0)}
-            bg="bg-[#FEF2F2]"
+            value={noStats ? "—" : (al?.lowOrOutOfStock ?? 0)}
+            bg="bg-stat-red"
             textColor="text-danger-500"
             icon="⚠️"
             sub="items"
           />
           <StatCard
             label="Total PR Value"
-            value={statsLoading ? "—" : fmtCurrency(al?.totalPRValue ?? 0)}
+            value={noStats ? "—" : fmtCurrency(al?.totalPRValue ?? 0)}
             bg="bg-slate-50"
             textColor="text-amber-500"
             icon="💰"
           />
           <StatCard
             label="Unique Items Tracked"
-            value={statsLoading ? "—" : (al?.uniqueItemsTracked ?? 0)}
-            bg="bg-[#F3F0FF]"
+            value={noStats ? "—" : (al?.uniqueItemsTracked ?? 0)}
+            bg="bg-stat-purple"
             textColor="text-purple-700"
             icon="🗂️"
             sub="items"
@@ -443,6 +460,12 @@ export default function InventoryDashboardPage() {
         </StatGroup>
 
       </div>
+
+      {statsError && (
+        <div className="bg-white border border-slate-200 shadow-sm">
+          <LoadError message="Couldn't load the inventory stats." onRetry={loadStats} className="py-3" />
+        </div>
+      )}
 
       {/* ── PR Status Table ───────────────────────────────────────────────── */}
       <div className="bg-white border border-slate-200 shadow-sm overflow-hidden">
@@ -460,6 +483,8 @@ export default function InventoryDashboardPage() {
 
         {prsLoading ? (
           <TableSkeleton columns={["PR No.", "Division", "Requested By", "PR Date", "Status", "Fulfillment", "Total Amount", "Actions"]} />
+        ) : prsError ? (
+          <LoadError message="Couldn't load the purchase requests." onRetry={loadPRs} />
         ) : prs.length === 0 ? (
           <div className="py-12 text-center text-sm text-slate-600">
             No purchase requests found.
@@ -553,6 +578,8 @@ export default function InventoryDashboardPage() {
 
         {ledgerLoading ? (
           <TableSkeleton columns={["Stock No.", "Description", "Unit", "On Hand", "Reorder Qty", "Status"]} />
+        ) : ledgerError ? (
+          <LoadError message="Couldn't load the stock levels, so alerts can't be checked." onRetry={loadLedger} />
         ) : alertItems.length === 0 ? (
           <div className="py-10 text-center">
             <p className="text-sm text-green-600 font-medium">✅ All items are sufficiently stocked.</p>

@@ -4,7 +4,7 @@
 > Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
 > and office operations.
 
-**Current version: v1.9.1** (complete, frozen on `release/1.9.1`, going to UAT) · **Next: v1.10.0** (placeholder — SAIP)
+**Current version: v1.9.2** (UAT polish, in progress on `release/1.9.2`) · **Previous: v1.9.1** (frozen, on UAT) · **Next: v1.10.0** (SAIP — paused)
 
 ---
 
@@ -24,15 +24,23 @@
 | v1.8.2 | Dashboard redesign, caching, concurrent-edit guard (schema) | ✅ Built — on UAT |
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
 | v1.9.0 | Larger requests from Demo 3 (see below) | 🧊 Complete, frozen for UAT |
-| **v1.9.1** | **.NET 10 runtime, security fix + AIP workflow UX fixes** (see below) | 🧊 **Complete, frozen for UAT** |
-| **v1.10.0** | **SAIP** — Supplemental AIP | 📝 **Placeholder — not scheduled** |
+| v1.9.1 | .NET 10 runtime, security fix + AIP workflow UX fixes (see below) | 🧊 Complete, frozen, on UAT |
+| **v1.9.2** | **UAT polish** — bug sweep, UI/UX consistency, performance, Playwright foundation (see below) | 🚧 **In progress** |
+| v1.10.0 | SAIP — Supplemental AIP | ⏸️ Paused until v1.9.2 closes |
 
-> **Production** is at v1.7.4. v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
+> **Production** is at v1.7.5 (v1.7.4 on .NET 10). v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
 > finance users sign off. They ship as one deploy, with the migrations run by hand first.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and architecture rules.
 
 ---
+
+## What's in v1.9.2 (in progress)
+
+Built on `release/1.9.2`, cut 2026-10-25 from `release/1.9.1`. A polish pass on what is already on UAT, with no new
+features: a role × page sweep for bugs and scope leaks, UI/UX consistency (empty, error and forbidden states), a
+performance re-measure, and the first Playwright end-to-end tests. Epic PPDO-252, plan
+[`docs/v1.9/UAT_Polish_Plan.md`](docs/v1.9/UAT_Polish_Plan.md) (lands with #540). v1.10.0 (SAIP) is paused until this closes.
 
 ## What's in v1.9.1
 

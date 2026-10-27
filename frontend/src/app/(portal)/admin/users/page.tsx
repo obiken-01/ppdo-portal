@@ -26,7 +26,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { listDivisions, listOffices } from "@/lib/config";
 import Modal from "@/components/ui/Modal";
 import OfficeSelect from "@/components/ui/OfficeSelect";
@@ -671,8 +671,8 @@ export default function UsersPage() {
       } else {
         setAuthChecked(true);
       }
-    }).catch(() => {
-      router.replace("/login");
+    }).catch((err) => {
+      router.replace(meFailurePath(err));
     });
   }, [router]);
 

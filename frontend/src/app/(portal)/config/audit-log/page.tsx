@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { configErrorMessage, listAuditLog, listAuditLogTableNames } from "@/lib/config";
 import DataTable, { type Column } from "@/components/ui/DataTable";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
@@ -120,7 +120,7 @@ export default function AuditLogPage() {
         }
         setAuthChecked(true);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Table name filter options (loaded once) ──────────────────────────────────

@@ -36,6 +36,7 @@ public sealed class InventoryService : IInventoryService
     private readonly IPurchaseRequestRepository  _prs;
     private readonly IItemMasterRepository       _items;
     private readonly IStockBalanceRepository     _stockBalances;
+    private readonly IPermissionService          _permissions;
     private readonly ILogger<InventoryService>   _logger;
 
     public InventoryService(
@@ -43,12 +44,14 @@ public sealed class InventoryService : IInventoryService
         IPurchaseRequestRepository prs,
         IItemMasterRepository items,
         IStockBalanceRepository stockBalances,
+        IPermissionService permissions,
         ILogger<InventoryService> logger)
     {
         _inventory     = inventory;
         _prs           = prs;
         _items         = items;
         _stockBalances = stockBalances;
+        _permissions   = permissions;
         _logger        = logger;
     }
 
@@ -64,6 +67,10 @@ public sealed class InventoryService : IInventoryService
         // Office users (Staff with no division) have no inventory scope —
         // return empty stats rather than leaking every division's data.
         if (scope.SeeNothing)
+            return EmptyStats();
+
+        // PPDO-261: division scope alone isn't enough; the feature flag gates reads too.
+        if (!await CanReadInventoryAsync(requester, "InventoryStats", cancellationToken))
             return EmptyStats();
 
         int? division = scope.DivisionId;
@@ -142,7 +149,7 @@ public sealed class InventoryService : IInventoryService
         DivisionScope scope = DivisionScope.Resolve(requester);
 
         // Office users (Staff with no division) have no inventory scope.
-        if (scope.SeeNothing)
+        if (scope.SeeNothing || !await CanReadInventoryAsync(requester, "ItemLedger", cancellationToken))
             return Array.Empty<ItemLedgerRowDto>();
 
         int? division = scope.DivisionId;
@@ -243,6 +250,22 @@ public sealed class InventoryService : IInventoryService
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// PPDO-261: inventory reads need <c>CanAccessInventory</c>, the same flag writes check.
+    /// Logs the denial (structured, UserId + Feature) per CLAUDE.md.
+    /// </summary>
+    private async Task<bool> CanReadInventoryAsync(
+        User requester, string feature, CancellationToken cancellationToken)
+    {
+        if (await _permissions.CanAccessInventoryAsync(requester, cancellationToken))
+            return true;
+
+        _logger.LogWarning(
+            "Permission denied — user {UserId} lacks CanAccessInventory. Feature: {Feature}",
+            requester.Id, feature);
+        return false;
+    }
 
     /// <summary>
     /// Adds a zero-movement <see cref="ItemStockLevel"/> for every StockNo present in
