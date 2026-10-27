@@ -1,8 +1,8 @@
 ---
 type: standard
 status: current
-tickets: []
-updated: 2026-05-26
+tickets: [PPDO-258, PPDO-259]
+updated: 2026-10-26
 ---
 
 # Test Conventions
@@ -223,6 +223,24 @@ Tests must run in the CI/CD pipeline on every push. **Build fails if any test fa
 - Tests must pass before merging to `main`
 - Never merge with skipped or ignored tests without documented reason
 - Flaky tests must be fixed or removed — not ignored
+
+---
+
+## Browser tests (Playwright) — this project
+
+Added in v1.9.2 (PPDO-258, PPDO-259). How to run them, the personas and the accounts are in
+[`frontend/e2e/README.md`](../frontend/e2e/README.md).
+
+- **One spec per fixed bug.** Every bug fixed from v1.9.2 on that a browser can see gets a spec named
+  after its ticket (`ppdo-XXX-short-name.spec.ts`, or a `test("PPDO-XXX …")` in an existing file). It
+  must fail without the fix: run it once against the code before the fix and say so in the PR.
+- **Smoke specs are read-only.** They open pages as each persona and change nothing.
+- **Specs that write data use the seeded E2E office only** (`e2e/aip/seed.ts`), with unique names per
+  run (`E2E <timestamp> <random>`), and reset that office before they start rather than clean up after.
+- **Never against production.** Real data would end up in screenshots and reports, and the test accounts
+  would be a standing way in. UAT, or a local build, only.
+- **Wait for what the server confirmed**, not for a button to disappear: closing the browser while a
+  request is in flight cancels it, and the test passes on work that never saved.
 
 ---
 
