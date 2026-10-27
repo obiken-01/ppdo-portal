@@ -7,14 +7,29 @@ import { expect, test } from "./fixtures";
 //
 // Read-only. Each test answers one GET with a 500 (a server error, so the app's
 // network-failure path to /reconnecting stays out of it), then lets it through for Retry.
-// Personas without inventory access are redirected away and the test is skipped.
+// Personas without access to the page are skipped.
 
 const PR_LIST = /\/api\/purchase-requests(\?.*)?$/;
 
+interface Me { isHostOffice: boolean; canAccessInventory: boolean; canAccessReports: boolean }
+
+/** Who may open each page: the page's own guard, plus the layout's gate that closes inventory to guest offices. */
+const MAY_OPEN: Record<string, (me: Me) => boolean> = {
+  "/inventory": (me) => me.isHostOffice && me.canAccessInventory,
+  "/inventory/pr-report": (me) => me.isHostOffice && (me.canAccessInventory || me.canAccessReports),
+  "/inventory/receive-delivery": (me) => me.isHostOffice && me.canAccessInventory,
+};
+
+// Decides from the user's own /auth/me answer, not from the address after load: the guards
+// redirect only once /auth/me answers, after the page has already drawn, so a check on the URL
+// at "networkidle" can still see /inventory for a user who is about to be sent away.
 async function openOrSkip(page: Page, path: string) {
+  const meResponse = page.waitForResponse((r) => /\/api\/auth\/me$/.test(r.url()) && r.ok());
   await page.goto(path);
+  const body = (await (await meResponse).json()) as Me | { data: Me };
+  const me = "data" in body ? body.data : body;
+  test.skip(!MAY_OPEN[path](me), `persona may not open ${path}`);
   await page.waitForLoadState("networkidle");
-  test.skip(!page.url().includes(path), `persona has no inventory access (landed on ${page.url()})`);
 }
 
 /** Answers matching GETs with a 500 until the returned function is called. */
