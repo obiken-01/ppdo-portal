@@ -18,13 +18,14 @@
  *   GET /api/purchase-requests/{id}/export        → .xlsx blob download
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { useMe } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   PRReportResponse,
   PRSummaryResponse,
@@ -203,6 +204,7 @@ export default function PRReportPage() {
   // PR list + combobox
   const [prs, setPRs]               = useState<PRSummaryResponse[]>([]);
   const [prsLoading, setPRsLoading] = useState(false);
+  const [prsError, setPRsError]     = useState(false);
   const [prSearch, setPrSearch]     = useState("");
   const [prOpen, setPrOpen]         = useState(false);
 
@@ -210,6 +212,7 @@ export default function PRReportPage() {
   const [selectedId, setSelectedId]     = useState("");
   const [report, setReport]             = useState<PRReportResponse | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError]     = useState(false);
 
   // Export
   const [exporting, setExporting] = useState(false);
@@ -236,9 +239,11 @@ export default function PRReportPage() {
 
   // ── Load PR list ───────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!me) return;
+  // PPDO-260 S2: a failed load shows an error with Retry instead of a toast and an
+  // empty picker, which read as "there are no PRs".
+  const loadPRs = useCallback(() => {
     setPRsLoading(true);
+    setPRsError(false);
     api.get<PRSummaryResponse[]>("/purchase-requests")
       .then(({ data }) => {
         setPRs(data);
@@ -252,20 +257,33 @@ export default function PRReportPage() {
           }
         }
       })
-      .catch(() => toast.error("Failed to load PRs", "Could not fetch purchase requests."))
+      .catch(() => setPRsError(true))
       .finally(() => setPRsLoading(false));
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!me) return;
+    loadPRs();
   }, [me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load report when PR selected ──────────────────────────────────────────
 
-  useEffect(() => {
-    if (!selectedId) { setReport(null); return; }
+  // Clears the previous report first: otherwise a failed load for PR B kept showing
+  // PR A's report under PR B's number.
+  const loadReport = useCallback((id: string) => {
+    setReport(null);
+    setReportError(false);
     setReportLoading(true);
-    api.get<PRReportResponse>(`/purchase-requests/${selectedId}/report`)
+    api.get<PRReportResponse>(`/purchase-requests/${id}/report`)
       .then(({ data }) => setReport(data))
-      .catch(() => toast.error("Failed to load report", "Could not fetch PR report data."))
+      .catch(() => setReportError(true))
       .finally(() => setReportLoading(false));
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) { setReport(null); setReportError(false); return; }
+    loadReport(selectedId);
+  }, [selectedId, loadReport]);
 
   // ── PR combobox helpers ────────────────────────────────────────────────────
 
@@ -378,7 +396,12 @@ export default function PRReportPage() {
         </div>
 
         {/* ── Empty / loading state ─────────────────────────────────────────── */}
-        {!selectedId && (
+        {!selectedId && prsError && (
+          <div className="bg-white border border-slate-200 shadow-sm">
+            <LoadError message="Couldn't load the purchase requests." onRetry={loadPRs} className="py-20" />
+          </div>
+        )}
+        {!selectedId && !prsError && (
           <div className="bg-white border border-slate-200 shadow-sm flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
             <span className="text-4xl">📋</span>
             <p className="text-sm font-medium">Select a Purchase Request to view its report</p>
@@ -415,6 +438,12 @@ export default function PRReportPage() {
               />
             </div>
           </>
+        )}
+
+        {selectedId && reportError && !reportLoading && (
+          <div className="bg-white border border-slate-200 shadow-sm">
+            <LoadError message="Couldn't load this PR's report." onRetry={() => loadReport(selectedId)} className="py-20" />
+          </div>
         )}
 
         {/* ── Report sections ───────────────────────────────────────────────── */}
