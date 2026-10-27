@@ -46,6 +46,26 @@ Or run the **E2E (UAT)** workflow from the Actions tab (manual only; credentials
 If a Chromium is already on the machine and `playwright install` isn't wanted, set
 `E2E_CHROMIUM_PATH=/path/to/chromium`. Local only; CI installs its own.
 
+## Signed-in specs: import from `./fixtures`
+
+```ts
+import { expect, test } from "./fixtures";
+```
+
+A user has **one** live refresh token, and every page load rotates it. With the plain
+`@playwright/test` fixtures, the cookie saved by `auth.setup.ts` dies after the first test, and every
+later test for that persona lands on `/login?reason=token_superseded`. `fixtures.ts` keeps one browser
+context per persona, saves the rotated cookie after each test, and the `as-<KEY>` projects run one
+test at a time (`workers: 1`). Different personas still run in parallel.
+
+## Smoke suite
+
+`smoke.spec.ts` opens every route in `routes.ts` as each configured persona: no crash, no 5xx, no
+console error, and the access rule holds (`allow` renders, `deny` redirects away). The allow/deny
+lines follow the persona **definitions** in the plan (§3.1). An account with extra grants (e.g. a
+local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
+A new page gets a row in `routes.ts`.
+
 ## Rules
 
 - **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named

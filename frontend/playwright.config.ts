@@ -32,10 +32,13 @@ export default defineConfig({
     },
     // Signed-in specs (smoke, journeys) belong in per-persona projects that depend on "setup".
     // Each persona with credentials gets its own storageState; unconfigured ones are left out.
+    // workers: 1 — a user has one live refresh token, so one persona's tests can't run side by
+    // side. Different personas still run in parallel. See e2e/fixtures.ts.
     ...PERSONAS.filter((p) => p.configured).map((p) => ({
       name: `as-${p.key}`,
       testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/],
       dependencies: ["setup"],
+      workers: 1,
       use: {
         ...devices["Desktop Chrome"],
         storageState: p.storageState,
