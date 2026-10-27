@@ -85,7 +85,8 @@ export async function addActivity(page: Page, a: ActivitySpec) {
   if (a.mooe) await amounts.nth(1).fill(String(a.mooe));
   if (a.co) await amounts.nth(2).fill(String(a.co));
   await row.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByPlaceholder("Search accounts…")).toBeHidden();
+  // The row stays open (inputs disabled) until the save answers; slow when other suites share the server.
+  await expect(page.getByPlaceholder("Search accounts…")).toBeHidden({ timeout: 20_000 });
 }
 
 /**

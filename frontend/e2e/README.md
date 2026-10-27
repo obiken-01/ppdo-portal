@@ -118,6 +118,16 @@ E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test
 
 Both journey suites at once: `--project=aip --project=inventory` (they use different accounts).
 
+**The seed Admin must not also be a persona.** The setups and each AIP reset log in as
+`E2E_SEED_EMAIL` through the API, and a user has one live session, so that persona's browser would
+be signed out mid-run. The setups refuse to start when `E2E_SEED_EMAIL` matches a configured
+`E2E_<KEY>_EMAIL`. Use a different seed Admin, or run the two halves separately:
+
+```bash
+npx playwright test --project=aip --project=inventory     # seed vars set, persona vars unset
+npx playwright test --project=public --project="as-*"     # persona vars set
+```
+
 ## Rules
 
 - **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named

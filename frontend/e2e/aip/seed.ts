@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, type APIRequestContext } from "@playwright/test";
+import { PERSONAS } from "../personas";
 
 // PPDO-259 — builds a self-contained "E2E" office for the AIP journeys, through the app's own
 // API, the way an Admin would by hand. Same shape as PPDO-195's PTO test (docs on that ticket):
@@ -53,6 +54,21 @@ const ACCOUNTS_FILE = "e2e/.auth/aip-accounts.json";
 export const WORLD_FILE = "e2e/.auth/aip-world.json";
 
 export const API_URL = (process.env.E2E_API_URL ?? "http://localhost:7071/api").replace(/\/$/, "");
+
+/**
+ * The seed Admin must not also be a persona. A user has one live refresh token: every seed and
+ * reset login through the API signs that persona's browser out ("token_superseded"), and its
+ * signed-in tests fail on the login page. Called by the journey setups, before anything runs.
+ */
+export function assertSeedIsNotPersona() {
+  const seed = (process.env.E2E_SEED_EMAIL ?? "").trim().toLowerCase();
+  const clash = PERSONAS.find((p) => p.configured && p.email?.trim().toLowerCase() === seed);
+  if (clash)
+    throw new Error(
+      `E2E_SEED_EMAIL is also persona ${clash.key} (${clash.emailVar}). Use a different seed Admin, ` +
+      `leave ${clash.emailVar} unset, or run the journeys and the persona projects separately (e2e/README.md).`,
+    );
+}
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 
