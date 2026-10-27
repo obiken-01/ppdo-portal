@@ -102,6 +102,22 @@ but it is a decision: tell the finance testers that an "E2E Test Office (automat
 their review board. Add `E2E_AIP_CLEANUP=1` to take the office back out of the AIP when the run ends;
 otherwise it stays in the consolidated AIP (accepted) until the next run resets it.
 
+## Inventory journey (`e2e/inventory/`, PPDO-259)
+
+| File | What it covers |
+|---|---|
+| `inventory.setup.ts` → `seed.ts` | A PPDO division **"E2E Inventory (test)"** (code `E2EINV`) with inventory access only, a Staff account `e2e.inventory` in it, and the Items Master item `E2E-0001`. Same seed Admin and find-or-create rules as the AIP seed. |
+| `inventory-journey.spec.ts` | Staff create a PR for 10 × `E2E-0001` (division filled in and locked; picking the Stock No. fills the row) → status **Open** → receive 4 → **Partially Delivered** → receive 6 → **Fully Delivered**. |
+
+Inventory is division-scoped, so the test PRs and deliveries only ever appear in the E2E division,
+never in a real division's lists. Each run adds one PR and two deliveries there; there is no cleanup.
+
+```bash
+E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=inventory
+```
+
+Both journey suites at once: `--project=aip --project=inventory` (they use different accounts).
+
 ## Rules
 
 - **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named
