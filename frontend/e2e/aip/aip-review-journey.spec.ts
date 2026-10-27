@@ -19,6 +19,7 @@ const COMMENT = `${RUN}: please split the supplies by quarter.`;
 const REPLY = `${RUN}: split into four quarterly lines.`;
 
 test.beforeAll(async ({ request }) => {
+  test.setTimeout(120_000); // hooks keep the 30s default (see aip-scope.spec.ts)
   await resetAipOffice(request);
 });
 
