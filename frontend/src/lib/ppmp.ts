@@ -11,12 +11,14 @@ import api from "./api";
 import type { ApiResponse, PpmpReportDto } from "@/types";
 
 /**
- * PPMP report switch (PPDO-236). Hidden in v1.9.1 — the report was built on our own initiative and
- * nobody asked for it. While false the Report type dropdown omits PPMP (a stale `?type=PPMP` falls
- * back to the reader's first allowed type) and the backend routes return 404. Restore by flipping
- * this and `FeatureFlags.PpmpReportEnabled` in PPDO.Application.
+ * PPMP report switch. Hidden in v1.9.1 (PPDO-236); ↩️ restored in v1.9.2 (PPDO-265) because a PPDO
+ * colleague builds the office's PPMP from this report's procurement items per activity. PPDO only:
+ * the type is offered by `canOpenWfpReport` (host office), and the API answers a guest office 403.
+ * While false the Report type dropdown omits PPMP (a stale `?type=PPMP` falls back to the reader's
+ * first allowed type) and the backend routes return 404. Keep it in step with
+ * `FeatureFlags.PpmpReportEnabled` in PPDO.Application.
  */
-export const PPMP_REPORT_ENABLED = false;
+export const PPMP_REPORT_ENABLED = true;
 
 /**
  * The full PPMP report preview for one office + fiscal year. divisionId is only honored for

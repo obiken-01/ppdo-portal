@@ -17,8 +17,8 @@ namespace PPDO.Tests.Functions;
 ///
 /// <see cref="PpmpReportServiceTests"/> covers the report's *content*; this class covers the layer
 /// above it, which is where the security decisions are made and where none of the service tests
-/// reach: the JWT check, the CanAccessBudgetPlanning gate, query-parameter validation, and — the
-/// reason this file exists — the <b>division clamp</b> (RAL-136). A division-scoped caller must
+/// reach: the JWT check, the CanAccessWfp gate (host office only, PPDO-265), query-parameter
+/// validation, and — the reason this file exists — the <b>division clamp</b> (RAL-136). A division-scoped caller must
 /// always be pinned to their own division; a <c>divisionId</c> they put on the query string must be
 /// ignored, never honoured. Both the preview and the export path enforce it independently, so both
 /// are tested independently: a regression on one would not be caught by the other.
@@ -37,24 +37,45 @@ public sealed class PpmpReportFunctionsTests
     private readonly Mock<IJwtValidator>          _jwt         = new(MockBehavior.Strict);
     private readonly Mock<IPermissionService>      _permissions = new(MockBehavior.Loose);
 
-    // The report is hidden by FeatureFlags.PpmpReportEnabled (PPDO-236). Every pre-existing test
-    // exercises the dormant code, so it opts in explicitly; the 404 tests use SutDefault.
-    private PpmpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object, ppmpEnabled: true);
+    // Sut runs with the switch as shipped (FeatureFlags.PpmpReportEnabled, on again since PPDO-265);
+    // SutSwitchedOff keeps the PPDO-236 off-path tested, so the switch still works if it is needed.
+    private PpmpReportFunctions Sut => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);
 
-    private PpmpReportFunctions SutDefault => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object);
+    private PpmpReportFunctions SutSwitchedOff => new(_report.Object, _excel.Object, _jwt.Object, _permissions.Object, ppmpEnabled: false);
 
     // ── Arrange helpers ────────────────────────────────────────────────────────
 
-    private static User MakeUser(int? divisionId) => new()
+    private static User MakeUser(int? divisionId, UserRole role = UserRole.Staff) => new()
     {
         Id           = Guid.NewGuid(),
         FullName     = "Test User",
         Email        = "test@ppdo.gov.ph",
         Username     = "test",
         PasswordHash = "hash",
-        Role         = UserRole.Staff,
+        Role         = role,
         DivisionId   = divisionId,
     };
+
+    /// <summary>A guest-office user as v1.8 creates them: Staff, no division, no overrides.</summary>
+    private static User MakeGuestOfficeUser(UserRole role = UserRole.Staff) => new()
+    {
+        Id           = Guid.NewGuid(),
+        FullName     = "Guest Office User",
+        Email        = "guest@ppdo.gov.ph",
+        Username     = "guest",
+        PasswordHash = "hash",
+        Role         = role,
+        OfficeId     = 9,
+        Office       = new Office { Id = 9, OfficeCode = "PTO", OfficeName = "Provincial Treasurer's Office", IsHostOffice = false },
+    };
+
+    /// <summary>The handler wired to the real <see cref="PermissionService"/>, so the office rule is the real one.</summary>
+    private PpmpReportFunctions SutWithRealPermissions(User caller)
+    {
+        _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caller);
+        return new PpmpReportFunctions(_report.Object, _excel.Object, _jwt.Object, new PermissionService());
+    }
 
     private static PpmpReportDto MakeReport() =>
         new(FiscalYear, "PPDO", "Provincial Planning and Development Office", "Administrative",
@@ -63,13 +84,18 @@ public sealed class PpmpReportFunctionsTests
                 new("GENERAL FUND", new List<PpmpReportProgramDto>(), 0m),
             });
 
-    /// <summary>Authenticates the caller and sets the two permission answers the handlers ask for.</summary>
-    private void Authenticate(User caller, bool canAccessBudgetPlanning = true, bool canManagePpdoAllocation = false)
+    /// <summary>
+    /// Authenticates the caller and sets the permission answers. Budget Planning is always granted,
+    /// as it is for every guest-office user: the gate under test is <c>CanAccessWfp</c> (PPDO-265).
+    /// </summary>
+    private void Authenticate(User caller, bool canAccessWfp = true, bool canManagePpdoAllocation = false)
     {
         _jwt.Setup(j => j.ValidateAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(caller);
         _permissions.Setup(p => p.CanAccessBudgetPlanningAsync(caller, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(canAccessBudgetPlanning);
+            .ReturnsAsync(true);
+        _permissions.Setup(p => p.CanAccessWfpAsync(caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(canAccessWfp);
         _permissions.Setup(p => p.CanManagePpdoAllocationAsync(caller, It.IsAny<CancellationToken>()))
             .ReturnsAsync(canManagePpdoAllocation);
     }
@@ -85,23 +111,79 @@ public sealed class PpmpReportFunctionsTests
     private static string Query(string? divisionId = null)
         => $"officeId={OfficeId}&fiscalYear={FiscalYear}" + (divisionId is null ? "" : $"&divisionId={divisionId}");
 
-    // ── Hidden (PPDO-236) ──────────────────────────────────────────────────────
+    // ── The switch (hidden in PPDO-236, restored in PPDO-265) ─────────────────
+
+    /// <summary>A PPDO colleague builds the office PPMP from this report; it must not be hidden again by accident.</summary>
+    [Fact]
+    public void PpmpReportEnabled_IsOn()
+    {
+        Assert.True(FeatureFlags.PpmpReportEnabled);
+    }
 
     [Fact]
-    public async Task GetPreview_WhileReportIsHidden_Returns404WithoutReadingAnything()
+    public async Task GetPreview_WhenSwitchedOff_Returns404WithoutReadingAnything()
     {
         // MockBehavior.Strict on every collaborator: any call at all (JWT, permission, service) throws.
-        HttpResponseData response = await SutDefault.GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
+        HttpResponseData response = await SutSwitchedOff.GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
-    public async Task Export_WhileReportIsHidden_Returns404WithoutReadingAnything()
+    public async Task Export_WhenSwitchedOff_Returns404WithoutReadingAnything()
     {
-        HttpResponseData response = await SutDefault.Export(FunctionHttp.Get(Query()), CancellationToken.None);
+        HttpResponseData response = await SutSwitchedOff.Export(FunctionHttp.Get(Query()), CancellationToken.None);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ── Host office only (PPDO-265) ────────────────────────────────────────────
+    // The report reads PPDO's WFP. Guest-office users hold Budget Planning by default since v1.8, so
+    // that grant alone must not open it. These run the real PermissionService, not a mocked answer.
+
+    [Theory]
+    [InlineData(UserRole.Staff)]
+    [InlineData(UserRole.Admin)]
+    public async Task GetPreview_AsGuestOfficeUser_Returns403AndNeverCallsService(UserRole role)
+    {
+        User guest = MakeGuestOfficeUser(role);
+
+        HttpResponseData response = await SutWithRealPermissions(guest)
+            .GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _report.Verify(r => r.GetReportAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(UserRole.Staff)]
+    [InlineData(UserRole.Admin)]
+    public async Task Export_AsGuestOfficeUser_Returns403AndNeverBuildsWorkbook(UserRole role)
+    {
+        User guest = MakeGuestOfficeUser(role);
+
+        HttpResponseData response = await SutWithRealPermissions(guest)
+            .Export(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        _report.Verify(r => r.GetReportAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _excel.Verify(e => e.Export(It.IsAny<PpmpReportDto>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetPreview_AsHostOfficeAdmin_IsServed()
+    {
+        User admin = MakeUser(OwnDivision, UserRole.Admin);
+        admin.OfficeId = 1;
+        admin.Office   = new Office { Id = 1, OfficeCode = "PPDO", IsHostOffice = true };
+        ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), _ => { });
+
+        HttpResponseData response = await SutWithRealPermissions(admin)
+            .GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     // ── Auth gate — preview ────────────────────────────────────────────────────
@@ -120,10 +202,10 @@ public sealed class PpmpReportFunctionsTests
     }
 
     [Fact]
-    public async Task GetPreview_WithoutBudgetPlanningPermission_ReturnsForbiddenAndNeverCallsService()
+    public async Task GetPreview_WithoutWfpAccess_ReturnsForbiddenAndNeverCallsService()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canAccessBudgetPlanning: false);
+        Authenticate(caller, canAccessWfp: false);
 
         HttpResponseData response = await Sut.GetPreview(FunctionHttp.Get(Query()), CancellationToken.None);
 
@@ -202,23 +284,47 @@ public sealed class PpmpReportFunctionsTests
     }
 
     /// <summary>
-    /// Documents current behaviour, which mirrors the WFP report handler: a division-scoped caller
-    /// whose own DivisionId is null resolves to null — i.e. the office-consolidated view — rather
-    /// than an empty scope. Compare <see cref="User.DivisionId"/>'s own note, which says a null
-    /// division on a Staff user must mean an EMPTY inventory scope. If that rule is ever extended
-    /// to Budget Planning, this test is the one to change (and WfpReportFunctions alongside it).
+    /// ↩️ PPDO-265: Staff with no division now see nothing, as on the WFP report (WfpDivisionScope,
+    /// PPDO-198). Before, their null division was passed down as "every division", so they read the
+    /// whole office's report. They get the same 404 as a missing report, and the service is not asked.
     /// </summary>
     [Fact]
-    public async Task GetPreview_AsDivisionScopedUserWithNoDivision_CurrentlyRequestsConsolidatedReport()
+    public async Task GetPreview_AsStaffWithNoDivision_Returns404AndNeverCallsService()
     {
         User caller = MakeUser(divisionId: null);
+        Authenticate(caller, canManagePpdoAllocation: false);
+
+        HttpResponseData response = await Sut.GetPreview(FunctionHttp.Get(Query("99")), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        _report.Verify(r => r.GetReportAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Export_AsStaffWithNoDivision_Returns404AndNeverBuildsWorkbook()
+    {
+        User caller = MakeUser(divisionId: null);
+        Authenticate(caller, canManagePpdoAllocation: false);
+
+        HttpResponseData response = await Sut.Export(FunctionHttp.Get(Query()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        _excel.Verify(e => e.Export(It.IsAny<PpmpReportDto>()), Times.Never);
+    }
+
+    /// <summary>↩️ PPDO-265: Admin reads every division, as on the WFP report; before, Admin was pinned to their own.</summary>
+    [Fact]
+    public async Task GetPreview_AsAdmin_HonoursDivisionIdQuery()
+    {
+        User caller = MakeUser(OwnDivision, UserRole.Admin);
         Authenticate(caller, canManagePpdoAllocation: false);
         int? requested = -1;
         ExpectReport(ServiceResult<PpmpReportDto>.Ok(MakeReport()), d => requested = d);
 
-        await Sut.GetPreview(FunctionHttp.Get(Query("99")), CancellationToken.None);
+        await Sut.GetPreview(FunctionHttp.Get(Query("42")), CancellationToken.None);
 
-        Assert.Null(requested);
+        Assert.Equal(42, requested);
     }
 
     // ── Query validation + result mapping — preview ────────────────────────────
@@ -286,10 +392,10 @@ public sealed class PpmpReportFunctionsTests
     }
 
     [Fact]
-    public async Task Export_WithoutBudgetPlanningPermission_ReturnsForbiddenAndNeverBuildsWorkbook()
+    public async Task Export_WithoutWfpAccess_ReturnsForbiddenAndNeverBuildsWorkbook()
     {
         User caller = MakeUser(OwnDivision);
-        Authenticate(caller, canAccessBudgetPlanning: false);
+        Authenticate(caller, canAccessWfp: false);
 
         HttpResponseData response = await Sut.Export(FunctionHttp.Get(Query()), CancellationToken.None);
 
