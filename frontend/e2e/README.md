@@ -1,0 +1,111 @@
+# Browser tests (Playwright)
+
+Up: [UAT Polish Plan §6](../../docs/v1.9/UAT_Polish_Plan.md) · PPDO-258
+
+Chromium only. Read-only specs until the suite has proven it is stable on the shared UAT.
+
+## Run locally
+
+```bash
+# Terminal 1 — backend
+cd backend/PPDO.Functions && func start
+# Terminal 2 — frontend
+cd frontend && npm run dev
+# Terminal 3
+cd frontend && npx playwright install chromium   # first time only
+npm run e2e          # or: npm run e2e:ui
+```
+
+`public.spec.ts` needs no backend and no accounts. Anything signed-in needs persona credentials.
+
+## Personas and credentials
+
+Six personas (plan §3.1): `SA`, `AD`, `RV`, `ST`, `EN`, `XD`. Each reads two environment variables:
+
+```
+E2E_<KEY>_EMAIL      E2E_<KEY>_PASSWORD      e.g. E2E_SA_EMAIL, E2E_SA_PASSWORD
+```
+
+The login form's field is labelled *Username* — put what you type there in `*_EMAIL`.
+A persona missing either variable is **skipped**, not failed, so start with one or two.
+`auth.setup.ts` signs each configured persona in through the real login form and saves
+`e2e/.auth/<KEY>.json` (git-ignored). Each configured persona gets a project named `as-<KEY>`;
+signed-in specs run once per project. Keep passwords in your password manager, never in the repo.
+
+## Run against UAT
+
+```bash
+E2E_BASE_URL=https://<uat-frontend-host> E2E_SA_EMAIL=… E2E_SA_PASSWORD=… npm run e2e:uat
+```
+
+Or run the **E2E (UAT)** workflow from the Actions tab (manual only; credentials come from the
+`uat` environment secrets `E2E_*` and the `E2E_BASE_URL` variable/secret).
+
+## Using a preinstalled browser
+
+If a Chromium is already on the machine and `playwright install` isn't wanted, set
+`E2E_CHROMIUM_PATH=/path/to/chromium`. Local only; CI installs its own.
+
+## Signed-in specs: import from `./fixtures`
+
+```ts
+import { expect, test } from "./fixtures";
+```
+
+A user has **one** live refresh token, and every page load rotates it. With the plain
+`@playwright/test` fixtures, the cookie saved by `auth.setup.ts` dies after the first test, and every
+later test for that persona lands on `/login?reason=token_superseded`. `fixtures.ts` keeps one browser
+context per persona, saves the rotated cookie after each test, and the `as-<KEY>` projects run one
+test at a time (`workers: 1`). Different personas still run in parallel.
+
+## Smoke suite
+
+`smoke.spec.ts` opens every route in `routes.ts` as each configured persona: no crash, no 5xx, no
+console error, and the access rule holds (`allow` renders, `deny` redirects away). The allow/deny
+lines follow the persona **definitions** in the plan (§3.1). An account with extra grants (e.g. a
+local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
+A new page gets a row in `routes.ts`.
+
+## AIP journeys (`e2e/aip/`, PPDO-259)
+
+These change data, so they run in their own **E2E office** that the suite builds itself, never in a
+real office. They follow PPDO-195's T0–T14 plan.
+
+| File | What it covers |
+|---|---|
+| `aip.setup.ts` → `seed.ts` | Builds the E2E office through the API: office `E2E` (ref `01-099`), its own LDIP (2 programs), its rows in the open FY2028 AIP, divisions A/B, GF ceiling ₱1.5M, split A ₱900K / B ₱500K, program 1 → A and 2 → B, and four accounts: `e2e.head` (department head), `e2e.encoder.a`, `e2e.encoder.b`, `e2e.reviewer` (PPDO, cross-office reviewer). Find-or-create: a second run changes nothing. |
+| `aip-review-journey.spec.ts` | Encoders add activities and submit (₱250,500 counts as ₱251,000) → head sends to PPDO → reviewer comments and sends back → encoder sees the return and the comment (bell included), replies, resubmits → head resends → reviewer sees the reply and accepts. |
+| `aip-v19-checks.spec.ts` | Over a division's allocation: warned, not blocked (PPDO-237). Over the office ceiling: encoder may submit, head may not send (PPDO-146). Reviewer edits an amount with a reason (PPDO-214). Office sees "PPDO made N changes" and marks it seen (PPDO-213). |
+| `aip-scope.spec.ts` | Office users asking for another office's data get their own office, a refusal or a redirect, never the other office's name or ref code. Encoder A can't write to division B's activity (checked against a control call from encoder B). |
+
+Each spec first **resets** the E2E office (`reset.ts`): it reopens or returns it as the reviewer,
+returns submitted divisions as the head, and deletes its projects. So a failed run never blocks the
+next one. Comments on deleted rows are kept by design (PPDO-206), so "N unresolved comments" grows from
+run to run; the specs never assert those counts.
+
+**Run it**
+
+```bash
+# E2E_SEED_*: an Admin WITHOUT the cross-office review grant. That grant makes an account a
+# comment-only reviewer, and the seed's writes would be refused (ReviewerWriteGuard).
+E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=aip
+```
+
+Watch it: add `--headed --workers=1`, or use `npm run e2e:ui` and pick the `aip` project.
+
+The seed generates each account's password and keeps it only in `e2e/.auth/aip-accounts.json`
+(git-ignored). If a saved password stops working, the next run resets that account.
+
+**On UAT:** also set `E2E_BASE_URL` (frontend) and `E2E_API_URL` (the Function App's `/api`). The
+seed then creates the E2E office, an LDIP, two divisions and four users **on UAT**. That is the point,
+but it is a decision: tell the finance testers that an "E2E Test Office (automated)" will appear on
+their review board. Add `E2E_AIP_CLEANUP=1` to take the office back out of the AIP when the run ends;
+otherwise it stays in the consolidated AIP (accepted) until the next run resets it.
+
+## Rules
+
+- **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named
+  after its ticket (e.g. `ppdo-244-double-submit.spec.ts`). No big-bang test-writing sprint.
+- Smoke specs are read-only. Journey specs write only to the dedicated E2E office, using unique
+  `E2E-<timestamp>` names.
+- Locate by label/role first; add a `data-testid` only when there is no accessible handle.

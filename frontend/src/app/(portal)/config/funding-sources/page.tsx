@@ -35,7 +35,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { ceilingFlagControl, ceilingFlagPayload } from "@/lib/fund-ceilings";
 import {
   configErrorMessage,
@@ -194,7 +194,7 @@ export default function FundingSourceConfigPage() {
           listOffices({ active: "true" }).then(setOffices).catch(() => setOffices([]));
         }
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Debounce search ─────────────────────────────────────────────────────────

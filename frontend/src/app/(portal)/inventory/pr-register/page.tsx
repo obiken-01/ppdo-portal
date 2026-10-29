@@ -26,7 +26,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -297,7 +297,7 @@ export default function PRListPage() {
         if (!data.canAccessInventory) { router.replace(!data.isHostOffice ? "/budget-planning" : "/dashboard"); return; }
         setMe(data);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Debounce the free-text filter fields only — date/status/division changes fire

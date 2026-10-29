@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   listAccounts,
   listDivisions,
@@ -165,7 +165,7 @@ export default function ConfigDashboardPage() {
           setCanManageSettings(data.role === "SuperAdmin" || data.isHostOffice);
         }
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load counts (each tile independently) ──────────────────────────────────────

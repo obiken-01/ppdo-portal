@@ -1175,13 +1175,13 @@ function WfpPageInner() {
 
           {/* Division selector */}
           {selectedOfficeId != null && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 max-w-full">
               <label className="text-sm text-slate-600 font-medium whitespace-nowrap">Division</label>
               {canBypassDivision ? (
                 <select
                   value={selectedDivisionId ?? ""}
                   onChange={(e) => setSelectedDivisionId(e.target.value ? Number(e.target.value) : null)}
-                  className="border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
+                  className="min-w-0 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600"
                 >
                   <option value="">— all divisions —</option>
                   {divisionList.map((d) => (

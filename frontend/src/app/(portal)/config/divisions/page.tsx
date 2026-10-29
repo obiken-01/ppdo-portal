@@ -36,7 +36,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createDivision,
@@ -220,7 +220,7 @@ export default function DivisionConfigPage() {
           setOwnOfficeName(data.officeName ?? data.officeCode ?? null);
         }
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Debounce search ─────────────────────────────────────────────────────────

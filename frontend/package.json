@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:uat": "node -e \"if(!process.env.E2E_BASE_URL){console.error('Set E2E_BASE_URL to the UAT frontend URL');process.exit(1)}\" && playwright test"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",
@@ -38,7 +41,6 @@
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "idb": "^8.0.3",
-    "lucide-react": "^1.16.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
@@ -47,6 +49,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^20",
     "@types/react": "^18",

@@ -31,6 +31,12 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 - [v1.9.0 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.0.md) — v1.9.0 pre-deployment checklist
 - [v1.9.1 — Pre-Deployment Checklist](Pre_Deployment_Checklist_v1.9.1.md) — v1.9.1 pre-deployment checklist (.NET 10 runtime switch)
 
+## Plans
+
+- [v1.9.2 — UAT Polish Plan](UAT_Polish_Plan.md) — role × page sweep, UI/UX consistency, performance re-measure and the Playwright foundation (PPDO-252)
+
 ## Audits
 
+- [v1.9.2 — Performance audit 2026-11](Performance_Audit_2026-11.md) — re-measure after PPDO-182…189; bundle baseline done, UAT measurements pending (PPDO-257)
+- [v1.9.2 — UAT pre-sweep findings](UAT_PreSweep_Findings.md) — suspects from reading the code, to confirm in the A1–A3 sweep (PPDO-252)
 - [v1.9.1 — Loading guard audit](Loading_Guard_Audit.md) — which actions on the heavy pages could run before their data loaded, and the fixes (PPDO-244)

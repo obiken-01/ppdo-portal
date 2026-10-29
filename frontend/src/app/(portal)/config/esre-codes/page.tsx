@@ -32,7 +32,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   configErrorMessage,
   createEsreCode,
@@ -124,7 +124,7 @@ export default function EsreCodesPage() {
             !data.isHostOffice ? "/budget-planning" : "/dashboard"
           );
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   useEffect(() => {

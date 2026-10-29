@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchMe } from "@/lib/me-cache";
+import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { listDivisions } from "@/lib/config";
 import api from "@/lib/api";
 import DataTable, { type Column } from "@/components/ui/DataTable";
@@ -62,7 +62,7 @@ export default function OfficeUserDivisionsPage() {
         setOfficeName(data.officeName ?? data.officeCode ?? null);
         setAuthChecked(true);
       })
-      .catch(() => router.replace("/login"));
+      .catch((err) => router.replace(meFailurePath(err)));
   }, [router]);
 
   // ── Load ──────────────────────────────────────────────────────────────────────

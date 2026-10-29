@@ -22,6 +22,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "./api";
+import { meFailureRedirect } from "./auth-redirect";
 import type { MeResponse } from "@/types";
 
 let _cache: MeResponse | null = null;
@@ -47,6 +48,29 @@ export function fetchMe(): Promise<MeResponse> {
     .finally(() => { _inflight = null; });
   return _inflight;
 }
+
+/**
+ * Where to send the user when fetchMe() fails on a portal page (PPDO-260): /reconnecting
+ * on a network error, so a cold start or restart doesn't end the session, else /login.
+ * Use as `.catch((err) => router.replace(meFailurePath(err)))`.
+ */
+export function meFailurePath(error: unknown): string {
+  const now = Date.now();
+  let last: number | null = null;
+  try {
+    const raw = sessionStorage.getItem(ME_RECONNECT_KEY);
+    last = raw ? Number(raw) : null;
+  } catch { /* storage blocked: no loop guard memory, the redirect still works */ }
+
+  const target = meFailureRedirect(error, window.location.pathname + window.location.search, last, now);
+  if (target.startsWith("/reconnecting")) {
+    try { sessionStorage.setItem(ME_RECONNECT_KEY, String(now)); } catch { /* see above */ }
+  }
+  return target;
+}
+
+/** sessionStorage key: when meFailurePath last sent this tab to /reconnecting (loop guard). */
+const ME_RECONNECT_KEY = "ppdo.meReconnectAt";
 
 /**
  * Hook: resolves /auth/me (cached), redirects if the permission check fails.
@@ -82,7 +106,7 @@ export function useMe(
         }
         setMe(data);
       })
-      .catch(() => { if (!cancelled) router.replace("/login"); });
+      .catch((err) => { if (!cancelled) router.replace(meFailurePath(err)); });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
