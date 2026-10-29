@@ -4,7 +4,7 @@ version: v1.9.2
 status: current
 tickets: [PPDO-263]
 updated: 2026-10-29
-status_note: "draft — decisions 6–9 await Ralph"
+status_note: "accepted — 2026-10-29"
 tickets_note: "PPDO-263; split into T1 backend and T2 frontend (§9)"
 supersedes_note: "—"
 ---
@@ -36,7 +36,7 @@ place. The report is **indicative**: the working PPMP is prepared in GSO's PBO-C
 3. **AIP source for FY 2028+ only** (`AipFiscalYears.IsEntered`). FY 2027 and earlier keep the v1.5
    PPMP from WFP procurement items (PPDO-265, shipped).
 
-### Proposed (need Ralph's yes)
+### Settled (Ralph, 2026-10-29, accepted as proposed)
 
 4. **Built from the AIP on every request, read-only.** Same as the initial WFP: nothing is stored or
    copied, so a PPDO edit after Consolidated shows at once.
@@ -65,7 +65,7 @@ place. The report is **indicative**: the working PPMP is prepared in GSO's PBO-C
    report's did (PPDO-224). `PpmpReportDto` gains `source: "Wfp" | "Aip"`. This keeps v1.9.2's
    "no new endpoints" rule intact.
 
-### Also proposed (defaults from the ticket)
+### Also settled (the ticket's defaults, accepted 2026-10-29)
 
 10. **Grouped by fund source**, one table and one Excel sheet per fund, from the line's
     `FundingSourceNameSnapshot` (blank = GENERAL FUND), as the initial WFP does.
