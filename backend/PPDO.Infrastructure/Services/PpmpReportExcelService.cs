@@ -63,6 +63,13 @@ public sealed class PpmpReportExcelService : IPpmpReportExcelService
         0, 8, 24, 40, 16, 18, 8, 13, 8, 15, 8, 15, 8, 15, 8, 15, 8, 15, 15,
     };
 
+    /// <summary>The title row's prefix on an initial PPMP (spec §6).</summary>
+    public const string InitialTitlePrefix = "INITIAL PPMP (FROM AIP) — ";
+
+    /// <summary>The note on every sheet of an initial PPMP (spec decision 2), in the initial WFP's words.</summary>
+    public static string IndicativeNote(string officeName)
+        => $"Indicative only. The figures are read from {officeName}'s consolidated AIP. The working PPMP is prepared in GSO's PBO-Connect app.";
+
     public byte[] Export(PpmpReportDto report)
     {
         using XLWorkbook wb = new();
@@ -93,7 +100,11 @@ public sealed class PpmpReportExcelService : IPpmpReportExcelService
 
         int row = 2;
 
-        MergeH(ws, row, ColItemNo, LastCol, "PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)",
+        // PPDO-263: an initial PPMP read off the AIP says so in its title row, as the initial WFP does.
+        string title = report.Source == WfpReportSources.Aip
+            ? $"{InitialTitlePrefix}PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)"
+            : "PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)";
+        MergeH(ws, row, ColItemNo, LastCol, title,
             s => s.Font.SetBold(true).Font.SetFontSize(14)
                   .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center));
         row++;
@@ -111,7 +122,14 @@ public sealed class PpmpReportExcelService : IPpmpReportExcelService
 
         MergeH(ws, row, ColItemNo, LastCol, $"Charged to: {fund.FundSourceName}",
             s => s.Font.SetBold(true).Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center));
-        row += 2;
+        row++;
+
+        // PPDO-263: row 6, free above the column headers, carries the indicative note, as on the
+        // initial WFP (PPDO-264). A new row would shift the form's fixed layout. FY <= 2027 gets none.
+        if (report.Source == WfpReportSources.Aip)
+            MergeH(ws, row, ColItemNo, LastCol, IndicativeNote(report.OfficeName),
+                s => s.Font.SetBold(true).Font.SetItalic(true));
+        row++;
 
         int headerRow = row;
         WriteColumnHeaders(ws, row);

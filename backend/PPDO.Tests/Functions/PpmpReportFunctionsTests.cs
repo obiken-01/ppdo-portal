@@ -500,4 +500,85 @@ public sealed class PpmpReportFunctionsTests
 
         Assert.Same(report, exported);
     }
+
+    // ── The initial PPMP, an entered year (PPDO-263) ──────────────────────────
+    // The gate stays CanAccessWfp: a guest office's department head, who reads their own office's initial
+    // WFP, is refused the PPMP (spec decision 8). Run against the real PermissionService.
+
+    private const int EnteredYear = 2028;
+
+    private static string EnteredQuery(string? divisionId = null)
+        => $"officeId={OfficeId}&fiscalYear={EnteredYear}" + (divisionId is null ? "" : $"&divisionId={divisionId}");
+
+    [Theory]
+    [InlineData(UserRole.Staff)]
+    [InlineData(UserRole.Admin)]
+    public async Task EnteredYear_AGuestOfficesHead_Gets403OnBoth_AndNoReportIsBuilt(UserRole role)
+    {
+        User head = MakeGuestOfficeUser(role);
+        head.OverrideCanReviewBudgetPlanning = true;
+        PpmpReportFunctions sut = SutWithRealPermissions(head);
+
+        HttpResponseData preview = await sut.GetPreview(FunctionHttp.Get(EnteredQuery()), CancellationToken.None);
+        HttpResponseData export = await sut.Export(FunctionHttp.Get(EnteredQuery()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Forbidden, preview.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, export.StatusCode);
+        _report.Verify(r => r.GetInitialReportAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<User>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnteredYear_Preview_GoesToTheInitialReport_WithTheRequestedDivisionAndCaller()
+    {
+        User caller = MakeUser(OwnDivision);
+        Authenticate(caller);
+        int? passed = null;
+        User? passedCaller = null;
+        _report.Setup(r => r.GetInitialReportAsync(OfficeId, EnteredYear, It.IsAny<int?>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback((int _, int _, int? d, User u, CancellationToken _) => { passed = d; passedCaller = u; })
+            .ReturnsAsync(ServiceResult<PpmpReportDto>.Ok(MakeReport() with { FiscalYear = EnteredYear, Source = WfpReportSources.Aip }));
+
+        HttpResponseData response = await Sut.GetPreview(FunctionHttp.Get(EnteredQuery("99")), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(99, passed);
+        Assert.Same(caller, passedCaller);
+        _report.Verify(r => r.GetReportAsync(
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnteredYear_NotConsolidated_Answers409OnBoth_AndNoWorkbookIsBuilt()
+    {
+        User caller = MakeUser(OwnDivision, UserRole.Admin);
+        Authenticate(caller);
+        _report.Setup(r => r.GetInitialReportAsync(OfficeId, EnteredYear, It.IsAny<int?>(), It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<PpmpReportDto>.Conflict("PTO's FY 2028 AIP is not marked as done yet."));
+
+        HttpResponseData preview = await Sut.GetPreview(FunctionHttp.Get(EnteredQuery()), CancellationToken.None);
+        HttpResponseData export = await Sut.Export(FunctionHttp.Get(EnteredQuery()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.Conflict, preview.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, export.StatusCode);
+        _excel.Verify(e => e.Export(It.IsAny<PpmpReportDto>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task EnteredYear_Export_BuildsTheWorkbookFromTheInitialReport()
+    {
+        User caller = MakeUser(OwnDivision, UserRole.Admin);
+        Authenticate(caller);
+        PpmpReportDto report = MakeReport() with { FiscalYear = EnteredYear, OfficeCode = "PTO", Source = WfpReportSources.Aip };
+        _report.Setup(r => r.GetInitialReportAsync(OfficeId, EnteredYear, null, caller, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ServiceResult<PpmpReportDto>.Ok(report));
+        PpmpReportDto? exported = null;
+        _excel.Setup(e => e.Export(It.IsAny<PpmpReportDto>())).Callback((PpmpReportDto r) => exported = r).Returns([1]);
+
+        HttpResponseData response = await Sut.Export(FunctionHttp.Get(EnteredQuery()), CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Same(report, exported);
+        Assert.Equal("attachment; filename=\"PPMP_PTO_2028.xlsx\"", FunctionHttp.Header(response, "Content-Disposition"));
+    }
 }
