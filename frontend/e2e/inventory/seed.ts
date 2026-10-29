@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, type APIRequestContext } from "@playwright/test";
-import { API_URL, Api, ensureAccount, hostOfficeId, type AipAccount, type Json } from "../aip/seed";
+import { API_URL, Api, ensureAccount, hostOfficeId, stateFile, type AipAccount, type Json } from "../aip/seed";
 
 // PPDO-259 — the inventory journey's own data, built through the app's API like the AIP seed:
 //   a PPDO (host office) division "E2E Inventory (test)" with inventory access,
@@ -19,8 +19,9 @@ export interface InventoryWorld {
   account: AipAccount;
 }
 
-const ACCOUNT_FILE = "e2e/.auth/inventory-account.json";
-export const INVENTORY_WORLD_FILE = "e2e/.auth/inventory-world.json";
+// Per environment, like the AIP state (see stateFile in ../aip/seed.ts).
+const ACCOUNT_FILE = stateFile("inventory-account.json");
+export const INVENTORY_WORLD_FILE = stateFile("inventory-world.json");
 
 export async function seedInventoryWorld(request: APIRequestContext): Promise<InventoryWorld> {
   const email = process.env.E2E_SEED_EMAIL;
