@@ -50,10 +50,19 @@ export interface AipWorld {
   accounts: Record<AipRole, AipAccount>;
 }
 
-const ACCOUNTS_FILE = "e2e/.auth/aip-accounts.json";
-export const WORLD_FILE = "e2e/.auth/aip-world.json";
-
 export const API_URL = (process.env.E2E_API_URL ?? "http://localhost:7071/api").replace(/\/$/, "");
+
+/**
+ * Seeded ids and generated passwords are kept per environment (one folder per API host). With one
+ * shared file, a UAT run read the LOCAL world: its office id would have pointed at whatever UAT
+ * office has that id, and the teardown removes that office's rows from the AIP.
+ */
+export function stateFile(name: string): string {
+  return `e2e/.auth/${new URL(API_URL).host.replace(/[^a-z0-9]+/gi, "_")}/${name}`;
+}
+
+const ACCOUNTS_FILE = stateFile("aip-accounts.json");
+export const WORLD_FILE = stateFile("aip-world.json");
 
 /**
  * The seed Admin must not also be a persona. A user has one live refresh token: every seed and
@@ -335,6 +344,15 @@ async function isReady(request: APIRequestContext, username: string, password: s
   return !me.mustChangePassword && !me.needsRecoverySetup;
 }
 
+/** Whether aip-setup has finished for this environment at least once. */
+export function hasWorld(): boolean {
+  return fs.existsSync(WORLD_FILE);
+}
+
 export function readWorld(): AipWorld {
-  return JSON.parse(fs.readFileSync(WORLD_FILE, "utf8")) as AipWorld;
+  const world = JSON.parse(fs.readFileSync(WORLD_FILE, "utf8")) as AipWorld;
+  // Belt and braces: never act on ids seeded against a different server.
+  if (world.apiUrl !== API_URL)
+    throw new Error(`${WORLD_FILE} was seeded against ${world.apiUrl}, not ${API_URL}. Run aip-setup for this environment.`);
+  return world;
 }

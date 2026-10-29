@@ -86,15 +86,20 @@ run to run; the specs never assert those counts.
 **Run it**
 
 ```bash
-# E2E_SEED_*: an Admin WITHOUT the cross-office review grant. That grant makes an account a
-# comment-only reviewer, and the seed's writes would be refused (ReviewerWriteGuard).
+# E2E_SEED_*: an Admin with exactly one per-user grant, "Set Office Ceilings (PPDO finance)":
+# the seed sets the E2E office's GF ceiling. It must NOT hold the cross-office review grant,
+# which makes an account a comment-only reviewer and the seed's writes are refused
+# (ReviewerWriteGuard). Do its first sign-in (new password, recovery question) by hand once.
 E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=aip
 ```
 
 Watch it: add `--headed --workers=1`, or use `npm run e2e:ui` and pick the `aip` project.
 
-The seed generates each account's password and keeps it only in `e2e/.auth/aip-accounts.json`
-(git-ignored). If a saved password stops working, the next run resets that account.
+**State is kept per environment**, in `e2e/.auth/<api host>/` (git-ignored): the seeded ids
+(`aip-world.json`, `inventory-world.json`) and each test account's generated password
+(`aip-accounts.json`, `inventory-account.json`). A local run and a UAT run never read each other's
+ids; with one shared file, a UAT teardown once read the local office id. If a saved password stops
+working, the next run resets that account.
 
 **On UAT:** also set `E2E_BASE_URL` (frontend) and `E2E_API_URL` (the Function App's `/api`). The
 seed then creates the E2E office, an LDIP, two divisions and four users **on UAT**. That is the point,
