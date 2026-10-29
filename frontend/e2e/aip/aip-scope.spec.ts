@@ -19,6 +19,9 @@ async function as(request: Parameters<typeof Api.login>[0], role: AipRole): Prom
 }
 
 test.beforeAll(async ({ request, browser, baseURL }) => {
+  // Hooks keep the 30s default; describe.configure's timeout covers the tests only. Reset plus
+  // an activity in the browser runs past 30s when the persona suites share the dev server.
+  test.setTimeout(120_000);
   await resetAipOffice(request);
   // Division B needs one activity with a line for the division-lock check.
   const { page, close } = await signIn(browser, "encoderB", baseURL);
