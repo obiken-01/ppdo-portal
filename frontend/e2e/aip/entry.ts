@@ -85,8 +85,22 @@ export async function addActivity(page: Page, a: ActivitySpec) {
   if (a.mooe) await amounts.nth(1).fill(String(a.mooe));
   if (a.co) await amounts.nth(2).fill(String(a.co));
   await row.getByRole("button", { name: "Save" }).click();
-  // The row stays open (inputs disabled) until the save answers; slow when other suites share the server.
-  await expect(page.getByPlaceholder("Search accounts…")).toBeHidden({ timeout: 20_000 });
+  await expectLineSaved(page);
+}
+
+/**
+ * The row stays open (inputs disabled) until the save answers; slow when other suites share the
+ * server. A refused save leaves it open too, with the server's reason in a red box under the
+ * table, so a failure names that reason instead of only "still visible".
+ */
+async function expectLineSaved(page: Page) {
+  const editor = page.getByPlaceholder("Search accounts…");
+  const refusal = page.locator("p.bg-red-50.text-red-700");
+  await expect.poll(async () => {
+    if (!(await editor.isVisible())) return "saved";
+    if (await refusal.first().isVisible()) return `refused: ${(await refusal.allInnerTexts()).join(" | ")}`;
+    return "saving";
+  }, { message: "the expenditure line was not saved", timeout: 20_000 }).toBe("saved");
 }
 
 /**
