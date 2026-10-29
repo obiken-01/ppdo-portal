@@ -20,6 +20,8 @@ export default defineConfig({
     // Off in CI: a trace keeps typed values (the login password) and request bodies and tokens, and
     // the E2E (UAT) workflow uploads the report as an artifact of a PUBLIC repo. Locally it stays useful.
     trace: isCI ? "off" : "on-first-retry",
+    // A picture of the page when a test fails. Off in CI for the same reason: it shows the data.
+    screenshot: isCI ? "off" : "only-on-failure",
   },
   projects: [
     {
