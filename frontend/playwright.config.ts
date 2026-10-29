@@ -17,7 +17,9 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
-    trace: "on-first-retry",
+    // Off in CI: a trace keeps typed values (the login password) and request bodies and tokens, and
+    // the E2E (UAT) workflow uploads the report as an artifact of a PUBLIC repo. Locally it stays useful.
+    trace: isCI ? "off" : "on-first-retry",
   },
   projects: [
     {
