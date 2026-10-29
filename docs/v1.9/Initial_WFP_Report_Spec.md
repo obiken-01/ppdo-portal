@@ -111,8 +111,9 @@ None. No migration.
 
 - WFP report page, entered year: the office picker lists Consolidated offices only. Empty:
   "No office's FY {fy} AIP is marked as done yet."
-- Title "Initial WFP (from AIP)" and a note under it: "Read from {Office}'s consolidated AIP. Q1–Q4
-  for lines without items are spread over the activity's months."
+- Title "Initial WFP (from AIP)" and a note under it (PPDO-264): "**Indicative only.** The figures are read from
+  {Office}'s consolidated AIP. The working WFP is prepared in GSO's PBO-Connect app. Q1–Q4 for lines without items are
+  spread over the activity's months." The Excel export carries the first line too, in row 6 of each sheet.
 - Loading, error and the division filter as the WFP report today.
 
 ## 7. Non-goals
