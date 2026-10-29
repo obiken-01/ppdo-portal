@@ -81,6 +81,18 @@ public sealed class WfpReportExcelServiceTests
 
         Assert.Contains("WORK AND FINANCIAL PLAN FY", text);
         Assert.DoesNotContain("INITIAL WFP", text);
+        Assert.DoesNotContain("Indicative only", text);   // PPDO-264
+    }
+
+    [Fact]
+    public void Export_TheInitialWfp_CarriesTheIndicativeNote_OnEverySheet()   // PPDO-264
+    {
+        WfpReportDto report = SampleReport() with { Source = WfpReportSources.Aip };
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(report)));
+
+        string expected =
+            $"Indicative only. Read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared by GSO.";
+        Assert.All(wb.Worksheets, ws => Assert.Contains(ws.CellsUsed(), c => c.GetString() == expected));
     }
 
     [Fact]
