@@ -148,7 +148,8 @@ public sealed class PpmpReportServiceTests
 
         PpmpReportService sut = new(
             aipRepo.Object, wfpRepo.Object, expenditures.Object,
-            officeRepo.Object, divisionRepo.Object, priceRepo.Object);
+            officeRepo.Object, divisionRepo.Object, priceRepo.Object,
+            new Mock<IAipExpenditureRepository>(MockBehavior.Strict).Object, new Mock<IPermissionService>(MockBehavior.Strict).Object);
 
         return new Fixture(sut, aipRepo, wfpRepo, expenditures, offices, divisions, priceItems);
     }

@@ -503,7 +503,9 @@ function WfpReportPageInner() {
 
   // ── Fiscal-year options per type (PPDO-225) ──────────────────────────────
   // AIP: the entered years. WFP: the years PPDO has records for, plus the entered years (the initial
-  // WFP) when the reader may open them; a guest office sees the entered years only. PPMP: as before.
+  // WFP) when the reader may open them; a guest office sees the entered years only. ↩️ PPMP (PPDO-263):
+  // the same years as a PPDO reader's WFP, since the entered years are the initial PPMP. PPMP is only
+  // offered to `canOpenWfpReport` readers, so a guest office never reaches its year list.
   const isInitialYear = fiscalYear != null && isEnteredFiscalYear(fiscalYear);
   const yearOptions: number[] = isAip
     ? AIP_YEARS
@@ -512,9 +514,12 @@ function WfpReportPageInner() {
           ...(me != null && canOpenWfpReport(me) ? availableFiscalYears : []),
           ...(me != null && canOpenWfpReportForYear(me, FIRST_ENTERED_FISCAL_YEAR) ? AIP_YEARS : []),
         ].filter((fy, i, all) => all.indexOf(fy) === i).sort((x, y) => x - y)
-      : availableFiscalYears;
+      : [...availableFiscalYears, ...AIP_YEARS]
+          .filter((fy, i, all) => all.indexOf(fy) === i).sort((x, y) => x - y);
   /** True when the WFP on screen is read off the AIP — office list, empty states and title key off it. */
   const isInitialWfp = reportType === "WFP" && isInitialYear;
+  /** PPDO-263 — the same for the PPMP: only Consolidated offices are listed. */
+  const isInitialReport = isInitialWfp || (reportType === "PPMP" && isInitialYear);
   const readsOwnOfficeOnly = me != null && !me.isHostOffice;
 
   // ── Bulk initial WFP export (PPDO-230) ───────────────────────────────────
@@ -812,7 +817,7 @@ function WfpReportPageInner() {
                 {officesLoading
                   ? "Loading offices…"
                   : offices.length === 0
-                    ? (isInitialWfp ? "No office ready yet" : "No offices with a WFP yet")
+                    ? (isInitialReport ? "No office ready yet" : "No offices with a WFP yet")
                     : "— select office —"}
               </option>
               {offices.map((o) => (
@@ -929,7 +934,7 @@ function WfpReportPageInner() {
         <p className="text-slate-600 text-sm py-10 text-center print:hidden">
           {isAip
             ? "Select a fiscal year and office, then click “Generate Preview” to view the report."
-            : isInitialWfp && !officesLoading && offices.length === 0
+            : isInitialReport && !officesLoading && offices.length === 0
               // PPDO-225 spec §6 — the picker is empty because nothing is Consolidated yet, not because
               // the list failed to load. An office reads only its own, so its wording says "Your".
               ? (readsOwnOfficeOnly
@@ -988,7 +993,8 @@ function WfpReportPageInner() {
         </>
       )}
 
-      {/* PPMP — item-grained, one table per fund source (RAL-183). Preview only; export is RAL-184. */}
+      {/* PPMP — item-grained, one table per fund source (RAL-183). For an entered year it is the initial
+          PPMP read off the AIP, with its title and note (PPDO-263). */}
       {reportType === "PPMP" && ppmpReport && !reportLoading && (
         <PpmpReportView report={ppmpReport} />
       )}

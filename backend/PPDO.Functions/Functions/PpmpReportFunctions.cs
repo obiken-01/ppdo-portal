@@ -22,6 +22,13 @@ namespace PPDO.Functions.Functions;
 /// used to be the only check here), and the division is <see cref="WfpDivisionScope"/> (RAL-136,
 /// PPDO-198): finance and Admin see every division, Staff their own, Staff with no division nothing.
 /// </para>
+///
+/// <para>
+/// ↩️ <b>PPDO-263 (v1.9.2): an entered year (<see cref="AipFiscalYears.IsEntered"/>) is the initial PPMP,
+/// read off the consolidated AIP's procurement items.</b> Unlike the initial WFP, the gate stays
+/// <c>CanAccessWfp</c>: a guest office's department head gets 403, even for their own office (spec
+/// decision 8). The service owns the Consolidated gate (409) and the division rule.
+/// </para>
 /// </summary>
 public sealed class PpmpReportFunctions
 {
@@ -48,6 +55,9 @@ public sealed class PpmpReportFunctions
     private Task<bool> CanAccess(User u) => _permissions.CanAccessWfpAsync(u);
     private Task<DivisionScope> ScopeOf(User u) => WfpDivisionScope.ResolveAsync(u, _permissions);
 
+    /// <summary>PPDO-263: the initial PPMP is served for an entered year.</summary>
+    private static bool IsEnteredYear(int fiscalYear) => AipFiscalYears.IsEntered(fiscalYear);
+
     // ── GET /api/budget-planning/ppmp/report/preview?officeId=&fiscalYear=&divisionId= ─────────
     // divisionId (RAL-136): division-scoped callers are ALWAYS forced to their own division — any
     // divisionId they pass is ignored — so they can never read another division's report by
@@ -70,6 +80,12 @@ public sealed class PpmpReportFunctions
                 ApiResponse<PpmpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
         int? requestedDivisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
+
+        // PPDO-263: the service owns the gate (409) and the division for the initial PPMP.
+        if (IsEnteredYear(fiscalYear))
+            return await ConfigHttp.FromResultAsync(req,
+                await _report.GetInitialReportAsync(officeId, fiscalYear, requestedDivisionId, caller, ct), ct);
+
         if (!WfpDivisionScope.TryFilter(await ScopeOf(caller), requestedDivisionId, out int? divisionId))
             return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
                 ApiResponse<PpmpReportDto>.Fail("Report not found."), ct);
@@ -97,14 +113,25 @@ public sealed class PpmpReportFunctions
                 ApiResponse<PpmpReportDto>.Fail("officeId and fiscalYear query parameters are required."), ct);
 
         int? requestedDivisionId = int.TryParse(req.Query["divisionId"], out int did) ? did : null;
-        if (!WfpDivisionScope.TryFilter(await ScopeOf(caller), requestedDivisionId, out int? divisionId))
-            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
-                ApiResponse<PpmpReportDto>.Fail("Report not found."), ct);
 
-        ServiceResult<PpmpReportDto> result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
-        if (!result.IsSuccess)
-            return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
-                ApiResponse<PpmpReportDto>.Fail(result.Error ?? "Report not found."), ct);
+        ServiceResult<PpmpReportDto> result;
+        if (IsEnteredYear(fiscalYear))
+        {
+            // PPDO-263: the initial PPMP keeps its own status codes (404 missing, 409 not Consolidated).
+            result = await _report.GetInitialReportAsync(officeId, fiscalYear, requestedDivisionId, caller, ct);
+            if (!result.IsSuccess) return await ConfigHttp.FromResultAsync(req, result, ct);
+        }
+        else
+        {
+            if (!WfpDivisionScope.TryFilter(await ScopeOf(caller), requestedDivisionId, out int? divisionId))
+                return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                    ApiResponse<PpmpReportDto>.Fail("Report not found."), ct);
+
+            result = await _report.GetReportAsync(officeId, fiscalYear, divisionId, ct);
+            if (!result.IsSuccess)
+                return await ConfigHttp.EnvelopeAsync(req, HttpStatusCode.NotFound,
+                    ApiResponse<PpmpReportDto>.Fail(result.Error ?? "Report not found."), ct);
+        }
 
         byte[] bytes = _excel.Export(result.Value!);
 

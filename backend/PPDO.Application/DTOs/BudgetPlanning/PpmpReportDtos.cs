@@ -79,9 +79,15 @@ public record PpmpReportFundSourceDto(
 /// users, or a finance officer who picked one) and null for the office-consolidated view — the
 /// header's "END-USER/UNIT" line is composed from OfficeName [+ DivisionName].
 /// </summary>
+/// <param name="Source">
+/// Where the items come from (PPDO-263): <see cref="WfpReportSources.Wfp"/> for FY ≤ 2027 (PPDO's WFP
+/// procurement items, v1.5), <see cref="WfpReportSources.Aip"/> for an entered year's initial PPMP, read
+/// off the consolidated AIP's procurement items. Always on the wire, unlike the WFP report's.
+/// </param>
 public record PpmpReportDto(
     int      FiscalYear,
     string   OfficeCode,
     string   OfficeName,
     string?  DivisionName,
-    IReadOnlyList<PpmpReportFundSourceDto> FundSourceReports);
+    IReadOnlyList<PpmpReportFundSourceDto> FundSourceReports,
+    string   Source = WfpReportSources.Wfp);

@@ -156,4 +156,51 @@ public sealed class PpmpReportExcelServiceTests
         string allText = string.Join(" ", wb.Worksheets.First().CellsUsed().Select(c => c.GetString()));
         Assert.Contains("Provincial Planning and Development Office — Sectoral Planning Division", allText);
     }
+
+    // ── The initial PPMP (PPDO-263, spec §6) ──────────────────────────────────
+
+    private const string Note =
+        "Indicative only. The figures are read from Provincial Planning and Development Office's consolidated AIP. " +
+        "The working PPMP is prepared in GSO's PBO-Connect app.";
+
+    [Fact]
+    public void Export_InitialPpmp_PrefixesTheTitle_AndPutsTheNoteInRow6_OnEverySheet()
+    {
+        PpmpReportDto report = SampleReport() with { FiscalYear = 2028, Source = WfpReportSources.Aip };
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(report)));
+
+        Assert.Equal(2, wb.Worksheets.Count);
+        foreach (IXLWorksheet ws in wb.Worksheets)
+        {
+            Assert.Equal("INITIAL PPMP (FROM AIP) — PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)", ws.Cell(2, 1).GetString());
+            Assert.Equal(Note, ws.Cell(6, 1).GetString());
+            Assert.Equal("Item No.", ws.Cell(7, 1).GetString());   // the headers did not move
+        }
+    }
+
+    [Fact]
+    public void Export_InitialPpmpWithNoItems_StillCarriesTheTitleAndNote()
+    {
+        PpmpReportDto report = new(2028, "PTO", "Provincial Planning and Development Office", null, [], WfpReportSources.Aip);
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(report)));
+
+        IXLWorksheet ws = Assert.Single(wb.Worksheets);
+        Assert.StartsWith("INITIAL PPMP (FROM AIP)", ws.Cell(2, 1).GetString());
+        Assert.Equal(Note, ws.Cell(6, 1).GetString());
+    }
+
+    [Fact]
+    public void Export_Fy2027Ppmp_HasNeitherThePrefixNorTheNote()
+    {
+        using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(SampleReport())));
+
+        foreach (IXLWorksheet ws in wb.Worksheets)
+        {
+            Assert.Equal("PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP)", ws.Cell(2, 1).GetString());
+            Assert.Equal("", ws.Cell(6, 1).GetString());
+            string allText = string.Join(" ", ws.CellsUsed().Select(c => c.GetString()));
+            Assert.DoesNotContain("Indicative", allText);
+            Assert.DoesNotContain("INITIAL", allText);
+        }
+    }
 }

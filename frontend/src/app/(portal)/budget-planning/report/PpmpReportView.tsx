@@ -90,7 +90,8 @@ function FundBlock({
       <div className="h-1.5 bg-green-800 border-x border-t border-slate-200" />
       <div className="px-5 py-4 border-b border-slate-200 text-center space-y-0.5 bg-white border-x">
         <p className="text-base font-bold text-green-800">
-          PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) — FY {report.fiscalYear}
+          {report.source === "Aip" && "INITIAL PPMP (FROM AIP) — "}PROJECT PROCUREMENT MANAGEMENT PLAN (PPMP) — FY{" "}
+          {report.fiscalYear}
         </p>
         <p className="text-sm text-slate-600">END-USER/UNIT: {endUser}</p>
         <p className="text-sm text-slate-600">Charged to: {fund.fundSourceName}</p>
@@ -215,16 +216,39 @@ function FundBlock({
   );
 }
 
+/** PPDO-263 — the title of the PPMP read off the consolidated AIP (spec §6). */
+const INITIAL_PPMP_TITLE = "Initial PPMP (from AIP)";
+
 export default function PpmpReportView({ report }: { report: PpmpReportDto }) {
-  if (report.fundSourceReports.length === 0) {
-    return (
-      <div className="bg-white border border-slate-200 p-6">
-        <p className="text-slate-600 text-sm text-center">
-          No procurement items entered yet for this office under FY {report.fiscalYear}.
-        </p>
-      </div>
-    );
-  }
+  const isInitial = report.source === "Aip";
+  return (
+    <>
+      {/* PPDO-263: the initial PPMP says what it is and what it leaves out, as the initial WFP does. */}
+      {isInitial && (
+        <div className="mb-4 print:hidden">
+          <h2 className="text-base font-semibold text-slate-800">{INITIAL_PPMP_TITLE}</h2>
+          <p className="text-sm text-slate-600">
+            <span className="font-semibold">Indicative only.</span> The figures are read from{" "}
+            {report.officeName}’s consolidated AIP. The working PPMP is prepared in GSO’s PBO-Connect app.
+          </p>
+        </div>
+      )}
+      {report.fundSourceReports.length === 0 ? (
+        <div className="bg-white border border-slate-200 p-6">
+          <p className="text-slate-600 text-sm text-center">
+            {isInitial
+              ? `${report.officeName}’s FY ${report.fiscalYear} AIP has no procurement items.`
+              : `No procurement items entered yet for this office under FY ${report.fiscalYear}.`}
+          </p>
+        </div>
+      ) : (
+        <PpmpFundBlocks report={report} />
+      )}
+    </>
+  );
+}
+
+function PpmpFundBlocks({ report }: { report: PpmpReportDto }) {
   return (
     <>
       {report.fundSourceReports.map((fund, i) => (
