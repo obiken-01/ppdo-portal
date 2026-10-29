@@ -139,7 +139,7 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
         // and the borders start at fixed rows). The entered WFP gets no note.
         if (report.Source == WfpReportSources.Aip)
             MergeH(ws, row, ColRef, ColNature,
-                $"Indicative only. Read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared by GSO.",
+                $"Indicative only. The figures are read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared in GSO's PBO-Connect app.",
                 s => s.Font.SetBold(true).Font.SetItalic(true));
         row++;
 

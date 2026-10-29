@@ -91,7 +91,7 @@ public sealed class WfpReportExcelServiceTests
         using IXLWorkbook wb = new XLWorkbook(new MemoryStream(_sut.Export(report)));
 
         string expected =
-            $"Indicative only. Read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared by GSO.";
+            $"Indicative only. The figures are read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared in GSO's PBO-Connect app.";
         Assert.All(wb.Worksheets, ws => Assert.Contains(ws.CellsUsed(), c => c.GetString() == expected));
     }
 

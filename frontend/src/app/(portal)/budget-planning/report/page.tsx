@@ -961,8 +961,8 @@ function WfpReportPageInner() {
             <div className="mb-4 print:hidden">
               <h2 className="text-base font-semibold text-slate-800">{INITIAL_WFP_TITLE}</h2>
               <p className="text-sm text-slate-600">
-                <span className="font-semibold">Indicative only.</span> Read from{" "}
-                {report.officeName}’s consolidated AIP. The working WFP is prepared by GSO. Q1–Q4
+                <span className="font-semibold">Indicative only.</span> The figures are read from{" "}
+                {report.officeName}’s consolidated AIP. The working WFP is prepared in GSO’s PBO-Connect app. Q1–Q4
                 for lines without items are spread over the activity’s months.
               </p>
             </div>
