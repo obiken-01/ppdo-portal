@@ -103,7 +103,10 @@ blank override means granted. An explicit `false` still turns it off.
 
 ### 2.2a `CanAccessWfp` — Budget Planning in the host office (PPDO-198)
 
-The gate on every WFP endpoint: records, expenditures, ceilings and the WFP report. Composed from
+The gate on every WFP endpoint: records, expenditures, ceilings and the WFP report. ↩️ Also the
+**PPMP report** (`/api/budget-planning/ppmp/report/*`, PPDO-265), which is built from PPDO's WFP
+procurement items: until v1.9.2 it checked only `CanAccessBudgetPlanning`, which every guest office
+holds by default (§2.2). Its division axis is §3.3's, the same as the WFP report. Composed from
 existing inputs; it has **no override column and no division flag of its own**. The override and
 division inputs below are `CanAccessBudgetPlanning`'s.
 
