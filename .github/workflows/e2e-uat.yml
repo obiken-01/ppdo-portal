@@ -32,6 +32,14 @@ jobs:
       E2E_EN_PASSWORD: ${{ secrets.E2E_EN_PASSWORD }}
       E2E_XD_EMAIL: ${{ secrets.E2E_XD_EMAIL }}
       E2E_XD_PASSWORD: ${{ secrets.E2E_XD_PASSWORD }}
+      # Journeys (PPDO-259): the seed Admin builds the E2E office and inventory division through the
+      # API, so it also needs the Function App's /api URL. Without the seed secrets the journeys are
+      # skipped. The seed Admin must hold no cross-office review grant and must not be a persona.
+      E2E_API_URL: ${{ secrets.E2E_API_URL }}
+      E2E_SEED_EMAIL: ${{ secrets.E2E_SEED_EMAIL }}
+      E2E_SEED_PASSWORD: ${{ secrets.E2E_SEED_PASSWORD }}
+      # UAT is shared: always take the E2E office back out of the consolidated AIP afterwards.
+      E2E_AIP_CLEANUP: "1"
 
     steps:
       - uses: actions/checkout@v7

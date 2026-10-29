@@ -38,8 +38,18 @@ signed-in specs run once per project. Keep passwords in your password manager, n
 E2E_BASE_URL=https://<uat-frontend-host> E2E_SA_EMAIL=… E2E_SA_PASSWORD=… npm run e2e:uat
 ```
 
-Or run the **E2E (UAT)** workflow from the Actions tab (manual only; credentials come from the
-`uat` environment secrets `E2E_*` and the `E2E_BASE_URL` variable/secret).
+Or run the **E2E (UAT)** workflow from the Actions tab (manual only). Everything comes from the `uat`
+environment **secrets**:
+
+| Secret | For |
+|---|---|
+| `E2E_BASE_URL` | UAT frontend URL |
+| `E2E_<KEY>_EMAIL` / `E2E_<KEY>_PASSWORD` | Each persona (`SA`, `AD`, `RV`, `ST`, `EN`, `XD`); missing ones are skipped |
+| `E2E_API_URL` | The UAT Function App's `/api` URL (journeys) |
+| `E2E_SEED_EMAIL` / `E2E_SEED_PASSWORD` | The seed Admin (journeys): no cross-office review grant, not a persona. Missing → journeys skipped |
+
+The workflow always sets `E2E_AIP_CLEANUP=1`. Traces are off in CI: they keep typed passwords and
+request tokens, and the report is uploaded as an artifact of this **public** repo.
 
 ## Using a preinstalled browser
 
