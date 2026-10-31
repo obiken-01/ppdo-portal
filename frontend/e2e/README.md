@@ -76,6 +76,30 @@ lines follow the persona **definitions** in the plan (§3.1). An account with ex
 local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
 A new page gets a row in `routes.ts`.
 
+## Sweep (`sweep.spec.ts`, PPDO-272)
+
+Automates three items of the plan's per-page checklist (§3.2) on every route a persona may open.
+Read-only: it only holds back, blocks or reads GETs.
+
+| Check | What it does | Passes when |
+|---|---|---|
+| Item 4, error state | Aborts the page's main GET (`mainApi` in `routes.ts`), as DevTools "Block request URL" does | Within 15 s the page shows an error or goes to `/reconnecting`. Fails on a blank main area, an endless skeleton, placeholder dashes with no message, or content that reads as real data |
+| Item 2, loading state | Holds the main GET back until the checks are done | A skeleton, spinner, "Loading…" line, or placeholder (`—`, `FY …`) shows; and the page's `primary` button, when set, is disabled |
+| Item 10, phone width | Opens the page at 390 px | No sideways page scroll, sidebar off-canvas until "Open menu" is pressed, no console error, no "Application error" after a reload |
+
+`mainApi` is the page's own data call, found by watching what the page requests on load (not the
+shell's auth and notification calls). A page with no data call on load has none, and its error and
+loading checks are skipped. A new page gets `mainApi` (and `primary`, if it has a main button) in `routes.ts`.
+
+**Findings.** A failing page is a bug: file it under PPDO-252 and add it to `KNOWN` in the spec. That
+marks the test `test.fail()`, so the suite stays green, and it fails with "expected to fail" once the
+page is fixed, which is the cue to delete the entry.
+
+Heuristics to know: "loading" and "error" are recognised by class names (`animate-pulse`, `animate-spin`),
+`role="alert"`, and wording such as "Couldn't load…" / "Failed…". A page that shows its problem in
+other words will read as a miss; widen `ERROR_TEXT` in the spec rather than weaken the check. The
+check cannot tell zeros from real zeros; that stays a manual look.
+
 ## AIP journeys (`e2e/aip/`, PPDO-259)
 
 These change data, so they run in their own **E2E office** that the suite builds itself, never in a
@@ -143,6 +167,21 @@ npx playwright test --project=aip --project=inventory     # seed vars set, perso
 npx playwright test --project=public --project="as-*"     # persona vars set
 ```
 
+## Bad-path specs (PPDO-271)
+
+The happy paths were covered; these cover what a user gets wrong. Each assertion was red-tested.
+
+| File | Project | What it covers |
+|---|---|---|
+| `public-login.spec.ts` | `public` | A wrong sign-in shows the error and stays on `/login`. Uses a username that does not exist, so no real account collects a failed attempt toward the rate limit. |
+| `aip/ppdo-271-aip-line-bad-paths.spec.ts` | `aip` | AIP expenditure line: no account / no amount refused next to the field with nothing sent; a negative amount can't be typed and the API refuses one; double-click Save sends one POST (PPDO-244); a save against a line another session changed gets the conflict panel (PPDO-121). |
+| `aip/ppdo-271-funding-sources.spec.ts` | `aip` | Funding Sources (as the E2E department head, own-office view): empty form, duplicate code. A duplicate *name* is accepted today: `test.fail()` with PPDO-282. |
+| `inventory/ppdo-271-inventory-bad-paths.spec.ts` | `inventory` | Create PR with no items is refused and nothing is sent; PR report exports an `.xlsx` holding the total on screen. |
+| `ppdo-271-report-exports.spec.ts` | `as-*` | Report page exports (initial WFP FY 2028, PPMP FY 2028, WFP FY 2027): `.xlsx` arrives and holds the grand / fund totals shown. Needs a persona that may choose the office (SA, AD); others skip. FY 2027 skips where no office has WFP lines. |
+
+`xlsx.ts` is a ~100-line reader (zip + sheet XML) so the export specs need no new dependency. It answers
+"is this a workbook, and does it hold the number the screen shows", not cell-by-cell comparisons.
+
 ## Perf (`e2e/perf/`, PPDO-257)
 
 A measuring tool, not a test: it records numbers for §3 and §4 of
@@ -150,12 +189,20 @@ A measuring tool, not a test: it records numbers for §3 and §4 of
 fail on a slow page**. It is its own Playwright project, `perf`, left out of the config unless asked for,
 so `npx playwright test` and `--list` never see it.
 
-**On UAT (the real measurement):** Actions → **E2E (UAT)** → *Run workflow* → `suite: perf`. Tick
-`bulk_export` only if you want the bulk WFP export timed: it writes one export job row on UAT. When it
-ends, download the **perf-results** artifact (`perf-<time>.md` and `.json`); the markdown is also in the
-job log. Paste the two tables into §3 and §4 of the audit doc.
+**On UAT (the real measurement):** run it from your machine against UAT, since the GitHub workflow
+is not used yet:
 
-**Locally** (backend and frontend running, persona credentials set):
+```bash
+E2E_BASE_URL=https://<uat-frontend-host> E2E_API_URL=https://<uat-api-host>/api \n  E2E_SA_EMAIL=<user> E2E_SA_PASSWORD=<password> npm run e2e:perf
+```
+
+Add `E2E_PERF_BULK_EXPORT=1` only if you want the bulk WFP export timed: it writes one export job row
+on UAT. The tables print in the terminal and are saved to `e2e-results/perf/` (`perf-<time>.md` and
+`.json`). Paste the two tables into §3 and §4 of the audit doc. Once the workflow is set up (see
+[Running it in GitHub Actions](#running-it-in-github-actions-not-set-up-yet)), the same run is
+Actions → **E2E (UAT)** → *Run workflow* → `suite: perf`, with a **perf-results** artifact.
+
+**Against local** (backend and frontend running, persona credentials set):
 
 ```bash
 E2E_SA_EMAIL=<user> E2E_SA_PASSWORD=<password> npm run e2e:perf
