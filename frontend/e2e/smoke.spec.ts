@@ -1,7 +1,6 @@
-import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import type { PersonaKey } from "./personas";
-import { PORTAL_ROUTES, REDIRECT_ROUTES, type PortalRoute } from "./routes";
+import { expectSignedIn, marker, open, pathname, personaOf, watch } from "./helpers";
+import { PORTAL_ROUTES, REDIRECT_ROUTES } from "./routes";
 
 // PPDO-258 — read-only smoke: each signed-in persona opens every route in routes.ts.
 // Per route: no uncaught exception, no 5xx, no console error, no "Application error" screen,
@@ -9,42 +8,6 @@ import { PORTAL_ROUTES, REDIRECT_ROUTES, type PortalRoute } from "./routes";
 // Runs once per configured as-<KEY> project; see e2e/README.md for credentials.
 
 test.describe.configure({ timeout: 60_000 }); // a cold `next dev` compiles each route on first visit
-
-function personaOf(projectName: string): PersonaKey {
-  return projectName.replace(/^as-/, "") as PersonaKey;
-}
-
-/** Collects what counts as broken while the test runs. */
-function watch(page: Page): string[] {
-  const problems: string[] = [];
-  page.on("pageerror", (err) => problems.push(`uncaught: ${err.message}`));
-  page.on("response", (res) => {
-    if (res.status() >= 500) problems.push(`${res.status()} ${res.request().method()} ${res.url()}`);
-  });
-  page.on("console", (msg) => {
-    // "Failed to load resource" repeats a response status: 5xx are caught above, and a 4xx is
-    // an answer the page handles (e.g. a 403 just before a guard redirects).
-    if (msg.type() === "error" && !msg.text().startsWith("Failed to load resource"))
-      problems.push(`console: ${msg.text().slice(0, 200)}`);
-  });
-  return problems;
-}
-
-const pathname = (page: Page) => new URL(page.url()).pathname;
-
-async function open(page: Page, path: string) {
-  await page.goto(path);
-  await page.waitForLoadState("networkidle").catch(() => {});
-}
-
-function expectSignedIn(page: Page, path: string) {
-  expect(pathname(page), `signed out on ${path}: the persona's session was lost`).not.toBe("/login");
-}
-
-function marker(page: Page, route: PortalRoute) {
-  const { role, name, level } = route.marker;
-  return page.getByRole(role, { name, level, exact: typeof name === "string" }).first();
-}
 
 test.describe("smoke", () => {
   for (const route of PORTAL_ROUTES) {
