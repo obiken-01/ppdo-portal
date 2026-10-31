@@ -7,6 +7,16 @@ name: E2E (UAT)
 
 on:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: "all = the browser tests; perf = only the PPDO-257 performance measurement (sizes, times, throttled pass)"
+        type: choice
+        options: [all, perf]
+        default: all
+      bulk_export:
+        description: "perf only: also time the bulk WFP export. It writes one export job row on UAT."
+        type: boolean
+        default: false
 
 jobs:
   e2e:
@@ -55,10 +65,27 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - name: Run Playwright
+        if: inputs.suite != 'perf'
         run: npm run e2e:uat
 
+      # PPDO-257: a measuring tool, not a test. It records numbers and does not fail on a slow page.
+      # Signs in as the SA persona (AD if there is no SA secret). Read-only, except the bulk export.
+      - name: Run performance measurement
+        if: inputs.suite == 'perf'
+        env:
+          E2E_PERF_BULK_EXPORT: ${{ inputs.bulk_export && '1' || '0' }}
+        run: npm run e2e:perf
+
+      - name: Upload performance results
+        if: inputs.suite == 'perf' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: frontend/e2e-results/perf/
+          retention-days: 14
+
       - name: Upload HTML report
-        if: always()
+        if: inputs.suite != 'perf' && always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

@@ -9,6 +9,23 @@ const isCI = !!process.env.CI;
 // Never set in CI, where `playwright install` provides the matching one.
 const executablePath = process.env.E2E_CHROMIUM_PATH || undefined;
 
+// PPDO-257 — the perf project is opt-in: it is only part of the config when asked for by name
+// (`npm run e2e:perf`, or E2E_PERF=1 for --ui), so `playwright test` and `--list` never see it.
+// Setting the variable here lets the workers, which load this file again, agree with the runner.
+const argv = process.argv;
+if (argv.includes("--project=perf") || argv.some((a, i) => a === "--project" && argv[i + 1] === "perf")) {
+  process.env.E2E_PERF = "1";
+}
+const perfRequested = process.env.E2E_PERF === "1";
+const perfProject = {
+  name: "perf",
+  // Its file (perf/*.measure.ts) matches no other project's pattern. It signs in by itself.
+  testMatch: /perf[\/].*\.measure\.ts/,
+  workers: 1,
+  retries: 0,
+  use: { ...devices["Desktop Chrome"], launchOptions: { executablePath }, trace: "off" as const, screenshot: "off" as const },
+};
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -80,5 +97,6 @@ export default defineConfig({
       workers: 1,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },
+    ...(perfRequested ? [perfProject] : []),
   ],
 });
