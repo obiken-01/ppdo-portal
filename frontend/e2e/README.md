@@ -76,6 +76,30 @@ lines follow the persona **definitions** in the plan (§3.1). An account with ex
 local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
 A new page gets a row in `routes.ts`.
 
+## Sweep (`sweep.spec.ts`, PPDO-272)
+
+Automates three items of the plan's per-page checklist (§3.2) on every route a persona may open.
+Read-only: it only holds back, blocks or reads GETs.
+
+| Check | What it does | Passes when |
+|---|---|---|
+| Item 4, error state | Aborts the page's main GET (`mainApi` in `routes.ts`), as DevTools "Block request URL" does | Within 15 s the page shows an error or goes to `/reconnecting`. Fails on a blank main area, an endless skeleton, placeholder dashes with no message, or content that reads as real data |
+| Item 2, loading state | Holds the main GET back until the checks are done | A skeleton, spinner, "Loading…" line, or placeholder (`—`, `FY …`) shows; and the page's `primary` button, when set, is disabled |
+| Item 10, phone width | Opens the page at 390 px | No sideways page scroll, sidebar off-canvas until "Open menu" is pressed, no console error, no "Application error" after a reload |
+
+`mainApi` is the page's own data call, found by watching what the page requests on load (not the
+shell's auth and notification calls). A page with no data call on load has none, and its error and
+loading checks are skipped. A new page gets `mainApi` (and `primary`, if it has a main button) in `routes.ts`.
+
+**Findings.** A failing page is a bug: file it under PPDO-252 and add it to `KNOWN` in the spec. That
+marks the test `test.fail()`, so the suite stays green, and it fails with "expected to fail" once the
+page is fixed, which is the cue to delete the entry.
+
+Heuristics to know: "loading" and "error" are recognised by class names (`animate-pulse`, `animate-spin`),
+`role="alert"`, and wording such as "Couldn't load…" / "Failed…". A page that shows its problem in
+other words will read as a miss; widen `ERROR_TEXT` in the spec rather than weaken the check. The
+check cannot tell zeros from real zeros; that stays a manual look.
+
 ## AIP journeys (`e2e/aip/`, PPDO-259)
 
 These change data, so they run in their own **E2E office** that the suite builds itself, never in a
