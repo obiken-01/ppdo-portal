@@ -31,7 +31,7 @@ export default defineConfig({
     },
     {
       name: "public",
-      testMatch: /public\.spec\.ts/,
+      testMatch: /public(-login)?\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },
     // Signed-in specs (smoke, journeys) belong in per-persona projects that depend on "setup".
@@ -40,7 +40,7 @@ export default defineConfig({
     // side. Different personas still run in parallel. See e2e/fixtures.ts.
     ...PERSONAS.filter((p) => p.configured).map((p) => ({
       name: `as-${p.key}`,
-      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
+      testIgnore: [/auth\.setup\.ts/, /public(-login)?\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
       dependencies: ["setup"],
       workers: 1,
       use: {
