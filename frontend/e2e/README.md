@@ -18,6 +18,11 @@ npm run e2e          # or: npm run e2e:ui
 
 `public.spec.ts` needs no backend and no accounts. Anything signed-in needs persona credentials.
 
+**Before you push a change and open its PR, run the whole suite locally** (`npm run e2e`) and say in
+the PR body that it passed. Write the spec for a browser-visible fix in the same PR. The suite does
+not run in GitHub yet (see [Running it in GitHub Actions](#running-it-in-github-actions-not-set-up-yet)),
+so this local run is the check (Ralph, 2026-10-31).
+
 ## Personas and credentials
 
 Six personas (plan §3.1): `SA`, `AD`, `RV`, `ST`, `EN`, `XD`. Each reads two environment variables:
@@ -38,8 +43,29 @@ signed-in specs run once per project. Keep passwords in your password manager, n
 E2E_BASE_URL=https://<uat-frontend-host> E2E_SA_EMAIL=… E2E_SA_PASSWORD=… npm run e2e:uat
 ```
 
-Or run the **E2E (UAT)** workflow from the Actions tab (manual only). Everything comes from the `uat`
-environment **secrets**:
+### Running it in GitHub Actions (not set up yet)
+
+`.github/workflows/e2e-uat.yml` exists, but it **is not used for now** (Ralph, 2026-10-31): changes are
+checked by the local run above. This is what it would take to turn it on.
+
+1. **Put the workflow file on `main`.** It is manual (`workflow_dispatch`), and GitHub shows the
+   *Run workflow* button only for a workflow file on the default branch. While it lives only on a
+   release branch, the Actions tab doesn't list it and `gh workflow run` returns 404. A PR to `main`
+   with just that one file is enough; it changes nothing in the app.
+2. **Create the `uat` environment:** Settings → Environments → New environment → `uat`. The repo has no
+   environments today. Optionally restrict it to the release branches.
+3. **Add the secrets below to that environment** (environment secrets, not repository secrets). Only
+   Ralph enters them. A persona without its two secrets is skipped, not failed.
+4. **Make sure the accounts are ready on UAT:** each persona and the seed Admin exists, has done its
+   first sign-in by hand (new password, recovery question), and the seed Admin holds only the grant
+   described under *AIP journeys*.
+5. **Run it:** Actions → **E2E (UAT)** → Run workflow. `suite: all` is the normal run; `suite: perf`
+   is the PPDO-257 measurement. Keep `bulk_export` off unless one export job on UAT is wanted.
+
+⚠️ **Never run it while a local run against UAT is going, or two at once.** A second sign-in replaces
+the first user's session, so both runs fail at random.
+
+Secrets:
 
 | Secret | For |
 |---|---|
