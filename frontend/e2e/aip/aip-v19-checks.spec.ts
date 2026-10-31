@@ -17,6 +17,7 @@ const RUN = `E2E ${new Date().toISOString().slice(5, 19).replace("T", " ")} ${Ma
 const REASON = `${RUN}: trimmed to division A's allocation.`;
 
 test.beforeAll(async ({ request }) => {
+  test.setTimeout(120_000); // hooks keep the 30s default (see aip-scope.spec.ts)
   await resetAipOffice(request);
 });
 

@@ -1093,6 +1093,11 @@ export interface PpmpReportDto {
   /** Set when scoped to one division; null for the office-consolidated view. */
   divisionName: string | null;
   fundSourceReports: PpmpReportFundSourceDto[];
+  /**
+   * PPDO-263: "Aip" for an entered year's initial PPMP, read off the consolidated AIP's procurement
+   * items; "Wfp" for FY 2027 and earlier (PPDO's WFP procurement items).
+   */
+  source: "Wfp" | "Aip";
 }
 
 // ── Allocation (RAL-99/101) ───────────────────────────────────────────────────

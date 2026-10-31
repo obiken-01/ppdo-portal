@@ -63,7 +63,11 @@ test.describe("smoke", () => {
       expectSignedIn(page, route.path);
 
       if (expected === "deny") {
-        expect(pathname(page), `should be redirected away from ${route.path}`).not.toBe(route.path);
+        // The page can draw (marker and all) before the gate's redirect lands; on a cold
+        // `next dev` that redirect waits for its target route to compile. So wait for it.
+        await expect
+          .poll(() => pathname(page), { message: `should be redirected away from ${route.path}`, timeout: 20_000 })
+          .not.toBe(route.path);
       } else if (expected === "allow") {
         // Settle once more, so a late redirect isn't mistaken for "allowed".
         await page.waitForLoadState("networkidle").catch(() => {});

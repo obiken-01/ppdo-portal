@@ -33,6 +33,7 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 
 ## Plans
 
+- [v1.9.2 — Initial PPMP report from the consolidated AIP](Initial_PPMP_Report_Spec.md) — PPDO-263, accepted: the PPMP for FY 2028+ read from the AIP's procurement items
 - [v1.9.2 — UAT Polish Plan](UAT_Polish_Plan.md) — role × page sweep, UI/UX consistency, performance re-measure and the Playwright foundation (PPDO-252)
 
 ## Audits
