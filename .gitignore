@@ -221,5 +221,6 @@ docs/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
 
 # ── Playwright (PPDO-258) — storageState holds session cookies ──
 frontend/e2e/.auth/
+frontend/e2e-results/
 frontend/playwright-report/
 frontend/test-results/

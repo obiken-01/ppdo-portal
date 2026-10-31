@@ -143,6 +143,40 @@ npx playwright test --project=aip --project=inventory     # seed vars set, perso
 npx playwright test --project=public --project="as-*"     # persona vars set
 ```
 
+## Perf (`e2e/perf/`, PPDO-257)
+
+A measuring tool, not a test: it records numbers for §3 and §4 of
+[`docs/v1.9/Performance_Audit_2026-11.md`](../../docs/v1.9/Performance_Audit_2026-11.md) and **does not
+fail on a slow page**. It is its own Playwright project, `perf`, left out of the config unless asked for,
+so `npx playwright test` and `--list` never see it.
+
+**On UAT (the real measurement):** Actions → **E2E (UAT)** → *Run workflow* → `suite: perf`. Tick
+`bulk_export` only if you want the bulk WFP export timed: it writes one export job row on UAT. When it
+ends, download the **perf-results** artifact (`perf-<time>.md` and `.json`); the markdown is also in the
+job log. Paste the two tables into §3 and §4 of the audit doc.
+
+**Locally** (backend and frontend running, persona credentials set):
+
+```bash
+E2E_SA_EMAIL=<user> E2E_SA_PASSWORD=<password> npm run e2e:perf
+```
+
+Local numbers only prove the script works. The output says so on its first line.
+
+| Part | What it records |
+|---|---|
+| §3 API | Each endpoint in the two §3 tables, one discarded warm-up then 3 runs, median. Wire bytes (CDP `encodedDataLength`, the DevTools "transferred" figure), decoded bytes, `Content-Encoding`, time. Ids (largest AIP record, an office, a proposal) are looked up from list endpoints at run time. GETs only; the bulk export is off unless `E2E_PERF_BULK_EXPORT=1` |
+| §4 pages | The 12 pages of the §4 table, each in a fresh tab at DevTools "Fast 4G" plus 4x CPU, cache off. Time until the route's marker (from `routes.ts`) is visible, time until no API call has run for 0.5 s, layout shift (`layout-shift` observer, "yes" above CLS 0.1), and the enabled buttons in the page body when the title showed while API calls were still running |
+
+Signs in as **SA**; if `E2E_SA_*` is not set it uses **AD** and says so in the output. `E2E_PERF_PAGE_RUNS=3`
+repeats each page and takes the median time and the worst CLS. The output goes to `e2e-results/perf/`
+(git-ignored) and contains no URLs, ids, usernames or tokens.
+
+What it cannot do: Lighthouse scores (§5) and App Insights (§6) stay manual. The "early-clickable" column
+lists *candidates*: a Filter or Export button that works without data is fine, a Submit that works before
+its form loaded is not. Read the page to tell them apart. Run nothing else in Playwright at the same time:
+the sign-in takes the persona's one live session.
+
 ## Rules
 
 - **One spec per fixed bug.** Every bug fixed in v1.9.2+ that a browser can see gets a spec named
