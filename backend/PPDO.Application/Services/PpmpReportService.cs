@@ -16,8 +16,12 @@ namespace PPDO.Application.Services;
 /// only (Q8) — expenditures with no procurement items (pure Non-Procurement) are skipped, and a
 /// Combined expenditure contributes only its procurement items. Account section totals are the
 /// sum of the items below (Q11). One table per fund source (Q4).
+///
+/// ↩️ <b>PPDO-263 (v1.9.2): an entered year reads the AIP's own procurement items instead</b>
+/// (<c>PpmpReportService.Initial.cs</c>). Both sources are reduced to <see cref="SourceLine"/>s, one
+/// per expenditure line with its items already placed in a quarter, and share every step after that.
 /// </summary>
-public sealed class PpmpReportService : IPpmpReportService
+public sealed partial class PpmpReportService : IPpmpReportService
 {
     private const string DefaultFundSourceName = "GENERAL FUND";
 
@@ -27,6 +31,9 @@ public sealed class PpmpReportService : IPpmpReportService
     private readonly IOfficeRepository       _officeRepo;
     private readonly IDivisionRepository     _divisionRepo;
     private readonly IPriceIndexItemRepository _priceIndexRepo;
+    // PPDO-263 — the initial PPMP reads the AIP's lines and items, and checks CanAccessWfp itself.
+    private readonly IAipExpenditureRepository _aipExpenditures;
+    private readonly IPermissionService        _permissions;
 
     public PpmpReportService(
         IAipRepository            aipRepo,
@@ -34,8 +41,12 @@ public sealed class PpmpReportService : IPpmpReportService
         IWfpExpenditureService    expenditures,
         IOfficeRepository       officeRepo,
         IDivisionRepository     divisionRepo,
-        IPriceIndexItemRepository priceIndexRepo)
+        IPriceIndexItemRepository priceIndexRepo,
+        IAipExpenditureRepository aipExpenditures,
+        IPermissionService        permissions)
     {
+        _aipExpenditures = aipExpenditures;
+        _permissions     = permissions;
         _aipRepo        = aipRepo;
         _wfpRepo        = wfpRepo;
         _expenditures   = expenditures;
@@ -80,26 +91,40 @@ public sealed class PpmpReportService : IPpmpReportService
         IReadOnlyDictionary<int, IReadOnlyList<WfpExpenditureDto>> expendituresByWfpActivityId =
             await _expenditures.GetByActivityIdsAsync(allWfpActivityIds, cancellationToken);
 
-        Dictionary<int, List<WfpExpenditureDto>> expendituresByAipActivityId = [];
+        Dictionary<int, List<SourceLine>> linesByAipActivityId = [];
         foreach (AipActivity activity in activities)
         {
-            List<WfpExpenditureDto> merged = [];
+            List<SourceLine> merged = [];
             foreach (int wfpActivityId in wfpActivityIdsByAipActivityId.GetValueOrDefault(activity.Id, []))
                 if (expendituresByWfpActivityId.TryGetValue(wfpActivityId, out IReadOnlyList<WfpExpenditureDto>? e))
-                    merged.AddRange(e);
+                    merged.AddRange(e.Where(HasProcurementItems).Select(FromWfp));
             if (merged.Count > 0)
-                expendituresByAipActivityId[activity.Id] = merged;
+                linesByAipActivityId[activity.Id] = merged;
         }
 
+        return ServiceResult<PpmpReportDto>.Ok(await AssembleAsync(
+            fiscalYear, office, divisionId, programs, projects, activities, linesByAipActivityId,
+            WfpReportSources.Wfp, cancellationToken));
+    }
+
+    /// <summary>
+    /// Everything after the source is read, shared by the WFP and AIP sources: the live Price-Index
+    /// join, one block per fund source, and the division's name for the header.
+    /// </summary>
+    private async Task<PpmpReportDto> AssembleAsync(
+        int fiscalYear, Office office, int? divisionId,
+        IReadOnlyList<AipProgram> programs, IReadOnlyList<AipProject> projects, IReadOnlyList<AipActivity> activities,
+        IReadOnlyDictionary<int, List<SourceLine>> linesByAipActivityId, string source, CancellationToken ct)
+    {
         // Live Price-Index join for Stock Card No. + Category (Q15) — one query for every distinct
         // PriceIndexItemId referenced by any procurement item; free-typed items (null id) stay blank.
         IReadOnlyDictionary<int, (string? StockCardNo, string? Category)> priceLookup =
-            await BuildPriceLookupAsync(expendituresByAipActivityId.Values, cancellationToken);
+            await BuildPriceLookupAsync(linesByAipActivityId.Values, ct);
 
-        List<string> fundSourceNames = expendituresByAipActivityId.Values
+        List<string> fundSourceNames = linesByAipActivityId.Values
             .SelectMany(x => x)
-            .Where(HasProcurementItems)
-            .Select(FundSourceNameFor)
+            .Where(l => l.Items.Count > 0)
+            .Select(l => l.Fund)
             .Distinct()
             .OrderBy(n => n.Equals(DefaultFundSourceName, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
@@ -107,16 +132,16 @@ public sealed class PpmpReportService : IPpmpReportService
 
         List<PpmpReportFundSourceDto> fundSourceReports = fundSourceNames
             .Select(fundSourceName => BuildFundSource(
-                fundSourceName, programs, projects, activities, expendituresByAipActivityId, priceLookup))
+                fundSourceName, programs, projects, activities, linesByAipActivityId, priceLookup))
             .Where(f => f.Programs.Count > 0)
             .ToList();
 
         string? divisionName = null;
         if (divisionId is int did)
-            divisionName = (await _divisionRepo.GetByIntIdAsync(did, cancellationToken))?.Name;
+            divisionName = (await _divisionRepo.GetByIntIdAsync(did, ct))?.Name;
 
-        return ServiceResult<PpmpReportDto>.Ok(new PpmpReportDto(
-            fiscalYear, office.OfficeCode, office.OfficeName, divisionName, fundSourceReports));
+        return new PpmpReportDto(
+            fiscalYear, office.OfficeCode, office.OfficeName, divisionName, fundSourceReports, source);
     }
 
     // ── Data gathering ───────────────────────────────────────────────────────
@@ -141,11 +166,11 @@ public sealed class PpmpReportService : IPpmpReportService
     }
 
     private async Task<IReadOnlyDictionary<int, (string? StockCardNo, string? Category)>> BuildPriceLookupAsync(
-        IEnumerable<List<WfpExpenditureDto>> expenditureLists, CancellationToken ct)
+        IEnumerable<List<SourceLine>> lineLists, CancellationToken ct)
     {
-        List<int> ids = expenditureLists
+        List<int> ids = lineLists
             .SelectMany(list => list)
-            .SelectMany(e => e.ProcurementItems)
+            .SelectMany(l => l.Items)
             .Where(i => i.PriceIndexItemId.HasValue)
             .Select(i => i.PriceIndexItemId!.Value)
             .Distinct()
@@ -163,18 +188,18 @@ public sealed class PpmpReportService : IPpmpReportService
         IReadOnlyList<AipProgram> programs,
         IReadOnlyList<AipProject> projects,
         IReadOnlyList<AipActivity> activities,
-        IReadOnlyDictionary<int, List<WfpExpenditureDto>> expendituresByAipActivityId,
+        IReadOnlyDictionary<int, List<SourceLine>> linesByAipActivityId,
         IReadOnlyDictionary<int, (string? StockCardNo, string? Category)> priceLookup)
     {
         // project id -> its activity DTOs (built once, then bucketed under programs)
         Dictionary<int, List<PpmpReportActivityDto>> activityDtosByProjectId = [];
         foreach (AipActivity activity in activities.OrderBy(a => RefCodeSequence(a.RefCode)).ThenBy(a => a.RefCode))
         {
-            if (!expendituresByAipActivityId.TryGetValue(activity.Id, out List<WfpExpenditureDto>? all))
+            if (!linesByAipActivityId.TryGetValue(activity.Id, out List<SourceLine>? all))
                 continue;
 
-            List<WfpExpenditureDto> forFund = all
-                .Where(e => FundSourceNameFor(e) == fundSourceName && HasProcurementItems(e))
+            List<SourceLine> forFund = all
+                .Where(l => l.Fund == fundSourceName && l.Items.Count > 0)
                 .ToList();
             if (forFund.Count == 0) continue;
 
@@ -212,38 +237,36 @@ public sealed class PpmpReportService : IPpmpReportService
     }
 
     /// <summary>
-    /// Groups an activity's (single-fund) expenditures by account, then groups each account's
-    /// procurement items by identity — (PriceIndexItemId, Name, Unit, UnitPrice) — spreading every
-    /// source item's Qty/LineTotal into the quarter its PeriodNo maps to under the parent
-    /// expenditure's frequency. Account total = sum of the items' Est. Budget (Q11).
+    /// Groups an activity's (single-fund) lines by account, then groups each account's procurement
+    /// items by identity — (PriceIndexItemId, Name, Unit, UnitPrice) — adding every source item's
+    /// Qty/LineTotal into its quarter. Account total = sum of the items' Est. Budget (Q11).
     /// </summary>
     private static List<PpmpReportAccountDto> BuildAccounts(
-        IReadOnlyList<WfpExpenditureDto> expenditures,
+        IReadOnlyList<SourceLine> lines,
         IReadOnlyDictionary<int, (string? StockCardNo, string? Category)> priceLookup)
     {
         List<PpmpReportAccountDto> accounts = [];
 
-        IEnumerable<IGrouping<(string? Number, string? Title), WfpExpenditureDto>> byAccount = expenditures
-            .GroupBy(e => (Number: e.AccountNumberSnapshot, Title: e.AccountTitleSnapshot))
+        IEnumerable<IGrouping<(string? Number, string? Title), SourceLine>> byAccount = lines
+            .GroupBy(l => (Number: l.AccountNumber, Title: l.AccountTitle))
             .OrderBy(g => g.Key.Number, StringComparer.OrdinalIgnoreCase);
 
-        foreach (IGrouping<(string? Number, string? Title), WfpExpenditureDto> accountGroup in byAccount)
+        foreach (IGrouping<(string? Number, string? Title), SourceLine> accountGroup in byAccount)
         {
             Dictionary<ItemKey, ItemAccumulator> byItem = [];
             List<ItemKey> order = []; // preserve first-seen order (entry order), like the reference
 
-            foreach (WfpExpenditureDto e in accountGroup)
+            foreach (SourceLine line in accountGroup)
             {
-                foreach (WfpProcurementItemDto item in e.ProcurementItems)
+                foreach (SourceItem item in line.Items)
                 {
-                    int quarter = QuarterOf(e.Frequency, item.PeriodNo, e.AnnualQuarterChoice);
                     ItemKey key = new(item.PriceIndexItemId, item.Name, item.Unit, item.UnitPrice);
                     if (!byItem.TryGetValue(key, out ItemAccumulator? acc))
                     {
                         byItem[key] = acc = new ItemAccumulator();
                         order.Add(key);
                     }
-                    acc.Add(quarter, item.Qty, item.LineTotal);
+                    acc.Add(item.Quarter, item.Qty, item.LineTotal);
                 }
             }
 
@@ -260,6 +283,23 @@ public sealed class PpmpReportService : IPpmpReportService
     // ── Small helpers ──────────────────────────────────────────────────────────
 
     private static bool HasProcurementItems(WfpExpenditureDto e) => e.ProcurementItems.Count > 0;
+
+    /// <summary>A WFP expenditure as a source line: each item placed by the expenditure's frequency.</summary>
+    private static SourceLine FromWfp(WfpExpenditureDto e) => new(
+        FundSourceNameFor(e), e.AccountNumberSnapshot, e.AccountTitleSnapshot,
+        e.ProcurementItems
+            .Select(i => new SourceItem(
+                QuarterOf(e.Frequency, i.PeriodNo, e.AnnualQuarterChoice),
+                i.PriceIndexItemId, i.Name, i.Unit, i.UnitPrice, i.Qty, i.LineTotal))
+            .ToList());
+
+    /// <summary>One expenditure line (WFP or AIP) reduced to what the PPMP reads: fund, account and its items.</summary>
+    private sealed record SourceLine(
+        string Fund, string? AccountNumber, string? AccountTitle, IReadOnlyList<SourceItem> Items);
+
+    /// <summary>One procurement item, already placed in its quarter (1–4). LineTotal is qty × price × days.</summary>
+    private sealed record SourceItem(
+        int Quarter, int? PriceIndexItemId, string Name, string Unit, decimal UnitPrice, decimal Qty, decimal LineTotal);
 
     /// <summary>
     /// Maps a 1-based period number to a quarter (1–4) using the same rules as
@@ -282,9 +322,11 @@ public sealed class PpmpReportService : IPpmpReportService
         return int.TryParse(lastSegment, out int seq) ? seq : int.MaxValue;
     }
 
-    private static string FundSourceNameFor(WfpExpenditureDto e) =>
-        (string.IsNullOrWhiteSpace(e.FundingSourceNameSnapshot) ? DefaultFundSourceName : e.FundingSourceNameSnapshot)
-            .ToUpperInvariant();
+    private static string FundSourceNameFor(WfpExpenditureDto e) => FundName(e.FundingSourceNameSnapshot);
+
+    /// <summary>The block a line's fund snapshot falls under: blank is GENERAL FUND; upper-cased either way.</summary>
+    private static string FundName(string? snapshot) =>
+        (string.IsNullOrWhiteSpace(snapshot) ? DefaultFundSourceName : snapshot).ToUpperInvariant();
 
     /// <summary>Item identity for grouping across periods. PriceIndexItemId distinguishes two items that share a name/unit/price but map to different Price-Index rows (and thus different stock cards).</summary>
     private readonly record struct ItemKey(int? PriceIndexItemId, string Name, string Unit, decimal UnitPrice);

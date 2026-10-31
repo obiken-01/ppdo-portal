@@ -5,7 +5,7 @@ status: current
 tickets: [PPDO-7, PPDO-261]
 superseded_by: [../v1.9/AIP_Reviewer_Edit_Spec.md]
 superseded_scope: "AIP_Reviewer_Edit_Spec.md: in part: section 5"
-updated: 2026-10-26
+updated: 2026-10-29
 ---
 
 # Permission Matrix
@@ -103,7 +103,10 @@ blank override means granted. An explicit `false` still turns it off.
 
 ### 2.2a `CanAccessWfp` — Budget Planning in the host office (PPDO-198)
 
-The gate on every WFP endpoint: records, expenditures, ceilings and the WFP report. Composed from
+The gate on every WFP endpoint: records, expenditures, ceilings and the WFP report. ↩️ Also the
+**PPMP report** (`/api/budget-planning/ppmp/report/*`, PPDO-265), which is built from PPDO's WFP
+procurement items: until v1.9.2 it checked only `CanAccessBudgetPlanning`, which every guest office
+holds by default (§2.2). Its division axis is §3.3's, the same as the WFP report. Composed from
 existing inputs; it has **no override column and no division flag of its own**. The override and
 division inputs below are `CanAccessBudgetPlanning`'s.
 
@@ -394,6 +397,29 @@ Office users keep their per-office export and get 403 on all four. Checked in th
 subject to `ReviewerWriteGuard`: queuing a download changes no plan content. Pinned by
 `InitialWfpExportServiceTests` and `WfpBulkExportFunctionsTests`.
 
+### 3.5 The initial PPMP report — PPDO only (PPDO-263)
+
+For an entered year the PPMP endpoints serve the **initial PPMP**, read off the consolidated AIP's
+procurement items ([Initial_PPMP_Report_Spec.md](../v1.9/Initial_PPMP_Report_Spec.md)). ⚠️ **Unlike
+§3.4, the gate does not widen:** it stays §2.2a's `CanAccessWfp` for every year, so a guest office's
+department head reads their own office's initial WFP but **not** its initial PPMP (spec decision 8).
+`InitialWfpReadRule` is not used. The service checks `CanAccessWfp` again, so it is safe on its own.
+
+| Caller | Target office | Reads? |
+|---|---|---|
+| SuperAdmin, any office or none | any | ✅ |
+| Host Admin, or host Staff holding `CanAccessWfp` | any | ✅ |
+| Host Staff without `CanAccessWfp` | any | ❌ 403 |
+| Guest Admin, or guest Staff holding `CanReviewBudgetPlanning` / `CanReviewAllOffices` | **their own**, or any | ❌ **403** |
+| Guest encoder | any | ❌ 403 (and no Report page, PPDO-240) |
+
+Then the §3.4 gate (409 until every group is `Consolidated`) and the §3.4 division table's host rows:
+PPDO's own office follows §3.3 `WfpDivisionScope`; another office takes the requested division, by
+the activity's tag, never narrowed by the reader's PPDO division.
+
+Pinned by `PpmpInitialReportTests` (`Row17_…`, `Row18_…`, red-tested) and `PpmpReportFunctionsTests`
+(`EnteredYear_AGuestOfficesHead_Gets403OnBoth_…`). No new flag, so `PermissionMatrixTests` gains no row.
+
 ---
 
 ## 4. The cross-office exceptions (PPDO-5, PPDO-2)
@@ -644,6 +670,7 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 | Combined budget-planning scope | `PPDO.Application/Common/BudgetPlanningScope.cs` |
 | WFP division scope | `PPDO.Application/Common/WfpDivisionScope.cs` |
 | Initial WFP report office rule (PPDO-224) | `PPDO.Application/Common/InitialWfpReadRule.cs` |
+| Initial PPMP report readers (PPDO-263) | `PPDO.Application/Services/PpmpReportService.Initial.cs` (`CanAccessWfp`) |
 | Reviewer write denial | `PPDO.Application/Common/ReviewerWriteGuard.cs` |
 | Endpoint wiring | `PPDO.Functions/Functions/ConfigHttp.cs` |
 | **This matrix, as tests** | `PPDO.Tests/Application/PermissionMatrixTests.cs` |
@@ -653,7 +680,7 @@ Pinned by `ReviewerWriteGuardCoverageTests.ReviewerEditEndpoints_AreExactlyAddAn
 
 ---
 
-*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224) · §2.1 inventory-read note 2026-10-26 (PPDO-261)*
+*Permission Matrix — v1.8.0 — PPDO-7 — 2026-08-28 · §2.3a added 2026-09-27 (PPDO-143) · §3.2 added 2026-09-28 (PPDO-148) · §2.2a + §3.3 added 2026-10-13 (PPDO-198) · §3.4 added 2026-10-15 (PPDO-224) · §3.5 added 2026-10-29 (PPDO-263) · §2.1 inventory-read note 2026-10-26 (PPDO-261)*
 
 ## Related
 

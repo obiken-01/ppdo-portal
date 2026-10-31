@@ -38,8 +38,18 @@ signed-in specs run once per project. Keep passwords in your password manager, n
 E2E_BASE_URL=https://<uat-frontend-host> E2E_SA_EMAIL=… E2E_SA_PASSWORD=… npm run e2e:uat
 ```
 
-Or run the **E2E (UAT)** workflow from the Actions tab (manual only; credentials come from the
-`uat` environment secrets `E2E_*` and the `E2E_BASE_URL` variable/secret).
+Or run the **E2E (UAT)** workflow from the Actions tab (manual only). Everything comes from the `uat`
+environment **secrets**:
+
+| Secret | For |
+|---|---|
+| `E2E_BASE_URL` | UAT frontend URL |
+| `E2E_<KEY>_EMAIL` / `E2E_<KEY>_PASSWORD` | Each persona (`SA`, `AD`, `RV`, `ST`, `EN`, `XD`); missing ones are skipped |
+| `E2E_API_URL` | The UAT Function App's `/api` URL (journeys) |
+| `E2E_SEED_EMAIL` / `E2E_SEED_PASSWORD` | The seed Admin (journeys): no cross-office review grant, not a persona. Missing → journeys skipped |
+
+The workflow always sets `E2E_AIP_CLEANUP=1`. Traces are off in CI: they keep typed passwords and
+request tokens, and the report is uploaded as an artifact of this **public** repo.
 
 ## Using a preinstalled browser
 
@@ -86,21 +96,52 @@ run to run; the specs never assert those counts.
 **Run it**
 
 ```bash
-# E2E_SEED_*: an Admin WITHOUT the cross-office review grant. That grant makes an account a
-# comment-only reviewer, and the seed's writes would be refused (ReviewerWriteGuard).
+# E2E_SEED_*: an Admin with exactly one per-user grant, "Set Office Ceilings (PPDO finance)":
+# the seed sets the E2E office's GF ceiling. It must NOT hold the cross-office review grant,
+# which makes an account a comment-only reviewer and the seed's writes are refused
+# (ReviewerWriteGuard). Do its first sign-in (new password, recovery question) by hand once.
 E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=aip
 ```
 
 Watch it: add `--headed --workers=1`, or use `npm run e2e:ui` and pick the `aip` project.
 
-The seed generates each account's password and keeps it only in `e2e/.auth/aip-accounts.json`
-(git-ignored). If a saved password stops working, the next run resets that account.
+**State is kept per environment**, in `e2e/.auth/<api host>/` (git-ignored): the seeded ids
+(`aip-world.json`, `inventory-world.json`) and each test account's generated password
+(`aip-accounts.json`, `inventory-account.json`). A local run and a UAT run never read each other's
+ids; with one shared file, a UAT teardown once read the local office id. If a saved password stops
+working, the next run resets that account.
 
 **On UAT:** also set `E2E_BASE_URL` (frontend) and `E2E_API_URL` (the Function App's `/api`). The
 seed then creates the E2E office, an LDIP, two divisions and four users **on UAT**. That is the point,
 but it is a decision: tell the finance testers that an "E2E Test Office (automated)" will appear on
 their review board. Add `E2E_AIP_CLEANUP=1` to take the office back out of the AIP when the run ends;
 otherwise it stays in the consolidated AIP (accepted) until the next run resets it.
+
+## Inventory journey (`e2e/inventory/`, PPDO-259)
+
+| File | What it covers |
+|---|---|
+| `inventory.setup.ts` → `seed.ts` | A PPDO division **"E2E Inventory (test)"** (code `E2EINV`) with inventory access only, a Staff account `e2e.inventory` in it, and the Items Master item `E2E-0001`. Same seed Admin and find-or-create rules as the AIP seed. |
+| `inventory-journey.spec.ts` | Staff create a PR for 10 × `E2E-0001` (division filled in and locked; picking the Stock No. fills the row) → status **Open** → receive 4 → **Partially Delivered** → receive 6 → **Fully Delivered**. |
+
+Inventory is division-scoped, so the test PRs and deliveries only ever appear in the E2E division,
+never in a real division's lists. Each run adds one PR and two deliveries there; there is no cleanup.
+
+```bash
+E2E_SEED_EMAIL=<admin username> E2E_SEED_PASSWORD=<password> npx playwright test --project=inventory
+```
+
+Both journey suites at once: `--project=aip --project=inventory` (they use different accounts).
+
+**The seed Admin must not also be a persona.** The setups and each AIP reset log in as
+`E2E_SEED_EMAIL` through the API, and a user has one live session, so that persona's browser would
+be signed out mid-run. The setups refuse to start when `E2E_SEED_EMAIL` matches a configured
+`E2E_<KEY>_EMAIL`. Use a different seed Admin, or run the two halves separately:
+
+```bash
+npx playwright test --project=aip --project=inventory     # seed vars set, persona vars unset
+npx playwright test --project=public --project="as-*"     # persona vars set
+```
 
 ## Rules
 

@@ -1,5 +1,6 @@
 using PPDO.Application.Common;
 using PPDO.Application.DTOs.BudgetPlanning;
+using PPDO.Domain.Entities;
 
 namespace PPDO.Application.Services;
 
@@ -27,4 +28,17 @@ public interface IPpmpReportService
     /// </summary>
     Task<ServiceResult<PpmpReportDto>> GetReportAsync(
         int officeId, int fiscalYear, int? divisionId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The initial PPMP for an entered year (v1.9.2 — PPDO-263, <c>docs/v1.9/Initial_PPMP_Report_Spec.md</c>):
+    /// the same item-grained form, fed from the consolidated AIP's procurement items instead of WFP
+    /// items. <see cref="PpmpReportDto.Source"/> is <c>"Aip"</c>.
+    /// <list type="bullet">
+    ///   <item><description>403 without <c>CanAccessWfp</c> (decision 8): PPDO only, never a guest office's head.</description></item>
+    ///   <item><description>404 for a missing office or AIP; 409 until every AIP group of the office is Consolidated (decision 5).</description></item>
+    ///   <item><description>Division: PPDO's own office follows <see cref="WfpDivisionScope"/> (RAL-136); another office honours the requested division, by the activity's tag (decision 11).</description></item>
+    /// </list>
+    /// </summary>
+    Task<ServiceResult<PpmpReportDto>> GetInitialReportAsync(
+        int officeId, int fiscalYear, int? requestedDivisionId, User caller, CancellationToken cancellationToken = default);
 }

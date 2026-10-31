@@ -17,10 +17,12 @@ public static class FeatureFlags
     public static readonly bool AuditLogPageEnabled = true;
 
     /// <summary>
-    /// PPMP report (v1.5). Hidden in v1.9.1 (PPDO-236): it was built on our own initiative and nobody
-    /// asked for it. While false, both <c>/api/budget-planning/ppmp/report/*</c> routes return 404
-    /// before reading anything; the service, Excel exporter, DI and tests stay in place, dormant.
-    /// Restore by flipping this to true and <c>PPMP_REPORT_ENABLED</c> in <c>frontend/src/lib/ppmp.ts</c>.
+    /// PPMP report (v1.5). Hidden in v1.9.1 (PPDO-236), when we thought nobody used it.
+    /// ↩️ <b>Restored in v1.9.2 (PPDO-265):</b> a PPDO colleague builds the office's PPMP from this
+    /// report's list of procurement items per activity, and uses it in production today. It is PPDO
+    /// only: the routes are gated on <c>CanAccessWfp</c>, because the report reads PPDO's WFP.
+    /// While false, both <c>/api/budget-planning/ppmp/report/*</c> routes return 404 before reading
+    /// anything. Keep it in step with <c>PPMP_REPORT_ENABLED</c> in <c>frontend/src/lib/ppmp.ts</c>.
     /// </summary>
-    public static readonly bool PpmpReportEnabled = false;
+    public static readonly bool PpmpReportEnabled = true;
 }

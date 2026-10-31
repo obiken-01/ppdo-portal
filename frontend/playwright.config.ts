@@ -17,7 +17,11 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
-    trace: "on-first-retry",
+    // Off in CI: a trace keeps typed values (the login password) and request bodies and tokens, and
+    // the E2E (UAT) workflow uploads the report as an artifact of a PUBLIC repo. Locally it stays useful.
+    trace: isCI ? "off" : "on-first-retry",
+    // A picture of the page when a test fails. Off in CI for the same reason: it shows the data.
+    screenshot: isCI ? "off" : "only-on-failure",
   },
   projects: [
     {
@@ -36,7 +40,7 @@ export default defineConfig({
     // side. Different personas still run in parallel. See e2e/fixtures.ts.
     ...PERSONAS.filter((p) => p.configured).map((p) => ({
       name: `as-${p.key}`,
-      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/],
+      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
       dependencies: ["setup"],
       workers: 1,
       use: {
@@ -61,6 +65,18 @@ export default defineConfig({
       name: "aip",
       testMatch: /aip[\\/].*\.spec\.ts/,
       dependencies: ["aip-setup"],
+      workers: 1,
+      use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
+    },
+    // PPDO-259 — inventory journey, in its own PPDO division "E2E Inventory (test)" (e2e/inventory/seed.ts).
+    {
+      name: "inventory-setup",
+      testMatch: /inventory[\\/]inventory\.setup\.ts/,
+    },
+    {
+      name: "inventory",
+      testMatch: /inventory[\\/].*\.spec\.ts/,
+      dependencies: ["inventory-setup"],
       workers: 1,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },

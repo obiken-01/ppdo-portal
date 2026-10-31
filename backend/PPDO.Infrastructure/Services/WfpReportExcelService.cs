@@ -133,6 +133,14 @@ public sealed class WfpReportExcelService : IWfpReportExcelService
 
         ws.Cell(row, ColReserved).Value = $"Equiv. to {report.ReserveRate:P0} of Operational Expenses";
         ws.Cell(row, ColReserved).Style.Font.SetItalic(true).Font.SetFontSize(9);
+
+        // PPDO-264: an initial WFP also says it is indicative. Row 6 is free on the left, so the note
+        // goes there rather than in a new row, which would shift the form's fixed layout (the header
+        // and the borders start at fixed rows). The entered WFP gets no note.
+        if (report.Source == WfpReportSources.Aip)
+            MergeH(ws, row, ColRef, ColNature,
+                $"Indicative only. The figures are read from {report.OfficeName}'s consolidated AIP. The working WFP is prepared in GSO's PBO-Connect app.",
+                s => s.Font.SetBold(true).Font.SetItalic(true));
         row++;
 
         WriteColumnHeaders(ws, row);

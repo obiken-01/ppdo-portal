@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { expect, type APIRequestContext } from "@playwright/test";
+import { PERSONAS } from "../personas";
 
 // PPDO-259 — builds a self-contained "E2E" office for the AIP journeys, through the app's own
 // API, the way an Admin would by hand. Same shape as PPDO-195's PTO test (docs on that ticket):
@@ -29,7 +30,8 @@ export const ALLOCATION = { A: 900_000, B: 500_000 } as const; // ₱100,000 lef
 export type AipRole = "head" | "encoderA" | "encoderB" | "reviewer";
 
 export interface AipAccount {
-  role: AipRole;
+  /** An AipRole here; the inventory seed reuses this shape for its own account. */
+  role: string;
   username: string;
   fullName: string;
   password: string;
@@ -48,14 +50,38 @@ export interface AipWorld {
   accounts: Record<AipRole, AipAccount>;
 }
 
-const ACCOUNTS_FILE = "e2e/.auth/aip-accounts.json";
-export const WORLD_FILE = "e2e/.auth/aip-world.json";
-
 export const API_URL = (process.env.E2E_API_URL ?? "http://localhost:7071/api").replace(/\/$/, "");
+
+/**
+ * Seeded ids and generated passwords are kept per environment (one folder per API host). With one
+ * shared file, a UAT run read the LOCAL world: its office id would have pointed at whatever UAT
+ * office has that id, and the teardown removes that office's rows from the AIP.
+ */
+export function stateFile(name: string): string {
+  return `e2e/.auth/${new URL(API_URL).host.replace(/[^a-z0-9]+/gi, "_")}/${name}`;
+}
+
+const ACCOUNTS_FILE = stateFile("aip-accounts.json");
+export const WORLD_FILE = stateFile("aip-world.json");
+
+/**
+ * The seed Admin must not also be a persona. A user has one live refresh token: every seed and
+ * reset login through the API signs that persona's browser out ("token_superseded"), and its
+ * signed-in tests fail on the login page. Called by the journey setups, before anything runs.
+ */
+export function assertSeedIsNotPersona() {
+  const seed = (process.env.E2E_SEED_EMAIL ?? "").trim().toLowerCase();
+  const clash = PERSONAS.find((p) => p.configured && p.email?.trim().toLowerCase() === seed);
+  if (clash)
+    throw new Error(
+      `E2E_SEED_EMAIL is also persona ${clash.key} (${clash.emailVar}). Use a different seed Admin, ` +
+      `leave ${clash.emailVar} unset, or run the journeys and the persona projects separately (e2e/README.md).`,
+    );
+}
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 
-type Json = Record<string, unknown>;
+export type Json = Record<string, unknown>;
 
 const ENVELOPE_KEYS = new Set(["data", "error", "message", "success"]);
 
@@ -230,7 +256,7 @@ export async function seedAipWorld(request: APIRequestContext): Promise<AipWorld
   return world;
 }
 
-function hostOfficeId(offices: Json[]): number {
+export function hostOfficeId(offices: Json[]): number {
   const host = offices.find((o) => o.isHostOffice === true);
   if (!host) throw new Error("No host office (PPDO) found.");
   return host.id as number;
@@ -258,10 +284,11 @@ function writeAccounts(accounts: Record<AipRole, AipAccount>) {
   fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2));
 }
 
-async function ensureAccount(
+/** Creates or updates a Staff test account and makes sure it can sign in with a known password. */
+export async function ensureAccount(
   request: APIRequestContext,
   admin: Api,
-  spec: { role: AipRole; username: string; fullName: string; officeId: number | null; divisionId: number | null; overrides: Json },
+  spec: { role: string; username: string; fullName: string; officeId: number | null; divisionId: number | null; overrides: Json },
   saved: AipAccount | undefined,
 ): Promise<AipAccount> {
   const users = await admin.call<Json[]>("get", "/users");
@@ -317,6 +344,15 @@ async function isReady(request: APIRequestContext, username: string, password: s
   return !me.mustChangePassword && !me.needsRecoverySetup;
 }
 
+/** Whether aip-setup has finished for this environment at least once. */
+export function hasWorld(): boolean {
+  return fs.existsSync(WORLD_FILE);
+}
+
 export function readWorld(): AipWorld {
-  return JSON.parse(fs.readFileSync(WORLD_FILE, "utf8")) as AipWorld;
+  const world = JSON.parse(fs.readFileSync(WORLD_FILE, "utf8")) as AipWorld;
+  // Belt and braces: never act on ids seeded against a different server.
+  if (world.apiUrl !== API_URL)
+    throw new Error(`${WORLD_FILE} was seeded against ${world.apiUrl}, not ${API_URL}. Run aip-setup for this environment.`);
+  return world;
 }

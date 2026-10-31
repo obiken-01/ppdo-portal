@@ -66,7 +66,8 @@ export const PORTAL_ROUTES: PortalRoute[] = [
   { path: "/budget-planning/aip/entry",  marker: h1("AIP Entry"),                access: rule(["SA", "AD", "RV", "EN"]) },
   // canOpenAipReview: a reviewer grant, never given to Admin by default.
   { path: "/budget-planning/aip/review/search", marker: h1("AIP Review"),        access: rule(["SA", "RV"], ["AD", "ST", "XD", "EN"]) },
-  { path: "/budget-planning/allocation", marker: h1("Allocation"),               access: rule(["SA"], ["EN"]) },
+  // The title follows the user (budget-planning-labels.ts): "Allocation", "Division Allocation" or "Budget Ceilings".
+  { path: "/budget-planning/allocation", marker: h1(/^(Division )?Allocation$|^Budget Ceilings$/), access: rule(["SA"], ["EN"]) },
   // canOpenLdip: host office.
   { path: "/budget-planning/ldip",       marker: h1("Local Development Investment Program"), access: rule(["SA", "AD"], ["EN"]) },
   // No h1 on this page (PPDO-256 finding). Every user gets the Manual Entry tab; Upload is PPDO-only.
