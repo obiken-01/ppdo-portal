@@ -23,6 +23,10 @@ the PR body that it passed. Write the spec for a browser-visible fix in the same
 not run in GitHub yet (see [Running it in GitHub Actions](#running-it-in-github-actions-not-set-up-yet)),
 so this local run is the check (Ralph, 2026-10-31).
 
+**Before a version's PR into `uat` or `main`, run it again with every other test** on the combined
+code: backend, frontend unit, lint, build and this suite. Steps:
+[GIT_CONVENTIONS.md → Release PRs](../../docs/GIT_CONVENTIONS.md#release-prs-a-version-to-uat-or-production-run-every-test-first).
+
 ## Personas and credentials
 
 Six personas (plan §3.1): `SA`, `AD`, `RV`, `ST`, `EN`, `XD`. Each reads two environment variables:
