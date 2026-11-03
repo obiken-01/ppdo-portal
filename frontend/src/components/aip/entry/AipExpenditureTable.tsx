@@ -26,6 +26,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import { AIP_AMOUNT_MAX, AIP_UNIT_REQUIRED, aipLineOverMaxMessage, anyItemMissingUnit } from "@/lib/aip-expenditure-limits";
 import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import { shouldDefaultToProcurement } from "@/lib/aip-default-nature";
@@ -1103,11 +1104,19 @@ function EditRow({
   // A locked fund is kept as saved, even if that was none — the encoder has no picker to fix it with.
   const missingFund = showFund && lockedFundCode === null && !draft.fundingSourceId
     ? "Pick a funding source." : null;
-  const missingAmount = itemised
-    ? (itemsTotal(draft.procurementItems) <= 0 ? "Cost at least one item." : null)
-    : ((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) <= 0 ? "Enter an amount." : null);
+  // PPDO-293 — the cap is on the line's total as well as each column, the same as the server's.
+  const lineTotal = itemised
+    ? itemsTotal(draft.procurementItems)
+    : (draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0);
+  const missingAmount = lineTotal > AIP_AMOUNT_MAX
+    ? aipLineOverMaxMessage()
+    : itemised
+      ? (lineTotal <= 0 ? "Cost at least one item." : null)
+      : (lineTotal <= 0 ? "Enter an amount." : null);
+  // PPDO-286 — shown under each item's Unit field by the item table; here it only blocks.
+  const missingUnit = itemised && anyItemMissingUnit(draft.procurementItems) ? AIP_UNIT_REQUIRED : null;
   // The activity's own fund lives above the table and reports itself there; here it only blocks.
-  const blockedReason = missingAccount ?? missingFund ?? missingAmount
+  const blockedReason = missingAccount ?? missingFund ?? missingAmount ?? missingUnit
     ?? (activityFundMissing ? "Pick the activity's funding source first." : null)
     ?? extraBlockedReason;
 
@@ -1214,9 +1223,9 @@ function EditRow({
             {/* ⚠️ Disabled by the account's class, not hidden (PPDO-97). A line loaded from before
                 this rule can hold a figure in a column its class excludes; hiding the input would
                 hide that money, and the figure is still in the row's Total. */}
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   disabled={!allowed.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} disabled={!allowed.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   disabled={!allowed.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   max={AIP_AMOUNT_MAX} disabled={!allowed.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} max={AIP_AMOUNT_MAX} disabled={!allowed.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   max={AIP_AMOUNT_MAX} disabled={!allowed.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
           </>
         )}
 
