@@ -34,6 +34,7 @@ import { auth } from "@/lib/auth";
 import { clearMeCache } from "@/lib/me-cache";
 import { pendingLink, useAipNotifications } from "@/lib/aip-notifications";
 import { reviewerEditNotice } from "@/lib/aip-reviewer-edit";
+import { APP_NAME, OFFICE_LOGO_WEBP } from "@/lib/branding";
 import { APP_VERSION } from "@/lib/version";
 import type { MeResponse } from "@/types";
 import { resolveLandingPath } from "@/lib/landing";
@@ -250,14 +251,14 @@ export default function Sidebar({ me, open, onClose }: SidebarProps) {
         className="flex items-center gap-3 px-5 py-3 border-b border-green-600 hover:bg-green-600 transition-colors group"
       >
         <Image
-          src="/images/ppdo-logo.webp"
-          alt="PPDO"
+          src={OFFICE_LOGO_WEBP}
+          alt="OPPDC"
           width={48}
           height={48}
-          className="rounded-full object-contain shrink-0"
+          className="object-contain shrink-0"
         />
         <div className="min-w-0">
-          <p className="text-white font-bold text-sm leading-tight truncate">PPDO Portal</p>
+          <p className="text-white font-bold text-sm leading-tight truncate">{APP_NAME}</p>
           <p className="text-green-300 text-xs leading-tight truncate group-hover:text-green-200">
             Occ. Mindoro &middot; {APP_VERSION}
           </p>

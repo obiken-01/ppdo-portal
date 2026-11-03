@@ -7,10 +7,11 @@
  */
 
 import type { Metadata } from "next";
+import { APP_NAME } from "@/lib/branding";
 
 export const metadata: Metadata = {
   title: "Login",
-  description: "Sign in to the PPDO Portal.",
+  description: `Sign in to ${APP_NAME}.`,
   alternates: { canonical: "/login" },
 };
 

@@ -16,10 +16,11 @@ import Footer from "@/components/landing/Footer";
 import MissionVisionCarousel from "@/components/landing/MissionVisionCarousel";
 import AnnouncementsSection from "@/components/landing/AnnouncementsSection";
 import { SITE_URL } from "@/lib/seo";
+import { APP_FULL_NAME, APP_NAME, OFFICE_LOGO_PNG, OFFICE_LOGO_WEBP } from "@/lib/branding";
 
-const TITLE = "PPDO Portal — Provincial Planning and Development Office, Occidental Mindoro";
+const TITLE = APP_FULL_NAME;
 const DESCRIPTION =
-  "Official portal of the Provincial Planning and Development Office (PPDO) of " +
+  `${APP_NAME}, the official portal of the Provincial Planning and Development Office (PPDO) of ` +
   "Occidental Mindoro — announcements, resources, and staff services.";
 
 export const metadata: Metadata = {
@@ -30,10 +31,10 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     url: "/",
-    siteName: "PPDO Portal",
+    siteName: APP_NAME,
     // Dimensions must match the file — this declared 512×512 for a 256×256 image,
     // which makes scrapers reserve the wrong space in the link preview.
-    images: [{ url: "/images/ppdo-logo.png", width: 256, height: 256 }],
+    images: [{ url: OFFICE_LOGO_PNG, width: 512, height: 512 }],
     locale: "en_PH",
     type: "website",
   },
@@ -41,7 +42,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: TITLE,
     description: DESCRIPTION,
-    images: ["/images/ppdo-logo.png"],
+    images: [OFFICE_LOGO_PNG],
   },
 };
 
@@ -51,7 +52,7 @@ const jsonLd = {
   name: "Provincial Planning and Development Office",
   alternateName: "PPDO Occidental Mindoro",
   url: SITE_URL,
-  logo: `${SITE_URL}/images/ppdo-logo.png`,
+  logo: `${SITE_URL}${OFFICE_LOGO_PNG}`,
   address: {
     "@type": "PostalAddress",
     addressRegion: "Occidental Mindoro",
@@ -92,8 +93,8 @@ export default function LandingPage() {
               <div className="flex flex-col items-center text-center gap-1 flex-1 min-w-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/images/ppdo-logo.png"
-                  alt="PPDO Logo"
+                  src={OFFICE_LOGO_WEBP}
+                  alt="OPPDC Logo"
                   width={56}
                   height={56}
                   className="object-contain"

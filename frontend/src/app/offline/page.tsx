@@ -15,6 +15,7 @@
  */
 
 import Image from "next/image";
+import { APP_NAME } from "@/lib/branding";
 
 export default function OfflinePage() {
   return (
@@ -22,7 +23,7 @@ export default function OfflinePage() {
       <div className="w-full max-w-sm bg-white border border-slate-200 px-8 py-8 text-center">
         <Image
           src="/icons/icon-192.png"
-          alt="PPDO Portal"
+          alt={APP_NAME}
           width={64}
           height={64}
           className="mx-auto mb-5 object-contain"

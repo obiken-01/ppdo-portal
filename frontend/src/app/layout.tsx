@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { NOINDEX, SITE_URL } from "@/lib/seo";
+import { APP_NAME } from "@/lib/branding";
 import ServiceWorkerRegistrar from "@/components/pwa/ServiceWorkerRegistrar";
 import TopLoadingBar from "@/components/layout/TopLoadingBar";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "PPDO Portal",
-    template: "%s | PPDO Portal",
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
   },
   description: "Provincial Planning and Development Office — Occidental Mindoro",
   // iOS ignores the manifest's icons for the home screen and needs this instead.
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "PPDO Portal",
+    title: APP_NAME,
     statusBarStyle: "default",
   },
   // ⚠️ **Both spellings, deliberately** (PPDO-103). `appleWebApp.capable` emits

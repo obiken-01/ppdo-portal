@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { APP_NAME } from "@/lib/branding";
 
 export default function ServiceWorkerRegistrar() {
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
@@ -84,7 +85,7 @@ export default function ServiceWorkerRegistrar() {
                  bg-slate-800 text-white shadow-lg px-4 py-3 flex items-center gap-3 font-sans"
     >
       <p className="text-sm flex-1">
-        A new version of the PPDO Portal is available.
+        A new version of {APP_NAME} is available.
       </p>
       <button
         type="button"
