@@ -412,9 +412,12 @@ export default function ResourceLinksPage() {
                         )}
                       </a>
                     ) : (
-                      <span className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600">
+                      <span
+                        className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600"
+                        title="Not a web address (http:// or https://). Edit the link to fix it."
+                      >
                         <span className="truncate">{link.title}</span>
-                        <span className="text-xs text-red-600 shrink-0">(not a web address — edit to fix)</span>
+                        <span className="text-xs text-red-600 shrink-0">(invalid URL)</span>
                       </span>
                     )}
 
