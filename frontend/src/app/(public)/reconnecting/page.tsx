@@ -32,6 +32,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
+import { APP_NAME } from "@/lib/branding";
 import { clearMeCache } from "@/lib/me-cache";
 import {
   classifyRefreshFailure,
@@ -187,7 +188,7 @@ function ReconnectingPageInner() {
           <p className="text-sm text-amber-800 mb-1">
             {offline
               ? "No internet connection was detected on this device. The portal will reconnect automatically as soon as you're back online."
-              : "The PPDO Portal server may be waking up after a period of inactivity — this can take up to about a minute."}
+              : `The ${APP_NAME} server may be waking up after a period of inactivity — this can take up to about a minute.`}
           </p>
           {!offline && phase === "retrying" && (
             <p className="text-xs text-amber-700 mb-6">

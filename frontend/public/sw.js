@@ -35,9 +35,15 @@
  *   requests new URLs; tying the cache name to APP_VERSION would evict a
  *   perfectly valid cache on every patch and reintroduce the version-drift
  *   problem RAL-234 just removed.
+ *
+ *   ⚠️ The one other reason to bump: a NON-hashed static file changing content
+ *   at the same URL — /icons/*, /favicon.ico, or an /images/* file replaced in
+ *   place. Those are served cache-first with no expiry, so without a bump a
+ *   returning visitor keeps the old image forever. v2 (PPDO-268): the PWA icons
+ *   and favicon were redrawn from the OPPDC logo.
  */
 
-const CACHE_VERSION = "1";
+const CACHE_VERSION = "2";
 const STATIC_CACHE = `ppdo-static-v${CACHE_VERSION}`;
 const PAGES_CACHE = `ppdo-pages-v${CACHE_VERSION}`;
 const EXPECTED_CACHES = [STATIC_CACHE, PAGES_CACHE];
