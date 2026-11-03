@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { apiErrorText } from "@/lib/api-error";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
@@ -363,9 +364,8 @@ export default function ReceiveDeliveryPage() {
       setSubmitted(data);
       toast.success("Delivery recorded", `Ref: ${data.deliveryRef}`);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: string } })?.response?.data
-        ?? "Failed to submit delivery. Please try again.";
-      toast.error("Submission failed", String(msg).slice(0, 150));
+      const msg = apiErrorText(e, "Failed to submit delivery. Please try again.");
+      toast.error("Submission failed", msg.slice(0, 150));
     } finally { setSubmitting(false); }
   }
 
