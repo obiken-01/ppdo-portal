@@ -22,6 +22,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
+import { APP_NAME } from "@/lib/branding";
 import { clearMeCache } from "@/lib/me-cache";
 import {
   classifyRefreshFailure,
@@ -123,7 +124,7 @@ function ReconnectingPageInner() {
             Reconnecting to the server…
           </h2>
           <p className="text-sm text-amber-800 mb-1">
-            The PPDO Portal server may be waking up after a period of
+            The {APP_NAME} server may be waking up after a period of
             inactivity — this can take up to about a minute.
           </p>
           {phase === "retrying" && (

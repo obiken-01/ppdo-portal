@@ -10,6 +10,8 @@
 
 **PPDO Portal & Inventory System** — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines. Inventory monitoring is the first major feature.
 
+> **Name:** shown to users as **PLANO MO** — *Provincial LDIP–AIP Network of Occidental Mindoro* (approved by the PPDC, 2026-11-03; v1.7.6). The name and the office logo live in `frontend/src/lib/branding.ts` — never type them into a page. Repo, namespaces, Azure resources and technical identifiers keep `ppdo` (PPDO-197).
+
 **Stack:** .NET 10 (Azure Functions, isolated worker) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend  
 **Full spec:** `PROJECT_DOCUMENTATION_NET_AZURE.md`  
@@ -557,7 +559,7 @@ treat handing one back as a normal, cost-free outcome.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-20 — current as of v1.7.4 (merged to `main` 2026-08-20); v1.7.5 .NET 10 hotfix (PPDO-234) in review.**
+> **Updated: 2026-11-03 — current as of v1.7.5 (merged to `main` 2026-10-20); v1.7.6 PLANO MO rename + OPPDC logo hotfix (PPDO-268) in review.**
 >
 > **Keeping this current is part of the release ritual.** The first commit on every `release/X.Y.Z`
 > branch already bumps `APP_VERSION` in three files (`Sidebar.tsx`, `Footer.tsx`,
@@ -565,7 +567,7 @@ treat handing one back as a normal, cost-free outcome.
 > section previously drifted eleven weeks and six minor versions behind the code, which is why the
 > rule is written down here.
 
-**Shipped:** v0.1 → v1.7.4, 19 releases to `main` between 2026-05-26 and 2026-08-20.
+**Shipped:** v0.1 → v1.7.5, 20 releases to `main` between 2026-05-26 and 2026-10-20.
 
 ### ✅ v1.0 — Core Portal & Inventory Monitoring (DONE)
 
@@ -640,7 +642,8 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.7.2B** | 2026-08-17 | #243, #245 | **Function App relocated Central US → Southeast Asia (RAL-237)** — removes the cross-region hop to Azure SQL; `Validators/` reorganized into per-feature subfolders (RAL-235) | 235, 237 |
 | **v1.7.3** | 2026-08-20 | #249 | Division name resolved in distribution history, code-keyed division upsert, division code in the history pill | 236, 239 |
 | **v1.7.4** | 2026-08-20 | #251 | Warehouse-count movement counted in Stock Overview columns, modal no longer closes on a drag-to-backdrop selection | 240, 273 |
-| **v1.7.5** | *(pending)* | *(this PR)* | **Hotfix: backend moves to .NET 10 / EF Core 10** before .NET 9 isolated end of support (2026-11-10). No code or migration changes; same package versions as PPDO-231 on `release/1.9.1`. ⚠️ `ppdo-portal-api-sea` needs *Stack settings → .NET 10 Isolated* right after the deploy | PPDO-234 |
+| **v1.7.5** | 2026-10-20 | #526 | **Hotfix: backend moves to .NET 10 / EF Core 10** before .NET 9 isolated end of support (2026-11-10). No code or migration changes; same package versions as PPDO-231 on `release/1.9.1`. ⚠️ `ppdo-portal-api-sea` needs *Stack settings → .NET 10 Isolated* right after the deploy | PPDO-234 |
+| **v1.7.6** | *(pending)* | *(this PR)* | **Hotfix: portal renamed PLANO MO + new OPPDC logo.** Name and logo moved into `lib/branding.ts`; logo file renamed to a neutral `office-logo.*`; favicon from the tamaraw head. Frontend only — no backend, migration or settings change. Office text still says PPDO until PPDO-269/270 | PPDO-267, PPDO-268 |
 
 > **v1.4.6 was never merged to `main`.** Its price-index work is the one real gap found in the
 > branch audit — see the `archive/fix/v1.4.6-budget-planning-query-perf` tag.
@@ -667,7 +670,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | Token storage | Access token: in-memory only (`auth.ts`), cleared on reload. Refresh token: httpOnly, Secure, SameSite=Strict cookie set by the backend on `/auth/login` and `/auth/refresh` (scoped to `/api/auth/refresh`) — not accessible to JS, never in localStorage/sessionStorage. Browser sends it automatically (axios `withCredentials: true`); refresh flow is a credentialed `POST /api/auth/refresh`. (RAL-58) |
 | Default user password | `TamarawUser2026!` — set on `UserService.CreateAsync` and `ResetPasswordAsync`. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
-| Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
+| Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`PLANO MO vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
 | **Version bump timing** | Bump `APP_VERSION` in all three places **at the start of a new version's development** — i.e. right after cutting its `release/X.Y.Z` branch, as the first commit on that branch — not at the end when merging/deploying. This way the displayed version always reflects what's actually running in that environment throughout development, including on preview/local builds. |
 | Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up Azure Functions (cold start ~10 min). Originally also pre-warmed Azure SQL auto-pause (~1 hr); no longer needed for the DB since the Basic-tier switch (2026-08-12) removed auto-pause entirely, but the call still serves the Functions side. |
@@ -772,6 +775,6 @@ children, organized as **7 phases / 73 items**.
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.7.4 — 2026-08-27 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.7.5 — 2026-11-03 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

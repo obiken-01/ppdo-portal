@@ -12,4 +12,5 @@
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://jolly-sky-0e3a2e310.7.azurestaticapps.net";
 
-export const SITE_NAME = "PPDO Portal — Occidental Mindoro";
+/** The portal's full name — defined in lib/branding.ts (PPDO-267). */
+export { APP_FULL_NAME as SITE_NAME } from "@/lib/branding";

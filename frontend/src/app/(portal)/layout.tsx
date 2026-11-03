@@ -25,6 +25,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import axios from "axios";
 import { auth } from "@/lib/auth";
+import { APP_NAME } from "@/lib/branding";
 import { classifyRefreshFailure, loginUrlWithReason, reconnectingUrl, REFRESH_TIMEOUT_MS } from "@/lib/auth-redirect";
 import { clearMeCache, fetchMe } from "@/lib/me-cache";
 import Sidebar from "@/components/layout/Sidebar";
@@ -55,7 +56,7 @@ function getPageTitle(pathname: string): string {
   for (const [prefix, title] of Object.entries(PAGE_TITLES)) {
     if (pathname === prefix || pathname.startsWith(prefix + "/")) return title;
   }
-  return "PPDO Portal";
+  return APP_NAME;
 }
 
 // Module-level — deduplicates the silent refresh across StrictMode double-mounts.

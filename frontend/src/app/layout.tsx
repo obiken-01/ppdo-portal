@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SITE_URL } from "@/lib/seo";
+import { APP_NAME } from "@/lib/branding";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "PPDO Portal",
-    template: "%s | PPDO Portal",
+    default: APP_NAME,
+    template: `%s | ${APP_NAME}`,
   },
   description: "Provincial Planning and Development Office — Occidental Mindoro",
 };
