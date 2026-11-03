@@ -77,6 +77,9 @@ public sealed class NotificationAudience : INotificationAudience
         return reviewers;
     }
 
+    public Task<IReadOnlyList<User>> EveryoneAsync(CancellationToken ct = default)
+        => _users.GetActiveAsync(ct);
+
     private async Task<IReadOnlyList<User>> ProgramReadersAsync(
         AipOffice office, AipProgram program, bool includeCrossOffice, CancellationToken ct)
     {
