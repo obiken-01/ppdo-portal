@@ -44,6 +44,7 @@ import { updateAipActivityDetails, aipConflict, aipErrorMessage } from "@/lib/ai
 import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipConflictPanel";
 import { fmtThousands } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
+import { monthOrderError } from "@/lib/aip-activity-months";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
 import AipCodeSelect from "@/components/aip/AipCodeSelect";
 import AipCodeLookup from "@/components/aip/AipCodeLookup";
@@ -110,6 +111,8 @@ export default function AipActivityFields({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  // PPDO-289/291 — a 400 the API pinned to one field is shown under that field, not in the box below.
+  const [fieldError, setFieldError] = useState<{ field: ActivityField; message: string } | null>(null);
 
   const [name, setName]                             = useState(activity.name);
   const [esreCode, setEsreCode]                     = useState(activity.esreCode ?? "");
@@ -133,6 +136,11 @@ export default function AipActivityFields({
   const [ccMitigation, setCcMitigation] = useState<number | null>(activity.ccMitigation);
 
   const nameRef = useAutoGrowTextarea(name);
+
+  // PPDO-289 — end before start is refused here, under End, and Save waits until it is fixed.
+  const orderError = monthOrderError(startDate, endDate, activity);
+  const startError = fieldError?.field === "start" ? fieldError.message : null;
+  const endError   = orderError ?? (fieldError?.field === "end" ? fieldError.message : null);
 
   // PPDO-191 (V18-71) — set when the save was refused because someone else saved this activity
   // after it was loaded. Same flow as AipActivityRow, the detail page's inline editor.
@@ -163,6 +171,7 @@ export default function AipActivityFields({
     setCcTypologyCode(f.ccTypologyCode);
     setCcAdaptation(f.ccAdaptation);
     setCcMitigation(f.ccMitigation);
+    setFieldError(null);
   }
 
   function beginEdit() {
@@ -234,8 +243,10 @@ export default function AipActivityFields({
    */
   async function save(rowVersion: string | null = restoredBase.current ?? activity.rowVersion ?? null) {
     if (!name.trim()) { setError("The activity title is required."); return; }
+    if (orderError) return;
     setSaving(true);
     setError(null);
+    setFieldError(null);
     try {
       const updated = await updateAipActivityDetails(activity.id, {
         name: name.trim(),
@@ -267,7 +278,10 @@ export default function AipActivityFields({
         setConflict(clash);
         return;
       }
-      setError(aipErrorMessage(e, "Could not save the activity details."));
+      const message = aipErrorMessage(e, "Could not save the activity details.");
+      const field = fieldOfError(message);
+      if (field) setFieldError({ field, message });
+      else setError(message);
     } finally {
       setSaving(false);
     }
@@ -449,18 +463,27 @@ export default function AipActivityFields({
 
         <div>
           <Label>Start</Label>
-          <select value={startDate} onChange={(e) => setStartDate(e.target.value)} className={selectCls}>
+          <select value={startDate} onChange={(e) => { setStartDate(e.target.value); setFieldError(null); }}
+            aria-label="Start month" aria-invalid={!!startError}
+            aria-describedby={startError ? `activity-${activity.id}-start-error` : undefined}
+            className={selectCls}>
             <option value="">—</option>
             {AIP_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          <FieldError id={`activity-${activity.id}-start-error`} message={startError} />
         </div>
 
         <div>
           <Label>End</Label>
-          <select value={endDate} onChange={(e) => setEndDate(e.target.value)} className={selectCls}>
+          <select value={endDate} onChange={(e) => { setEndDate(e.target.value); setFieldError(null); }}
+            aria-label="End month" aria-invalid={!!endError}
+            aria-describedby={endError ? `activity-${activity.id}-end-error` : undefined}
+            className={selectCls}>
             <option value="">—</option>
             {AIP_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
+          {/* PPDO-289 — checked here first, so "December → January" is caught before it is sent. */}
+          <FieldError id={`activity-${activity.id}-end-error`} message={endError} />
         </div>
 
         <div className="sm:col-span-3">
@@ -502,10 +525,12 @@ export default function AipActivityFields({
           <Label>CC typology code</Label>
           <AipCodeLookup
             value={ccTypologyCode}
-            onChange={setCcTypologyCode}
+            onChange={(v) => { setCcTypologyCode(v); setFieldError(null); }}
             options={codeOptions.ccTypology}
             loaded={codeOptions.loaded}
           />
+          <FieldError id={`activity-${activity.id}-typology-error`}
+            message={fieldError?.field === "ccTypology" ? fieldError.message : null} />
         </div>
       </div>
 
@@ -546,13 +571,33 @@ export default function AipActivityFields({
           className="border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50">
           Cancel
         </button>
-        <button type="button" onClick={() => save()} disabled={saving}
+        <button type="button" onClick={() => save()} disabled={saving || !!orderError}
           className="bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800 disabled:bg-slate-300">
           {saving ? "Saving…" : "Save details"}
         </button>
       </div>
     </div>
   );
+}
+
+/** The detail fields a 400 can be pinned to (PPDO-289 / 291). */
+type ActivityField = "start" | "end" | "ccTypology";
+
+/**
+ * Which field an API refusal is about, read from its wording (`AipService.UpdateActivityDetailsAsync`).
+ * Null sends it to the general error box. The page cannot normally produce these (the selects offer
+ * only valid values); they cover a list that changed since the page loaded, or an old draft.
+ */
+function fieldOfError(message: string): ActivityField | null {
+  if (/end month/i.test(message)) return "end";
+  if (/start month/i.test(message)) return "start";
+  if (/typology/i.test(message)) return "ccTypology";
+  return null;
+}
+
+function FieldError({ id, message }: { id: string; message: string | null | undefined }) {
+  if (!message) return null;
+  return <p id={id} role="alert" className="mt-1 text-xs text-red-700">{message}</p>;
 }
 
 function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
