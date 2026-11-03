@@ -131,4 +131,10 @@ public sealed class UserRepository : Repository<User>, IUserRepository
                                  || u.Role == UserRole.SuperAdmin
                                  || u.OverrideCanReviewAllOffices == true))))
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<User>> GetActiveAsync(CancellationToken cancellationToken = default)
+        => await _context.Users
+            .AsNoTracking()
+            .Where(u => u.IsActive)
+            .ToListAsync(cancellationToken);
 }

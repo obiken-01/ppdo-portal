@@ -20,6 +20,7 @@ public static class NotificationTypes
     public const string AipComment                  = "AipComment";
     public const string AipReply                    = "AipReply";
     public const string AipResolved                 = "AipResolved";
+    public const string Announcement                = "Announcement";
 }
 
 /// <summary>
@@ -93,6 +94,10 @@ public static class NotificationText
         return Fit($"Your FY {fiscalYear} initial WFP export is ready ({offices})");
     }
 
+    /// <summary>"New announcement: Office closed on Friday" (PPDO-284).</summary>
+    public static string AnnouncementPublished(string title)
+        => Fit($"New announcement: {Name(title)}");
+
     private static string Target(string refCode, string project)
         => string.IsNullOrWhiteSpace(refCode) ? Name(project) : $"{refCode} — {Name(project)}";
 
@@ -131,6 +136,13 @@ public static class NotificationLinks
     /// <summary>The report page on that year, where the initial WFP and its <b>Download all</b> live.</summary>
     public static string WfpReport(int fiscalYear)
         => $"/budget-planning/report?fiscalYear={fiscalYear}";
+
+    /// <summary>
+    /// The full notifications page with the announcement's modal open (PPDO-284). The bell opens the
+    /// modal in place; the link is for a new tab or a refresh.
+    /// </summary>
+    public static string Announcement(Guid announcementId)
+        => $"/notifications?announcement={announcementId}";
 
     public static string AipActivity(int fiscalYear, int programId, int projectId, int activityId)
         => $"/budget-planning/aip/entry?fiscalYear={fiscalYear}&programId={programId}&projectId={projectId}&activityId={activityId}";

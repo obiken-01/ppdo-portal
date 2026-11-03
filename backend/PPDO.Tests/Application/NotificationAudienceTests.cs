@@ -217,6 +217,19 @@ public sealed class NotificationAudienceTests
         // Not _ppdoStaff: reading every office is not reviewing them.
     }
 
+    // ── Everyone (an announcement, PPDO-284) ──────────────────────────────────
+
+    [Fact]
+    public async Task Everyone_IsEveryActiveUser_WithNoPermissionFilter()
+    {
+        // An announcement is public, so no feature flag narrows it: _ptoNoBudget, who cannot open
+        // Budget Planning, still hears of it. Who is active is the repository's WHERE.
+        _users.Setup(r => r.GetActiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([_ptoNoBudget, _gsoEncoder, _superAdmin]);
+
+        AssertExactly(await _sut.EveryoneAsync(), _ptoNoBudget, _gsoEncoder, _superAdmin);
+    }
+
     // ── One query per event ───────────────────────────────────────────────────
 
     [Fact]

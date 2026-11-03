@@ -20,6 +20,7 @@ import {
 } from "@/lib/notifications";
 import type { AppNotification } from "@/types";
 import NotificationRow, { NotificationSkeleton } from "./NotificationRow";
+import AnnouncementNotificationModal from "./AnnouncementNotificationModal";
 import { useUnreadCount } from "./useUnreadCount";
 
 type Filter = "all" | "unread";
@@ -30,6 +31,7 @@ export default function NotificationBell() {
   const [filter, setFilter] = useState<Filter>("all");
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState(false);
+  const [announcementId, setAnnouncementId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -154,7 +156,7 @@ export default function NotificationBell() {
                 {filter === "unread" ? "Nothing unread." : "You're all caught up."}
               </p>
             ) : (
-              items.map((n) => <NotificationRow key={n.id} n={n} onOpen={openEntry} />)
+              items.map((n) => <NotificationRow key={n.id} n={n} onOpen={openEntry} onOpenAnnouncement={setAnnouncementId} />)
             )}
           </div>
 
@@ -164,6 +166,10 @@ export default function NotificationBell() {
             </Link>
           </div>
         </div>
+      )}
+
+      {announcementId && (
+        <AnnouncementNotificationModal id={announcementId} onClose={() => setAnnouncementId(null)} />
       )}
     </div>
   );

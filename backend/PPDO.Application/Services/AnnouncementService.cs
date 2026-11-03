@@ -12,18 +12,24 @@ namespace PPDO.Application.Services;
 /// Announcement lifecycle management (RAL-83).
 /// Write operations are restricted to Admin/SuperAdmin.
 /// HTML content is sanitized via Ganss.Xss on every create/update.
+/// The first publish puts an entry in every other active user's notification bell (PPDO-284).
 /// </summary>
 public sealed class AnnouncementService : IAnnouncementService
 {
     private static readonly HtmlSanitizer Sanitizer = new();
 
     private readonly IRepository<Announcement> _repo;
+    private readonly INotificationService _notifications;
     private readonly ILogger<AnnouncementService> _logger;
 
-    public AnnouncementService(IRepository<Announcement> repo, ILogger<AnnouncementService> logger)
+    public AnnouncementService(
+        IRepository<Announcement> repo,
+        INotificationService notifications,
+        ILogger<AnnouncementService> logger)
     {
-        _repo   = repo;
-        _logger = logger;
+        _repo          = repo;
+        _notifications = notifications;
+        _logger        = logger;
     }
 
     /// <inheritdoc />
@@ -124,12 +130,30 @@ public sealed class AnnouncementService : IAnnouncementService
         if (entity is null)
             return ServiceResult<AnnouncementDto>.NotFound($"Announcement {id} not found.");
 
+        bool firstPublish = entity.PublishedAt is null;
         entity.Status = AnnouncementStatus.Published;
         // Set PublishedAt only on first publish — never overwrite
         entity.PublishedAt ??= DateTime.UtcNow;
 
+        // Only the first publish is news: an unpublish and republish keeps its PublishedAt and
+        // notifies no one again. Staged before the save, so the rows ride on it (never fails it).
+        if (firstPublish)
+        {
+            string title = entity.Title;
+            Guid   annId = entity.Id;
+            await _notifications.StageAsync(NotificationTypes.Announcement, caller,
+                async (audience, ct) => new NotificationBatch(
+                    NotificationText.AnnouncementPublished(title),
+                    NotificationLinks.Announcement(annId),
+                    await audience.EveryoneAsync(ct)),
+                cancellationToken);
+        }
+
         await _repo.UpdateAsync(entity, cancellationToken);
         await _repo.SaveChangesAsync(cancellationToken);
+
+        if (firstPublish)
+            _logger.LogInformation("Announcement published. Id: {Id}, UserId: {UserId}", entity.Id, caller.Id);
 
         return ServiceResult<AnnouncementDto>.Ok(MapToDto(entity));
     }

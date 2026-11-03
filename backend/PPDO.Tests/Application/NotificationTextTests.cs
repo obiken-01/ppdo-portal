@@ -6,6 +6,13 @@ namespace PPDO.Tests.Application;
 public sealed class NotificationTextTests
 {
     [Fact]
+    public void AnnouncementPublished_WithAMultiLineTitle_StaysOnOneLine()
+    {
+        Assert.Equal("New announcement: Office closed on Friday",
+            NotificationText.AnnouncementPublished("Office closed\n on Friday"));
+    }
+
+    [Fact]
     public void AipReviewerEdited_WithAMultiLineActivityName_KeepsTheChange()
     {
         // An activity name can be a whole paragraph (PPDO-222 live check): the change must survive.
