@@ -83,9 +83,10 @@ export function aipErrorMessage(err: unknown, fallback: string): string {
  *
  * ⚠️ **A 409 is a conflict here only when it carries the row** (`current` + `currentRowVersion`).
  * PPDO-294 — the API also sends 409s that are only a message (`{ error }`): a version clash whose
- * reload failed, a delete that lost a renumber race, "another project was added at the same
- * moment". Those have nothing to compare and no version to Overwrite with, so the panel would be
- * an empty dead end; null sends them to `aipErrorMessage`, which shows the server's sentence.
+ * reload failed, a delete that lost a renumber race (not a version conflict at all), "another
+ * project was added at the same moment". Those have nothing to compare and no version to
+ * Overwrite with, so the panel would be an empty dead end; null sends them to `aipErrorMessage`,
+ * which shows the server's sentence.
  * `AipDeleteNodeButton` relies on this for its renumber banner, and the WFP toggle reads
  * `current` straight off the result.
  */
