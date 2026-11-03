@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { fetchMe } from "@/lib/me-cache";
+import { isHttpUrl } from "@/lib/safe-url";
 import RowActions, { type RowAction } from "@/components/ui/RowActions";
 import type {
   CreateResourceLinkRequest,
@@ -395,19 +396,27 @@ export default function ResourceLinksPage() {
               <ul className="divide-y divide-slate-50">
                 {cat.links.map((link) => (
                   <li key={link.id} className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 transition-colors group/row">
-                    {/* Link */}
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600 hover:text-green-700 transition-colors"
-                    >
-                      <span className="text-slate-300 group-hover/row:text-green-400 shrink-0 transition-colors text-xs">↗</span>
-                      <span className="truncate">{link.title}</span>
-                      {!link.isAdminCreated && (
-                        <span className="text-xs text-slate-600 shrink-0">(staff)</span>
-                      )}
-                    </a>
+                    {/* Link — a saved URL that is not http(s) is shown as text, never as an
+                        href, so a javascript: row can't run script (PPDO-299). */}
+                    {isHttpUrl(link.url) ? (
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600 hover:text-green-700 transition-colors"
+                      >
+                        <span className="text-slate-300 group-hover/row:text-green-400 shrink-0 transition-colors text-xs">↗</span>
+                        <span className="truncate">{link.title}</span>
+                        {!link.isAdminCreated && (
+                          <span className="text-xs text-slate-600 shrink-0">(staff)</span>
+                        )}
+                      </a>
+                    ) : (
+                      <span className="flex-1 min-w-0 flex items-center gap-2 text-sm text-slate-600">
+                        <span className="truncate">{link.title}</span>
+                        <span className="text-xs text-red-600 shrink-0">(not a web address — edit to fix)</span>
+                      </span>
+                    )}
 
                     {/* Actions */}
                     <div className="opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0">
