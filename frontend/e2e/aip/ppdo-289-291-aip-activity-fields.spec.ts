@@ -8,7 +8,8 @@ import { addActivity, openEntry, pickActivity } from "./entry";
 // encoder A in the seeded E2E office (FY 2028, the new format):
 //   • 289: an end month before the start month is caught under End and nothing is sent; the API
 //     refuses free-text months, a too-long month (was a 500) and a reversed pair with a 400;
-//   • 290: the API refuses a negative CC adaptation or mitigation;
+//   • 290: the API refuses a negative CC adaptation or mitigation; CC above the activity total is
+//     an amber warning on the page and still saves;
 //   • 291: the API refuses a CC typology code that is not in Config.
 // PPDO-292 (FY 2027 negative PS/MOOE/CO) is covered by unit tests only: the seeded world is FY 2028.
 
@@ -108,6 +109,32 @@ test("PPDO-290: the API refuses a negative CC adaptation or mitigation with a 40
 
   await expect(put({ ccAdaptation: -1 })).rejects.toThrow(/→ 400.*CC adaptation cannot be negative/);
   await expect(put({ ccMitigation: -0.01 })).rejects.toThrow(/→ 400.*CC mitigation cannot be negative/);
+});
+
+test("PPDO-290: CC above the activity total shows an amber warning, and Save still works", async ({ browser, baseURL }) => {
+  const { page, close } = await signIn(browser, "encoderA", baseURL);
+  await openActivity(page);
+  await page.getByRole("button", { name: "Edit details" }).click();
+
+  // The activity's total is the ₱10,000 MOOE line saved in beforeAll; 8,000 + 5,000 is above it.
+  const ccInput = (label: string) => page.getByText(label, { exact: true }).locator("xpath=following-sibling::div[1]//input");
+  await ccInput("CC adaptation (pesos)").fill("8000");
+  await ccInput("CC mitigation (pesos)").fill("5000");
+
+  const warning = page.getByRole("status").filter({ hasText: "add up to more than the activity total" });
+  await expect(warning).toBeVisible();
+  await expect(warning).toContainText("₱10,000.00");
+
+  // A warning, not a refusal (Ralph, 2026-11-04): Save is enabled and the PUT succeeds.
+  const save = page.getByRole("button", { name: "Save details" });
+  await expect(save).toBeEnabled();
+  const put = page.waitForResponse((r) => r.request().method() === "PUT" && /\/details$/.test(r.url()));
+  await save.click();
+  expect((await put).status()).toBe(200);
+  await expect(save).toBeHidden();
+  await expect(readField(page, "CC adaptation (in thousand pesos)")).not.toHaveText("—");
+  await expect(readField(page, "CC mitigation (in thousand pesos)")).not.toHaveText("—");
+  await close();
 });
 
 test("PPDO-291: the API refuses a CC typology code that is not in Config with a 400", async ({ request }) => {

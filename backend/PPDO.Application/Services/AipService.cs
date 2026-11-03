@@ -1553,8 +1553,9 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.BadRequest("CC adaptation cannot be negative.");
         if (dto.CcMitigation < 0)
             return ServiceResult<AipActivityDto>.BadRequest("CC mitigation cannot be negative.");
-        // ↩️ CC larger than the activity total is NOT checked here. Whether that is an error or a
-        // warning is Ralph's call (PPDO-290), and it may be a new rule for a later release.
+        // ⚠️ CC larger than the activity total is deliberately NOT refused: it is an amber warning on
+        // the entry page (Ralph, 2026-11-04, PPDO-290). A hard rule may come in v1.10 once PPDC or
+        // finance confirms it.
         if (!string.IsNullOrWhiteSpace(dto.CcTypologyCode)
             && dto.CcTypologyCode.Trim() != activity.CcTypologyCode?.Trim()
             && !await _ccTypologies.ActiveCodeExistsAsync(dto.CcTypologyCode.Trim(), ct))

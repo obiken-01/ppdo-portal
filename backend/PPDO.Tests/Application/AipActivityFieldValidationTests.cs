@@ -181,6 +181,20 @@ public sealed partial class AipServiceTests
         Assert.Equal(2500m, activity.CcMitigation);
     }
 
+    [Fact]
+    public async Task UpdateActivityDetailsAsync_WithCcAboveTheActivityTotal_StillSaves()
+    {
+        // PPDO-290 — Ralph, 2026-11-04: a warning on the page, not a refusal. A hard rule may come
+        // in v1.10; until then the API must accept it.
+        var (sut, activity, _) = BuildForFieldChecks(a => a.Total = 10_000m);
+
+        ServiceResult<AipActivityDto> result = await SaveDetails(sut, DetailsWith(ccAdaptation: 8_000m, ccMitigation: 5_000m));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(8_000m, activity.CcAdaptation);
+        Assert.Equal(5_000m, activity.CcMitigation);
+    }
+
     // ── PPDO-291: CC typology code ────────────────────────────────────────────
 
     [Fact]

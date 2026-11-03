@@ -45,6 +45,7 @@ import AipConflictPanel, { type AipConflictField } from "@/components/aip/AipCon
 import { fmtThousands } from "@/lib/aip-units";
 import { AIP_MONTHS } from "@/lib/aipConstants";
 import { monthOrderError } from "@/lib/aip-activity-months";
+import { ccOverTotalWarning } from "@/lib/aip-activity-cc";
 import { useAipCodeOptions } from "@/hooks/useAipCodeOptions";
 import AipCodeSelect from "@/components/aip/AipCodeSelect";
 import AipCodeLookup from "@/components/aip/AipCodeLookup";
@@ -141,6 +142,8 @@ export default function AipActivityFields({
   const orderError = monthOrderError(startDate, endDate, activity);
   const startError = fieldError?.field === "start" ? fieldError.message : null;
   const endError   = orderError ?? (fieldError?.field === "end" ? fieldError.message : null);
+  // PPDO-290 — a warning only: Save stays enabled and the API does not refuse it.
+  const ccWarning = ccOverTotalWarning(ccAdaptation, ccMitigation, activity.total);
 
   // PPDO-191 (V18-71) — set when the save was refused because someone else saved this activity
   // after it was loaded. Same flow as AipActivityRow, the detail page's inline editor.
@@ -532,6 +535,14 @@ export default function AipActivityFields({
           <FieldError id={`activity-${activity.id}-typology-error`}
             message={fieldError?.field === "ccTypology" ? fieldError.message : null} />
         </div>
+
+        {/* PPDO-290 — amber and non-blocking (Ralph, 2026-11-04). A hard rule may come in v1.10,
+            once PPDC or finance confirms that CC can never be more than the activity total. */}
+        {ccWarning && (
+          <p role="status" className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 sm:col-span-3">
+            {ccWarning}
+          </p>
+        )}
       </div>
 
       {error && (
