@@ -32,7 +32,8 @@ async function openActivity(page: Page) {
 
 /** The read view's value under one label, e.g. "Start". */
 function readField(page: Page, label: string) {
-  return page.locator("dt", { hasText: new RegExp(`^${label}$`) }).locator("xpath=following-sibling::dd[1]");
+  const exact = new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  return page.locator("dt", { hasText: exact }).locator("xpath=following-sibling::dd[1]");
 }
 
 /** A details save straight to the API, with the eSRE code the activity already has. */
