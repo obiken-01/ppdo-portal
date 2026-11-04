@@ -1,4 +1,4 @@
-import { test as base, type BrowserContext } from "@playwright/test";
+import { test as base, type BrowserContext, type Request } from "@playwright/test";
 
 // Signed-in specs import `test` and `expect` from here, not from "@playwright/test".
 //
@@ -43,12 +43,47 @@ export const test = base.extend<object, { personaContext: BrowserContext; stateP
   },
 
   page: async ({ personaContext, statePath }, use) => {
+    const refreshes = trackRefreshes(personaContext);
     const page = await personaContext.newPage();
     await use(page);
+    // PPDO-300: never close the page while a refresh is in flight. The server rotates the token as
+    // soon as it answers; if the page is gone before the answer lands, the browser keeps the old
+    // cookie, the next line saves it, and every later test for this persona is "token_superseded".
+    // Under a loaded full run `networkidle` can settle before the app's silent refresh even starts,
+    // so a test can end just as one goes out. Hold back new refreshes, let sent ones land, then close.
+    await personaContext.route(REFRESH_URL, (route) => route.abort("aborted"));
+    await refreshes.settled();
     await page.close();
+    await personaContext.unroute(REFRESH_URL);
+    refreshes.stop();
     // Save the cookie this test's refreshes rotated to (point 3 above).
     await personaContext.storageState({ path: statePath });
   },
 });
+
+const REFRESH_URL = /\/api\/auth\/refresh$/;
+
+/** Counts /auth/refresh calls that reached the network and have not answered yet. */
+function trackRefreshes(context: BrowserContext) {
+  let inFlight = 0;
+  const isRefresh = (r: Request) => REFRESH_URL.test(r.url());
+  const onStart = (r: Request) => { if (isRefresh(r)) inFlight++; };
+  const onEnd = (r: Request) => { if (isRefresh(r)) inFlight = Math.max(0, inFlight - 1); };
+  context.on("request", onStart);
+  context.on("requestfinished", onEnd);
+  context.on("requestfailed", onEnd);
+  return {
+    async settled() {
+      // A refresh answers in well under a second locally; 30 s covers a cold host.
+      const deadline = Date.now() + 30_000;
+      while (inFlight > 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    },
+    stop() {
+      context.off("request", onStart);
+      context.off("requestfinished", onEnd);
+      context.off("requestfailed", onEnd);
+    },
+  };
+}
 
 export { expect } from "@playwright/test";

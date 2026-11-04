@@ -68,7 +68,10 @@ export async function addActivity(page: Page, a: ActivitySpec) {
   await page.getByRole("button", { name: "Edit details" }).click();
   await page.getByRole("combobox", { name: "eSRE code" }).selectOption({ label: "ID — Institutional Development" });
   await page.getByRole("button", { name: "Save details" }).click();
-  await expect(page.getByRole("button", { name: "Save details" })).toBeHidden();
+  // Not "Save details is hidden": the button reads "Saving…" from the click on, so that passed while
+  // the PUT was in flight, and the expenditure POST below then raced it (PPDO-300). The form closes,
+  // and "Edit details" returns, only once the save has answered.
+  await expect(page.getByRole("button", { name: "Edit details" })).toBeVisible({ timeout: 20_000 });
 
   // The activity's fund, then one account line.
   const fund = page.getByRole("textbox", { name: "Funding source" });
