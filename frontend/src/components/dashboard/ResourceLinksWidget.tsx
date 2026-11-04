@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
+import { isHttpUrl } from "@/lib/safe-url";
 import type { ResourceLinkCategory } from "@/types";
 
 const MAX_LINKS_PER_CATEGORY = 5;
@@ -84,18 +85,25 @@ export default function ResourceLinksWidget() {
               {/* Links */}
               {!isCollapsed && (
                 <div className="space-y-0.5 mt-0.5">
-                  {visible.map((link) => (
-                    <a
-                      key={link.id}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
-                    >
-                      <span className="text-slate-300 group-hover/link:text-green-400 shrink-0 transition-colors">↗</span>
-                      <span className="truncate">{link.title}</span>
-                    </a>
-                  ))}
+                  {visible.map((link) =>
+                    // A saved URL that is not http(s) is shown as text, never as an href (PPDO-299).
+                    isHttpUrl(link.url) ? (
+                      <a
+                        key={link.id}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-600 hover:bg-green-50 hover:text-green-700 transition-colors group/link"
+                      >
+                        <span className="text-slate-300 group-hover/link:text-green-400 shrink-0 transition-colors">↗</span>
+                        <span className="truncate">{link.title}</span>
+                      </a>
+                    ) : (
+                      <span key={link.id} className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-600">
+                        <span className="truncate">{link.title}</span>
+                      </span>
+                    ),
+                  )}
                   {hiddenCount > 0 && (
                     <Link
                       href="/resource-links"
