@@ -57,6 +57,7 @@ import { listOffices } from "@/lib/config";
 import { canOpenAipReview, budgetPlanningFallback } from "@/lib/budget-planning-access";
 import { ENTERED_FISCAL_YEAR_OPTIONS, resolveEnteredFiscalYear } from "@/lib/aip-fiscal-years";
 import { useDefaultFiscalYear } from "@/lib/default-fiscal-year";
+import LoadError from "@/components/ui/LoadError";
 import { AIP_SECTOR_OPTIONS } from "@/lib/aipConstants";
 import {
   AIP_WORKFLOW, describeAipHolderForReviewer, describeAipHolderForDepartmentHead,
@@ -140,7 +141,7 @@ export default function AipReviewSearchPage() {
 
   // PPDO-145 — the URL's year wins; with none, the admin default when it is an entry year, else
   // the break year. A search waits for it (`yearSettled`) so it never runs against the fallback first.
-  const { ready: defaultReady, defaultFiscalYear } = useDefaultFiscalYear();
+  const { ready: defaultReady, defaultFiscalYear, failed: yearsFailed, retry: retryYears } = useDefaultFiscalYear();
   const [pickedYear, setPickedYear] = useState<number | null>(
     YEARS.includes(requestedYear) ? requestedYear : null
   );
@@ -310,6 +311,15 @@ export default function AipReviewSearchPage() {
           </select>
         </div>
       </div>
+
+      {/* PPDO-277 — the year picker falls back to the break year when the fiscal years fail to load,
+          which reads as a real choice. Say so, with Retry. A year picked by hand or named in the URL
+          does not depend on the load, so the message goes away then. */}
+      {yearsFailed && pickedYear == null && (
+        <div className="mb-4 border border-slate-200 bg-white">
+          <LoadError message="Couldn't load the fiscal years." onRetry={retryYears} className="py-3" />
+        </div>
+      )}
 
       {error && (
         <p className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
