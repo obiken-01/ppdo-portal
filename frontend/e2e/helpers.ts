@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Response } from "@playwright/test";
 import { expect } from "./fixtures";
 import type { PersonaKey } from "./personas";
 import type { PortalRoute } from "./routes";
@@ -35,6 +35,26 @@ export async function open(page: Page, path: string) {
 
 export function expectSignedIn(page: Page, path: string) {
   expect(pathname(page), `signed out on ${path}: the persona's session was lost`).not.toBe("/login");
+}
+
+/**
+ * PPDO-300: the Report page's office picker says "No office ready yet" (and is disabled) before its
+ * offices request has even gone out, so an empty or disabled picker means nothing until that request
+ * has answered. Start this before `goto`, await it once the page is known to ask (see the page's
+ * `canOpenWfpReportForYear`), then wait for the "Loading offices…" option to go.
+ */
+export function reportOfficesAnswer(page: Page, fiscalYear: number) {
+  const answer = page.waitForResponse(
+    (r) => /\/budget-planning\/wfp\/report\/offices\?/.test(r.url()) && r.url().includes(`fiscalYear=${fiscalYear}`),
+  );
+  answer.catch(() => {}); // not awaited when the page has no reason to ask
+  return answer;
+}
+
+/** The signed-in user's own /auth/me answer, read off the response the page itself got. */
+export async function meFrom<T>(meResponse: Response): Promise<T> {
+  const body = (await meResponse.json()) as T | { data: T };
+  return (typeof body === "object" && body !== null && "data" in body ? body.data : body) as T;
 }
 
 export function marker(page: Page, route: PortalRoute) {

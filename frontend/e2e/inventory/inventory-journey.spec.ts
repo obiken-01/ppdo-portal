@@ -38,6 +38,10 @@ async function receive(page: Page, qty: number) {
 /** The run's PR status on PR List, as the user reads it. */
 async function prStatus(page: Page): Promise<string> {
   await page.goto("/inventory/pr-register");
+  // Search for it, as a user would. PR List shows 25 a page, newest PR date first, and every run
+  // adds PRs dated today to the E2E division; same-date rows come in no set order, so this run's PR
+  // could sit on page 2 (PPDO-300).
+  await page.getByPlaceholder("Search PR no., division, requested by, fund…").fill(prNo);
   const row = page.getByRole("row").filter({ hasText: prNo });
   await expect(row).toBeVisible({ timeout: 20_000 });
   return row.innerText();

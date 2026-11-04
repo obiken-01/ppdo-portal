@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
+import { meFrom, reportOfficesAnswer } from "./helpers";
 import { hasAmount, readWorkbook } from "./xlsx";
 
 // PPDO-271 item 3 — Excel exports on the Report page: the file arrives as an .xlsx and its grand
@@ -12,13 +13,29 @@ import { hasAmount, readWorkbook } from "./xlsx";
 // Runs for personas that may choose the office (SuperAdmin, Admin); the others skip. The PR report
 // export is in e2e/inventory/ppdo-271-inventory-bad-paths.spec.ts.
 
+interface Me { role: string; canManagePpdoAllocation?: boolean }
+
+// A preview and an export each wait on the API, and the preview alone is allowed 30 s; the default
+// 30 s test timeout ran out in a loaded full run (PPDO-300).
+test.describe.configure({ timeout: 90_000 });
+
 const AMOUNT = /\d{1,3}(?:,\d{3})*\.\d{2}/g;
 const toNumber = (s: string) => Number(s.replace(/,/g, ""));
 
 /** Opens the report for a type and year, picks the first office the picker offers, and previews it. */
 async function preview(page: Page, type: "WFP" | "PPMP", fiscalYear: number): Promise<string | null> {
+  const meResponse = page.waitForResponse((r) => /\/api\/auth\/me$/.test(r.url()) && r.ok());
+  const officesAnswer = reportOfficesAnswer(page, fiscalYear);
   await page.goto(`/budget-planning/report?type=${type}&fiscalYear=${fiscalYear}`);
+  // The page's own rule for who picks the office (report/page.tsx `canBypassDivision`). Everyone it
+  // lets pick also gets the year's office list, so only they wait for it (PPDO-300: the picker is
+  // empty and disabled until that list arrives, which read as "no office" or "cannot choose").
+  // Decided before anything on the page is checked: a guest-office account may be sent elsewhere.
+  const me = await meFrom<Me>(await meResponse);
+  if (!(me.role === "SuperAdmin" || me.role === "Admin" || me.canManagePpdoAllocation === true))
+    return "this account cannot choose the office";
   await expect(page.getByRole("heading", { level: 1, name: "Report" })).toBeVisible();
+  await officesAnswer;
   await page.waitForLoadState("networkidle").catch(() => {});
   const office = page.locator("select").filter({ has: page.locator("option", { hasText: /select office|No office|Loading offices/ }) });
   await expect(office.locator("option", { hasText: "Loading offices" })).toHaveCount(0);

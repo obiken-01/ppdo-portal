@@ -18,6 +18,25 @@ npm run e2e          # or: npm run e2e:ui
 
 `public.spec.ts` needs no backend and no accounts. Anything signed-in needs persona credentials.
 
+### A full run: use the static export, not `next dev` (PPDO-300)
+
+`next dev` is fine for one spec. For the **whole suite**, serve the production build instead:
+
+```bash
+# frontend/ — build against your local API, then serve out/ the way Static Web Apps does
+NEXT_PUBLIC_API_BASE_URL=http://localhost:7071/api npx next build
+node e2e/serve-export.mjs 3000
+```
+
+Why: `next dev` compiles each page on its first visit and recompiles pages it has dropped. With four
+workers that held every request for seconds, sometimes a minute, and tests failed on timeouts that
+had nothing to do with them. The production build registers a service worker, which would hide API
+calls from `page.route` (the sweep and the error-text specs depend on it), so `playwright.config.ts`
+sets `serviceWorkers: "block"`. Rebuild after changing app code; spec changes need no rebuild.
+
+Compare the result with [Expected failures](#expected-failures-local-full-run). Anything not on
+that list is new.
+
 **Before you push a change and open its PR, run the whole suite locally** (`npm run e2e`) and say in
 the PR body that it passed. Write the spec for a browser-visible fix in the same PR. The suite does
 not run in GitHub yet (see [Running it in GitHub Actions](#running-it-in-github-actions-not-set-up-yet)),
@@ -97,6 +116,11 @@ A user has **one** live refresh token, and every page load rotates it. With the 
 later test for that persona lands on `/login?reason=token_superseded`. `fixtures.ts` keeps one browser
 context per persona, saves the rotated cookie after each test, and the `as-<KEY>` projects run one
 test at a time (`workers: 1`). Different personas still run in parallel.
+
+It also never closes a test's page while a refresh is in flight (PPDO-300). Before, a test that ended
+just as the app's silent refresh went out lost the rotated cookie, and every later test for that
+persona was signed out: 40+ failures from one test. If a whole persona suddenly fails on `/login`
+partway through a run, look here first: the backend log shows `Refresh failed — token superseded`.
 
 ## Smoke suite
 
@@ -253,6 +277,43 @@ What it cannot do: Lighthouse scores (§5) and App Insights (§6) stay manual. T
 lists *candidates*: a Filter or Export button that works without data is fine, a Submit that works before
 its form loaded is not. Read the page to tell them apart. Run nothing else in Playwright at the same time:
 the sign-in takes the persona's one live session.
+
+## Expected failures (local full run)
+
+A full local run (`npm run e2e`, against the static export, with the seed Admin and four personas
+configured) fails **exactly these 16 tests**, every time. A fix PR compares its run with this list:
+anything else that fails is new. Recorded on `release/1.9.2` after #579, 2026-11-04 (PPDO-300).
+
+They all come from **local accounts that don't match the persona they stand in for**. The allow/deny
+lines in `routes.ts` follow the persona definitions, which is correct; the accounts differ.
+
+Local setup this list assumes: `E2E_SEED_EMAIL=jose.santos`, `SA=admin`, `RV=ppdo.finance`,
+`ST=ppdo.user`, `EN=pto.user` (AD and XD unset). Another mapping gives another list.
+
+| # | Project | Test | Why it fails |
+|---|---|---|---|
+| 1–3 | `as-SA` | smoke › `/config/api-access`, `/config/office-users`, `/config/audit-log` | SA is a **SuperAdmin**; local `admin` is an **Admin**, and these three pages are SuperAdmin-only. The page sends it to `/dashboard`. |
+| 4–12 | `as-SA` | sweep › the same three pages × `error state`, `loading state`, `phone width` | Same reason: the sweep needs the page open. The loading check may say "never requested" or "should be allowed"; both are this. |
+| 13–15 | `as-RV` | smoke › `/announcements`, `/budget-planning/aip`, `/budget-planning/aip/new` | Local `ppdo.finance` holds grants the RV (finance reviewer) persona doesn't, so the expected redirect doesn't happen. |
+| 16 | `as-ST` | smoke › `/budget-planning/aip/review/search` | Local `ppdo.user` is a department-head reviewer; the ST persona is plain Staff. |
+
+**Not on this list, and not failures:** the `test.fail()` entries (sweep `KNOWN`, PPDO-282) pass as
+"expected to fail". When one of them starts **passing**, Playwright reports it as a failure ("Expected
+to fail, but passed"); that means its bug was fixed, and the entry should be deleted.
+
+**What PPDO-300 fixed** (each failed only in a full run, or only sometimes):
+
+| Cause | Symptom | Fix |
+|---|---|---|
+| A test ended while the app's silent refresh was in flight | Every later test for that persona on `/login?reason=token_superseded` (40+ at once) | `fixtures.ts`: hold back new refreshes, let sent ones land, then close and save |
+| `next dev` compiling pages under load | Timeouts, `/reconnecting`, API calls held 20–90 s | Run the full suite against the static export (`serve-export.mjs`) |
+| Report office picker read before its list arrived | PPDO-263 / PPDO-271 "No office…" or a false skip | `reportOfficesAnswer()` in `helpers.ts` |
+| A Staff account whose office picker is locked | PPDO-263 timed out on a disabled select | Skips with the reason; previews when its own office is chosen for it |
+| `Save details` "hidden" while it read "Saving…" | AIP journey: the next expenditure save raced it, a 500 (app bug PPDO-302) | `aip/entry.ts` waits for "Edit details" |
+| My Account Save enabled before the profile loads (PPDO-281) | PPDO-296 spec: "Full name is required." | The spec waits for the loaded form |
+| PPMP/WFP export needing more than 30 s | PPDO-271 export timeouts | 90 s for that file |
+| A redirected account still sending the page's data call | Sweep loading check passed or failed by timing | The loading check also requires the page to stay open |
+| SA's Report picker pre-filled; Allocation's failed load | New sweep findings | `KNOWN`: PPDO-276 (SA), PPDO-301 |
 
 ## Rules
 

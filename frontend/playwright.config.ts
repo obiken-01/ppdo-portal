@@ -39,6 +39,10 @@ export default defineConfig({
     trace: isCI ? "off" : "on-first-retry",
     // A picture of the page when a test fails. Off in CI for the same reason: it shows the data.
     screenshot: isCI ? "off" : "only-on-failure",
+    // A production build (UAT, or e2e/serve-export.mjs locally) registers a service worker, and
+    // `page.route` cannot see requests that go through one. The sweep and error-text specs hold
+    // back or fail API calls with it, so service workers stay off in every test (PPDO-300).
+    serviceWorkers: "block",
   },
   projects: [
     {
