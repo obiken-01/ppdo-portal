@@ -27,13 +27,14 @@ async function preview(page: Page, type: "WFP" | "PPMP", fiscalYear: number): Pr
   const meResponse = page.waitForResponse((r) => /\/api\/auth\/me$/.test(r.url()) && r.ok());
   const officesAnswer = reportOfficesAnswer(page, fiscalYear);
   await page.goto(`/budget-planning/report?type=${type}&fiscalYear=${fiscalYear}`);
-  await expect(page.getByRole("heading", { level: 1, name: "Report" })).toBeVisible();
   // The page's own rule for who picks the office (report/page.tsx `canBypassDivision`). Everyone it
   // lets pick also gets the year's office list, so only they wait for it (PPDO-300: the picker is
   // empty and disabled until that list arrives, which read as "no office" or "cannot choose").
+  // Decided before anything on the page is checked: a guest-office account may be sent elsewhere.
   const me = await meFrom<Me>(await meResponse);
   if (!(me.role === "SuperAdmin" || me.role === "Admin" || me.canManagePpdoAllocation === true))
     return "this account cannot choose the office";
+  await expect(page.getByRole("heading", { level: 1, name: "Report" })).toBeVisible();
   await officesAnswer;
   await page.waitForLoadState("networkidle").catch(() => {});
   const office = page.locator("select").filter({ has: page.locator("option", { hasText: /select office|No office|Loading offices/ }) });

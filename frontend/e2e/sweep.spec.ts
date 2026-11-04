@@ -186,6 +186,10 @@ test.describe("sweep", () => {
         held.release();
       }
       await page.waitForLoadState("networkidle").catch(() => {});
+      // PPDO-300: an account the page turns away may still send the data call before the redirect,
+      // so the checks above can pass or fail by timing. Like the other two checks, require the page.
+      expectSignedIn(page, route.path);
+      expect(pathname(page), `should be allowed on ${route.path}`).toBe(route.path);
     });
 
     test(`${route.path} · phone width`, async ({ page }, info) => {
