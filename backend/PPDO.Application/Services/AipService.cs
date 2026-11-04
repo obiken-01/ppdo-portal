@@ -53,6 +53,7 @@ public sealed class AipService : IAipService
     // (proposal decision 26). The proposal FK is NO ACTION, so without this check the delete
     // would fail at the database as a 500.
     private readonly IInvestmentProposalRepository  _proposals;
+    private readonly IClimateChangeTypologyRepository _ccTypologies;
     private readonly ILogger<AipService>            _logger;
 
     public AipService(
@@ -76,8 +77,10 @@ public sealed class AipService : IAipService
         IAipDivisionLock divisionLock,
         IAipCeilingService ceiling,
         IInvestmentProposalRepository proposals,
+        IClimateChangeTypologyRepository ccTypologies,
         ILogger<AipService> logger)
     {
+        _ccTypologies = ccTypologies;
         _proposals    = proposals;
         _ceiling      = ceiling;
         _divisionLock = divisionLock;
@@ -1190,6 +1193,8 @@ public sealed class AipService : IAipService
         if (!string.IsNullOrWhiteSpace(dto.EsreCode) && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
             return ServiceResult<AipActivityDto>.BadRequest(
                 $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+        if (NegativeLegacyAmount(dto.Ps, dto.Mooe, dto.Co) is { } negative)
+            return ServiceResult<AipActivityDto>.BadRequest(negative);
 
         // ↩️ Scoped to what THIS office may use — the province-wide funds plus its own (follow-up
         // to PPDO-109). Codes are globally unique, so an unscoped lookup would resolve another
@@ -1372,6 +1377,17 @@ public sealed class AipService : IAipService
 
     // ── Inline activity edit (RAL-179) ────────────────────────────────────────
 
+    /// <summary>
+    /// PPDO-292 — the FY 2027 inline editors' one new rule: PS, MOOE and CO are not negative. The
+    /// page's money input already drops a minus sign; this is the same rule for a direct API call.
+    /// ⚠️ Nothing else on that path is checked (clean-break rule): months and typology stay free text.
+    /// </summary>
+    private static string? NegativeLegacyAmount(decimal? ps, decimal? mooe, decimal? co)
+        => ps < 0 ? "PS cannot be negative."
+         : mooe < 0 ? "MOOE cannot be negative."
+         : co < 0 ? "CO cannot be negative."
+         : null;
+
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityAsync(
         int aipRecordId, int activityId, UpdateAipActivityDto dto, User caller,
         byte[]? expectedRowVersion = null, CancellationToken ct = default)
@@ -1404,6 +1420,8 @@ public sealed class AipService : IAipService
         if (!string.IsNullOrWhiteSpace(dto.EsreCode) && !AipEsreCode.AllowedValues.Contains(dto.EsreCode.Trim().ToUpperInvariant()))
             return ServiceResult<AipActivityDto>.BadRequest(
                 $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
+        if (NegativeLegacyAmount(dto.Ps, dto.Mooe, dto.Co) is { } negative)
+            return ServiceResult<AipActivityDto>.BadRequest(negative);
 
         FundingSource? fs = null;
         if (dto.FundingSourceId is int fsId)
@@ -1463,6 +1481,36 @@ public sealed class AipService : IAipService
         return ServiceResult<AipActivityDto>.Ok(MapActivityToDto(activity, div));
     }
 
+    /// <summary>
+    /// PPDO-289 — the start and end month the details save will store, or why it refuses them.
+    /// A new value must be a month name (stored as its canonical name) and the end must not be
+    /// before the start. A value equal to what the activity already holds passes as it is, and when
+    /// neither month changed the order is not checked either: FY 2027 rows hold typos and reversed
+    /// pairs that must keep saving.
+    /// </summary>
+    private static (string? Start, string? End, string? Error) CheckActivityMonths(
+        AipActivity activity, string? start, string? end)
+    {
+        (string? value, bool changed, string? error) Resolve(string? sent, string? held, string label)
+        {
+            if (string.IsNullOrWhiteSpace(sent)) return (null, held is not null, null);
+            if (sent == held) return (sent, false, null);
+            return AipActivityMonths.Canonical(sent) is { } month
+                ? (month, true, null)
+                : (null, true, $"The {label} month must be a month name, January to December.");
+        }
+
+        (string? s, bool startChanged, string? startError) = Resolve(start, activity.StartDate, "start");
+        if (startError is not null) return (null, null, startError);
+        (string? e, bool endChanged, string? endError) = Resolve(end, activity.EndDate, "end");
+        if (endError is not null) return (null, null, endError);
+
+        int from = AipActivityMonths.Number(s), to = AipActivityMonths.Number(e);
+        if ((startChanged || endChanged) && from > 0 && to > 0 && to < from)
+            return (null, null, "The end month cannot be before the start month.");
+        return (s, e, null);
+    }
+
     /// <inheritdoc />
     public async Task<ServiceResult<AipActivityDto>> UpdateActivityDetailsAsync(
         int activityId, UpdateAipActivityDetailsDto dto, User caller,
@@ -1495,6 +1543,24 @@ public sealed class AipService : IAipService
             return ServiceResult<AipActivityDto>.BadRequest(
                 $"eSRE code must be one of: {string.Join(", ", AipEsreCode.AllowedValues)}.");
 
+        // PPDO-289 / 290 / 291 — the page offers only months, non-negative amounts and Config's
+        // typology codes; the API now refuses anything else. ⚠️ A value the activity already holds
+        // is never re-checked, so a typo saved before these rules cannot block a rename.
+        (string? startDate, string? endDate, string? monthError) = CheckActivityMonths(activity, dto.StartDate, dto.EndDate);
+        if (monthError is not null)
+            return ServiceResult<AipActivityDto>.BadRequest(monthError);
+        if (dto.CcAdaptation < 0)
+            return ServiceResult<AipActivityDto>.BadRequest("CC adaptation cannot be negative.");
+        if (dto.CcMitigation < 0)
+            return ServiceResult<AipActivityDto>.BadRequest("CC mitigation cannot be negative.");
+        // ⚠️ CC larger than the activity total is deliberately NOT refused: it is an amber warning on
+        // the entry page (Ralph, 2026-11-04, PPDO-290). A hard rule may come in v1.10 once PPDC or
+        // finance confirms it.
+        if (!string.IsNullOrWhiteSpace(dto.CcTypologyCode)
+            && dto.CcTypologyCode.Trim() != activity.CcTypologyCode?.Trim()
+            && !await _ccTypologies.ActiveCodeExistsAsync(dto.CcTypologyCode.Trim(), ct))
+            return ServiceResult<AipActivityDto>.BadRequest("Unknown CC typology code.");
+
         object old = new
         {
             activity.RefCode,
@@ -1506,8 +1572,8 @@ public sealed class AipService : IAipService
         activity.Name               = dto.Name.Trim();
         activity.EsreCode           = string.IsNullOrWhiteSpace(dto.EsreCode) ? null : dto.EsreCode.Trim().ToUpperInvariant();
         activity.ImplementingOffice = dto.ImplementingOffice;
-        activity.StartDate          = dto.StartDate;
-        activity.EndDate            = dto.EndDate;
+        activity.StartDate          = startDate;
+        activity.EndDate            = endDate;
         activity.ExpectedOutputs    = dto.ExpectedOutputs;
         activity.CcAdaptation       = dto.CcAdaptation;
         activity.CcMitigation       = dto.CcMitigation;

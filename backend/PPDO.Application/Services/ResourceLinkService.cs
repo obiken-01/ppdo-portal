@@ -70,6 +70,9 @@ public sealed class ResourceLinkService : IResourceLinkService
         if (string.IsNullOrWhiteSpace(dto.Url))
             return ServiceResult<ResourceLinkDto>.BadRequest("Url is required.");
 
+        if (!IsHttpUrl(dto.Url))
+            return ServiceResult<ResourceLinkDto>.BadRequest(InvalidUrlMessage);
+
         bool isAdminCreated = requester.Role is UserRole.SuperAdmin or UserRole.Admin;
 
         ResourceLink link = new()
@@ -122,6 +125,9 @@ public sealed class ResourceLinkService : IResourceLinkService
         if (string.IsNullOrWhiteSpace(dto.Url))
             return ServiceResult<ResourceLinkDto>.BadRequest("Url is required.");
 
+        if (!IsHttpUrl(dto.Url))
+            return ServiceResult<ResourceLinkDto>.BadRequest(InvalidUrlMessage);
+
         link.Title         = dto.Title.Trim();
         link.Url           = dto.Url.Trim();
         link.Category      = dto.Category.Trim();
@@ -169,6 +175,20 @@ public sealed class ResourceLinkService : IResourceLinkService
 
         return ServiceResult<ResourceLinkDto>.Ok(MapToDto(link));
     }
+
+    // ── URL check (PPDO-299) ───────────────────────────────────────────────────
+
+    private const string InvalidUrlMessage =
+        "Url must be a full web address starting with http:// or https://.";
+
+    /// <summary>
+    /// True only for an absolute http or https URL. Anything else (javascript:, data:,
+    /// mailto:, a relative path) is refused, because the link is rendered as a clickable
+    /// href for every user and a javascript: URL would run script in their session.
+    /// </summary>
+    private static bool IsHttpUrl(string url) =>
+        Uri.TryCreate(url.Trim(), UriKind.Absolute, out Uri? uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     // ── Mapping ────────────────────────────────────────────────────────────────
 
