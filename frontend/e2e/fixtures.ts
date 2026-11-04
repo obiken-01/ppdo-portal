@@ -27,9 +27,9 @@ export const test = base.extend<object, { personaContext: BrowserContext; stateP
 
   personaContext: [
     async ({ browser, statePath }, use, workerInfo) => {
-      const { baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = workerInfo.project.use;
+      const { baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, serviceWorkers } = workerInfo.project.use;
       const context = await browser.newContext({
-        baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch,
+        baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, serviceWorkers,
         storageState: statePath,
       });
       await use(context);

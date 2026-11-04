@@ -7,9 +7,9 @@
 //
 // It copies the two SWA rules the app relies on (frontend/staticwebapp.config.json):
 //   /path → path.html (or path/index.html), and anything else → index.html with 200.
-// And one deliberate difference: /sw.js answers 404. A service worker sits between the page and
-// the network, and `page.route` cannot see requests that go through one, so the specs that hold
-// back or fail an API call would stop working.
+// The production build registers a service worker (/sw.js). `page.route` cannot see requests that
+// go through one, so playwright.config.ts sets `serviceWorkers: "block"`. Don't answer /sw.js with a
+// 404 here instead: Chrome logs that as a console error, and the smoke specs fail on it.
 //
 // Usage (from frontend/):  node e2e/serve-export.mjs [port]     default port 3000
 import { createReadStream, existsSync, statSync } from "node:fs";
@@ -43,7 +43,6 @@ function resolveFile(pathname) {
 
 createServer((req, res) => {
   const { pathname } = new URL(req.url ?? "/", "http://localhost");
-  if (pathname === "/sw.js") { res.writeHead(404).end(); return; }
   const file = resolveFile(pathname) ?? join(root, "index.html");
   res.writeHead(200, { "Content-Type": TYPES[extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
