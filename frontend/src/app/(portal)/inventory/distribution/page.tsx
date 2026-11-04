@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { apiErrorText } from "@/lib/api-error";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { useToast } from "@/components/ui/Toast";
@@ -363,8 +364,7 @@ export default function DistributionPage() {
       setFormOpen(false);
       await loadSummary(selectedStockNo, summary.description);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: string } })?.response?.data
-        ?? "Could not record distribution. Please try again.";
+      const msg = apiErrorText(e, "Could not record distribution. Please try again.");
       toast.error("Failed", msg);
     } finally { setSubmitting(false); }
   }

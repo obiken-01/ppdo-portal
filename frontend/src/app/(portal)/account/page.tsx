@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/Toast";
 import type { MeResponse, UserResponse } from "@/types";
 import LandingPageSelect, { reachabilityFromMe } from "@/components/ui/LandingPageSelect";
 import { fetchMe } from "@/lib/me-cache";
+import { apiErrorText } from "@/lib/api-error";
 import ChangePasswordForm from "@/components/account/ChangePasswordForm";
 import RecoveryAnswerForm from "@/components/account/RecoveryAnswerForm";
 
@@ -126,10 +127,7 @@ function ProfileTab({
       toast.success("Profile updated successfully.");
       onSaved();
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to update profile.";
-      setError(msg);
+      setError(apiErrorText(err, "Failed to update profile."));
     } finally {
       setSaving(false);
     }

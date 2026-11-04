@@ -40,6 +40,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { apiErrorText } from "@/lib/api-error";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { listAccounts } from "@/lib/config";
@@ -653,10 +654,8 @@ export default function CreatePRPage() {
         `${count} PR${count !== 1 ? "s" : ""} imported from Excel.`
       );
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Import failed. Ensure the file follows the template format.";
-      toast.error("Import failed", String(msg).slice(0, 120));
+      const msg = apiErrorText(err, "Import failed. Ensure the file follows the template format.");
+      toast.error("Import failed", msg.slice(0, 120));
     } finally {
       setUploading(false);
     }
@@ -719,10 +718,8 @@ export default function CreatePRPage() {
         ". Division, Requested By, and signatories still need to be filled in."
       );
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Could not read this file. Make sure it's a PR export from the GSO system.";
-      toast.error("Import failed", String(msg).slice(0, 160));
+      const msg = apiErrorText(err, "Could not read this file. Make sure it's a PR export from the GSO system.");
+      toast.error("Import failed", msg.slice(0, 160));
     } finally {
       setGsoImporting(false);
     }
@@ -784,10 +781,8 @@ export default function CreatePRPage() {
       setSubmitted(data);
       toast.success("PR submitted", `PR No. ${data.prNo} has been created.`);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to submit PR. Please try again.";
-      toast.error("Submission failed", String(msg).slice(0, 120));
+      const msg = apiErrorText(err, "Failed to submit PR. Please try again.");
+      toast.error("Submission failed", msg.slice(0, 120));
     } finally {
       setSubmitting(false);
     }
