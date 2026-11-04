@@ -18,6 +18,25 @@ npm run e2e          # or: npm run e2e:ui
 
 `public.spec.ts` needs no backend and no accounts. Anything signed-in needs persona credentials.
 
+### A full run: use the static export, not `next dev` (PPDO-300)
+
+`next dev` is fine for one spec. For the **whole suite**, serve the production build instead:
+
+```bash
+# frontend/ — build against your local API, then serve out/ the way Static Web Apps does
+NEXT_PUBLIC_API_BASE_URL=http://localhost:7071/api npx next build
+node e2e/serve-export.mjs 3000
+```
+
+Why: `next dev` compiles each page on its first visit and recompiles pages it has dropped. With four
+workers that held every request for seconds, sometimes a minute, and tests failed on timeouts that
+had nothing to do with them. `serve-export.mjs` answers `/sw.js` with 404 on purpose: a service
+worker hides API calls from `page.route`, which the sweep and the error-text specs depend on.
+Rebuild after changing app code; spec changes need no rebuild.
+
+Compare the result with [Expected failures](#expected-failures-local-full-run). Anything not on
+that list is new.
+
 **Before you push a change and open its PR, run the whole suite locally** (`npm run e2e`) and say in
 the PR body that it passed. Write the spec for a browser-visible fix in the same PR. The suite does
 not run in GitHub yet (see [Running it in GitHub Actions](#running-it-in-github-actions-not-set-up-yet)),
@@ -97,6 +116,11 @@ A user has **one** live refresh token, and every page load rotates it. With the 
 later test for that persona lands on `/login?reason=token_superseded`. `fixtures.ts` keeps one browser
 context per persona, saves the rotated cookie after each test, and the `as-<KEY>` projects run one
 test at a time (`workers: 1`). Different personas still run in parallel.
+
+It also never closes a test's page while a refresh is in flight (PPDO-300). Before, a test that ended
+just as the app's silent refresh went out lost the rotated cookie, and every later test for that
+persona was signed out: 40+ failures from one test. If a whole persona suddenly fails on `/login`
+partway through a run, look here first: the backend log shows `Refresh failed — token superseded`.
 
 ## Smoke suite
 
