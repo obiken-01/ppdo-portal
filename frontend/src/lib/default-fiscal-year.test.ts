@@ -34,10 +34,10 @@ describe("loadDefaultFiscalYear", () => {
   });
 
   it("loadDefaultFiscalYear_AfterAFailure_AsksAgainOnTheNextCall", async () => {
-    getFiscalYears.mockRejectedValueOnce(new Error("500")).mockResolvedValueOnce({ defaultFiscalYear: 2028 });
+    getFiscalYears.mockRejectedValueOnce(new Error("500")).mockResolvedValueOnce({ defaultFiscalYear: 2031 });
     const { loadDefaultFiscalYear } = await freshModule();
     await loadDefaultFiscalYear();
-    expect(await loadDefaultFiscalYear()).toEqual({ value: 2028, failed: false });
+    expect(await loadDefaultFiscalYear()).toEqual({ value: 2031, failed: false });
     expect(getFiscalYears).toHaveBeenCalledTimes(2);
   });
 

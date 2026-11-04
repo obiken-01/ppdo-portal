@@ -24,12 +24,8 @@ const KNOWN: Record<string, string> = {
   "error /budget-planning/report": "PPDO-276",
   // AD has a placeholder ("FY …") while loading; RV's picker is pre-filled, so only RV fails.
   "loading /budget-planning/report RV": "PPDO-276",
-  "error /budget-planning/aip/review/search": "PPDO-277",
   "error /config": "PPDO-278",
   "error /inventory/create-pr": "PPDO-279",
-  // EN does not overflow here, so the entry is per persona.
-  "phone /budget-planning/aip/entry AD": "PPDO-280",
-  "phone /budget-planning/aip/entry RV": "PPDO-280",
   // PPDO-281: the primary button is enabled while the page's data loads.
   "loading /announcements": "PPDO-281",
   "loading /admin/users": "PPDO-281",
