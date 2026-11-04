@@ -21,6 +21,9 @@
  *   - onChange emits the CLEAN numeric value (commas are display-only, never emitted).
  *   - onChange emits null when the field is empty or contains only a bare decimal point.
  *   - Normalises to full 2dp on blur (e.g. "1.5" → "1.50").
+ *   - Optional `max`: a keystroke or paste that would take the value past it is refused, and the
+ *     field keeps its previous value (PPDO-293). Leave it unset and nothing changes — today only AIP
+ *     expenditure fields pass one.
  *   - Flat design — no rounded corners, green focus ring, matches existing form inputs.
  */
 
@@ -35,6 +38,11 @@ export interface MoneyInputProps {
   /** Extra classes on the outer wrapper — use for width and text-size overrides. */
   className?: string;
   min?: number;
+  /**
+   * Largest value the field accepts (PPDO-293). An edit past it is refused, not clamped: clamping
+   * would silently turn a typo into a different real figure.
+   */
+  max?: number;
 }
 
 export default function MoneyInput({
@@ -43,6 +51,7 @@ export default function MoneyInput({
   disabled,
   placeholder = "0.00",
   className,
+  max,
 }: MoneyInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -94,6 +103,13 @@ export default function MoneyInput({
     // 3. Cap to 2 decimal places.
     if (dotIdx !== -1 && stripped.length > dotIdx + 3) {
       stripped = stripped.slice(0, dotIdx + 3);
+    }
+
+    // PPDO-293 — over the cap: refuse the edit and keep what was there. The input is controlled, so
+    // not updating localDisplay puts the previous text back on the next render.
+    if (max != null && stripped && stripped !== ".") {
+      const next = parseMoney(stripped);
+      if (next != null && next > max) return;
     }
 
     // 4. Build the formatted display string, preserving a trailing "." while

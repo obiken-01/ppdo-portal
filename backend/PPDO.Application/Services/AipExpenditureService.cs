@@ -109,6 +109,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
             await CheckWriteAsync(ctx, caller, dto.ReviewerReason, NotFound(activityId), "add to", ct);
         if (refused is not null) return refused;
 
+        if (dto.AccountId is null)
+            return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(AccountRequired);
+
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
 
@@ -134,6 +137,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         if (await ApplyProcurementRoutingAsync<AipExpenditureWriteResultDto>(
                 line, dto.AccountId, dto.ProcurementItems, ct) is { } routingError)
             return routingError;
+
+        if (CheckLineTotal<AipExpenditureWriteResultDto>(line) is { } overCap)
+            return overCap;
 
         if (await CheckAccountColumnAsync<AipExpenditureWriteResultDto>(line, stored: null, ct) is { } wrongColumn)
             return wrongColumn;
@@ -194,6 +200,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(
                 "PPDO can change a line's amounts only. Add a new line for a different account or fund.");
 
+        if (dto.AccountId is null)
+            return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(AccountRequired);
+
         if (Validate(dto.Ps, dto.Mooe, dto.Co) is string invalid)
             return ServiceResult<AipExpenditureWriteResultDto>.BadRequest(invalid);
 
@@ -242,6 +251,9 @@ public sealed class AipExpenditureService : IAipExpenditureService
         {
             return routingError;
         }
+
+        if (CheckLineTotal<AipExpenditureWriteResultDto>(line) is { } overCap)
+            return overCap;
 
         if (await CheckAccountColumnAsync<AipExpenditureWriteResultDto>(line, stored, ct) is { } wrongColumn)
             return wrongColumn;
@@ -579,8 +591,32 @@ public sealed class AipExpenditureService : IAipExpenditureService
     /// expressible on the printed form and would quietly reduce the office's ceiling consumption.
     /// </summary>
     private static string? Validate(decimal ps, decimal mooe, decimal co)
-        => ps < 0m || mooe < 0m || co < 0m
-            ? "PS, MOOE and CO cannot be negative."
+    {
+        if (ps < 0m || mooe < 0m || co < 0m)
+            return "PS, MOOE and CO cannot be negative.";
+        // PPDO-293 — see AipAmountLimit for why there is a cap and where the figure comes from.
+        // Checked per column as well as on the total, because the total's sum would overflow first.
+        if (ps > AipAmountLimit.Max || mooe > AipAmountLimit.Max || co > AipAmountLimit.Max)
+            return $"PS, MOOE and CO can each be at most {AipAmountLimit.Display}.";
+        return null;
+    }
+
+    /// <summary>
+    /// PPDO-288 — the page has always required an account ("Pick an account."), but the API saved a
+    /// line without one, and the gap only surfaced at the submit gate. Same wording as the page's
+    /// other required-field messages.
+    /// </summary>
+    private const string AccountRequired = "Account is required.";
+
+    /// <summary>
+    /// PPDO-293 — the line's Total is a stored money column too. Runs after routing, because an
+    /// itemised line's columns are its items' sum, which no single-figure check has seen yet.
+    /// </summary>
+    private static ServiceResult<T>? CheckLineTotal<T>(AipExpenditure line)
+        => line.Ps + line.Mooe + line.Co > AipAmountLimit.Max
+            ? ServiceResult<T>.BadRequest(
+                $"This line's total is over the {AipAmountLimit.Display} limit. "
+                + "Check the figures, or split the cost across more than one line.")
             : null;
 
     // ── Procurement items (V18-80 / PPDO-54) ──────────────────────────────────
@@ -599,9 +635,27 @@ public sealed class AipExpenditureService : IAipExpenditureService
         {
             if (string.IsNullOrWhiteSpace(i.Name))
                 return ServiceResult<T>.BadRequest("Every procurement item needs a name.");
+            // PPDO-286 — `Unit.Trim()` in BuildItems threw on a null unit (a 500), and a blank one
+            // saved. Same wording as the page's field message.
+            if (string.IsNullOrWhiteSpace(i.Unit))
+                return ServiceResult<T>.BadRequest("Unit is required.");
+            // PPDO-287 — past the column limit SQL refused the insert, which came back as a 500.
+            // Measured trimmed, because that is what BuildItems stores.
+            if (i.Name.Trim().Length > AipProcurementItem.NameMaxLength)
+                return ServiceResult<T>.BadRequest(
+                    $"A procurement item name can be at most {AipProcurementItem.NameMaxLength} "
+                    + $"characters. This one has {i.Name.Trim().Length}.");
+            if (i.Unit.Trim().Length > AipProcurementItem.UnitMaxLength)
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name.Trim()}' has a unit of {i.Unit.Trim().Length} characters. A unit can "
+                    + $"be at most {AipProcurementItem.UnitMaxLength} characters.");
             if (i.Qty < 0m || i.UnitPrice < 0m)
                 return ServiceResult<T>.BadRequest(
                     $"'{i.Name}' has a negative quantity or unit price.");
+            // PPDO-293 — price on its own, then the product, which is what LineTotal stores.
+            if (i.UnitPrice > AipAmountLimit.Max)
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name}' has a unit price over the {AipAmountLimit.Display} limit.");
             if (i.NumberOfDays <= 0m)
                 return ServiceResult<T>.BadRequest(
                     $"'{i.Name}' has a number of days of {i.NumberOfDays}. Use 1 for items that are "
@@ -609,6 +663,10 @@ public sealed class AipExpenditureService : IAipExpenditureService
             if (i.PeriodNo is < 1 or > 4)
                 return ServiceResult<T>.BadRequest(
                     $"'{i.Name}' is placed in quarter {i.PeriodNo}. Quarters run from 1 to 4.");
+            if (!AipAmountLimit.ProductWithin(i.Qty, i.UnitPrice, i.NumberOfDays))
+                return ServiceResult<T>.BadRequest(
+                    $"'{i.Name}' costs more than {AipAmountLimit.Display} (quantity × unit price × "
+                    + "days). Check the figures.");
         }
 
         return null;

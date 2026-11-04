@@ -36,12 +36,12 @@ public sealed class AipProcurementItemConfiguration : IEntityTypeConfiguration<A
         builder.Property(e => e.Name)
             .HasColumnName("name")
             .IsRequired()
-            .HasMaxLength(300);
+            .HasMaxLength(AipProcurementItem.NameMaxLength);
 
         builder.Property(e => e.Unit)
             .HasColumnName("unit")
             .IsRequired()
-            .HasMaxLength(50);
+            .HasMaxLength(AipProcurementItem.UnitMaxLength);
 
         builder.Property(e => e.UnitPrice)
             .HasColumnName("unit_price")

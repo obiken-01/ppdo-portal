@@ -142,8 +142,8 @@ public sealed class AipExpenditureProcurementTests
 
     private static SaveAipProcurementItemDto Item(
         string name, decimal qty, decimal price, decimal days = 1m, int? priceIndexItemId = null,
-        int periodNo = 1)
-        => new(priceIndexItemId, name, "pc", price, qty, days, periodNo);
+        int periodNo = 1, string unit = "pc")
+        => new(priceIndexItemId, name, unit, price, qty, days, periodNo);
 
     // ── Quarters (added 2026-09-14) ───────────────────────────────────────────
 
@@ -282,12 +282,28 @@ public sealed class AipExpenditureProcurementTests
     /// <summary>
     /// An itemised line with no account has no column to land in. Refused rather than defaulted —
     /// MOOE is the obvious guess and it is the column the General Fund ceiling is computed from.
+    ///
+    /// ↩️ PPDO-288 now refuses every line with no account before routing runs, so the itemised
+    /// line gets the general "Account is required." The routing refusal still guards an account id
+    /// that no longer resolves.
     /// </summary>
     [Fact]
     public async Task Add_ItemsWithNoAccount_IsRefusedRatherThanDefaultedToMooe()
     {
         var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
             AccountId: null, null, 0m, 0m, 0m,
+            [Item("Bond paper", 10m, 1_500m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("Account is required.", result.Error);
+        _expRepo.Verify(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Add_ItemsOnAnAccountIdThatNoLongerExists_IsRefusedRatherThanDefaultedToMooe()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            AccountId: 9_999, null, 0m, 0m, 0m,
             [Item("Bond paper", 10m, 1_500m)]), Encoder);
 
         Assert.False(result.IsSuccess);
@@ -386,9 +402,10 @@ public sealed class AipExpenditureProcurementTests
         Assert.Equal(200_000m, Written()!.Co);
     }
 
+    // ↩️ PPDO-288 retired the null-account case that sat here: a line with no account is now
+    // refused outright (see the validation section below), so only the blank class remains.
     [Theory]
     [InlineData(OddAccountId)]  // blank class: the form leaves all three open, so does the server
-    [InlineData(null)]          // no account yet: nothing says which column is right
     public async Task Add_WithNoRecognisedClass_AnyColumnSaves(int? accountId)
     {
         var result = await Build().AddAsync(ActivityId,
@@ -449,5 +466,255 @@ public sealed class AipExpenditureProcurementTests
             new UpdateAipExpenditureDto(MooeAccountId, null, 0m, 0m, 200_000m), Encoder, expectedRowVersion: AipTestVersion.Any);
 
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+    }
+
+    // ── Validation the page does but the API did not (PPDO-286/287/288/293) ───
+
+    // Found by the PPDO-283 negative-test inventory (§A3, §A4). Each of these either crashed the
+    // save with a 500 or let bad data in, because only the form stood in the way. Every refusal is
+    // also asserted on the repository: a check that ran after the write would pass a status-only test.
+
+    private void AssertNothingAdded()
+        => _expRepo.Verify(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Never);
+
+    private void AssertNothingSaved()
+        => _expRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+
+    // PPDO-286 — `i.Unit.Trim()` threw on a null unit (500), and a blank one saved.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Add_ItemWithNoUnit_IsRefusedWithUnitIsRequired(string? unit)
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Bond paper", 10m, 1_500m, unit: unit!)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("Unit is required.", result.Error);
+        AssertNothingAdded();
+    }
+
+    [Fact]
+    public async Task Update_ItemWithNoUnit_IsRefusedWithUnitIsRequired()
+    {
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 0m, mooe: 15_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900, new UpdateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Bond paper", 10m, 1_500m, unit: null!)]), Encoder, expectedRowVersion: AipTestVersion.Any);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("Unit is required.", result.Error);
+        AssertNothingSaved();
+    }
+
+    // PPDO-287 — over the column limit was a SQL truncation error, so a 500.
+    [Fact]
+    public async Task Add_ItemNameOver300Characters_IsRefused()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item(new string('a', AipProcurementItem.NameMaxLength + 1), 10m, 1_500m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("300 characters", result.Error);
+        AssertNothingAdded();
+    }
+
+    [Fact]
+    public async Task Add_ItemUnitOver50Characters_IsRefused()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Bond paper", 10m, 1_500m, unit: new string('u', AipProcurementItem.UnitMaxLength + 1))]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("50 characters", result.Error);
+        AssertNothingAdded();
+    }
+
+    /// <summary>
+    /// The limits are the column's, so text exactly at them must still save. Measured after the
+    /// trim, as it is stored: surrounding spaces do not count against the encoder.
+    /// </summary>
+    [Fact]
+    public async Task Add_ItemNameAndUnitExactlyAtTheLimit_Save()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("  " + new string('a', AipProcurementItem.NameMaxLength) + "  ", 10m, 1_500m,
+                unit: " " + new string('u', AipProcurementItem.UnitMaxLength) + " ")]), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        AipProcurementItem stored = Assert.Single(_saved);
+        Assert.Equal(AipProcurementItem.NameMaxLength, stored.Name.Length);
+        Assert.Equal(AipProcurementItem.UnitMaxLength, stored.Unit.Length);
+    }
+
+    // PPDO-288 — the page blocks a line with no account; the API saved it, and the gap showed only
+    // at the submit gate.
+    [Fact]
+    public async Task Add_WithNoAccount_IsRefusedWithAccountIsRequired()
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(null, null, 0m, 2_000m, 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("Account is required.", result.Error);
+        AssertNothingAdded();
+    }
+
+    [Fact]
+    public async Task Update_WithNoAccount_IsRefusedWithAccountIsRequired()
+    {
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 0m, mooe: 2_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900,
+            new UpdateAipExpenditureDto(null, null, 0m, 2_000m, 0m), Encoder, expectedRowVersion: AipTestVersion.Any);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("Account is required.", result.Error);
+        AssertNothingSaved();
+    }
+
+    // PPDO-293 — no upper limit anywhere. Past decimal(18,2) the save was a SQL 500; past 2^53 the
+    // browser loses centavos. The cap is ₱999,999,999,999.99 (Ralph, 2026-11-03).
+
+    [Fact]
+    public void AmountCap_IsJustUnderOneTrillionPesos()
+        => Assert.Equal(999_999_999_999.99m, AipAmountLimit.Max);
+
+    [Theory]
+    [InlineData("ps")]
+    [InlineData("mooe")]
+    [InlineData("co")]
+    public async Task Add_TypedAmountOverTheCap_IsRefused(string column)
+    {
+        decimal over = AipAmountLimit.Max + 0.01m;
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            OddAccountId, null,
+            column == "ps" ? over : 0m, column == "mooe" ? over : 0m, column == "co" ? over : 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("999,999,999,999.99", result.Error);
+        AssertNothingAdded();
+    }
+
+    /// <summary>
+    /// ⚠️ Why each column is capped on its own, when the total check below would also catch one big
+    /// column: the total is <c>ps + mooe + co</c>, and two figures near decimal's ceiling throw
+    /// <see cref="OverflowException"/> in that sum — a 500 — before any comparison runs.
+    /// </summary>
+    [Fact]
+    public async Task Add_ColumnsPastDecimalRange_IsRefusedNotThrown()
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(OddAccountId, null, 6e28m, 6e28m, 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        AssertNothingAdded();
+    }
+
+    [Fact]
+    public async Task Add_TypedAmountExactlyAtTheCap_Saves()
+    {
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(MooeAccountId, null, 0m, AipAmountLimit.Max, 0m), Encoder);
+
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal(AipAmountLimit.Max, Written()!.Total);
+    }
+
+    /// <summary>
+    /// Each column under the cap, the three together over it. The line's Total is a stored money
+    /// column too, so it is held to the same limit.
+    /// </summary>
+    [Fact]
+    public async Task Add_ColumnsEachUnderTheCapButTotalOver_IsRefused()
+    {
+        decimal half = 500_000_000_000m;
+        var result = await Build().AddAsync(ActivityId,
+            new CreateAipExpenditureDto(OddAccountId, null, half, half, 0m), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("999,999,999,999.99", result.Error);
+        AssertNothingAdded();
+    }
+
+    [Fact]
+    public async Task Update_TypedAmountOverTheCap_IsRefused()
+    {
+        _expRepo.Setup(r => r.GetByIntIdAsync(900, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(StoredLine(MooeAccountId, ps: 0m, mooe: 2_000m, co: 0m));
+
+        var result = await Build().UpdateAsync(900, new UpdateAipExpenditureDto(
+            MooeAccountId, null, 0m, AipAmountLimit.Max + 0.01m, 0m), Encoder, expectedRowVersion: AipTestVersion.Any);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        AssertNothingSaved();
+    }
+
+    [Fact]
+    public async Task Add_ItemUnitPriceOverTheCap_IsRefused()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Bond paper", qty: 0m, price: AipAmountLimit.Max + 0.01m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Bond paper", result.Error);
+        AssertNothingAdded();
+    }
+
+    /// <summary>
+    /// Price and quantity each fine, the product over the cap: 2 × ₱600 billion × 1 day.
+    /// </summary>
+    [Fact]
+    public async Task Add_ItemQtyTimesPriceTimesDaysOverTheCap_IsRefused()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Generator", qty: 2m, price: 600_000_000_000m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Generator", result.Error);
+        Assert.Contains("999,999,999,999.99", result.Error);
+        AssertNothingAdded();
+    }
+
+    /// <summary>
+    /// ⚠️ A product past decimal's own range (~7.9 × 10^28) throws <see cref="OverflowException"/>
+    /// before any cap comparison can run. That is a 500 unless the check catches it. Quantity and
+    /// days have no column-sized limit of their own, so this input is reachable from the API.
+    /// </summary>
+    [Fact]
+    public async Task Add_ItemProductPastDecimalRange_IsRefusedNotThrown()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Per diem", qty: 1e15m, price: 1e11m, days: 1e15m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("Per diem", result.Error);
+        AssertNothingAdded();
+    }
+
+    /// <summary>
+    /// Two items each under the cap, routed into one column over it: the line's MOOE is the sum.
+    /// </summary>
+    [Fact]
+    public async Task Add_ItemsEachUnderTheCapButSumOver_IsRefused()
+    {
+        var result = await Build().AddAsync(ActivityId, new CreateAipExpenditureDto(
+            MooeAccountId, null, 0m, 0m, 0m,
+            [Item("Bond paper", 1m, 600_000_000_000m), Item("Toner", 1m, 600_000_000_000m)]), Encoder);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("999,999,999,999.99", result.Error);
+        AssertNothingAdded();
     }
 }
