@@ -24,7 +24,7 @@ test("an item with no unit shows 'Unit is required.' and Save stays disabled", a
   const row = await openNewLineWithAccount(page);
   const panel = await itemise(page);
 
-  await panel.getByPlaceholder("Item name").fill("Bond paper");
+  await panel.getByPlaceholder("Item name", { exact: true }).fill("Bond paper");
   await panel.getByRole("textbox", { name: "0.00" }).fill("250");
   await expect(panel.getByText("Unit is required.")).toBeVisible();
   const save = row.getByRole("button", { name: "Save" });

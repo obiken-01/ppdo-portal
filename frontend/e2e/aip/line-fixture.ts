@@ -73,7 +73,7 @@ export async function openNewLineWithAccount(page: Page) {
  */
 export async function itemise(page: Page) {
   await page.getByLabel("Cost this line from the Price Index").check();
-  const panel = page.getByRole("row").filter({ has: page.getByPlaceholder("Item name") });
+  const panel = page.getByRole("row").filter({ has: page.getByPlaceholder("Item name", { exact: true }) });
   await expect(panel).toBeVisible();
   return panel;
 }

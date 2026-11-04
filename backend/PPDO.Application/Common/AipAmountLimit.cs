@@ -14,7 +14,7 @@ namespace PPDO.Application.Common;
 /// </para>
 ///
 /// <para>
-/// ⚠️ The page holds the same figure as <c>AIP_AMOUNT_MAX</c> in <c>frontend/src/lib/aip.ts</c>.
+/// ⚠️ The page holds the same figure as <c>AIP_AMOUNT_MAX</c> in <c>frontend/src/lib/aip-expenditure-limits.ts</c>.
 /// Change one and change the other.
 /// </para>
 /// </summary>

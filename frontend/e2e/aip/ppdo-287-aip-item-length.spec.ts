@@ -24,7 +24,7 @@ test("pasting past the limit keeps 300 characters of the name and 50 of the unit
   const row = await openNewLineWithAccount(page);
   const panel = await itemise(page);
 
-  const name = panel.getByPlaceholder("Item name");
+  const name = panel.getByPlaceholder("Item name", { exact: true });
   const unit = panel.getByPlaceholder("ream");
   await name.fill("n".repeat(301));
   await unit.fill("u".repeat(51));

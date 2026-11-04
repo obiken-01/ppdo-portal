@@ -48,7 +48,7 @@ test("an item whose quantity × price passes the cap is named and Save stays dis
   const row = await openNewLineWithAccount(page);
   const panel = await itemise(page);
 
-  await panel.getByPlaceholder("Item name").fill("Generator");
+  await panel.getByPlaceholder("Item name", { exact: true }).fill("Generator");
   await panel.getByPlaceholder("ream").fill("unit");
   await panel.getByRole("textbox", { name: "0.00" }).fill("600000000000");
   await panel.getByRole("spinbutton").first().fill("2");
