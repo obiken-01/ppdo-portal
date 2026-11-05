@@ -17,4 +17,10 @@ public interface IClimateChangeTypologyRepository : IRepository<ClimateChangeTyp
 
     /// <summary>Returns the row whose integer PK equals <paramref name="id"/>, or null. Tracked (PPDO-188 / O9).</summary>
     Task<ClimateChangeTypology?> GetByIntIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when an ACTIVE row carries exactly this code — the AIP activity save's check that a
+    /// typology code is one Config offers (PPDO-291). An <c>AnyAsync</c> in SQL, never a list load.
+    /// </summary>
+    Task<bool> ActiveCodeExistsAsync(string code, CancellationToken ct = default);
 }

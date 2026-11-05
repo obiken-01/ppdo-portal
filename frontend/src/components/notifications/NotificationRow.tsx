@@ -2,24 +2,35 @@
 
 import Link from "next/link";
 import type { AppNotification } from "@/types";
-import { relativeTime, safeLink, sourceLabel } from "@/lib/notifications";
+import { announcementIdOf, relativeTime, safeLink, sourceLabel } from "@/lib/notifications";
 
 /**
  * One entry, shared by the dropdown and the full page (v1.9.0 — PPDO-222, spec §6): an unread dot and
  * a tinted background while unread, the frozen text, then the source and a relative time.
  * It is a real link, so middle-click and keyboard work; `onOpen` marks it read.
+ *
+ * An announcement (PPDO-284) opens in a modal instead: a plain click calls `onOpenAnnouncement` and
+ * stays put. A new-tab click still follows the link, whose page opens the same modal.
  */
 export default function NotificationRow({
-  n, onOpen,
+  n, onOpen, onOpenAnnouncement,
 }: {
   n: AppNotification;
   onOpen: (n: AppNotification) => void;
+  onOpenAnnouncement: (id: string) => void;
 }) {
   const unread = n.readAt == null;
+  const announcementId = announcementIdOf(n);
   return (
     <Link
       href={safeLink(n.link)}
-      onClick={() => onOpen(n)}
+      onClick={(e) => {
+        onOpen(n);
+        if (announcementId && e.button === 0 && !(e.metaKey || e.ctrlKey || e.shiftKey)) {
+          e.preventDefault();
+          onOpenAnnouncement(announcementId);
+        }
+      }}
       className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-green-600 ${unread ? "bg-green-50" : "bg-white"}`}
     >
       <span

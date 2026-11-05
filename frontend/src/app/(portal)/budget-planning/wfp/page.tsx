@@ -46,6 +46,7 @@ import { wfpUnsupportedReason } from "@/lib/wfp-support";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   AipActivitySummary,
   AipRecordSummary,
@@ -624,6 +625,10 @@ function WfpPageInner() {
   // ── UI flags ─────────────────────────────────────────────────────────────
 
   const [loading, setLoading] = useState(false);
+  // PPDO-274: a failed load used to leave "Loading AIP details…" up for good. Keep the message
+  // and let Retry re-run just Effect B.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -710,6 +715,7 @@ function WfpPageInner() {
 
     async function load() {
       setLoading(true);
+      setLoadError(null);
       setAipDetail(null);
       setWfp(null);
       setDraftLines({});
@@ -842,7 +848,7 @@ function WfpPageInner() {
         }
       } catch (err) {
         if (!cancelled) {
-          toast.error("Load failed", wfpErrorMessage(err, "Could not load WFP data."));
+          setLoadError(wfpErrorMessage(err, "Couldn't load the WFP for this AIP and office."));
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -854,7 +860,7 @@ function WfpPageInner() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAipId, selectedOfficeId, selectedDivisionId]);
+  }, [selectedAipId, selectedOfficeId, selectedDivisionId, reloadKey]);
 
   // ── Derived: match config office to AIP office via officeRefCode ──────────
 
@@ -1247,6 +1253,8 @@ function WfpPageInner() {
           <p className="text-slate-600 text-sm py-8">
             Select an AIP and an office to view the WFP grid.
           </p>
+        ) : loadError ? (
+          <LoadError message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />
         ) : wfpUnsupported ? (
           // The banner above already says why. Without this branch the body still reads
           // "complete the allocation setup … to start entering WFP data", which contradicts it

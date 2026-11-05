@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { badgeLabel, relativeTime, safeLink, shouldPoll, sourceLabel } from "./notifications";
+import { announcementIdOf, badgeLabel, relativeTime, safeLink, shouldPoll, sourceLabel } from "./notifications";
 
 describe("badgeLabel (PPDO-222)", () => {
   it("shows nothing for zero, the count up to 99, and 99+ above", () => {
@@ -40,6 +40,10 @@ describe("relativeTime", () => {
 });
 
 describe("sourceLabel", () => {
+  it("names an announcement (PPDO-284)", () => {
+    expect(sourceLabel({ type: "Announcement", link: "/notifications?announcement=abc" })).toBe("Announcement");
+  });
+
   it("names proposals, and AIP with its year from the link", () => {
     expect(sourceLabel({ type: "ProposalReply", link: "/budget-planning/proposals/edit?id=9&comments=open" })).toBe("Investment proposal");
     expect(sourceLabel({ type: "AipSentToPpdo", link: "/budget-planning/aip/review?officeId=3&fiscalYear=2031" })).toBe("AIP FY 2031");
@@ -55,5 +59,21 @@ describe("safeLink", () => {
     expect(safeLink("https://evil.example/x")).toBe("/notifications");
     expect(safeLink("//evil.example/x")).toBe("/notifications");
     expect(safeLink("javascript:alert(1)")).toBe("/notifications");
+  });
+});
+
+describe("announcementIdOf (PPDO-284)", () => {
+  const id = "3f2c1b9e-7a4d-4c11-9e0f-2b6d8a1c5e77";
+
+  it("reads the id of an Announcement entry's link", () => {
+    expect(announcementIdOf({ type: "Announcement", link: `/notifications?announcement=${id}` })).toBe(id);
+  });
+
+  it("is null for any other type, even with the same query, so other entries still navigate", () => {
+    expect(announcementIdOf({ type: "AipSentToPpdo", link: `/notifications?announcement=${id}` })).toBeNull();
+  });
+
+  it("is null when the link carries no id", () => {
+    expect(announcementIdOf({ type: "Announcement", link: "/notifications" })).toBeNull();
   });
 });

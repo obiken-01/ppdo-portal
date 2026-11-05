@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_NAME } from "@/lib/seo";
+import { APP_NAME } from "@/lib/branding";
 
 // Static export quirk — same as robots.ts/sitemap.ts: without this, `next dev`
 // treats a metadata route as dynamic and 500s asking for generateStaticParams(),
@@ -34,9 +35,9 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
     name: SITE_NAME,
-    short_name: "PPDO Portal",
+    short_name: APP_NAME,
     description:
-      "Portal of the Provincial Planning and Development Office, Occidental Mindoro — investment planning, inventory monitoring, and office resources.",
+      `${APP_NAME}, the portal of the Provincial Planning and Development Office, Occidental Mindoro — investment planning, inventory monitoring, and office resources.`,
     start_url: "/home",
     scope: "/",
     display: "standalone",

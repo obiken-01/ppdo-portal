@@ -391,6 +391,7 @@ export default function OfficeConfigPage() {
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
+          busy={loading}
           title="Offices"
           description="Provincial government offices used as planning scope across AIP and WFP."
           actions={

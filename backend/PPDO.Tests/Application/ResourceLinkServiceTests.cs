@@ -175,6 +175,72 @@ public sealed class ResourceLinkServiceTests
         Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
     }
 
+    // ── URL scheme (PPDO-299) ─────────────────────────────────────────────────
+    // Only absolute http/https URLs are saved. A javascript: link added by Staff would
+    // otherwise run script in the session of whoever clicks it, Admins included.
+
+    public static TheoryData<string> RejectedUrls => new()
+    {
+        "javascript:alert(1)",
+        "JAVASCRIPT:alert(1)",
+        "   javascript:alert(1)   ",
+        "data:text/html,<script>alert(1)</script>",
+        "/resource-links",
+        "drive.google.com/folder",
+        "mailto:ppdo@example.com",
+        "ftp://example.com/file",
+    };
+
+    [Theory]
+    [MemberData(nameof(RejectedUrls))]
+    public async Task CreateAsync_NonHttpUrl_ReturnsBadRequest_AndSavesNothing(string url)
+    {
+        Mock<IRepository<ResourceLink>> repo = RepoThatSaves();
+        CreateResourceLinkDto dto = new("Title", url, "General", 5, 1);
+
+        ServiceResult<ResourceLinkDto> result =
+            await BuildSut(repo).CreateAsync(MakeStaff(canManageLinks: true), dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Contains("http", result.Error);
+        repo.Verify(r => r.AddAsync(It.IsAny<ResourceLink>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("https://drive.google.com/drive/folders/abc", "https://drive.google.com/drive/folders/abc")]
+    [InlineData("http://intranet.example.com/page", "http://intranet.example.com/page")]
+    [InlineData("  HTTPS://example.com/x  ", "HTTPS://example.com/x")]
+    public async Task CreateAsync_HttpOrHttpsUrl_ReturnsOk_WithTrimmedUrl(string url, string expected)
+    {
+        Mock<IRepository<ResourceLink>> repo = RepoThatSaves();
+        CreateResourceLinkDto dto = new("Title", url, "General", 5, 1);
+
+        ServiceResult<ResourceLinkDto> result =
+            await BuildSut(repo).CreateAsync(MakeAdmin(), dto);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expected, result.Value!.Url);
+    }
+
+    [Theory]
+    [MemberData(nameof(RejectedUrls))]
+    public async Task UpdateAsync_NonHttpUrl_ReturnsBadRequest_AndLeavesLinkUnchanged(string url)
+    {
+        ResourceLink link = MakeLink();
+        Mock<IRepository<ResourceLink>> repo = RepoThatSaves();
+        repo.Setup(r => r.GetByIdAsync(link.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(link);
+        UpdateResourceLinkDto dto = new("Updated Title", url, "Records", 2, 2);
+
+        ServiceResult<ResourceLinkDto> result =
+            await BuildSut(repo).UpdateAsync(MakeAdmin(), link.Id, dto);
+
+        Assert.Equal(ServiceErrorCode.BadRequest, result.Code);
+        Assert.Equal("https://example.com", link.Url);
+        Assert.Equal("PR Monitoring", link.Title);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── UpdateAsync ───────────────────────────────────────────────────────────
 
     [Fact]

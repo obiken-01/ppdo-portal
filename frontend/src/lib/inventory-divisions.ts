@@ -71,33 +71,47 @@ export function fetchInventoryDivisions(): Promise<DivisionResponse[]> {
  *
  * @param ownDivision  The current user's division name (me.division), or null.
  * @param clampToOwn   True for Staff — restrict the list to ownDivision.
+ *
+ * `failed` is true when the list could not be read (PPDO-279), so a page can say so instead of
+ * offering an empty picker; `retry` fetches it again. A clamped (Staff) caller never fails: it
+ * offers its own division whatever the request did.
  */
 export function useInventoryDivisions(
   ownDivision: string | null = null,
   clampToOwn: boolean = false
-): { divisions: string[]; loading: boolean } {
+): { divisions: string[]; loading: boolean; failed: boolean; retry: () => void } {
   const [divisions, setDivisions] = useState<string[]>(
     () => (_cache ? _cache.map((d) => d.name) : [])
   );
   const [loading, setLoading] = useState(() => _cache == null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    if (attempt > 0) setLoading(true);
+    setFailed(false);
     fetchInventoryDivisions()
       .then((list) => {
         if (cancelled) return;
         setDivisions(list.map((d) => d.name));
       })
-      .catch(() => { if (!cancelled) setDivisions([]); })
+      .catch(() => {
+        if (cancelled) return;
+        setDivisions([]);
+        setFailed(true);
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
+
+  const retry = () => setAttempt((n) => n + 1);
 
   if (clampToOwn) {
     // Keep the user's own division even if the list has not arrived yet, so the
     // form is usable immediately and the <select> value always matches an option.
-    return { divisions: ownDivision ? [ownDivision] : [], loading };
+    return { divisions: ownDivision ? [ownDivision] : [], loading, failed: false, retry };
   }
 
-  return { divisions, loading };
+  return { divisions, loading, failed, retry };
 }

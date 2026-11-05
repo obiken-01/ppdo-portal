@@ -402,6 +402,7 @@ export default function ProcurementPresetsConfigPage() {
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
+          busy={loading}
           title="Procurement Presets"
           description="Account-scoped, reusable procurement line-item templates for WFP entry. Shared across all offices and divisions."
           actions={

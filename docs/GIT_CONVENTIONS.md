@@ -2,7 +2,7 @@
 type: standard
 status: current
 tickets: []
-updated: 2026-05-26
+updated: 2026-10-31
 ---
 
 # Git Conventions
@@ -131,6 +131,24 @@ test(auth): add refresh token rotation unit tests
 - Write the description per [`PR_DESCRIPTION_STANDARD.md`](PR_DESCRIPTION_STANDARD.md) (the GitHub template carries the headings)
 - Squash commits when merging if there are many small WIP commits
 - At minimum, verify CI passes before merging to `main`
+
+### Release PRs (a version to UAT or production): run every test first
+
+Each ticket's PR is tested on its own. A version's PR into `uat` or `main` carries all of them
+together, so **run the whole test set again on the combined code before opening it** (Ralph,
+2026-10-31). Test the head of the PR's own branch, because that is what deploys. For UAT that is the
+`merge/vX.Y.Z-…-into-uat` branch, after any conflicts are resolved.
+
+1. **Backend:** `cd backend && dotnet test`, all passing.
+2. **Frontend unit tests, lint and build:** `cd frontend && npm test && npm run lint && npm run build`.
+   The build also type-checks.
+3. **Playwright, the whole suite:** `cd frontend && npm run e2e` against the local backend and
+   frontend. First apply this version's migrations to the local database
+   (`dotnet ef database update --project PPDO.Infrastructure --startup-project PPDO.Functions`), or
+   the new screens fail for the wrong reason.
+4. **Write the results in the PR body:** the commit tested, and passed / failed / skipped for each of
+   the three. A `test.fail()` that names its bug ticket counts as expected. Anything else that fails
+   is fixed on the release branch before the PR is opened.
 
 ---
 

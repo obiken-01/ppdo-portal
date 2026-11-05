@@ -35,6 +35,13 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
+import {
+  AIP_AMOUNT_MAX,
+  AIP_ITEM_NAME_MAX,
+  AIP_ITEM_UNIT_MAX,
+  AIP_UNIT_REQUIRED,
+  aipItemOverMaxMessage,
+} from "@/lib/aip-expenditure-limits";
 import { priceIndexItemLabel, priceIndexItemSearchText } from "@/lib/priceIndexLabel";
 import {
   configErrorMessage,
@@ -366,6 +373,8 @@ export default function AipProcurementItemTable({
                   <input
                     value={row.name}
                     onChange={(e) => updateRow(index, { name: e.target.value })}
+                    // PPDO-287 — the column's limit; past it the save was a 500.
+                    maxLength={AIP_ITEM_NAME_MAX}
                     placeholder="Item name"
                     className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
@@ -375,17 +384,25 @@ export default function AipProcurementItemTable({
                   <input
                     value={row.unit}
                     onChange={(e) => updateRow(index, { unit: e.target.value })}
+                    maxLength={AIP_ITEM_UNIT_MAX}
+                    aria-invalid={!row.unit.trim()}
                     placeholder="ream"
                     className="w-full px-2 py-1.5 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
                   />
                 </div>
               </div>
+              {/* PPDO-286 — under the Name / Unit row rather than inside the Unit column, so the two
+                  inputs stay level. The parent table disables Save while any item shows this. */}
+              {!row.unit.trim() && (
+                <p className="text-right text-[11px] text-red-700">{AIP_UNIT_REQUIRED}</p>
+              )}
 
               <div className="flex items-end gap-2">
                 <div className="w-36 shrink-0">
                   <label className="block text-[11px] text-slate-600 mb-0.5">Unit Price</label>
                   <MoneyInput
                     value={row.unitPrice}
+                    max={AIP_AMOUNT_MAX}
                     onChange={(v) => updateRow(index, { unitPrice: v ?? 0 })}
                     // Match the Qty / Days / Line Total boxes beside it — MoneyInput's own padding
                     // is the compact grid size, a row shorter than these.
@@ -421,6 +438,10 @@ export default function AipProcurementItemTable({
                   <div className="w-full px-2 py-1.5 text-sm text-right font-mono tabular-nums text-slate-600 bg-slate-50 border border-slate-200">
                     ₱{formatMoney(lineTotal)}
                   </div>
+                  {/* PPDO-293 — qty × price × days can pass the cap with each figure under it. */}
+                  {lineTotal > AIP_AMOUNT_MAX && (
+                    <p className="mt-1 text-[11px] text-red-700">{aipItemOverMaxMessage()}</p>
+                  )}
                 </div>
               </div>
             </div>

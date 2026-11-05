@@ -334,6 +334,7 @@ export default function CcTypologiesPage() {
     <div className="min-h-full bg-slate-100 font-sans">
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         <ConfigPageHeader
+          busy={loading}
           title="Climate Change Typologies"
           description="CCET codes used to tag an AIP activity's climate-change contribution."
           actions={

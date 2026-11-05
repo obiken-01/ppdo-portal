@@ -21,7 +21,8 @@ export async function signIn(browser: Browser, role: AipRole, baseURL: string | 
 
 /** Same, for any seeded account (the inventory journey has its own). */
 export async function signInAs(browser: Browser, account: AipAccount, baseURL: string | undefined): Promise<Session> {
-  const context = await browser.newContext({ baseURL });
+  // serviceWorkers: as playwright.config.ts, so `page.route` sees every request (PPDO-300).
+  const context = await browser.newContext({ baseURL, serviceWorkers: "block" });
   const page = await context.newPage();
   await page.goto("/login");
   await page.getByLabel("Username").fill(account.username);

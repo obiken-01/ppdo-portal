@@ -88,12 +88,22 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
  * `fiscalYear` (the link is the only place the year lives; the text is frozen).
  */
 export function sourceLabel(n: Pick<AppNotification, "type" | "link">): string {
+  if (n.type === "Announcement") return "Announcement";
   if (n.type.startsWith("Proposal")) return "Investment proposal";
   if (n.type.startsWith("Aip")) {
     const fy = /[?&]fiscalYear=(\d{4})/.exec(n.link)?.[1];
     return fy ? `AIP FY ${fy}` : "AIP";
   }
   return "Notification";
+}
+
+/**
+ * The announcement an entry opens in a modal instead of navigating (PPDO-284), read from its link
+ * (`/notifications?announcement=<id>`). Null for every other type, which keeps following its link.
+ */
+export function announcementIdOf(n: Pick<AppNotification, "type" | "link">): string | null {
+  if (n.type !== "Announcement") return null;
+  return /[?&]announcement=([^&#]+)/.exec(n.link)?.[1] ?? null;
 }
 
 /** Only portal paths are followed; anything else falls back to the full page rather than navigating away. */

@@ -6,6 +6,7 @@ using PPDO.Application.Services;
 using PPDO.Domain.Entities;
 using PPDO.Domain.Enums;
 using PPDO.Domain.Interfaces;
+using PPDO.Tests.TestHelpers;
 
 namespace PPDO.Tests.Application;
 
@@ -56,6 +57,10 @@ public sealed class AnnouncementServiceTests
     };
 
     private static (AnnouncementService sut, Mock<IRepository<Announcement>> repo) Build(List<Announcement> seed)
+        => Build(seed, new RecordingNotificationService());
+
+    private static (AnnouncementService sut, Mock<IRepository<Announcement>> repo) Build(
+        List<Announcement> seed, INotificationService notifications)
     {
         Mock<IRepository<Announcement>> repo = new();
 
@@ -79,7 +84,7 @@ public sealed class AnnouncementServiceTests
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(1);
 
-        return (new AnnouncementService(repo.Object, NullLogger<AnnouncementService>.Instance), repo);
+        return (new AnnouncementService(repo.Object, notifications, NullLogger<AnnouncementService>.Instance), repo);
     }
 
     // ── CreateAsync ────────────────────────────────────────────────────────────
@@ -215,6 +220,79 @@ public sealed class AnnouncementServiceTests
         ServiceResult<AnnouncementDto> result = await sut.PublishAsync(Staff(), draft.Id);
 
         Assert.Equal(ServiceErrorCode.Forbidden, result.Code);
+    }
+
+    // ── PublishAsync → notification bell (PPDO-284) ────────────────────────────
+
+    [Fact]
+    public async Task PublishAsync_FirstPublish_StagesAnAnnouncementForEveryActiveUser()
+    {
+        Announcement draft = Ann();
+        draft.Title = "Office closed on Friday";
+        RecordingNotificationService notifications = new();
+        (AnnouncementService sut, _) = Build([draft], notifications);
+        User admin = Admin();
+        User staff = Staff();
+        Mock<INotificationAudience> audience = new();
+        audience.Setup(a => a.EveryoneAsync(It.IsAny<CancellationToken>())).ReturnsAsync([admin, staff]);
+
+        await sut.PublishAsync(admin, draft.Id);
+
+        RecordingNotificationService.Call call = notifications.Single(NotificationTypes.Announcement);
+        Assert.Same(admin, call.Actor);
+        NotificationBatch? batch = await call.Build(audience.Object, CancellationToken.None);
+        Assert.NotNull(batch);
+        Assert.Equal("New announcement: Office closed on Friday", batch.Text);
+        Assert.Equal($"/notifications?announcement={draft.Id}", batch.Link);
+        Assert.Equal([admin, staff], batch.Recipients);
+    }
+
+    [Fact]
+    public async Task PublishAsync_Republish_StagesNothing()
+    {
+        // Unpublished back to Draft keeps its PublishedAt; publishing it again is not news.
+        Announcement unpublished = Ann(AnnouncementStatus.Draft, publishedAt: DateTime.UtcNow.AddDays(-2));
+        RecordingNotificationService notifications = new();
+        (AnnouncementService sut, _) = Build([unpublished], notifications);
+
+        ServiceResult<AnnouncementDto> result = await sut.PublishAsync(Admin(), unpublished.Id);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(notifications.Calls);
+    }
+
+    [Fact]
+    public async Task PublishAsync_StagesBeforeTheSave_SoTheRowsRideOnIt()
+    {
+        Announcement draft = Ann();
+        List<string> order = [];
+        Mock<INotificationService> notifications = new();
+        notifications.Setup(n => n.StageAsync(
+                It.IsAny<string>(), It.IsAny<User>(),
+                It.IsAny<Func<INotificationAudience, CancellationToken, Task<NotificationBatch?>>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("stage"))
+            .Returns(Task.CompletedTask);
+        (AnnouncementService sut, Mock<IRepository<Announcement>> repo) = Build([draft], notifications.Object);
+        repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("save"))
+            .ReturnsAsync(1);
+
+        await sut.PublishAsync(Admin(), draft.Id);
+
+        Assert.Equal(["stage", "save"], order);
+    }
+
+    [Fact]
+    public async Task PublishAsync_NonAdmin_StagesNothing()
+    {
+        Announcement draft = Ann();
+        RecordingNotificationService notifications = new();
+        (AnnouncementService sut, _) = Build([draft], notifications);
+
+        await sut.PublishAsync(Staff(), draft.Id);
+
+        Assert.Empty(notifications.Calls);
     }
 
     // ── UnpublishAsync ─────────────────────────────────────────────────────────

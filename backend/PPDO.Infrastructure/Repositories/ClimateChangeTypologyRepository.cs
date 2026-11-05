@@ -30,4 +30,8 @@ public sealed class ClimateChangeTypologyRepository
     /// <inheritdoc />
     public async Task<ClimateChangeTypology?> GetByIntIdAsync(int id, CancellationToken ct = default)
         => await _context.Set<ClimateChangeTypology>().FirstOrDefaultAsync(x => x.Id == id, ct);
+
+    /// <inheritdoc />
+    public async Task<bool> ActiveCodeExistsAsync(string code, CancellationToken ct = default)
+        => await _context.Set<ClimateChangeTypology>().AnyAsync(x => x.IsActive && x.Code == code, ct);
 }

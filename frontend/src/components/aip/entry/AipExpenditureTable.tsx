@@ -26,6 +26,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import AipMoneyInput from "@/components/aip/AipMoneyInput";
+import { AIP_AMOUNT_MAX, AIP_UNIT_REQUIRED, aipLineOverMaxMessage, anyItemMissingUnit } from "@/lib/aip-expenditure-limits";
 import AipProcurementItemTable, { type AipSiblingItem } from "@/components/aip/entry/AipProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import { shouldDefaultToProcurement } from "@/lib/aip-default-nature";
@@ -249,6 +250,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
 export default function AipExpenditureTable({
   activityId, lines, accounts, fundingSources, canEdit, generalFundId,
   priceIndex, priceIndexLoading, onChanged, onReload, draftUserId = null, reviewerReason,
+  writesPausedReason = null,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -280,10 +282,18 @@ export default function AipExpenditureTable({
    * table behaves exactly as it always has.
    */
   reviewerReason?: string;
+  /**
+   * PPDO-302 — set while another write to this activity is in flight (its Save details). Every line
+   * write recomputes the activity's totals, so one sent now races that save on the same row. Save,
+   * Delete and the fund picker wait, with this sentence as the reason. The line being typed is kept.
+   */
+  writesPausedReason?: string | null;
 }) {
   const reviewerMode = reviewerReason !== undefined;
   /** Why a reviewer's Save is still blocked, beyond what the line itself is missing. */
   const reviewerBlocked = reviewerMode ? reviewerReasonProblem(reviewerReason ?? "") : null;
+  /** Why Save stays disabled beyond the line itself: the reviewer's reason, or a paused write. */
+  const outsideBlocked = reviewerBlocked ?? writesPausedReason;
 
   const [adding, setAdding]       = useState(false);
   const [draft, setDraft]         = useState<Draft>(EMPTY);
@@ -833,7 +843,7 @@ export default function AipExpenditureTable({
                 getSearchText={fundSearch}
                 allOptionLabel="— Fund —"
                 placeholder="Search funds…"
-                disabled={busy}
+                disabled={busy || writesPausedReason !== null}
                 className="w-56"
               />
             </label>
@@ -887,6 +897,11 @@ export default function AipExpenditureTable({
         <p className="mt-1 text-xs text-slate-600">
           Pick the activity&apos;s funding source before adding an account.
         </p>
+      )}
+
+      {/* PPDO-302 — said out loud only while a line is open: that is when Save is greyed out. */}
+      {canEdit && writesPausedReason && (adding || editingId !== null) && (
+        <p role="status" className="mt-1 text-xs text-slate-600">{writesPausedReason}</p>
       )}
 
       {error && (
@@ -982,7 +997,7 @@ export default function AipExpenditureTable({
                   showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                   lockedFundCode={legacyMulti || reviewerMode ? (line.fundingSourceCode ?? "—") : null}
                   lockAccount={reviewerMode}
-                  extraBlockedReason={reviewerBlocked}
+                  extraBlockedReason={outsideBlocked}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={cancelEditor} />
@@ -1021,7 +1036,9 @@ export default function AipExpenditureTable({
                           className="text-slate-600 hover:underline">Edit</button>
                         {/* PPDO-214 — a PPDO reviewer never removes a line (the server refuses it too). */}
                         {!reviewerMode && (
-                          <button type="button" onClick={() => remove(line.id)} disabled={busy}
+                          <button type="button" onClick={() => remove(line.id)}
+                            disabled={busy || writesPausedReason !== null}
+                            title={writesPausedReason ?? undefined}
                             className="ml-2 text-red-600 hover:underline disabled:opacity-50">Delete</button>
                         )}
                       </>
@@ -1040,7 +1057,7 @@ export default function AipExpenditureTable({
               <EditRow isNew draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
-                extraBlockedReason={reviewerBlocked}
+                extraBlockedReason={outsideBlocked}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                 siblingItems={siblingItemsOf(null)}
                 onSave={() => save(null)} onCancel={cancelEditor} />
@@ -1103,11 +1120,19 @@ function EditRow({
   // A locked fund is kept as saved, even if that was none — the encoder has no picker to fix it with.
   const missingFund = showFund && lockedFundCode === null && !draft.fundingSourceId
     ? "Pick a funding source." : null;
-  const missingAmount = itemised
-    ? (itemsTotal(draft.procurementItems) <= 0 ? "Cost at least one item." : null)
-    : ((draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0) <= 0 ? "Enter an amount." : null);
+  // PPDO-293 — the cap is on the line's total as well as each column, the same as the server's.
+  const lineTotal = itemised
+    ? itemsTotal(draft.procurementItems)
+    : (draft.ps ?? 0) + (draft.mooe ?? 0) + (draft.co ?? 0);
+  const missingAmount = lineTotal > AIP_AMOUNT_MAX
+    ? aipLineOverMaxMessage()
+    : itemised
+      ? (lineTotal <= 0 ? "Cost at least one item." : null)
+      : (lineTotal <= 0 ? "Enter an amount." : null);
+  // PPDO-286 — shown under each item's Unit field by the item table; here it only blocks.
+  const missingUnit = itemised && anyItemMissingUnit(draft.procurementItems) ? AIP_UNIT_REQUIRED : null;
   // The activity's own fund lives above the table and reports itself there; here it only blocks.
-  const blockedReason = missingAccount ?? missingFund ?? missingAmount
+  const blockedReason = missingAccount ?? missingFund ?? missingAmount ?? missingUnit
     ?? (activityFundMissing ? "Pick the activity's funding source first." : null)
     ?? extraBlockedReason;
 
@@ -1214,9 +1239,9 @@ function EditRow({
             {/* ⚠️ Disabled by the account's class, not hidden (PPDO-97). A line loaded from before
                 this rule can hold a figure in a column its class excludes; hiding the input would
                 hide that money, and the figure is still in the row's Total. */}
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   disabled={!allowed.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} disabled={!allowed.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
-            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   disabled={!allowed.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.ps}   max={AIP_AMOUNT_MAX} disabled={!allowed.ps}   onChange={(v) => setDraft({ ...draft, ps: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.mooe} max={AIP_AMOUNT_MAX} disabled={!allowed.mooe} onChange={(v) => setDraft({ ...draft, mooe: v })} /></td>
+            <td className="py-1.5 pr-1 align-top"><AipMoneyInput value={draft.co}   max={AIP_AMOUNT_MAX} disabled={!allowed.co}   onChange={(v) => setDraft({ ...draft, co: v })} /></td>
           </>
         )}
 

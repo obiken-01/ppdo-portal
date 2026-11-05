@@ -52,10 +52,17 @@ public sealed class AipProcurementItem
     /// </summary>
     public int? PriceIndexItemId { get; set; }
 
-    /// <summary>Snapshot of the item name at save time. Max 300 characters.</summary>
+    /// <summary>
+    /// Column limits for <see cref="Name"/> and <see cref="Unit"/>. One source for the EF mapping
+    /// and the service's length check (PPDO-287), so a 400 and the column cannot drift apart.
+    /// </summary>
+    public const int NameMaxLength = 300;
+    public const int UnitMaxLength = 50;
+
+    /// <summary>Snapshot of the item name at save time. Max <see cref="NameMaxLength"/> characters.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Snapshot of the unit at save time. Max 50 characters.</summary>
+    /// <summary>Snapshot of the unit at save time. Max <see cref="UnitMaxLength"/> characters.</summary>
     public string Unit { get; set; } = string.Empty;
 
     /// <summary>Snapshot of the unit price at save time, in pesos.</summary>

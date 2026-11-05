@@ -10,6 +10,8 @@
 
 **PPDO Portal & Inventory System** — a web portal for the Provincial Planning and Development Office (PPDO), Occidental Mindoro, Philippines. Inventory monitoring is the first major feature.
 
+> **Name:** shown to users as **PLANO MO** — *Provincial LDIP–AIP Network of Occidental Mindoro* (approved by the PPDC, 2026-11-03; shipped in the v1.7.6 hotfix, carried into v1.9.2). The name and the office logo live in `frontend/src/lib/branding.ts` — never type them into a page. Repo, namespaces, Azure resources and technical identifiers keep `ppdo` (PPDO-197).
+
 **Stack:** .NET 10 (Azure Functions, isolated worker) + Next.js 14 (TypeScript) + Azure SQL (SQL Server)  
 **Architecture:** Serverless Clean Architecture — Domain → Infrastructure → Application → Functions → Frontend  
 **Full spec:** `PROJECT_DOCUMENTATION_NET_AZURE.md`  
@@ -629,7 +631,7 @@ illustrate.
 ## Implementation Status
 
 > ⚠️ **This section is a session progress update — not part of the original CLAUDE.md spec.**
-> **Updated: 2026-10-25 — `release/1.9.2` cut from the frozen `release/1.9.1` for the UAT polish phase (PPDO-252, plan `docs/v1.9/UAT_Polish_Plan.md`). v1.10.0 (SAIP) is paused until it closes. Production runs v1.7.5 on .NET 10 and waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
+> **Updated: 2026-11-05 — v1.9.2 (UAT polish, PPDO-252) complete on `release/1.9.2` and going to UAT. v1.10.0 (SAIP) is paused until it closes. Production runs v1.7.5 on .NET 10 and waits for the PDC and finance users' go-ahead (Ralph, 2026-10-07).**
 >
 > **Keeping this current is part of the release ritual.** ⚠️ `APP_VERSION` no longer lives in
 > three files — it is one constant in `frontend/src/lib/version.ts`, imported by `Sidebar.tsx`,
@@ -666,11 +668,12 @@ next release branch. PPDO-226 (HGDG) moved to Backlog — Unscheduled, waiting o
 PPDO-236 (PPMP report hidden behind `FeatureFlags.PpmpReportEnabled`), PPDO-45 (export timing, closed with no change). Due on
 UAT **before** the November training (Ralph, 2026-10-19). **No migrations.** ⚠️ **Frozen:** only fixes found in UAT go in
 (`fix/v1.9.1-…`). Production moves to .NET 10 separately via **PPDO-234** (v1.7.5 hotfix on `main`), after UAT proves it. ⚠️ **The Function App's .NET setting moves to .NET 10 Isolated in the same deploy as the code** — `docs/v1.9/Pre_Deployment_Checklist_v1.9.1.md`. ⚠️ **Every UAT fix merged into `release/1.9.0` must also be merged forward into `release/1.9.1`.**
-**In progress:** v1.9.2 on `release/1.9.2`, cut 2026-10-25 from `release/1.9.1`. Linear milestone "v1.9.2 — UAT Polish"
-(target 2026-11-13), epic PPDO-252: role × page sweep (PPDO-253/254/255), UI/UX consistency (PPDO-256), performance
-re-measure (PPDO-257), Playwright foundation (PPDO-258/259). Plan: `docs/v1.9/UAT_Polish_Plan.md`. **Polish only — no new
-tables, endpoints or permissions.** Fixes go `fix/v1.9.2-…` → `release/1.9.2` → `merge/v1.9.2-…-into-uat`. ⚠️ **v1.10.0 is
-paused**; merge `release/1.9.2` forward into `release/1.10.0` before SAIP work resumes.
+**Complete, going to UAT:** v1.9.2 on `release/1.9.2`, cut 2026-10-25 from `release/1.9.1`; last merge #585 (PPDO-282) on
+2026-11-05. Linear milestone "v1.9.2 — UAT Polish", epic PPDO-252. PRs #540–#585 (not #541, #554, #565, #570): the sweep fixes,
+PLANO MO branding (#571), PPMP restored (#561), initial PPMP (#564), announcements in the bell (#573) and the Playwright suite.
+Plan: `docs/v1.9/UAT_Polish_Plan.md`. **No migrations, no new settings; nothing to deploy by hand.** `uat` took part of it early
+(#554, #565); the rest goes via `merge/v1.9.2-rest-into-uat`. ⚠️ **v1.10.0 is paused**; merge `release/1.9.2` forward into
+`release/1.10.0` before SAIP work resumes.
 **Production:** ⚠️ v1.8.0 → v1.8.2 are **not** deployed to `main` until the PDC and finance users sign off
 (Ralph, 2026-10-07). Implementation continues meanwhile. A move to the MIS environment, and with it any
 database-engine change (e.g. PostgreSQL), is deferred and decided together, not ahead of that deploy.
@@ -775,7 +778,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | Token storage | Access token: in-memory only (`auth.ts`), cleared on reload. Refresh token: httpOnly, Secure, SameSite=Strict cookie set by the backend on `/auth/login` and `/auth/refresh` (scoped to `/api/auth/refresh`) — not accessible to JS, never in localStorage/sessionStorage. Browser sends it automatically (axios `withCredentials: true`); refresh flow is a credentialed `POST /api/auth/refresh`. (RAL-58) |
 | One-time user passwords (RAL-254) | There is **no** shared default password. `UserService.CreateAsync` and `ResetPasswordAsync` each issue a unique random password via `PasswordGenerator` (12 chars, unambiguous alphabet, always policy-compliant). The plaintext is returned once in `UserCredentialResponseDto.TemporaryPassword`, shown once in the admin UI, and never stored or logged — if it is lost, reset again. |
 | Distribution as standalone | Distribution separated from Receive Delivery — `POST /api/distributions` creates standalone distribution records. FIFO batch allocation done on the frontend. |
-| Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`Portal vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
+| Version indicator | `APP_VERSION` const in three places — `frontend/src/components/layout/Sidebar.tsx` (portal sidebar), `frontend/src/components/landing/Footer.tsx` (`PLANO MO vX.Y.Z`, public landing page), and `frontend/src/app/(public)/login/page.tsx` (login page). All three must be updated together — they've drifted out of sync before. |
 | Version scheme | Patch releases (bug fixes, optimizations, no new features) use `vX.Y.Z` (e.g. `v1.0.1`). Feature milestones use `vX.Y` (e.g. `v1.2`). |
 | **Version bump timing** | Bump `APP_VERSION` in all three places **at the start of a new version's development** — i.e. right after cutting its `release/X.Y.Z` branch, as the first commit on that branch — not at the end when merging/deploying. This way the displayed version always reflects what's actually running in that environment throughout development, including on preview/local builds. |
 | Cold start mitigation | `GET /api/health` (no auth) runs `SELECT 1` against Azure SQL — called on login page mount to warm up Azure Functions (cold start ~10 min). Originally also pre-warmed Azure SQL auto-pause (~1 hr); no longer needed for the DB since the Basic-tier switch (2026-08-12) removed auto-pause entirely, but the call still serves the Functions side. |
@@ -808,7 +811,7 @@ the index — what shipped in each release, and the PR that merged it to `main`.
 | **v1.8.4 — Minor fixes** | ✅ **Complete on `release/1.8.4`**, on `uat` (#486, 2026-10-14) |
 | **v1.9.0 — Larger requests** | 🧊 **Complete and frozen on `release/1.9.0`** (2026-10-16), on UAT |
 | **v1.9.1 — .NET 10 + AIP UX fixes** | 🧊 **Complete and frozen on `release/1.9.1`** (2026-10-20), on UAT |
-| **v1.9.2 — UAT Polish** | 🚧 **In progress on `release/1.9.2`** (cut 2026-10-25) — epic PPDO-252 |
+| **v1.9.2 — UAT Polish** | ✅ **Complete on `release/1.9.2`** (2026-11-05), going to UAT — epic PPDO-252 |
 | **v1.7.5 — Production .NET 10 hotfix** | ✅ **Done** — PPDO-234, on `main` (#526) |
 | **v1.10.0 — SAIP** | ⏸️ **Paused** on `release/1.10.0` until v1.9.2 closes — epic PPDO-241 |
 | `techdebt` | 🔁 Ongoing — non-feature cleanup; tickets move into the active version milestone when they go In Progress |
@@ -948,6 +951,6 @@ Ralph decided to **ship both in one production deploy**, so there is one working
 
 ---
 
-*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.2 (release/1.9.2 cut for the UAT polish phase; v1.8.0–v1.9.1 unreleased, awaiting PDC/finance sign-off) — 2026-10-25 — Ralph Armand Alcaide*
+*CLAUDE.md — PPDO Portal — Implementation Status current to v1.9.2 (complete on release/1.9.2, going to UAT; v1.8.0–v1.9.2 unreleased, awaiting PDC/finance sign-off) — 2026-11-05 — Ralph Armand Alcaide*
 *Performance & scalability guidelines added 2026-06-22 (`docs/PERFORMANCE_GUIDELINES.md`) — from the v1.1.0 prod audit.*
 *Spec standard + ticket prompt revision added 2026-08-27, alongside the whole-project retrospective.*

@@ -3,7 +3,7 @@ type: hub
 version: v1.9.0
 status: current
 tickets: []
-updated: 2026-10-19
+updated: 2026-11-03
 ---
 
 # v1.9 — Reviewer edits, comments, notifications and WFP export
@@ -38,6 +38,7 @@ Each document's `status` property says whether it is `current`, `shipped`, `supe
 
 ## Audits
 
+- [v1.9.2 — Negative test inventory](Negative_Test_Inventory.md) — every form that saves data, field by field: page rule vs API rule, the gaps, and 27 suspected bugs (PPDO-283)
 - [v1.9.2 — Performance audit 2026-11](Performance_Audit_2026-11.md) — re-measure after PPDO-182…189; bundle baseline done, UAT measurements pending (PPDO-257)
 - [v1.9.2 — UAT pre-sweep findings](UAT_PreSweep_Findings.md) — suspects from reading the code, to confirm in the A1–A3 sweep (PPDO-252)
 - [v1.9.1 — Loading guard audit](Loading_Guard_Audit.md) — which actions on the heavy pages could run before their data loaded, and the fixes (PPDO-244)

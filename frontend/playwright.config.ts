@@ -9,6 +9,23 @@ const isCI = !!process.env.CI;
 // Never set in CI, where `playwright install` provides the matching one.
 const executablePath = process.env.E2E_CHROMIUM_PATH || undefined;
 
+// PPDO-257 — the perf project is opt-in: it is only part of the config when asked for by name
+// (`npm run e2e:perf`, or E2E_PERF=1 for --ui), so `playwright test` and `--list` never see it.
+// Setting the variable here lets the workers, which load this file again, agree with the runner.
+const argv = process.argv;
+if (argv.includes("--project=perf") || argv.some((a, i) => a === "--project" && argv[i + 1] === "perf")) {
+  process.env.E2E_PERF = "1";
+}
+const perfRequested = process.env.E2E_PERF === "1";
+const perfProject = {
+  name: "perf",
+  // Its file (perf/*.measure.ts) matches no other project's pattern. It signs in by itself.
+  testMatch: /perf[\/].*\.measure\.ts/,
+  workers: 1,
+  retries: 0,
+  use: { ...devices["Desktop Chrome"], launchOptions: { executablePath }, trace: "off" as const, screenshot: "off" as const },
+};
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -22,6 +39,10 @@ export default defineConfig({
     trace: isCI ? "off" : "on-first-retry",
     // A picture of the page when a test fails. Off in CI for the same reason: it shows the data.
     screenshot: isCI ? "off" : "only-on-failure",
+    // A production build (UAT, or e2e/serve-export.mjs locally) registers a service worker, and
+    // `page.route` cannot see requests that go through one. The sweep and error-text specs hold
+    // back or fail API calls with it, so service workers stay off in every test (PPDO-300).
+    serviceWorkers: "block",
   },
   projects: [
     {
@@ -31,7 +52,7 @@ export default defineConfig({
     },
     {
       name: "public",
-      testMatch: /public\.spec\.ts/,
+      testMatch: /public(-login)?\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },
     // Signed-in specs (smoke, journeys) belong in per-persona projects that depend on "setup".
@@ -40,7 +61,7 @@ export default defineConfig({
     // side. Different personas still run in parallel. See e2e/fixtures.ts.
     ...PERSONAS.filter((p) => p.configured).map((p) => ({
       name: `as-${p.key}`,
-      testIgnore: [/auth\.setup\.ts/, /public\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
+      testIgnore: [/auth\.setup\.ts/, /public(-login)?\.spec\.ts/, /[\\/]aip[\\/]/, /[\\/]inventory[\\/]/],
       dependencies: ["setup"],
       workers: 1,
       use: {
@@ -80,5 +101,6 @@ export default defineConfig({
       workers: 1,
       use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } },
     },
+    ...(perfRequested ? [perfProject] : []),
   ],
 });

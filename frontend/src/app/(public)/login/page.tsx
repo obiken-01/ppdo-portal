@@ -26,6 +26,7 @@ import { z } from "zod";
 import axios from "axios";
 import api from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { APP_LONG_NAME, APP_NAME, OFFICE_LOGO_WEBP } from "@/lib/branding";
 import { APP_VERSION } from "@/lib/version";
 import type {
   LoginResponse,
@@ -496,16 +497,19 @@ function LoginPageInner() {
       {/* ── Left panel — branding (desktop only) ────────────────────────── */}
       <aside className="hidden md:flex md:w-1/4 bg-green-700 flex-col items-center justify-center px-8 py-14 text-white">
         <Image
-          src="/images/ppdo-logo.webp"
-          alt="PPDO Logo"
+          src={OFFICE_LOGO_WEBP}
+          alt="OPPDC Logo"
           width={88}
           height={88}
           priority
-          className="rounded-full mb-6 object-contain"
+          className="mb-6 object-contain"
         />
         <h1 className="text-2xl font-bold text-center mb-1">
-          PPDO Portal <span className="text-sm font-normal text-green-300">{APP_VERSION}</span>
+          {APP_NAME} <span className="text-sm font-normal text-green-300">{APP_VERSION}</span>
         </h1>
+        <p className="text-green-100 text-xs text-center mb-4">
+          {APP_LONG_NAME}
+        </p>
         <p className="text-green-200 text-sm text-center mb-2">
           Provincial Planning and Development Office
         </p>
@@ -549,14 +553,14 @@ function LoginPageInner() {
           {/* Mobile logo (visible only on small screens) */}
           <div className="flex md:hidden items-center justify-center gap-2 mb-8">
             <Image
-              src="/images/ppdo-logo.webp"
-              alt="PPDO"
+              src={OFFICE_LOGO_WEBP}
+              alt="OPPDC"
               width={36}
               height={36}
               priority
-              className="rounded-full object-contain"
+              className="object-contain"
             />
-            <span className="font-bold text-green-700 text-lg">PPDO Portal</span>
+            <span className="font-bold text-green-700 text-lg">{APP_NAME}</span>
           </div>
 
           {/* Unexpected-logout explanation (RAL-198) */}
