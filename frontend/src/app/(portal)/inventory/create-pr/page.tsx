@@ -40,11 +40,13 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { apiErrorText } from "@/lib/api-error";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { listAccounts } from "@/lib/config";
 import { useToast } from "@/components/ui/Toast";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   AccountResponse,
   CreatePRItemRequest,
@@ -512,7 +514,12 @@ export default function CreatePRPage() {
   const isStaff = me?.role === "Staff";
 
   // Staff are clamped to their own division by the backend, so only offer that one.
-  const { divisions: divisionOptions, loading: divisionsLoading } = useInventoryDivisions(me?.division ?? null, isStaff);
+  const {
+    divisions: divisionOptions,
+    loading: divisionsLoading,
+    failed: divisionsFailed,
+    retry: retryDivisions,
+  } = useInventoryDivisions(me?.division ?? null, isStaff);
 
   // ── Header field patch ─────────────────────────────────────────────────────
 
@@ -653,10 +660,8 @@ export default function CreatePRPage() {
         `${count} PR${count !== 1 ? "s" : ""} imported from Excel.`
       );
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Import failed. Ensure the file follows the template format.";
-      toast.error("Import failed", String(msg).slice(0, 120));
+      const msg = apiErrorText(err, "Import failed. Ensure the file follows the template format.");
+      toast.error("Import failed", msg.slice(0, 120));
     } finally {
       setUploading(false);
     }
@@ -719,10 +724,8 @@ export default function CreatePRPage() {
         ". Division, Requested By, and signatories still need to be filled in."
       );
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Could not read this file. Make sure it's a PR export from the GSO system.";
-      toast.error("Import failed", String(msg).slice(0, 160));
+      const msg = apiErrorText(err, "Could not read this file. Make sure it's a PR export from the GSO system.");
+      toast.error("Import failed", msg.slice(0, 160));
     } finally {
       setGsoImporting(false);
     }
@@ -784,10 +787,8 @@ export default function CreatePRPage() {
       setSubmitted(data);
       toast.success("PR submitted", `PR No. ${data.prNo} has been created.`);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to submit PR. Please try again.";
-      toast.error("Submission failed", String(msg).slice(0, 120));
+      const msg = apiErrorText(err, "Failed to submit PR. Please try again.");
+      toast.error("Submission failed", msg.slice(0, 120));
     } finally {
       setSubmitting(false);
     }
@@ -934,7 +935,7 @@ export default function CreatePRPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || divisionsLoading}
             className="flex items-center gap-2 px-6 py-2.5 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
@@ -983,11 +984,21 @@ export default function CreatePRPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-cell-auto disabled:text-slate-500 disabled:cursor-not-allowed"
               >
                 {/* PPDO-244 — say the list is loading rather than offer an empty one. */}
-                <option value="">{divisionsLoading ? "Loading divisions…" : "— Select Division —"}</option>
+                <option value="">
+                  {divisionsLoading ? "Loading divisions…" : divisionsFailed ? "Couldn't load divisions" : "— Select Division —"}
+                </option>
                 {divisionOptions.map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
+              {/* PPDO-279 — an empty picker with no reason left the PR unfinishable. */}
+              {divisionsFailed && !divisionsLoading && (
+                <LoadError
+                  message="Couldn't load the divisions, so a division can't be picked."
+                  onRetry={retryDivisions}
+                  className="py-2"
+                />
+              )}
               <FieldError message={headerErrors.division} />
             </div>
 
@@ -1297,7 +1308,7 @@ export default function CreatePRPage() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || divisionsLoading}
             className="flex items-center gap-2 px-8 py-3 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting

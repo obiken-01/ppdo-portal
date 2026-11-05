@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import { meFrom, reportOfficesAnswer } from "./helpers";
 
 // PPDO-263: for an entered year (FY 2028+) the PPMP type is the initial PPMP, read off the
 // consolidated AIP's procurement items. PPDO readers get it, titled "Initial PPMP (from AIP)" with the
@@ -16,10 +17,10 @@ const FY = 2028;
 test.describe("PPDO-263 initial PPMP", () => {
   test("PPDO readers get the initial PPMP for FY 2028; guest offices get 403", async ({ page }) => {
     const meResponse = page.waitForResponse((r) => /\/api\/auth\/me$/.test(r.url()) && r.ok());
+    const officesAnswer = reportOfficesAnswer(page, FY);
     await page.goto(`/budget-planning/report?type=PPMP&fiscalYear=${FY}`);
     const meRes = await meResponse;
-    const body = (await meRes.json()) as Me | { data: Me };
-    const me = "data" in body ? body.data : body;
+    const me = await meFrom<Me>(meRes);
     test.skip(!me.canAccessBudgetPlanning, "persona has no Budget Planning");
 
     if (!me.isHostOffice) {
@@ -39,6 +40,9 @@ test.describe("PPDO-263 initial PPMP", () => {
       return;
     }
 
+    // A host-office Budget Planning reader always asks for the year's offices. Until that answer is
+    // in, the picker reads "No office ready yet" whatever the data holds (PPDO-300).
+    await officesAnswer;
     await page.waitForLoadState("networkidle").catch(() => {});
     const typeSelect = page.locator("select").filter({ has: page.locator("option", { hasText: "Work and Financial Plan" }) });
     await expect(typeSelect).toHaveValue("PPMP");
@@ -51,7 +55,10 @@ test.describe("PPDO-263 initial PPMP", () => {
       return;
     }
 
-    await officeSelect.selectOption({ index: 1 });
+    // Staff locked to their own office see the picker disabled: their office is chosen for them when
+    // it is in the list, and there is nothing to preview when it is not.
+    if (await officeSelect.isEnabled()) await officeSelect.selectOption({ index: 1 });
+    else test.skip(!(await officeSelect.inputValue()), "this account cannot choose the office, and its own office has no consolidated AIP");
     await page.getByRole("button", { name: "Generate Preview" }).click();
 
     await expect(page.getByRole("heading", { name: "Initial PPMP (from AIP)" })).toBeVisible();

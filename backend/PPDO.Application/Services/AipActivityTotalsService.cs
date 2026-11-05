@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using PPDO.Domain.Common;
+using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Application.Services;
@@ -60,7 +62,32 @@ public sealed class AipActivityTotalsService : IAipActivityTotalsService
             return false;
         }
 
-        await _aipRepo.SaveChangesAsync(ct);
+        try
+        {
+            await _aipRepo.SaveChangesAsync(ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // PPDO-302 — the activity was loaded before another save on it committed (an encoder's
+            // Save details landing mid-write), so its rowversion is stale. Retrying is safe: the
+            // totals are a pure function of the lines, summed again below. The details save never
+            // writes Ps/Mooe/Co/Total, and for an activity with lines the lines decide them anyway. The reload takes the other
+            // save's columns as they are, so nothing of theirs is overwritten.
+            //
+            // ⚠️ Once, not a loop. A second conflict goes back to the caller, which answers a 409.
+            _logger.LogWarning(
+                "AIP activity totals save conflicted; reloading and retrying once. ActivityId: {ActivityId}",
+                activityId);
+
+            AipActivity? activity = await _aipRepo.GetActivityByIdAsync(activityId, ct);
+            if (activity is null) throw;
+            await _aipRepo.ReloadAsync(activity, ct);
+
+            totals = await _expenditureRepo.SumByActivityIdAsync(activityId, ct);
+            if (!await _aipRepo.ApplyActivityTotalsAsync(activityId, totals, zeroWhenNoLines, ct))
+                return false;
+            await _aipRepo.SaveChangesAsync(ct);
+        }
 
         _logger.LogInformation(
             "AIP activity totals recomputed. ActivityId: {ActivityId}, LineCount: {LineCount}, Total: {Total}",

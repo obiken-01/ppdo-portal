@@ -75,6 +75,7 @@ import { isActiveExport } from "@/lib/wfp-bulk-export";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   AipConsolidatedSheet,
   DivisionResponse,
@@ -471,6 +472,8 @@ function WfpReportPageInner() {
   const [officeId, setOfficeId] = useState<number | null>(null);
   const [offices, setOffices] = useState<WfpReportOfficeDto[]>([]);
   const [officesLoading, setOfficesLoading] = useState(false);
+  // PPDO-276: a failed offices load used to read "No office ready yet", a real-sounding answer.
+  const [officesFailed, setOfficesFailed] = useState(false);
   const [divisionId, setDivisionId] = useState<number | null>(null);
   const [divisionList, setDivisionList] = useState<DivisionResponse[]>([]);
   const [divisionsLoaded, setDivisionsLoaded] = useState(false);
@@ -605,9 +608,16 @@ function WfpReportPageInner() {
     // page to guest-office department heads, fetching this for them would 403 and raise a "Load
     // failed" toast on every visit to a page they are allowed on. ↩️ PPDO-225: for an entered year
     // they may read it (their own office only, once its AIP is Consolidated), so the gate is per year.
-    if (!me || !canOpenWfpReportForYear(me, fiscalYear)) { setOffices([]); return; }
+    if (!me || !canOpenWfpReportForYear(me, fiscalYear)) { setOffices([]); setOfficesFailed(false); return; }
+    loadOffices(fiscalYear);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fiscalYear, me]);
+
+  /** The offices for a year. Retry calls it again for the same year, and nothing else reloads. */
+  function loadOffices(fy: number) {
     setOfficesLoading(true);
-    getWfpReportOffices(fiscalYear)
+    setOfficesFailed(false);
+    getWfpReportOffices(fy)
       .then((offices) => {
         setOffices(offices);
         // ?officeId= from the WFP entry wizard's Preview link takes priority; otherwise
@@ -619,10 +629,9 @@ function WfpReportPageInner() {
           setOfficeId(preferredId);
         }
       })
-      .catch(() => toast.error("Load failed", "Could not load offices for this fiscal year."))
+      .catch(() => { setOffices([]); setOfficesFailed(true); })
       .finally(() => setOfficesLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fiscalYear, me]);
+  }
 
   function runPreview(office: number, fy: number, division: number | null) {
     setReportLoading(true);
@@ -790,12 +799,15 @@ function WfpReportPageInner() {
             /* ⚠️ Locked for a department head, and it shows their own office rather than going blank:
                a disabled empty select reads as a list that failed to load. */
             <select
-              value={crossOffice ? (officeId ?? "") : (me?.officeId ?? "")}
+              value={officesLoading ? "" : crossOffice ? (officeId ?? "") : (me?.officeId ?? "")}
               onChange={(e) => setOfficeId(e.target.value ? Number(e.target.value) : null)}
-              disabled={!crossOffice}
+              disabled={!crossOffice || officesLoading}
               className="w-64 border border-slate-300 bg-white text-sm px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-green-600 disabled:opacity-50"
             >
-              {crossOffice ? (
+              {/* PPDO-276: the page's office list is still on its way, so nothing is picked yet. */}
+              {officesLoading ? (
+                <option value="">Loading offices…</option>
+              ) : crossOffice ? (
                 <>
                   <option value="">— all submitted offices (consolidated) —</option>
                   {aipOffices.map((o) => (
@@ -816,7 +828,9 @@ function WfpReportPageInner() {
               <option value="">
                 {officesLoading
                   ? "Loading offices…"
-                  : offices.length === 0
+                  : officesFailed
+                    ? "Couldn't load offices"
+                    : offices.length === 0
                     ? (isInitialReport ? "No office ready yet" : "No offices with a WFP yet")
                     : "— select office —"}
               </option>
@@ -866,7 +880,7 @@ function WfpReportPageInner() {
           onClick={isAip
             ? () => setAipRequest({ fiscalYear: aipFiscalYear, officeId: aipOfficeId })
             : handleGeneratePreview}
-          disabled={isAip ? false : officeId == null || reportLoading}
+          disabled={officesLoading || (isAip ? false : officeId == null || reportLoading)}
           className="px-4 py-1.5 text-sm font-medium bg-green-600 text-white hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {reportLoading ? "Generating…" : "Generate Preview"}
@@ -929,8 +943,17 @@ function WfpReportPageInner() {
         />
       )}
 
+      {/* PPDO-276 — failed offices load: say so, Retry reloads just the list. */}
+      {officesFailed && fiscalYear != null && !reportLoading && !(isAip && aipRequest) && (
+        <LoadError
+          message={`Couldn't load the offices for FY ${fiscalYear}.`}
+          onRetry={() => loadOffices(fiscalYear)}
+          className="py-10 print:hidden"
+        />
+      )}
+
       {/* Empty / loading state */}
-      {!report && !ppmpReport && !reportLoading && !(isAip && aipRequest) && (
+      {!officesFailed && !report && !ppmpReport && !reportLoading && !(isAip && aipRequest) && (
         <p className="text-slate-600 text-sm py-10 text-center print:hidden">
           {isAip
             ? "Select a fiscal year and office, then click “Generate Preview” to view the report."

@@ -93,7 +93,10 @@ export default function AipDivisionsPanel({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* PPDO-280 — `relative` so the sr-only "Actions" header (position: absolute) stays inside
+          this scroll box. Without a positioned ancestor it escaped to the page and made the whole
+          AIP Entry page scroll sideways at phone width. */}
+      <div className="relative overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">

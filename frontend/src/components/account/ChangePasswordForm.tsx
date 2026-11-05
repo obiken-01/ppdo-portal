@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { changePassword } from "@/lib/account";
+import { apiErrorText } from "@/lib/api-error";
 
 export default function ChangePasswordForm({
   onSuccess,
@@ -50,10 +51,7 @@ export default function ChangePasswordForm({
       setConfirm("");
       onSuccess();
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to change password.";
-      setError(msg);
+      setError(apiErrorText(err, "Failed to change password."));
     } finally {
       setSaving(false);
     }

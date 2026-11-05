@@ -99,4 +99,10 @@ public interface IUserRepository : IRepository<User>
     /// </summary>
     Task<IReadOnlyList<User>> GetNotificationCandidatesAsync(
         int? officeId, bool includeCrossOffice, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every active user, untracked and with nothing included (PPDO-284): the audience of a published
+    /// announcement, which any portal user may read. Only the id is used.
+    /// </summary>
+    Task<IReadOnlyList<User>> GetActiveAsync(CancellationToken cancellationToken = default);
 }

@@ -26,6 +26,19 @@ export async function getPublicAnnouncements(): Promise<AnnouncementPublicDto[]>
   return data;
 }
 
+/**
+ * One published announcement, for the notification bell's modal (PPDO-284). Reads the public list
+ * rather than a by-id endpoint; null once it is archived, unpublished or deleted.
+ */
+export async function getPublishedAnnouncement(id: string): Promise<AnnouncementPublicDto | null> {
+  return findAnnouncement(await getPublicAnnouncements(), id);
+}
+
+export function findAnnouncement(list: AnnouncementPublicDto[], id: string): AnnouncementPublicDto | null {
+  const want = id.toLowerCase();
+  return list.find((a) => a.id.toLowerCase() === want) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Admin (JWT required)
 // ---------------------------------------------------------------------------

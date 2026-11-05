@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PPDO.Application.Services;
+using PPDO.Domain.Common;
+using PPDO.Domain.Entities;
 using PPDO.Domain.Interfaces;
 
 namespace PPDO.Tests.Application;
@@ -133,5 +135,52 @@ public sealed class AipActivityTotalsServiceTests
         aipRepo.Verify(r => r.ApplyActivityTotalsAsync(
             ActivityId, It.IsAny<AipExpenditureTotalsDto>(), It.IsAny<bool>(),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // ── PPDO-302: a details save on the same activity lands mid-recompute ─────
+
+    private static ConcurrencyConflictException Conflict() =>
+        new("The row changed since it was loaded.", new InvalidOperationException());
+
+    [Fact]
+    public async Task Recalculate_WhenTheActivitySaveConflicts_ReloadsAndRetriesOnce()
+    {
+        // The activity was loaded before a details save on it committed, so its rowversion is
+        // stale. The totals are a pure function of the lines, and the details save never writes
+        // them, so reloading and writing them again loses nothing. Red-test: remove the catch.
+        var (sut, aipRepo, expenditureRepo) = Build();
+        AipActivity activity = new() { Id = ActivityId };
+        aipRepo.Setup(r => r.GetActivityByIdAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(activity);
+        aipRepo.SetupSequence(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(Conflict())
+            .ReturnsAsync(1);
+
+        bool changed = await sut.RecalculateAsync(ActivityId, CancellationToken.None);
+
+        Assert.True(changed);
+        aipRepo.Verify(r => r.ReloadAsync(activity, It.IsAny<CancellationToken>()), Times.Once);
+        aipRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        // Summed again after the reload, so a line written in between is counted.
+        expenditureRepo.Verify(r => r.SumByActivityIdAsync(ActivityId, It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+        aipRepo.Verify(r => r.ApplyActivityTotalsAsync(
+            ActivityId, It.IsAny<AipExpenditureTotalsDto>(), false, It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task Recalculate_WhenTheRetryConflictsToo_Throws_SoTheCallerDecides()
+    {
+        // One retry, not a loop. A second conflict goes back to the caller, which answers a 409.
+        var (sut, aipRepo, _) = Build();
+        aipRepo.Setup(r => r.GetActivityByIdAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AipActivity { Id = ActivityId });
+        aipRepo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ThrowsAsync(Conflict());
+
+        await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => sut.RecalculateAsync(ActivityId, CancellationToken.None));
+
+        aipRepo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 }

@@ -43,6 +43,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import api from "@/lib/api";
+import { apiErrorText } from "@/lib/api-error";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import { useToast } from "@/components/ui/Toast";
 import TableSkeleton from "@/components/ui/TableSkeleton";
@@ -383,9 +384,7 @@ export default function ItemsMasterPage() {
       setEditingId(null);
       reload();
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? "Failed to save. Please try again.";
+      const msg = apiErrorText(e, "Failed to save. Please try again.");
       toast.error("Save failed", msg);
     } finally {
       setSaving(false);
@@ -731,7 +730,7 @@ export default function ItemsMasterPage() {
           {/* Add item */}
           <button
             onClick={handleAddRow}
-            disabled={!!editingId}
+            disabled={!!editingId || loading}
             className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>

@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/Toast";
 import type { MeResponse, UserResponse } from "@/types";
 import LandingPageSelect, { reachabilityFromMe } from "@/components/ui/LandingPageSelect";
 import { fetchMe } from "@/lib/me-cache";
+import { apiErrorText } from "@/lib/api-error";
 import ChangePasswordForm from "@/components/account/ChangePasswordForm";
 import RecoveryAnswerForm from "@/components/account/RecoveryAnswerForm";
 
@@ -126,10 +127,7 @@ function ProfileTab({
       toast.success("Profile updated successfully.");
       onSaved();
     } catch (err) {
-      const msg =
-        (err as { response?: { data?: string } })?.response?.data ??
-        "Failed to update profile.";
-      setError(msg);
+      setError(apiErrorText(err, "Failed to update profile."));
     } finally {
       setSaving(false);
     }
@@ -224,8 +222,9 @@ function ProfileTab({
         <div className="flex justify-end pt-2">
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 disabled:opacity-60 transition-colors flex items-center gap-2"
+            // PPDO-281: an empty form saved before the profile arrives says "Full name is required."
+            disabled={saving || !profile}
+            className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
             {saving && (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

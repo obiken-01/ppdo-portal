@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import { useAipUnsavedChange } from "./AipUnsavedChanges";
 import { fmtThousands } from "@/lib/aip-units";
+import { aipErrorMessage } from "@/lib/aip";
 import { AipFigureStrip, AipUnitCaption, type AipRowAmounts } from "./AipRowFigures";
 import { aipRefSegment } from "./AipEntrySelection";
 
@@ -199,6 +200,9 @@ export function AipChildList({
  *
  * ⚠️ Moved here from the entry page unchanged (PPDO-89). The created node is handed to the caller,
  * never discarded — discarding it is what forced the reload that read as the page refreshing.
+ *
+ * PPDO-285 — a refused add (400/403/409/500) shows the server's sentence under the row and keeps
+ * the box open with the typed name, so the encoder can retry or cancel. It used to show nothing.
  */
 export function AipInlineAdd({
   label, placeholder, onAdd, disabled, disabledReason, multiline,
@@ -218,9 +222,12 @@ export function AipInlineAdd({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const noun = label.replace(/^\+\s*Add\s*/i, "").toLowerCase() || "item";
   // PPDO-166 — a typed-but-not-added name. Before the early returns: hooks cannot follow them.
-  useAipUnsavedChange(open && name.trim() !== "", `a new ${label.replace(/^\+\s*Add\s*/i, "").toLowerCase() || "item"}`, () => {
+  useAipUnsavedChange(open && name.trim() !== "", `a new ${noun}`, () => {
     setName("");
+    setError(null);
     setOpen(false);
   });
 
@@ -239,23 +246,40 @@ export function AipInlineAdd({
     );
   }
   return (
-    <div className={multiline ? "flex w-full items-start gap-2" : "flex gap-2"}>
-      {multiline ? (
-        <textarea autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
-          rows={2}
-          className="min-h-[44px] max-h-[88px] flex-1 resize-y overflow-y-auto border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
-      ) : (
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
-          className="flex-1 border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+    <div className={multiline ? "w-full" : undefined}>
+      <div className={multiline ? "flex w-full items-start gap-2" : "flex gap-2"}>
+        {multiline ? (
+          <textarea autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
+            rows={2}
+            className="min-h-[44px] max-h-[88px] flex-1 resize-y overflow-y-auto border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+        ) : (
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}
+            className="flex-1 border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-green-600" />
+        )}
+        <button type="button" disabled={busy || !name.trim()}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              await onAdd(name.trim());
+              setName("");
+              setOpen(false);
+            } catch (e) {
+              // ⚠️ The name is NOT cleared: it is what the encoder retries with.
+              setError(aipErrorMessage(e, `Could not add the ${noun}.`));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="bg-green-700 px-3 py-1 text-sm text-white disabled:bg-slate-300">Add</button>
+        <button type="button" onClick={() => { setError(null); setOpen(false); }}
+          className="px-2 py-1 text-sm text-slate-600 hover:underline">Cancel</button>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {error}
+        </p>
       )}
-      <button type="button" disabled={busy || !name.trim()}
-        onClick={async () => {
-          setBusy(true);
-          try { await onAdd(name.trim()); setName(""); setOpen(false); } finally { setBusy(false); }
-        }}
-        className="bg-green-700 px-3 py-1 text-sm text-white disabled:bg-slate-300">Add</button>
-      <button type="button" onClick={() => setOpen(false)}
-        className="px-2 py-1 text-sm text-slate-600 hover:underline">Cancel</button>
     </div>
   );
 }

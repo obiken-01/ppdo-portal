@@ -19,18 +19,20 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import { thousandsHint } from "@/lib/aip-units";
 
 export default function AipMoneyInput({
-  value, onChange, disabled, className,
+  value, onChange, disabled, className, max,
 }: {
   /** PESOS. Not thousands — see the header. */
   value: number | null;
   onChange: (value: number | null) => void;
   disabled?: boolean;
   className?: string;
+  /** Passed to `MoneyInput` (PPDO-293). Set on the expenditure line's PS / MOOE / CO only. */
+  max?: number;
 }) {
   const hint = thousandsHint(value);
   return (
     <div className={className}>
-      <MoneyInput value={value} onChange={onChange} disabled={disabled} className="w-full" />
+      <MoneyInput value={value} onChange={onChange} disabled={disabled} max={max} className="w-full" />
       {/* Reserves its line whether or not there is a hint, so a row does not jolt taller the
           moment the first digit is typed. */}
       <span className="mt-0.5 block h-3 text-right text-[10px] leading-3 tabular-nums text-slate-600">

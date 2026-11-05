@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * Generates the PWA icon set from the official PPDO logo.
+ * Generates the PWA icon set from the office logo.
  *
  *   node scripts/generate-pwa-icons.js
  *
  * Run from the repo root. Requires `sharp`, which is already a devDependency
  * of the frontend — no extra install needed.
  *
- * Source: `frontend/public/images/ppdo-logo.png` — the official PPDO logo,
- * 256x256 with transparency. (It was called `ppdo-logo-placeholder.png` until
- * 2026-08-14; the name long outlived the placeholder it once described and was
- * renamed once it had misled a reader into believing the real logo was missing.)
+ * Source: `frontend/public/images/office-logo.png` — the office logo, 512x512 with
+ * transparency. Since v1.7.6 (PPDO-268) that is the OPPDC tamaraw logo; the file has a
+ * neutral name so the next office rename replaces the image, not the filename. (It was
+ * `ppdo-logo.png` before that, and `ppdo-logo-placeholder.png` before 2026-08-14.)
  *
  * Outputs (frontend/public/icons/):
  *   icon-192.png           plain, transparent — downscaled from 256, crisp
@@ -19,26 +19,22 @@
  *   apple-touch-icon.png   180x180 on white — iOS ignores the manifest icons
  *                          and composites transparency unpredictably
  *
- * Two deliberate compromises, both agreed with Ralph on 2026-08-14:
+ * One deliberate compromise (agreed with Ralph on 2026-08-14, still holds):
  *
- * 1. The 512 is a 2x upscale, because the only source available is 256x256.
- *    Lanczos3 keeps it acceptable, and at ordinary home-screen sizes (48-192px)
- *    the difference is invisible; it is mildly soft only on the Android splash
- *    screen, which renders the 512 large. If a vector or larger PNG of the logo
- *    ever turns up, drop it in as the source and re-run — every size below is
- *    derived, so nothing else needs to change.
+ * The maskable icon pads the badge to 80% on white. Android crops icons to a
+ * device-chosen circle/squircle keeping roughly the centre 80%, and this logo puts
+ * its horns, the "OPPDC" wordmark and the sector icons right at the outer edge —
+ * unpadded, they are clipped on most Android phones.
  *
- * 2. The maskable icon pads the badge to 80% on white. Android crops icons to a
- *    device-chosen circle/squircle keeping roughly the centre 80%, and this logo
- *    puts its ring text ("PROVINCIAL PLANNING AND DEVELOPMENT OFFICE") right at
- *    the outer edge — unpadded, that text is clipped on most Android phones.
+ * (The 512 used to be a 2x upscale from a 256 source. The OPPDC logo arrived at
+ * 943x998, so `office-logo.png` is a true 512 and nothing is upscaled any more.)
  */
 
 const path = require("path");
 const fs = require("fs");
 const sharp = require(path.join(__dirname, "..", "frontend", "node_modules", "sharp"));
 
-const SRC = path.join(__dirname, "..", "frontend", "public", "images", "ppdo-logo.png");
+const SRC = path.join(__dirname, "..", "frontend", "public", "images", "office-logo.png");
 const OUT_DIR = path.join(__dirname, "..", "frontend", "public", "icons");
 
 // Android's maskable safe zone is the centre 80% of the canvas.

@@ -61,4 +61,10 @@ public interface INotificationAudience
 
     /// <summary>PPDO's cross-office reviewers (<c>CanReviewAllOffices</c>), wherever they sit.</summary>
     Task<IReadOnlyList<User>> CrossOfficeReviewersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Every active user (PPDO-284). Only for an announcement, which is public: no feature flag or
+    /// scope narrows it. ⚠️ Never use it for office work, whose text would reach every office.
+    /// </summary>
+    Task<IReadOnlyList<User>> EveryoneAsync(CancellationToken ct = default);
 }

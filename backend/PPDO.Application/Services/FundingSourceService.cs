@@ -104,6 +104,13 @@ public sealed class FundingSourceService : IFundingSourceService
             .ToDictionary(g => g.Key, g => g.First());
     }
 
+    /// <summary>PPDO-282 — the refusal for a name another fund has. Same shape as the code one.</summary>
+    private static string NameTaken(string name) => $"Funding source name '{name}' already exists.";
+
+    /// <summary>The name rule's comparison: case and outer spaces don't count.</summary>
+    private static bool SameName(string a, string b)
+        => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>One fund's office label, resolved on its own — the single-row form of the map above.</summary>
     private async Task<FundingSourceDto> MapWithOfficeAsync(FundingSource f, CancellationToken cancellationToken)
         => MapToDto(f, await OfficesByIdAsync(new[] { f }, cancellationToken));
@@ -132,6 +139,11 @@ public sealed class FundingSourceService : IFundingSourceService
         if (all.Any(f => f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
 
+        // PPDO-282 — and the name, over the same rows, so no two funds read the same in a picker.
+        string name = dto.Name.Trim();
+        if (await _repo.NameExistsAsync(name, exceptId: null, cancellationToken))
+            return ServiceResult<FundingSourceDto>.Conflict(NameTaken(name));
+
         if (dto.OfficeId is int newOfficeId
             && await _officeRepo.GetByIdAsync(newOfficeId, cancellationToken) is null)
             return ServiceResult<FundingSourceDto>.BadRequest($"Office {newOfficeId} not found.");
@@ -144,7 +156,7 @@ public sealed class FundingSourceService : IFundingSourceService
         FundingSource entity = new()
         {
             Code        = code,
-            Name        = dto.Name.Trim(),
+            Name        = name,
             Description = Blank(dto.Description),
             Color       = Blank(dto.Color),
             Aliases     = Blank(dto.Aliases),
@@ -184,6 +196,12 @@ public sealed class FundingSourceService : IFundingSourceService
         string code = dto.Code.Trim();
         if (all.Any(f => f.Id != id && f.Code.Equals(code, StringComparison.OrdinalIgnoreCase)))
             return ServiceResult<FundingSourceDto>.Conflict($"Funding source code '{code}' already exists.");
+
+        // PPDO-282 — ⚠️ only a CHANGED name is checked. Funds saved before this rule may already
+        // share a name; editing one of them without renaming it must still save.
+        string name = dto.Name.Trim();
+        if (!SameName(entity.Name, name) && await _repo.NameExistsAsync(name, id, cancellationToken))
+            return ServiceResult<FundingSourceDto>.Conflict(NameTaken(name));
 
         // PPDO-216 — decided here, BEFORE any field of the tracked entity is assigned, so a refusal
         // leaves nothing dirty. Judged against the fund as stored (its current code and owner).
@@ -250,7 +268,7 @@ public sealed class FundingSourceService : IFundingSourceService
         var oldSnapshot = new { entity.Code, entity.Name, entity.OfficeId, entity.IsActive, EnforceAipCeiling = oldEnforce };
 
         entity.Code        = code;
-        entity.Name        = dto.Name.Trim();
+        entity.Name        = name;
         entity.Description = Blank(dto.Description);
         entity.Color       = Blank(dto.Color);
         entity.Aliases     = Blank(dto.Aliases);

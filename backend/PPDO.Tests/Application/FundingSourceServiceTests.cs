@@ -48,6 +48,11 @@ public sealed class FundingSourceServiceTests
             .Callback<FundingSource, CancellationToken>((f, _) => seed.Add(f))
             .Returns(Task.CompletedTask);
         repo.Setup(r => r.UpdateAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        // PPDO-282 — the SQL query's rule over the seed: same name ignoring case and outer spaces,
+        // any office, any status, the fund being edited left out.
+        repo.Setup(r => r.NameExistsAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string name, int? exceptId, CancellationToken _) => seed.Any(f =>
+                f.Id != exceptId && f.Name.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)));
         repo.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
 
         Mock<IOfficeRepository> officeRepo = new();
@@ -100,6 +105,91 @@ public sealed class FundingSourceServiceTests
         ServiceResult<FundingSourceDto> result =
             await sut.CreateAsync(new UpsertFundingSourceDto("GF", "Duplicate", null));
         Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    // ── PPDO-282: a fund's name is unique, across every office, like its code ──────────────────
+
+    [Fact]
+    public async Task CreateAsync_NameOfAnotherFund_ReturnsConflictNamingIt()
+    {
+        (FundingSourceService sut, Mock<IFundingSourceRepository> repo) = Build([Fs(1, "GF", "General Fund")]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("GF2", "General Fund", null));
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Equal("Funding source name 'General Fund' already exists.", result.Error);
+        repo.Verify(r => r.AddAsync(It.IsAny<FundingSource>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameDiffersOnlyInCaseAndOuterSpaces_ReturnsConflict()
+    {
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund")]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("GF2", "  general FUND ", null));
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Equal("Funding source name 'general FUND' already exists.", result.Error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameOfAnotherOfficesFund_ReturnsConflict()
+    {
+        // Same scope as the code rule (PPDO-109, D6): every row, not just the caller's office.
+        (FundingSourceService sut, _) = Build([Fs(1, "GSO-TF", "Trust Fund", officeId: GsoOfficeId)]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("PHO-TF", "Trust Fund", null, OfficeId: PhoOfficeId));
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task CreateAsync_NameOfAnInactiveFund_ReturnsConflict()
+    {
+        (FundingSourceService sut, _) = Build([Fs(1, "OLD", "Old Fund", active: false)]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.CreateAsync(new UpsertFundingSourceDto("NEW", "Old Fund", null));
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RenamedToAnotherFundsName_ReturnsConflictAndKeepsTheOldName()
+    {
+        FundingSource gad = Fs(2, "GAD", "Gender and Development");
+        (FundingSourceService sut, Mock<IFundingSourceRepository> repo) = Build([Fs(1, "GF", "General Fund"), gad]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(2, new UpsertFundingSourceDto("GAD", "general fund", null));
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Equal("Funding source name 'general fund' already exists.", result.Error);
+        Assert.Equal("Gender and Development", gad.Name);
+        repo.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NameUnchanged_WhenAnotherFundAlreadySharesIt_Saves()
+    {
+        // Data saved before PPDO-282 may already hold two funds with one name. Editing one of them
+        // without touching its name must still work.
+        (FundingSourceService sut, _) = Build([Fs(1, "TF", "Trust Fund"), Fs(2, "TF2", "Trust Fund")]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(2, new UpsertFundingSourceDto("TF2", "Trust Fund", "new description"));
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_OnlyCaseOfOwnNameChanged_WhenAnotherFundSharesIt_Saves()
+    {
+        (FundingSourceService sut, _) = Build([Fs(1, "TF", "Trust Fund"), Fs(2, "TF2", "Trust Fund")]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(2, new UpsertFundingSourceDto("TF2", " trust fund", null));
+        Assert.True(result.IsSuccess, result.Error);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RenamedToANewName_Saves()
+    {
+        (FundingSourceService sut, _) = Build([Fs(1, "GF", "General Fund"), Fs(2, "GAD", "GAD")]);
+        ServiceResult<FundingSourceDto> result =
+            await sut.UpdateAsync(2, new UpsertFundingSourceDto("GAD", "Gender and Development", null));
+        Assert.True(result.IsSuccess, result.Error);
+        Assert.Equal("Gender and Development", result.Value!.Name);
     }
 
     [Fact]

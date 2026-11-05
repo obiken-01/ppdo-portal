@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { APP_NAME, OFFICE_LOGO_WEBP } from "@/lib/branding";
 
 const navLinks = [
   { href: "/about",    label: "About"    },
@@ -21,13 +22,13 @@ export default function Navbar() {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/ppdo-logo.png"
-            alt="PPDO"
-            width={28}
-            height={28}
-            className="rounded-full object-contain"
+            src={OFFICE_LOGO_WEBP}
+            alt="OPPDC"
+            width={40}
+            height={40}
+            className="object-contain"
           />
-          <span>PPDO Portal</span>
+          <span>{APP_NAME}</span>
           <span className="hidden sm:inline text-xs text-green-300 font-normal ml-0.5">
             Occidental Mindoro
           </span>

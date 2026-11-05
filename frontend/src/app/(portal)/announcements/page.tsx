@@ -13,6 +13,7 @@ import {
 } from "@/lib/announcements";
 import type { AnnouncementDto } from "@/types";
 import DataTable, { type Column } from "@/components/ui/DataTable";
+import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
 import dynamic from "next/dynamic";
 import AnnouncementEditorModalSkeleton from "@/components/announcements/AnnouncementEditorModalSkeleton";
 
@@ -245,21 +246,20 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-5">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">📢 Announcements</h1>
-          <p className="text-sm text-slate-600 mt-0.5">
-            Manage announcements displayed on the public landing page.
-          </p>
-        </div>
-        <button
-          onClick={openCreate}
-          className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
-        >
-          + New Announcement
-        </button>
-      </div>
+      {/* Page header — New Announcement waits for the list (PPDO-281) */}
+      <ConfigPageHeader
+        busy={loading}
+        title="📢 Announcements"
+        description="Manage announcements displayed on the public landing page."
+        actions={
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 bg-green-700 text-white text-sm font-medium hover:bg-green-800 transition-colors"
+          >
+            + New Announcement
+          </button>
+        }
+      />
 
       {/* Table */}
       <DataTable<AnnouncementDto>

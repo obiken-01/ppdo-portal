@@ -109,7 +109,8 @@ public sealed partial class AipServiceTests
             List<ProgramDivision>? programDivisionSeed = null,
             Mock<IAipCeilingService>? ceiling = null,
             Mock<IInvestmentProposalRepository>? proposals = null,
-            Microsoft.Extensions.Logging.ILogger<AipService>? logger = null)
+            Microsoft.Extensions.Logging.ILogger<AipService>? logger = null,
+            Mock<IClimateChangeTypologyRepository>? ccTypologies = null)
     {
         Mock<IAipRepository>            aipRepo  = new();
         Mock<IFundingSourceRepository> fsRepo   = new();
@@ -350,6 +351,8 @@ public sealed partial class AipServiceTests
             (divisions ?? new AipDivisionLockFixture()).Build(aipRepo.Object, new PermissionService()),
             ceiling?.Object ?? new Mock<IAipCeilingService>().Object,
             proposals?.Object ?? new Mock<IInvestmentProposalRepository>().Object,
+            // PPDO-291 — no typology codes unless the test seeds some: a loose mock answers false.
+            ccTypologies?.Object ?? new Mock<IClimateChangeTypologyRepository>().Object,
             logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<AipService>.Instance);
 
         return (sut, aipRepo, fsRepo, userRepo, parser, audit, officeRepo, wfpRepo,
@@ -2899,7 +2902,8 @@ public sealed partial class AipServiceTests
 
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [Fs(1, "GF")], officeSeed: offices, programSeed: programs,
-                  projectSeed: projects, actSeed: activities);
+                  projectSeed: projects, actSeed: activities,
+                  ccTypologies: KnownTypologies("TYP1"));
 
         UpdateAipActivityDetailsDto dto = new(
             "Updated Name", "ES", "PPDO", "March", "June", "New outputs", 10m, 5m, "TYP1");
@@ -2933,7 +2937,8 @@ public sealed partial class AipServiceTests
         var (rec, offices, programs, projects, activities) = SeedActivityTree();
         var (sut, _, _, _, _, _, _, _, _, _, _, _, _) =
             Build([rec], [], officeSeed: offices, programSeed: programs,
-                  projectSeed: projects, actSeed: activities);
+                  projectSeed: projects, actSeed: activities,
+                  ccTypologies: KnownTypologies("CCA-1"));
 
         Assert.Null(activities[0].EsreCode);
         Assert.Null(activities[0].CcTypologyCode);

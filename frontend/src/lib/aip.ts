@@ -81,13 +81,22 @@ export function aipErrorMessage(err: unknown, fallback: string): string {
  * `aipErrorMessage` on a 409 still shows correct text, but as a dead-end error — the user loses
  * the Overwrite/Discard choice and, with it, any way to keep what they typed.
  *
- * Keyed on status 409 rather than on the payload's shape: a 409 without a body is still a
- * conflict, and treating it as an ordinary error would be the wrong recovery.
+ * ⚠️ **A 409 is a conflict here only when it carries the row** (`current` + `currentRowVersion`).
+ * PPDO-294 — the API also sends 409s that are only a message (`{ error }`): a version clash whose
+ * reload failed, a delete that lost a renumber race (not a version conflict at all), "another
+ * project was added at the same moment". Those have nothing to compare and no version to
+ * Overwrite with, so the panel would be an empty dead end; null sends them to `aipErrorMessage`,
+ * which shows the server's sentence.
+ * `AipDeleteNodeButton` relies on this for its renumber banner, and the WFP toggle reads
+ * `current` straight off the result.
  */
 export function aipConflict<T = unknown>(err: unknown): AipConflict<T> | null {
   const response = (err as { response?: { status?: number; data?: ApiResponse<AipConflict<T>> } })?.response;
   if (response?.status !== 409) return null;
-  return response.data?.data ?? null;
+  const conflict = response.data?.data;
+  if (conflict == null || typeof conflict !== "object") return null;
+  if (typeof conflict.currentRowVersion !== "string" || conflict.current == null) return null;
+  return conflict;
 }
 
 // ---------------------------------------------------------------------------

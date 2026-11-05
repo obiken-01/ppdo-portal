@@ -3,18 +3,33 @@
 /**
  * The full notification list (v1.9.0 — PPDO-222, `Notification_Centre_Spec.md` §6): the dropdown's
  * rows, paged, with the same All / Unread chips and "Mark all as read".
+ *
+ * `?announcement=<id>` opens that announcement's modal (PPDO-284) — the link an announcement entry
+ * carries, for a new tab or a refresh. Closing it drops the query.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   PAGE_SIZE, announceNotificationsChanged, getNotifications, markAllNotificationsRead, markNotificationRead,
 } from "@/lib/notifications";
 import type { AppNotification } from "@/types";
 import NotificationRow, { NotificationSkeleton } from "@/components/notifications/NotificationRow";
+import AnnouncementNotificationModal from "@/components/notifications/AnnouncementNotificationModal";
 
 type Filter = "all" | "unread";
 
 export default function NotificationsPage() {
+  return (
+    <Suspense fallback={null}>
+      <NotificationsList />
+    </Suspense>
+  );
+}
+
+function NotificationsList() {
+  const router = useRouter();
+  const announcementId = useSearchParams().get("announcement");
   const [filter, setFilter] = useState<Filter>("all");
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<AppNotification[] | null>(null);
@@ -90,7 +105,12 @@ export default function NotificationsPage() {
               {filter === "unread" ? "Nothing unread." : "You're all caught up."}
             </p>
           ) : (
-            items.map((n) => <NotificationRow key={n.id} n={n} onOpen={openEntry} />)
+            items.map((n) => (
+              <NotificationRow
+                key={n.id} n={n} onOpen={openEntry}
+                onOpenAnnouncement={(id) => router.push(`/notifications?announcement=${encodeURIComponent(id)}`)}
+              />
+            ))
           )}
         </div>
 
@@ -112,6 +132,10 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
+
+      {announcementId && (
+        <AnnouncementNotificationModal id={announcementId} onClose={() => router.replace("/notifications")} />
+      )}
     </div>
   );
 }
