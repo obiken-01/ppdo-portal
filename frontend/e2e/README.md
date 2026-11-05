@@ -329,7 +329,7 @@ Local setup this list assumes: `E2E_SEED_EMAIL=jose.santos`, `SA=admin`, `RV=ppd
 | 13–15 | `as-RV` | smoke › `/announcements`, `/budget-planning/aip`, `/budget-planning/aip/new` | Local `ppdo.finance` holds grants the RV (finance reviewer) persona doesn't, so the expected redirect doesn't happen. |
 | 16 | `as-ST` | smoke › `/budget-planning/aip/review/search` | Local `ppdo.user` is a department-head reviewer; the ST persona is plain Staff. |
 
-**Not on this list, and not failures:** the `test.fail()` entries (sweep `KNOWN`) pass as
+**Not on this list, and not failures:** the `test.fail()` entries (sweep `KNOWN` and any spec marked `test.fail()`) pass as
 "expected to fail". When one of them starts **passing**, Playwright reports it as a failure ("Expected
 to fail, but passed"); that means its bug was fixed, and the entry should be deleted.
 
