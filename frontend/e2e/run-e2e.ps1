@@ -50,6 +50,8 @@ if (-not (Test-Path $EnvFile)) {
     $template += @(
       "E2E_BASE_URL=https://<uat-frontend-host>"
       "E2E_API_URL=https://<uat-function-app-host>/api"
+      "# Takes the E2E office back out of the AIP when the run ends (README, AIP journeys)."
+      "E2E_AIP_CLEANUP=1"
       ""
     )
   }
