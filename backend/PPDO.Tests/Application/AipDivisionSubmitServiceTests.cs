@@ -584,4 +584,49 @@ public sealed partial class AipDivisionSubmitServiceTests
         Assert.False(list.HasDivisions);
         Assert.Empty(list.Divisions);
     }
+
+    // ── PPDO-305: an office with no programs yet in this year's AIP ──────────
+
+    [Fact]
+    public async Task GetDivisionsAsync_OfficeWithNoGroupsInRecord_ReturnsEmptyList()
+    {
+        // The record exists and the caller is the office's own encoder, but the office has no
+        // aip_offices rows in it yet — the normal state at the start of every fiscal year.
+        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(RecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        ServiceResult<AipDivisionStatusListDto> result =
+            await Sut().GetDivisionsAsync(RecordId, OfficeId, EncoderIn(Planning));
+
+        Assert.True(result.IsSuccess);
+        AipDivisionStatusListDto list = result.Value!;
+        Assert.Equal(OfficeId, list.OfficeId);
+        Assert.Equal(AipWorkflowStatus.Draft, list.OfficeWorkflowStatus);
+        Assert.False(list.HasDivisions);
+        Assert.Equal(0, list.UntaggedActivityCount);
+        Assert.Empty(list.Divisions);
+    }
+
+    [Fact]
+    public async Task GetDivisionsAsync_OutOfScopeOfficeWithNoGroups_IsNotFound()
+    {
+        // ⚠️ The leak guard runs before the empty-list return: another office's staff must not be
+        // able to tell "no programs yet" apart from "not yours" for an office they cannot read.
+        _aipRepo.Setup(r => r.GetOfficesByAipIdAsync(RecordId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        ServiceResult<AipDivisionStatusListDto> result =
+            await Sut().GetDivisionsAsync(RecordId, OfficeId, Staff(90, officeId: 8));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
+
+    [Fact]
+    public async Task GetDivisionsAsync_MissingRecord_IsNotFound()
+    {
+        ServiceResult<AipDivisionStatusListDto> result =
+            await Sut().GetDivisionsAsync(RecordId + 1, OfficeId, EncoderIn(Planning));
+
+        Assert.Equal(ServiceErrorCode.NotFound, result.Code);
+    }
 }

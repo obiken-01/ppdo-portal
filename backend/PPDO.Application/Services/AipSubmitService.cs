@@ -337,7 +337,13 @@ public sealed class AipSubmitService : IAipSubmitService
 
         List<AipOffice> groups = (await _aipRepo.GetOfficesByAipIdAsync(aipRecordId, ct))
             .Where(o => o.OfficeId == officeId).ToList();
-        if (groups.Count == 0) return ServiceResult<AipDivisionStatusListDto>.NotFound(notFound);
+        // ↩️ PPDO-305: was NotFound, which the entry page read as a failed load ("Editing is paused").
+        // An office with no programs yet in this year's AIP is the normal start of every fiscal year,
+        // not a missing resource. It has not started, so it is Draft with nothing to submit. ⚠️ Only
+        // after the scope check above: an office the caller cannot read stays NotFound either way.
+        if (groups.Count == 0)
+            return ServiceResult<AipDivisionStatusListDto>.Ok(
+                new AipDivisionStatusListDto(officeId, AipWorkflowStatus.Draft, false, 0, []));
 
         string officeStatus = groups[0].WorkflowStatus;
         AipDivisionOfficeState? state = await _divisions.LoadAsync(record, officeId, ct);
