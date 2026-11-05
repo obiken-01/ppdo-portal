@@ -11,7 +11,9 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s | ${APP_NAME}`,
   },
-  description: "Provincial Planning and Development Office — Occidental Mindoro",
+  description:
+    `${APP_NAME} is where Occidental Mindoro's offices prepare their LDIP and Annual Investment ` +
+    "Program (AIP), reviewed and consolidated by the Provincial Planning and Development Office (PPDO).",
   // iOS ignores the manifest's icons for the home screen and needs this instead.
   // The file is flattened onto white — Safari composites transparency badly.
   icons: {
