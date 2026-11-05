@@ -95,8 +95,8 @@ test("PPDO-296 Account profile: a JSON 500 reads as text under the form", async 
   await failWithJson500(page, "PUT", /\/api\/users\/me$/);
 
   await page.goto("/account");
-  // Save is enabled before the profile arrives (PPDO-281), and a click then is refused locally with
-  // "Full name is required." before any PUT. Wait for the loaded form, as a user would (PPDO-300).
+  // Save stays disabled until the profile arrives (PPDO-281). Wait for the loaded form, as a user
+  // would (PPDO-300), so the click sends the PUT.
   await expect(page.getByPlaceholder("Full legal name")).not.toHaveValue("", { timeout: 20_000 });
   const save = page.getByRole("button", { name: "Save Changes" });
   await expect(save).toBeEnabled({ timeout: 20_000 });

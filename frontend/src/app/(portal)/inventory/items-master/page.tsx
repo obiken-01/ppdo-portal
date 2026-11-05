@@ -730,7 +730,7 @@ export default function ItemsMasterPage() {
           {/* Add item */}
           <button
             onClick={handleAddRow}
-            disabled={!!editingId}
+            disabled={!!editingId || loading}
             className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>

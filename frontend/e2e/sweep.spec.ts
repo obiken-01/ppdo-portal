@@ -18,20 +18,7 @@ type Check = "loading" | "error" | "phone";
 
 /** "<check> <path>" or "<check> <path> <persona>" → the bug ticket that explains the failure. */
 const KNOWN: Record<string, string> = {
-  // PPDO-281: the primary button is enabled while the page's data loads.
-  "loading /announcements": "PPDO-281",
-  "loading /admin/users": "PPDO-281",
-  "loading /config/accounts": "PPDO-281",
-  "loading /config/cc-typologies": "PPDO-281",
-  "loading /config/divisions": "PPDO-281",
-  "loading /config/esre-codes": "PPDO-281",
-  "loading /config/funding-sources": "PPDO-281",
-  "loading /config/investment-planning": "PPDO-281",
-  "loading /config/offices": "PPDO-281",
-  "loading /config/price-index": "PPDO-281",
-  "loading /config/procurement-presets": "PPDO-281",
-  "loading /inventory/create-pr": "PPDO-281",
-  "loading /inventory/items-master": "PPDO-281",
+  // None open. Add a line here when the sweep finds a new bug.
 };
 
 function knownBug(check: Check, path: string, persona: string): string | undefined {

@@ -329,7 +329,7 @@ Local setup this list assumes: `E2E_SEED_EMAIL=jose.santos`, `SA=admin`, `RV=ppd
 | 13–15 | `as-RV` | smoke › `/announcements`, `/budget-planning/aip`, `/budget-planning/aip/new` | Local `ppdo.finance` holds grants the RV (finance reviewer) persona doesn't, so the expected redirect doesn't happen. |
 | 16 | `as-ST` | smoke › `/budget-planning/aip/review/search` | Local `ppdo.user` is a department-head reviewer; the ST persona is plain Staff. |
 
-**Not on this list, and not failures:** the `test.fail()` entries (sweep `KNOWN`, PPDO-282) pass as
+**Not on this list, and not failures:** the `test.fail()` entries (sweep `KNOWN` and any spec marked `test.fail()`) pass as
 "expected to fail". When one of them starts **passing**, Playwright reports it as a failure ("Expected
 to fail, but passed"); that means its bug was fixed, and the entry should be deleted.
 
@@ -342,7 +342,7 @@ to fail, but passed"); that means its bug was fixed, and the entry should be del
 | Report office picker read before its list arrived | PPDO-263 / PPDO-271 "No office…" or a false skip | `reportOfficesAnswer()` in `helpers.ts` |
 | A Staff account whose office picker is locked | PPDO-263 timed out on a disabled select | Skips with the reason; previews when its own office is chosen for it |
 | `Save details` "hidden" while it read "Saving…" | AIP journey: the next expenditure save raced it, a 500 (app bug PPDO-302) | `aip/entry.ts` waits for "Edit details" |
-| My Account Save enabled before the profile loads (PPDO-281) | PPDO-296 spec: "Full name is required." | The spec waits for the loaded form |
+| My Account Save enabled before the profile loads (PPDO-281) | PPDO-296 spec: "Full name is required." | The spec waits for the loaded form (and since PPDO-281, Save stays disabled until it loads) |
 | PPMP/WFP export needing more than 30 s | PPDO-271 export timeouts | 90 s for that file |
 | A redirected account still sending the page's data call | Sweep loading check passed or failed by timing | The loading check also requires the page to stay open |
 | SA's Report picker pre-filled; Allocation's failed load | New sweep findings | `KNOWN`: PPDO-276 (SA), PPDO-301 (both fixed since; entries removed) |
