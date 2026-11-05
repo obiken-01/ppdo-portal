@@ -250,6 +250,7 @@ function ProcurementItemsReadOnly({ items, columns }: {
 export default function AipExpenditureTable({
   activityId, lines, accounts, fundingSources, canEdit, generalFundId,
   priceIndex, priceIndexLoading, onChanged, onReload, draftUserId = null, reviewerReason,
+  writesPausedReason = null,
 }: {
   activityId: number;
   lines: AipExpenditure[];
@@ -281,10 +282,18 @@ export default function AipExpenditureTable({
    * table behaves exactly as it always has.
    */
   reviewerReason?: string;
+  /**
+   * PPDO-302 — set while another write to this activity is in flight (its Save details). Every line
+   * write recomputes the activity's totals, so one sent now races that save on the same row. Save,
+   * Delete and the fund picker wait, with this sentence as the reason. The line being typed is kept.
+   */
+  writesPausedReason?: string | null;
 }) {
   const reviewerMode = reviewerReason !== undefined;
   /** Why a reviewer's Save is still blocked, beyond what the line itself is missing. */
   const reviewerBlocked = reviewerMode ? reviewerReasonProblem(reviewerReason ?? "") : null;
+  /** Why Save stays disabled beyond the line itself: the reviewer's reason, or a paused write. */
+  const outsideBlocked = reviewerBlocked ?? writesPausedReason;
 
   const [adding, setAdding]       = useState(false);
   const [draft, setDraft]         = useState<Draft>(EMPTY);
@@ -834,7 +843,7 @@ export default function AipExpenditureTable({
                 getSearchText={fundSearch}
                 allOptionLabel="— Fund —"
                 placeholder="Search funds…"
-                disabled={busy}
+                disabled={busy || writesPausedReason !== null}
                 className="w-56"
               />
             </label>
@@ -888,6 +897,11 @@ export default function AipExpenditureTable({
         <p className="mt-1 text-xs text-slate-600">
           Pick the activity&apos;s funding source before adding an account.
         </p>
+      )}
+
+      {/* PPDO-302 — said out loud only while a line is open: that is when Save is greyed out. */}
+      {canEdit && writesPausedReason && (adding || editingId !== null) && (
+        <p role="status" className="mt-1 text-xs text-slate-600">{writesPausedReason}</p>
       )}
 
       {error && (
@@ -983,7 +997,7 @@ export default function AipExpenditureTable({
                   showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
                   lockedFundCode={legacyMulti || reviewerMode ? (line.fundingSourceCode ?? "—") : null}
                   lockAccount={reviewerMode}
-                  extraBlockedReason={reviewerBlocked}
+                  extraBlockedReason={outsideBlocked}
                   priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                   siblingItems={siblingItemsOf(line.id)}
                   onSave={() => save(line.id)} onCancel={cancelEditor} />
@@ -1022,7 +1036,9 @@ export default function AipExpenditureTable({
                           className="text-slate-600 hover:underline">Edit</button>
                         {/* PPDO-214 — a PPDO reviewer never removes a line (the server refuses it too). */}
                         {!reviewerMode && (
-                          <button type="button" onClick={() => remove(line.id)} disabled={busy}
+                          <button type="button" onClick={() => remove(line.id)}
+                            disabled={busy || writesPausedReason !== null}
+                            title={writesPausedReason ?? undefined}
                             className="ml-2 text-red-600 hover:underline disabled:opacity-50">Delete</button>
                         )}
                       </>
@@ -1041,7 +1057,7 @@ export default function AipExpenditureTable({
               <EditRow isNew draft={draft} setDraft={setDraft} accounts={accounts}
                 fundingSources={fundingSources} generalFundId={generalFundId}
                 showFund={multi} activityFundMissing={multiFund === false && !activityFund} busy={busy}
-                extraBlockedReason={reviewerBlocked}
+                extraBlockedReason={outsideBlocked}
                 priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
                 siblingItems={siblingItemsOf(null)}
                 onSave={() => save(null)} onCancel={cancelEditor} />

@@ -31,6 +31,9 @@ import {
   AipDivisionPill, AipDivisionSelect, activityDivisionLock, type AipDivisionView,
 } from "./AipDivisionParts";
 
+/** PPDO-302 — why the line table's Save waits while Save details is still answering. */
+const DETAILS_SAVING_REASON = "Wait for the activity details to finish saving.";
+
 export default function AipActivityPanel({
   activity, canEdit, lockedReason, isLastSibling, accounts, funds, generalFundId, priceIndex, priceIndexLoading,
   offices, proponentOfficeCode, onTotals, onDetails, onDeleted,
@@ -68,6 +71,9 @@ export default function AipActivityPanel({
   const divisionLock = activityDivisionLock(activity, divisionView);
   const [lines, setLines] = useState<AipExpenditure[] | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
+  // PPDO-302 — a details save in flight. The line table waits for it: both write this activity's
+  // row, and a line write sent meanwhile used to come back as a 500.
+  const [detailsSaving, setDetailsSaving] = useState(false);
   // PPDO-112 — the draft mirror's user axis. The page already resolved /auth/me, so this reads the
   // shared cache synchronously; it never fires a request of its own.
   const me = useMe(() => true);
@@ -175,7 +181,7 @@ export default function AipActivityPanel({
           the same glance. */}
       <AipActivityFields activity={activity} canEdit={canEdit} onSaved={onDetails}
         offices={offices} proponentOfficeCode={proponentOfficeCode} draftUserId={me?.userId ?? null}
-        fundingSources={funds} />
+        fundingSources={funds} onSavingChange={setDetailsSaving} />
 
       {linesError ? (
         <AipPanelError message={linesError} />
@@ -189,6 +195,7 @@ export default function AipActivityPanel({
           canEdit={canEdit} generalFundId={generalFundId}
           priceIndex={priceIndex} priceIndexLoading={priceIndexLoading}
           draftUserId={me?.userId ?? null}
+          writesPausedReason={detailsSaving ? DETAILS_SAVING_REASON : null}
           onChanged={(result) => {
             // Refetch just this activity's lines and hand the recomputed totals upward — the
             // record is never reloaded, so the panel stays where it is.
