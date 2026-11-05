@@ -78,8 +78,7 @@ test("a code that already exists is refused under the Code field and nothing is 
 });
 
 test("a name that already exists under a new code is refused, and only one fund keeps the name", async ({ browser, baseURL, request }) => {
-  // PPDO-282: the app saves the second fund. Delete this line when that ticket is decided.
-  test.fail();
+  // PPDO-282: the server refuses it (409), and the page says why under the Name field.
   const api = await head(request);
   const { page, close } = await signIn(browser, "head", baseURL);
 
@@ -90,7 +89,8 @@ test("a name that already exists under a new code is refused, and only one fund 
   // Refused: the modal stays open with a reason. (If this fails because the fund was created, that
   // is a real finding: the server is not enforcing unique names.)
   await expect(page.getByRole("heading", { name: "Add Funding Source" })).toBeVisible();
-  await expect(page.locator("p.text-red-600, p.text-red-700, [role=alert]").filter({ hasText: /\S/ }).first()).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: `Funding source name '${SEEDED.name}' already exists.` })).toBeVisible();
+  await expect(page.getByPlaceholder("General Fund")).toHaveAttribute("aria-invalid", "true");
   await close();
   expect(await named(api, SEEDED.name)).toHaveLength(1);
 });
