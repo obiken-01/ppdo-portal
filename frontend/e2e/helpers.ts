@@ -61,3 +61,38 @@ export function marker(page: Page, route: PortalRoute) {
   const { role, name, level } = route.marker;
   return page.getByRole(role, { name, level, exact: typeof name === "string" }).first();
 }
+
+// PPDO-305 — a normally loaded page must not show a load-error band. The smoke checks above catch
+// crashes and 5xx, but a 4xx that the page turns into "Could not load …" passed every test.
+// The wording comes from LoadError and the inline bands in src/ ("Could not load …", "Couldn't
+// load …", "Failed to load …", "Something went wrong"). Narrower than the sweep's ERROR_TEXT on
+// purpose: words like "error" or "failed" also appear in normal labels.
+const LOAD_ERROR_TEXT = /could not load|couldn['’]t load|can['’]t load|cannot load|failed to load|unable to load|something went wrong/i;
+
+/**
+ * "<path>" or "<path> <persona>" → why a visible alert is the correct state there.
+ * Only deliberate warnings belong here, never a real load failure: file that as a bug instead
+ * and list it under "Expected failures" in e2e/README.md.
+ */
+const ALERT_ALLOWED: Record<string, string> = {
+  // None yet.
+};
+
+/** What <main> shows as a load error right now: visible role="alert" blocks and error wording. */
+export async function visibleErrorBands(page: Page): Promise<string[]> {
+  const main = page.locator("main").first();
+  const found: string[] = [];
+  for (const el of await main.getByRole("alert").all()) {
+    if (await el.isVisible()) found.push(`alert: ${(await el.innerText()).trim().slice(0, 160)}`);
+  }
+  for (const el of await main.getByText(LOAD_ERROR_TEXT).all()) {
+    if (await el.isVisible()) found.push(`text: ${(await el.innerText()).trim().slice(0, 160)}`);
+  }
+  return Array.from(new Set(found));
+}
+
+/** Fails when the loaded page shows an error band, unless ALERT_ALLOWED says it is correct there. */
+export async function expectNoErrorBand(page: Page, path: string, persona: string) {
+  if (ALERT_ALLOWED[`${path} ${persona}`] ?? ALERT_ALLOWED[path]) return;
+  expect(await visibleErrorBands(page), `error band on ${path} after a normal load`).toEqual([]);
+}

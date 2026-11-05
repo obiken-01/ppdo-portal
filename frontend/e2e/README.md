@@ -157,10 +157,19 @@ partway through a run, look here first: the backend log shows `Refresh failed �
 ## Smoke suite
 
 `smoke.spec.ts` opens every route in `routes.ts` as each configured persona: no crash, no 5xx, no
-console error, and the access rule holds (`allow` renders, `deny` redirects away). The allow/deny
+console error, no error band, and the access rule holds (`allow` renders, `deny` redirects away). The allow/deny
 lines follow the persona **definitions** in the plan (§3.1). An account with extra grants (e.g. a
 local Admin who is also a cross-office reviewer) fails the matching `deny` line, which is correct.
 A new page gets a row in `routes.ts`.
+
+**No error band after a normal load (PPDO-305).** Once a page the persona stays on has settled, the
+smoke test also checks `<main>` for a visible `role="alert"` block or load-error wording ("Could not
+load…", "Couldn't load…", "Failed to load…", "Something went wrong"). This catches a 4xx the page turns
+into a red band: AIP Entry once showed "Could not load division status. Editing is paused until it
+loads." on a normal load, and every other check passed. The helper is `expectNoErrorBand()` in
+`helpers.ts`. Where a visible alert is the correct state (a deliberate warning, not a failure), add
+the page to `ALERT_ALLOWED` there with a one-line reason. Never allow-list a real load failure: file
+it and list it under [Expected failures](#expected-failures-local-full-run).
 
 ## Sweep (`sweep.spec.ts`, PPDO-272)
 

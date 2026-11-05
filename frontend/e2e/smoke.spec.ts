@@ -1,10 +1,10 @@
 import { expect, test } from "./fixtures";
-import { expectSignedIn, marker, open, pathname, personaOf, watch } from "./helpers";
+import { expectNoErrorBand, expectSignedIn, marker, open, pathname, personaOf, watch } from "./helpers";
 import { PORTAL_ROUTES, REDIRECT_ROUTES } from "./routes";
 
 // PPDO-258 — read-only smoke: each signed-in persona opens every route in routes.ts.
 // Per route: no uncaught exception, no 5xx, no console error, no "Application error" screen,
-// and the access rule holds (allow → renders with its marker, deny → redirected away).
+// no load-error band in <main> once the page has settled (PPDO-305), and the access rule holds (allow → renders with its marker, deny → redirected away).
 // Runs once per configured as-<KEY> project; see e2e/README.md for credentials.
 
 test.describe.configure({ timeout: 60_000 }); // a cold `next dev` compiles each route on first visit
@@ -12,7 +12,8 @@ test.describe.configure({ timeout: 60_000 }); // a cold `next dev` compiles each
 test.describe("smoke", () => {
   for (const route of PORTAL_ROUTES) {
     test(route.path, async ({ page }, info) => {
-      const expected = route.access[personaOf(info.project.name)];
+      const persona = personaOf(info.project.name);
+      const expected = route.access[persona];
       const problems = watch(page);
 
       await open(page, route.path);
@@ -40,6 +41,13 @@ test.describe("smoke", () => {
 
       await expect(page.getByText("Application error")).toHaveCount(0);
       expect(problems, "errors while loading the page").toEqual([]);
+
+      // PPDO-305: a 4xx the page turns into "Could not load …" passes every check above.
+      // Judge the page the persona stayed on, once its calls have settled.
+      if (pathname(page) === route.path) {
+        if (expected !== "allow") await page.waitForLoadState("networkidle").catch(() => {});
+        await expectNoErrorBand(page, route.path, persona);
+      }
     });
   }
 
