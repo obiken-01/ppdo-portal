@@ -345,7 +345,7 @@ to fail, but passed"); that means its bug was fixed, and the entry should be del
 | My Account Save enabled before the profile loads (PPDO-281) | PPDO-296 spec: "Full name is required." | The spec waits for the loaded form |
 | PPMP/WFP export needing more than 30 s | PPDO-271 export timeouts | 90 s for that file |
 | A redirected account still sending the page's data call | Sweep loading check passed or failed by timing | The loading check also requires the page to stay open |
-| SA's Report picker pre-filled; Allocation's failed load | New sweep findings | `KNOWN`: PPDO-276 (SA), PPDO-301 |
+| SA's Report picker pre-filled; Allocation's failed load | New sweep findings | `KNOWN`: PPDO-276 (SA), PPDO-301 (both fixed since; entries removed) |
 
 ## Rules
 
