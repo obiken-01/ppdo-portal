@@ -935,7 +935,7 @@ export default function CreatePRPage() {
           {/* Submit */}
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || divisionsLoading}
             className="flex items-center gap-2 px-6 py-2.5 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting
@@ -1308,7 +1308,7 @@ export default function CreatePRPage() {
         <div className="flex justify-end pb-4">
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || divisionsLoading}
             className="flex items-center gap-2 px-8 py-3 text-sm bg-green-600 text-white font-semibold hover:bg-green-500 shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {submitting

@@ -116,6 +116,10 @@ export default function InvestmentPlanningSettingsPage() {
 
   if (!me) return null;
 
+  // PPDO-281 — like the signatory card beside it, Save waits for a change. A Save with nothing to
+  // save is not offered, so it can't be pressed while the other card is still loading either.
+  const dirty = input.trim() !== (setting?.defaultFiscalYear?.toString() ?? "");
+
   const isSet = setting?.defaultFiscalYear != null;
 
   return (
@@ -172,15 +176,15 @@ export default function InvestmentPlanningSettingsPage() {
                     setValidation(null);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSave();
+                    if (e.key === "Enter" && dirty) handleSave();
                   }}
                   className="w-40 px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-slate-100"
                 />
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving}
-                  className="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-500 text-white disabled:opacity-50"
+                  disabled={saving || !dirty}
+                  className="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>

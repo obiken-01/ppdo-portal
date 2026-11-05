@@ -468,6 +468,7 @@ export default function PriceIndexConfigPage() {
       <div className="max-w-6xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
         {/* Header */}
         <ConfigPageHeader
+          busy={loading}
           title="Price Index"
           description={
             "Procurement item catalogue searched from WFP procurement entries. Data comes from " +

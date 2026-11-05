@@ -925,9 +925,11 @@ export default function UsersPage() {
               Clear
             </button>
           )}
+          {/* PPDO-281: waits for the user list */}
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0"
+            disabled={loading}
+            className="flex items-center gap-1.5 bg-green-600 text-white font-semibold text-sm px-4 py-2.5 hover:bg-green-500 transition-colors shadow-sm shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="text-base leading-none">+</span>
             Add User

@@ -14,16 +14,23 @@
  * `title`/`description` accept `ReactNode`, not just `string`, so a page that
  * renders a badge next to its title (e.g. a status pill) doesn't have to give
  * that up to adopt this component.
+ *
+ * `busy` (PPDO-281) disables every action while the page's main data loads, so "+ Add …" can't
+ * be pressed before the list it adds to has arrived. The actions sit in a <fieldset>, and a
+ * disabled fieldset disables all the buttons and inputs inside it; the layout does not move.
  */
 
 export default function ConfigPageHeader({
   title,
   description,
   actions,
+  busy = false,
 }: {
   title: React.ReactNode;
   description: React.ReactNode;
   actions?: React.ReactNode;
+  /** The page's main data is still loading: disable the actions until it arrives. */
+  busy?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -32,7 +39,12 @@ export default function ConfigPageHeader({
         <p className="text-sm text-slate-600">{description}</p>
       </div>
       {actions && (
-        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>
+        <fieldset
+          disabled={busy}
+          className="m-0 p-0 border-0 min-w-0 flex flex-wrap items-center gap-2 sm:shrink-0 [&_:disabled]:opacity-50 [&_:disabled]:cursor-not-allowed"
+        >
+          {actions}
+        </fieldset>
       )}
     </div>
   );
