@@ -60,6 +60,38 @@ A persona missing either variable is **skipped**, not failed, so start with one 
 `e2e/.auth/<KEY>.json` (git-ignored). Each configured persona gets a project named `as-<KEY>`;
 signed-in specs run once per project. Keep passwords in your password manager, never in the repo.
 
+### The run script: logins from a file in your user folder
+
+`run-e2e.ps1` reads the logins from a file **outside the repo** and runs the suite with them:
+
+| Target | Logins file |
+|---|---|
+| local (default) | `~\.ppdo\e2e-local.env` |
+| UAT | `~\.ppdo\e2e-uat.env` |
+
+```powershell
+# from frontend/
+.\e2e\run-e2e.ps1                              # local, whole suite
+.\e2e\run-e2e.ps1 -Target uat                  # UAT, whole suite
+.\e2e\run-e2e.ps1 -Target uat sweep.spec.ts    # anything after -Target goes to Playwright
+```
+
+The first run writes a template with every key (`E2E_*` only). Fill it in and run again.
+To set up another laptop, copy the `~\.ppdo` folder. The passwords sit in that file as plain
+text, so keep it in your user folder and never inside the project.
+
+What the script does for you:
+
+- Sets the `E2E_*` variables for this run only, and puts your shell back as it was afterwards.
+- Refuses any `E2E_BASE_URL` or `E2E_API_URL` that points at production.
+- Takes the shared lock (`.e2e-lock`, or `.e2e-lock-uat` for UAT) next to the main checkout,
+  so it never overlaps another run on this machine. It releases the lock at the end.
+- For UAT: runs with `--trace off` (a trace records the typed password), and deletes the saved
+  sign-ins in `e2e/.auth/` afterwards, since they are live UAT sessions.
+
+It does not start the servers. For a local full run, start them as in
+[A full run](#a-full-run-use-the-static-export-not-next-dev-ppdo-300) first.
+
 ## Run against UAT
 
 ```bash
