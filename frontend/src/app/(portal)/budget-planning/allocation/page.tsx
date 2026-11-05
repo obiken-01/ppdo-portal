@@ -66,6 +66,7 @@ import OfficeSelect from "@/components/ui/OfficeSelect";
 import { useToast } from "@/components/ui/Toast";
 import { formatMoney, formatPesosSigned } from "@/lib/money";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   AipCeilingStatus,
   BudgetCeilingDto,
@@ -612,6 +613,10 @@ function AllocationPageInner() {
   const [fundList, setFundList] = useState<FundingSourceResponse[]>([]);
   const [programs, setPrograms] = useState<ProgramAssignmentDto[]>([]);
   const [loading, setLoading] = useState(false);
+  // PPDO-301: a failed load must not draw "not set yet" / "No divisions configured" as if the
+  // office really had none. Bumping reloadKey re-runs just the allocation load.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // ── Tab state ─────────────────────────────────────────────────────────────
 
@@ -807,6 +812,7 @@ function AllocationPageInner() {
 
     async function load() {
       setLoading(true);
+      setLoadFailed(false);
       try {
         const [divs, ceilingList, progs] = await Promise.all([
           listDivisions({ active: "true", officeId: selectedOfficeId! }),
@@ -873,7 +879,7 @@ function AllocationPageInner() {
         setCollapsedSectors(new Set());
         setExpandedFundIds(new Set());
       } catch {
-        if (!cancelled) toast.error("Load failed", "Could not load allocation data.");
+        if (!cancelled) setLoadFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -882,7 +888,7 @@ function AllocationPageInner() {
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOfficeId, selectedFiscalYear, fundList, yearSettled]);
+  }, [selectedOfficeId, selectedFiscalYear, fundList, yearSettled, reloadKey]);
 
   // ── Tab 1: Ceiling & Allocation — per fund source ─────────────────────────
 
@@ -1159,8 +1165,16 @@ function AllocationPageInner() {
           </p>
         )}
 
+        {/* Failed load (PPDO-301) — nothing was read, so say so instead of "not set". */}
+        {!loading && yearSettled && selectedOfficeId != null && loadFailed && (
+          <LoadError
+            message="Couldn't load the ceilings and allocations for this office."
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        )}
+
         {/* Main content */}
-        {!loading && yearSettled && selectedOfficeId != null && (
+        {!loading && yearSettled && selectedOfficeId != null && !loadFailed && (
           <>
             {/* Tabs */}
             <div className="flex border-b border-slate-200 mb-6">

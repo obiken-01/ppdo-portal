@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import LoadError from "@/components/ui/LoadError";
 import { fetchMe, meFailurePath } from "@/lib/me-cache";
 import {
   listAccounts,
@@ -142,15 +143,16 @@ export default function ConfigDashboardPage() {
   const [canManageUsers, setCanManageUsers] = useState(false);
   // Courtesy only — the server gates the settings routes (CanManageInvestmentPlanningSettings).
   const [canManageSettings, setCanManageSettings] = useState(false);
-  // null = loading, number = count, "error" = failed to load this tile's count
-  const [counts, setCounts] = useState<Record<string, number | "error" | null>>({
+  // null = loading, number = count, "error" = failed to load this tile's count,
+  // "none" = the tile has no count to show (PPDO-278 split it from "error", so a failure can be told apart)
+  const [counts, setCounts] = useState<Record<string, TileCount>>({
     accounts: null,
     offices: null,
     funding: null,
     priceIndex: null,
     divisions: null,
-    procurementPresets: "error", // no account-agnostic count — renders as a dash, never fetched
-    investmentPlanning: "error", // a single setting, not a collection — renders as a dash
+    procurementPresets: "none", // no account-agnostic count — renders as a dash, never fetched
+    investmentPlanning: "none", // a single setting, not a collection — renders as a dash
     users: null,
   });
 
@@ -170,17 +172,26 @@ export default function ConfigDashboardPage() {
 
   // ── Load counts (each tile independently) ──────────────────────────────────────
 
-  useEffect(() => {
-    if (!authChecked) return;
+  /** Loads the counts of the given tiles (all of them by default). Retry passes only the failed ones. */
+  function loadCounts(only?: string[]) {
     const tiles = canManageUsers ? [...TILES, USER_TILE] : TILES;
     for (const tile of tiles) {
-      if (!tile.load) continue;
-      tile
-        .load()
+      const load = tile.load;
+      if (!load || (only && !only.includes(tile.key))) continue;
+      setCounts((c) => ({ ...c, [tile.key]: null }));
+      load()
         .then((n) => setCounts((c) => ({ ...c, [tile.key]: n })))
         .catch(() => setCounts((c) => ({ ...c, [tile.key]: "error" })));
     }
+  }
+
+  useEffect(() => {
+    if (!authChecked) return;
+    loadCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, canManageUsers]);
+
+  const failedKeys = Object.keys(counts).filter((key) => counts[key] === "error");
 
   // ── Auth gate ─────────────────────────────────────────────────────────────────
 
@@ -204,6 +215,15 @@ export default function ConfigDashboardPage() {
             Manage reference data used across AIP and WFP planning entries.
           </p>
         </div>
+
+        {/* PPDO-278 — a "—" alone did not say the count failed to load. */}
+        {failedKeys.length > 0 && (
+          <LoadError
+            message={failedKeys.length === 1 ? "Couldn't load one of the counts below." : "Couldn't load some of the counts below."}
+            onRetry={() => loadCounts(failedKeys)}
+            className="py-3 border border-red-200 bg-red-50"
+          />
+        )}
 
         {/* Tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -245,12 +265,17 @@ export default function ConfigDashboardPage() {
 // Count badge — loading spinner / number / dash on error
 // ---------------------------------------------------------------------------
 
-function CountBadge({ value }: { value: number | "error" | null }) {
+type TileCount = number | "error" | "none" | null;
+
+function CountBadge({ value }: { value: TileCount }) {
   if (value === null) {
     return <span className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />;
   }
   if (value === "error") {
     return <span className="text-2xl font-bold text-slate-600" title="Could not load count">—</span>;
+  }
+  if (value === "none") {
+    return <span className="text-2xl font-bold text-slate-600" title="No count for this type">—</span>;
   }
   return <span className="text-2xl font-bold text-slate-800 tabular-nums">{value}</span>;
 }

@@ -46,6 +46,7 @@ import { useInventoryDivisions } from "@/lib/inventory-divisions";
 import { listAccounts } from "@/lib/config";
 import { useToast } from "@/components/ui/Toast";
 import ConfigPageHeader from "@/components/ui/ConfigPageHeader";
+import LoadError from "@/components/ui/LoadError";
 import type {
   AccountResponse,
   CreatePRItemRequest,
@@ -513,7 +514,12 @@ export default function CreatePRPage() {
   const isStaff = me?.role === "Staff";
 
   // Staff are clamped to their own division by the backend, so only offer that one.
-  const { divisions: divisionOptions, loading: divisionsLoading } = useInventoryDivisions(me?.division ?? null, isStaff);
+  const {
+    divisions: divisionOptions,
+    loading: divisionsLoading,
+    failed: divisionsFailed,
+    retry: retryDivisions,
+  } = useInventoryDivisions(me?.division ?? null, isStaff);
 
   // ── Header field patch ─────────────────────────────────────────────────────
 
@@ -978,11 +984,21 @@ export default function CreatePRPage() {
                 className="w-full px-3 py-2 text-sm border border-slate-200 bg-cell-fill focus:outline-none focus:ring-2 focus:ring-green-600 disabled:bg-cell-auto disabled:text-slate-500 disabled:cursor-not-allowed"
               >
                 {/* PPDO-244 — say the list is loading rather than offer an empty one. */}
-                <option value="">{divisionsLoading ? "Loading divisions…" : "— Select Division —"}</option>
+                <option value="">
+                  {divisionsLoading ? "Loading divisions…" : divisionsFailed ? "Couldn't load divisions" : "— Select Division —"}
+                </option>
                 {divisionOptions.map((d) => (
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
+              {/* PPDO-279 — an empty picker with no reason left the PR unfinishable. */}
+              {divisionsFailed && !divisionsLoading && (
+                <LoadError
+                  message="Couldn't load the divisions, so a division can't be picked."
+                  onRetry={retryDivisions}
+                  className="py-2"
+                />
+              )}
               <FieldError message={headerErrors.division} />
             </div>
 
