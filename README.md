@@ -4,7 +4,7 @@
 > Covers inventory monitoring, investment planning (LDIP / AIP), budget planning (WFP / PPMP),
 > and office operations.
 
-**Current version: v1.9.2** (UAT polish, in progress on `release/1.9.2`) · **Previous: v1.9.1** (frozen, on UAT) · **Next: v1.10.0** (SAIP — paused)
+**Current version: v1.9.2** (UAT polish, complete on `release/1.9.2`, going to UAT) · **Previous: v1.9.1** (frozen, on UAT) · **Next: v1.10.0** (SAIP — paused)
 
 ---
 
@@ -25,7 +25,7 @@
 | v1.8.3 – v1.8.4 | Concurrent-edit guard enforced, Demo 3 minor fixes | ✅ Built — on UAT |
 | v1.9.0 | Larger requests from Demo 3 (see below) | 🧊 Complete, frozen for UAT |
 | v1.9.1 | .NET 10 runtime, security fix + AIP workflow UX fixes (see below) | 🧊 Complete, frozen, on UAT |
-| **v1.9.2** | **UAT polish** — bug sweep, UI/UX consistency, performance, Playwright foundation (see below) | 🚧 **In progress** |
+| **v1.9.2** | **UAT polish** — bug sweep, UI/UX consistency, initial PPMP, Playwright suite (see below) | ✅ **Complete, going to UAT** |
 | v1.10.0 | SAIP — Supplemental AIP | ⏸️ Paused until v1.9.2 closes |
 
 > **Production** is at v1.7.5 (v1.7.4 on .NET 10). v1.8.0 → v1.9.1 are **not deployed to production** until the PPDC and
@@ -35,12 +35,30 @@ See [`CLAUDE.md`](CLAUDE.md) for the full release history, branch strategy and a
 
 ---
 
-## What's in v1.9.2 (in progress)
+## What's in v1.9.2
 
-Built on `release/1.9.2`, cut 2026-10-25 from `release/1.9.1`. A polish pass on what is already on UAT, with no new
-features: a role × page sweep for bugs and scope leaks, UI/UX consistency (empty, error and forbidden states), a
-performance re-measure, and the first Playwright end-to-end tests. Epic PPDO-252, plan
-[`docs/v1.9/UAT_Polish_Plan.md`](docs/v1.9/UAT_Polish_Plan.md) (lands with #540). v1.10.0 (SAIP) is paused until this closes.
+Built on `release/1.9.2`, cut 2026-10-25 from `release/1.9.1`, complete 2026-11-05. A polish pass on what is already
+on UAT. Epic PPDO-252, plan [`docs/v1.9/UAT_Polish_Plan.md`](docs/v1.9/UAT_Polish_Plan.md). **No migrations, no new
+app settings.** v1.10.0 (SAIP) is paused until this closes.
+
+- 🏷️ **PLANO MO** — the portal's new name and the OPPDC logo (PPDO-267/268), kept in `frontend/src/lib/branding.ts`.
+- 📋 **PPMP report back** (PPDO-265) — restored for PPDO only (gated on WFP access); a colleague uses it in production.
+- 🧾 **Initial PPMP** (PPDO-263) — built from the consolidated AIP. The initial WFP now says it is indicative (PPDO-264).
+- 🔔 **Announcements in the bell** (PPDO-284), opened in a modal. Guest-office users can open Notifications (PPDO-262).
+- 🛡️ **Fixes from the sweep** — Inventory reads need inventory access (PPDO-261); Resource Links accept only
+  http(s) URLs (PPDO-299); the API validates AIP activities, expenditure lines and procurement items
+  (PPDO-286…293); no 500 when a line save races *Save details* (PPDO-302); funding source names are unique (PPDO-282).
+- 🧭 **Clearer states** — pages say when a load failed, with Retry (PPDO-260, 273…279, 301); primary buttons wait for
+  the page's data (PPDO-281); readable error text on six save paths (PPDO-295…298); AIP says why
+  *+ Add project / activity* was refused (PPDO-285/294); no sideways scroll on phones (PPDO-256, 280).
+- 🧪 **Playwright suite** (PPDO-258/259/271/272/300) — smoke for every route and persona, AIP and Inventory journeys,
+  bad-path specs and an automated loading/error/phone-width sweep. Run it with `frontend/e2e/run-e2e.ps1`;
+  see [`frontend/e2e/README.md`](frontend/e2e/README.md).
+- ⚡ **Performance re-measure** (PPDO-257) — [`docs/v1.9/Performance_Audit_2026-11.md`](docs/v1.9/Performance_Audit_2026-11.md).
+
+**Deploying v1.9.2:** nothing by hand. No migration, no setting, no workflow change for the deploy. After it lands on
+UAT, run the sweep with `frontend/e2e/run-e2e.ps1 -Target uat`, then the manual pass in
+[`UAT_Polish_Plan.md` §3.2](docs/v1.9/UAT_Polish_Plan.md#32-per-page-checklist).
 
 ## What's in v1.9.1
 
