@@ -21,6 +21,8 @@
   .\e2e\run-e2e.ps1 -Target uat                  # UAT, whole suite
   .\e2e\run-e2e.ps1 -Target uat sweep.spec.ts    # UAT, one spec (anything after -Target goes to Playwright)
 #>
+# No positional binding: without it, "sweep.spec.ts" after -Target lands in -EnvFile (PPDO-303).
+[CmdletBinding(PositionalBinding = $false)]
 param(
   [ValidateSet("local", "uat")]
   [string]$Target = "local",
