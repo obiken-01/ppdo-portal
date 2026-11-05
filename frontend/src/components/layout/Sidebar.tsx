@@ -30,7 +30,7 @@ import { APP_NAME, OFFICE_LOGO_WEBP } from "@/lib/branding";
 import { clearMeCache } from "@/lib/me-cache";
 import type { MeResponse } from "@/types";
 
-const APP_VERSION = "v1.7.6";
+const APP_VERSION = "v1.7.7";
 
 interface SidebarProps {
   me: MeResponse | null;

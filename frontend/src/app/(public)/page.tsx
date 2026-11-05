@@ -19,9 +19,10 @@ import { SITE_URL } from "@/lib/seo";
 import { APP_FULL_NAME, APP_NAME, OFFICE_LOGO_PNG, OFFICE_LOGO_WEBP } from "@/lib/branding";
 
 const TITLE = APP_FULL_NAME;
+// Leads with the LDIP and AIP, the work the portal exists for (Ralph, 2026-11-05).
 const DESCRIPTION =
-  `${APP_NAME}, the official portal of the Provincial Planning and Development Office (PPDO) of ` +
-  "Occidental Mindoro — announcements, resources, and staff services.";
+  `${APP_NAME} is where Occidental Mindoro's offices prepare their LDIP and Annual Investment ` +
+  "Program (AIP), reviewed and consolidated by the Provincial Planning and Development Office (PPDO).";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },

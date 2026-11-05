@@ -9,7 +9,9 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s | ${APP_NAME}`,
   },
-  description: "Provincial Planning and Development Office — Occidental Mindoro",
+  description:
+    `${APP_NAME} is where Occidental Mindoro's offices prepare their LDIP and Annual Investment ` +
+    "Program (AIP), reviewed and consolidated by the Provincial Planning and Development Office (PPDO).",
 };
 
 // Derive the API origin at build time so we can emit a preconnect hint.
