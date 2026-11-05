@@ -57,6 +57,7 @@ import WfpProcurementItemTable from "@/components/wfp/WfpProcurementItemTable";
 import Lookup from "@/components/ui/Lookup";
 import OfficeSelect from "@/components/ui/OfficeSelect";
 import LoadingState from "@/components/ui/LoadingState";
+import LoadError from "@/components/ui/LoadError";
 import Modal from "@/components/ui/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
@@ -883,6 +884,9 @@ function WfpEntryPageInner() {
   // True until every mount-time resource (AIP/office list, reserve rate, price index) is
   // in memory — gates the selector row with a skeleton + notice (see render below).
   const [resourcesLoading, setResourcesLoading] = useState(true);
+  // PPDO-275: a failed AIP / office load used to leave an empty AIP picker that read as "no AIP
+  // exists". Say it failed instead, and let Retry re-run just this load.
+  const [resourcesFailed, setResourcesFailed] = useState(false);
 
   // ── Loaded reference data ────────────────────────────────────────────────
 
@@ -948,9 +952,11 @@ function WfpEntryPageInner() {
   // This does not undo f841184's fix, which pushed the catalogue's active/search filter down to
   // SQL — that addressed query *latency* and still stands. The remaining cost is *payload*, which
   // only decoupling the fetch can take off the critical path.
-  useEffect(() => {
+  function loadResources() {
     const urlAipId = searchParams.get("aipId");
     const urlOfficeId = searchParams.get("officeId");
+    setResourcesLoading(true);
+    setResourcesFailed(false);
 
     // PPDO-145 — the admin default year rides along in the same round trip (it never rejects).
     Promise.all([listAip(), listOffices({ active: "true" }), getReserveRate(), fetchDefaultFiscalYear()])
@@ -970,8 +976,12 @@ function WfpEntryPageInner() {
         }
         if (urlOfficeId) setSelectedOfficeId(Number(urlOfficeId));
       })
-      .catch(() => toast.error("Load failed", "Could not load AIP / office data."))
+      .catch(() => setResourcesFailed(true))
       .finally(() => setResourcesLoading(false));
+  }
+
+  useEffect(() => {
+    loadResources();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1409,6 +1419,8 @@ function WfpEntryPageInner() {
           matches the selector row's own height so swapping to the real row doesn't shift the page. */}
       {resourcesLoading ? (
         <LoadingState message="Loading resources…" minHeightClassName="min-h-16" className="mb-5" />
+      ) : resourcesFailed ? (
+        <LoadError message="Couldn't load the AIPs and offices." onRetry={loadResources} />
       ) : (
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="flex items-center gap-2">
@@ -1466,7 +1478,7 @@ function WfpEntryPageInner() {
         </div>
       )}
 
-      {resourcesLoading ? null : wfpUnsupported ? (
+      {resourcesLoading || resourcesFailed ? null : wfpUnsupported ? (
         // ⚠️ Ahead of BOTH the division prompt and the setup banner, deliberately. The fiscal
         // year is known the moment an AIP is selected — a division is not needed to determine it.
         // Asking someone to pick a division, or to go fix allocation setup, for a year in which no

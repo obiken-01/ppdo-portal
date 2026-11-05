@@ -18,17 +18,6 @@ type Check = "loading" | "error" | "phone";
 
 /** "<check> <path>" or "<check> <path> <persona>" → the bug ticket that explains the failure. */
 const KNOWN: Record<string, string> = {
-  "error /dashboard": "PPDO-273",
-  "error /budget-planning/wfp": "PPDO-274",
-  "error /budget-planning/wfp/entry": "PPDO-275",
-  "error /budget-planning/report": "PPDO-276",
-  // AD has a placeholder ("FY …") while loading; RV's and SA's pickers are pre-filled, so they fail.
-  "loading /budget-planning/report RV": "PPDO-276",
-  "loading /budget-planning/report SA": "PPDO-276",
-  // Found by PPDO-300: the PPDO-272 sweep ran as AD, and only SA may open Allocation.
-  "error /budget-planning/allocation": "PPDO-301",
-  "error /config": "PPDO-278",
-  "error /inventory/create-pr": "PPDO-279",
   // PPDO-281: the primary button is enabled while the page's data loads.
   "loading /announcements": "PPDO-281",
   "loading /admin/users": "PPDO-281",

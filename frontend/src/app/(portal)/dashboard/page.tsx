@@ -18,6 +18,7 @@ import CalendarApprovalPanel from "@/components/dashboard/CalendarApprovalPanel"
 import CreateEventModal from "@/components/dashboard/CreateEventModal";
 import ConfirmDialog, { type ConfirmDialogProps } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
+import LoadError from "@/components/ui/LoadError";
 
 // Module-level SPA cache: survives route changes within the same tab.
 // Keys are "yyyy-m". First visit populates; return visits show stale data
@@ -31,6 +32,8 @@ export default function DashboardPage() {
 
   const [events, setEvents]               = useState<CalendarEventResponse[]>(() => eventsCache.get(initKey) ?? []);
   const [eventsLoading, setEventsLoading] = useState(() => !eventsCache.has(initKey));
+  // PPDO-273: an empty calendar after a failed load read as "nothing scheduled".
+  const [eventsFailed, setEventsFailed]   = useState(false);
   const [activeYear, setActiveYear]       = useState(() => new Date().getFullYear());
   const [activeMonth, setActiveMonth]     = useState(() => new Date().getMonth() + 1);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventResponse | null>(null);
@@ -85,8 +88,13 @@ export default function DashboardPage() {
       );
       eventsCache.set(key, data);
       setEvents(data);
+      setEventsFailed(false);
     } catch {
-      if (!cached) setEvents([]);
+      // A cached month still shows real (if stale) events, so only an uncached one is a failure.
+      if (!cached) {
+        setEvents([]);
+        setEventsFailed(true);
+      }
     } finally {
       if (!cached) setEventsLoading(false);
     }
@@ -186,6 +194,13 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:flex-1 lg:min-h-0">
         {/* Calendar — takes most of the horizontal space at lg+ */}
         <div className="flex-1 min-w-0">
+          {eventsFailed && !eventsLoading && (
+            <LoadError
+              message="Couldn't load the calendar events for this month."
+              onRetry={() => fetchEvents(activeYear, activeMonth)}
+              className="py-3 mb-3 border border-red-200 bg-red-50"
+            />
+          )}
           <DashboardCalendar
             events={events}
             loading={eventsLoading}
