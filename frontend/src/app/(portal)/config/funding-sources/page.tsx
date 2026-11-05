@@ -167,6 +167,8 @@ export default function FundingSourceConfigPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
+  // PPDO-282 — the server's refusal of a name another fund has, shown under the Name field.
+  const [nameError, setNameError] = useState<string | null>(null);
   const [checkingCode, setCheckingCode] = useState(false);
 
   // Confirm / message dialogs
@@ -233,6 +235,7 @@ export default function FundingSourceConfigPage() {
     setForm(blankForm());
     setFormError(null);
     setCodeError(null);
+    setNameError(null);
     setShowForm(true);
   }
 
@@ -250,6 +253,7 @@ export default function FundingSourceConfigPage() {
     });
     setFormError(null);
     setCodeError(null);
+    setNameError(null);
     setShowForm(true);
   }
 
@@ -359,7 +363,11 @@ export default function FundingSourceConfigPage() {
       closeForm();
       await load();
     } catch (err) {
-      setFormError(configErrorMessage(err, "Failed to save the funding source. Please try again."));
+      const message = configErrorMessage(err, "Failed to save the funding source. Please try again.");
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      // The server words this refusal "Funding source name '…' already exists." (PPDO-282).
+      if (status === 409 && message.startsWith("Funding source name ")) setNameError(message);
+      else setFormError(message);
     } finally {
       setSaving(false);
     }
@@ -741,10 +749,24 @@ export default function FundingSourceConfigPage() {
               <label className="block text-xs font-medium text-slate-600 mb-1">Name *</label>
               <input
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, name: e.target.value }));
+                  setNameError(null);
+                }}
                 placeholder="General Fund"
-                className="w-full px-3 py-2 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-green-600"
+                aria-invalid={nameError ? true : undefined}
+                aria-describedby={nameError ? "funding-source-name-error" : undefined}
+                className={`w-full px-3 py-2 text-sm border focus:outline-none focus:ring-2 ${
+                  nameError
+                    ? "border-danger-500 focus:ring-danger-500"
+                    : "border-slate-200 focus:ring-green-600"
+                }`}
               />
+              {nameError && (
+                <p id="funding-source-name-error" role="alert" className="mt-1 text-xs text-danger-500">
+                  {nameError}
+                </p>
+              )}
             </div>
 
             {/* Description */}

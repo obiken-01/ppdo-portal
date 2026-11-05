@@ -261,7 +261,7 @@ The happy paths were covered; these cover what a user gets wrong. Each assertion
 |---|---|---|
 | `public-login.spec.ts` | `public` | A wrong sign-in shows the error and stays on `/login`. Uses a username that does not exist, so no real account collects a failed attempt toward the rate limit. |
 | `aip/ppdo-271-aip-line-bad-paths.spec.ts` | `aip` | AIP expenditure line: no account / no amount refused next to the field with nothing sent; a negative amount can't be typed and the API refuses one; double-click Save sends one POST (PPDO-244); a save against a line another session changed gets the conflict panel (PPDO-121). |
-| `aip/ppdo-271-funding-sources.spec.ts` | `aip` | Funding Sources (as the E2E department head, own-office view): empty form, duplicate code. A duplicate *name* is accepted today: `test.fail()` with PPDO-282. |
+| `aip/ppdo-271-funding-sources.spec.ts` | `aip` | Funding Sources (as the E2E department head, own-office view): empty form, duplicate code, duplicate name (refused by the server since PPDO-282, shown under Name). |
 | `inventory/ppdo-271-inventory-bad-paths.spec.ts` | `inventory` | Create PR with no items is refused and nothing is sent; PR report exports an `.xlsx` holding the total on screen. |
 | `ppdo-271-report-exports.spec.ts` | `as-*` | Report page exports (initial WFP FY 2028, PPMP FY 2028, WFP FY 2027): `.xlsx` arrives and holds the grand / fund totals shown. Needs a persona that may choose the office (SA, AD); others skip. FY 2027 skips where no office has WFP lines. |
 

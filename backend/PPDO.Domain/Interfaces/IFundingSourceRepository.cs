@@ -11,4 +11,11 @@ public interface IFundingSourceRepository : IRepository<FundingSource>
 {
     /// <summary>Returns the funding source whose integer PK equals <paramref name="id"/>, or null. Tracked.</summary>
     Task<FundingSource?> GetByIntIdAsync(int id, CancellationToken ct = default);
+
+    /// <summary>
+    /// PPDO-282 — whether any fund other than <paramref name="exceptId"/> already has this name,
+    /// ignoring case and outer spaces. Every row counts: shared or office-owned, active or not
+    /// (the same scope as the code rule, PPDO-109 D6). One <c>EXISTS</c> query, nothing loaded.
+    /// </summary>
+    Task<bool> NameExistsAsync(string name, int? exceptId, CancellationToken ct = default);
 }
