@@ -342,4 +342,43 @@ public sealed class AipExpenditureConflictTests
         Assert.NotEqual(ServiceErrorCode.BadRequest, update.Code);
         Assert.NotEqual(ServiceErrorCode.BadRequest, delete.Code);
     }
+
+    // ── PPDO-302: the activity's totals recompute conflicts ───────────────────
+
+    [Fact]
+    public async Task Add_WhenTheTotalsRecomputeConflicts_Returns409SayingTheLineWasSaved_NotA500()
+    {
+        // A details save on the same activity committed while this add ran. The line is already
+        // saved by then, so the answer must say so: a bare "try again" would make a duplicate.
+        // No conflict payload: there is no line of the caller's to compare, so the page shows the
+        // message (aipConflict() needs `current`). Red-test: remove the catch in AfterWriteAsync.
+        ArrangeActivityVersionBump();
+        _totals.Setup(t => t.RecalculateAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ConcurrencyConflictException(
+                "The row changed since it was loaded.", new InvalidOperationException()));
+
+        ServiceResult<AipExpenditureWriteResultDto> result = await Build().AddAsync(
+            ActivityId, new CreateAipExpenditureDto(AccountId, null, 0m, 1_000m, 0m, []), Encoder);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Null(result.ErrorDetails);
+        Assert.Contains("was saved", result.Error);
+        _expRepo.Verify(r => r.AddAsync(It.IsAny<AipExpenditure>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Delete_WhenTheTotalsRecomputeConflicts_Returns409_NotA500()
+    {
+        // Same recompute, same race, after a delete. Red-test: remove the catch in AfterWriteAsync.
+        ArrangeActivityVersionBump();
+        _totals.Setup(t => t.RecalculateAfterLineDeleteAsync(ActivityId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ConcurrencyConflictException(
+                "The row changed since it was loaded.", new InvalidOperationException()));
+
+        ServiceResult<AipExpenditureWriteResultDto> result =
+            await Build().DeleteAsync(LineId, Encoder, expectedRowVersion: AipTestVersion.Any);
+
+        Assert.Equal(ServiceErrorCode.Conflict, result.Code);
+        Assert.Null(result.ErrorDetails);
+    }
 }

@@ -355,6 +355,11 @@ public sealed class AipExpenditureService : IAipExpenditureService
 
     private const string LineNoun = "expenditure line";
 
+    /// <summary>PPDO-302 — the line write committed; only the activity's totals did not follow.</summary>
+    internal const string TotalsConflictMessage =
+        "Your change to the line was saved, but the activity was being saved at the same moment, " +
+        "so its totals did not update. Reload the page to see the current totals.";
+
     /// <summary>
     /// Builds the 409 after a rejected line save: who saved last, when, and what the line now
     /// says.
@@ -423,10 +428,26 @@ public sealed class AipExpenditureService : IAipExpenditureService
     private async Task<ServiceResult<AipExpenditureWriteResultDto>> AfterWriteAsync(
         AipExpenditure? line, int activityId, bool afterDelete, CancellationToken ct)
     {
-        if (afterDelete)
-            await _totals.RecalculateAfterLineDeleteAsync(activityId, ct);
-        else
-            await _totals.RecalculateAsync(activityId, ct);
+        // PPDO-302 — the totals service already retried once after a conflict (a details save on
+        // this activity landing mid-write). A second conflict is answered here as a 409, never a 500.
+        //
+        // ⚠️ The line write ABOVE has already committed, so the message says so. "Try again" would
+        // make the encoder add the same line twice. No conflict payload: there is no line of the
+        // caller's to compare, so the page shows this sentence (aipConflict() needs `current`).
+        try
+        {
+            if (afterDelete)
+                await _totals.RecalculateAfterLineDeleteAsync(activityId, ct);
+            else
+                await _totals.RecalculateAsync(activityId, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            _logger.LogWarning(
+                "AIP activity totals not recomputed after a line write: the activity kept changing. ActivityId: {ActivityId}",
+                activityId);
+            return ServiceResult<AipExpenditureWriteResultDto>.Conflict(TotalsConflictMessage);
+        }
 
         await _ceiling.UpsertLedgerForActivityAsync(activityId, ct);
 

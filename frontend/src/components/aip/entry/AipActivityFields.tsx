@@ -79,10 +79,16 @@ function formFromActivity(activity: AipActivityDetail, proponentOfficeCode: stri
 
 export default function AipActivityFields({
   activity, canEdit, onSaved, offices, proponentOfficeCode, draftUserId = null, fundingSources = [],
+  onSavingChange,
 }: {
   activity: AipActivityDetail;
   canEdit: boolean;
   onSaved: (updated: AipActivityDetail) => void;
+  /**
+   * PPDO-302 — told when a details save starts and ends, so the page can hold back expenditure
+   * writes on this activity until it answers. Both write the same activity row.
+   */
+  onSavingChange?: (saving: boolean) => void;
   /**
    * The configured offices the implementing-office picker chooses from (PPDO-100). Passed in
    * already fetched, like every other list on this page.
@@ -248,6 +254,7 @@ export default function AipActivityFields({
     if (!name.trim()) { setError("The activity title is required."); return; }
     if (orderError) return;
     setSaving(true);
+    onSavingChange?.(true);
     setError(null);
     setFieldError(null);
     try {
@@ -287,6 +294,7 @@ export default function AipActivityFields({
       else setError(message);
     } finally {
       setSaving(false);
+      onSavingChange?.(false);
     }
   }
 
